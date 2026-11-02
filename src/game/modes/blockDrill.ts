@@ -1,0 +1,203 @@
+import { yawFromDir } from '../../core/mathx';
+import { solveApex } from '../../physics/solve';
+import { HitterBrain } from '../../ai/hitter';
+import { SetterBrain } from '../../ai/setter';
+import type { PositionId } from '../../config';
+import { Athlete } from '../athlete';
+import type { ContactEvent } from '../contact';
+import type { Outcome } from '../judge';
+import { attackHeight, laneFor, SETTER_SPOT, SETTER_TARGET } from '../plays';
+import { kbd, Mode } from './mode';
+
+type Phase = 'intro' | 'feed' | 'live' | 'result';
+
+/** where the user starts blocking, by position (x along the net, home side) */
+const BLOCK_X: Record<PositionId, number> = { OH: -2.7, OPP: 2.7, MB: 0, S: 2.4, L: 0 };
+
+/**
+ * Block drill: the opponent setter sets one of three hitters; read the set,
+ * shuffle, and time the jump + hands. Stuffs, soft blocks and touches score.
+ */
+export class BlockDrill extends Mode {
+  readonly id = 'block' as const;
+  private setter!: Athlete;
+  private coach!: Athlete;
+  private hitters: { a: Athlete; brain: HitterBrain; pos: 'OH' | 'MB' | 'OPP' }[] = [];
+  private target: Athlete | null = null;
+  private phase: Phase = 'intro';
+  private t = 0;
+  private tossed = false;
+  private block: ContactEvent | null = null;
+  private attacked = false;
+
+  setup(): void {
+    const g = this.g;
+    g.placeUser(BLOCK_X[this.position], 0.5, 0);
+    // opponent setter (far side, faces +x = their left)
+    const sx = -SETTER_SPOT.x;
+    const sz = -SETTER_SPOT.z;
+    this.setter = new Athlete('S', -1);
+    this.setter.place(sx, sz, -Math.PI / 2);
+    g.addAthlete(this.setter, 21);
+    this.spawned.push(this.setter);
+    const sb = new SetterBrain(this.setter, { x: sx, z: sz }, -Math.PI / 2);
+    sb.shouldPlay = () => this.g.ball.lastTouch?.kind === 'feed';
+    sb.call = () => {
+      const h = this.pickHitter();
+      this.target = h.a;
+      const lane = laneFor(h.pos, -1);
+      const y = attackHeight(h.a);
+      return { target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove, hitter: h.a };
+    };
+    g.setBrain(this.setter, sb);
+    // three hitters
+    let seed = 22;
+    for (const pos of ['OH', 'MB', 'OPP'] as const) {
+      const a = new Athlete(pos, -1);
+      const lane = laneFor(pos, -1);
+      a.place(lane.sx, lane.sz, Math.PI);
+      g.addAthlete(a, seed++);
+      this.spawned.push(a);
+      const brain = new HitterBrain(a, lane);
+      brain.isMySet = () => this.target === a && this.g.ball.lastTouch?.kind === 'set';
+      brain.blockers = () => [this.g.me];
+      g.setBrain(a, brain);
+      this.hitters.push({ a, brain, pos });
+    }
+    // coach on their back court
+    this.coach = new Athlete('OPP', -1);
+    this.coach.place(-3.4, -6.6, Math.PI);
+    g.addAthlete(this.coach, 4, 'coach');
+    this.spawned.push(this.coach);
+    this.coach.airIntent = 'neutral';
+    g.hud.setTitle('Block Drill');
+    this.updateScore();
+    g.hud.message('Read the set · shuffle A/D · hold RMB for hands · Space to jump', 3.2);
+    this.toPhase('intro');
+  }
+
+  private pickHitter() {
+    // 45%: the hitter in front of you, otherwise random
+    const me = this.g.me;
+    let near = this.hitters[0];
+    for (const h of this.hitters) if (Math.abs(h.a.pos.x - me.pos.x) < Math.abs(near.a.pos.x - me.pos.x)) near = h;
+    if (this.g.rng.next() < 0.45) return near;
+    return this.hitters[Math.floor(this.g.rng.next() * this.hitters.length)];
+  }
+
+  hint(): string {
+    const me = this.g.me;
+    if (me.state === 'air') return `hold ${kbd('RMB')} hands over the net`;
+    return `${kbd('A')}${kbd('D')} shuffle · ${kbd('RMB')} hands up · ${kbd('Space')} block jump · ${kbd('V')} camera · ${kbd('R')} reset`;
+  }
+
+  private updateScore(): void {
+    this.g.hud.setScore(`${this.score} pts · rep ${this.reps}`);
+  }
+
+  restartRep(): void {
+    this.nextRep();
+  }
+
+  step(dt: number): void {
+    const g = this.g;
+    this.t += dt;
+    this.coach.cmd.faceYaw = yawFromDir(-SETTER_TARGET.x - this.coach.pos.x, -SETTER_TARGET.z - this.coach.pos.z);
+    switch (this.phase) {
+      case 'intro':
+        if (this.t > 1.2) this.toPhase('feed');
+        break;
+      case 'feed':
+        if (!this.tossed && this.t > 0.3) {
+          this.coach.startAction('toss', g.simTime);
+          this.tossed = true;
+        }
+        if (this.tossed && this.t > 0.57) {
+          this.coach.endAction();
+          const from = { x: this.coach.pos.x + 0.1, y: 1.35, z: this.coach.pos.z + 0.3 };
+          const v = { x: 0, y: 0, z: 0 };
+          solveApex(from, { x: -SETTER_TARGET.x, y: 2.1, z: -SETTER_TARGET.z }, SETTER_TARGET.height + 0.4, { x: 0, y: 0, z: 0 }, v);
+          g.ball.launch(from, v, { x: 3, y: 0, z: 0 }, 0, g.simTime);
+          g.ball.lastTouch = { athlete: this.coach, kind: 'feed', t: g.simTime, side: -1 };
+          this.block = null;
+          this.attacked = false;
+          this.toPhase('live');
+        }
+        break;
+      case 'live':
+        if (g.ball.state.rest || this.t > 8) this.finish(null);
+        break;
+      case 'result':
+        if (this.t > 2.0) this.nextRep();
+        break;
+    }
+  }
+
+  onContact(ev: ContactEvent): void {
+    if (ev.kind === 'spike' || ev.kind === 'tip') this.attacked = true;
+    if (ev.athlete === this.g.me && ev.kind === 'block') this.block = ev;
+  }
+
+  onOutcome(o: Outcome): void {
+    if (this.phase !== 'live' || !this.attacked) return;
+    this.finish(o);
+  }
+
+  private finish(o: Outcome | null): void {
+    const g = this.g;
+    this.toPhase('result');
+    this.reps++;
+    const b = this.block;
+    let pts = 0;
+    let label: string;
+    let good = false;
+    const lastByMe = g.ball.lastTouch?.athlete === g.me;
+    if (b && o && o.kind === 'in' && o.side === -1) {
+      pts = b.grade === 'Perfect' ? 150 : 100;
+      label = b.grade === 'Perfect' ? 'STUFF BLOCK!' : 'BLOCK POINT';
+      good = true;
+      g.crowd(b.grade === 'Perfect' ? 1.2 : 0.8);
+    } else if (b && (!o || o.kind === 'in')) {
+      pts = 60;
+      label = 'SOFT BLOCK · TOUCH';
+      good = true;
+      g.crowd(0.3);
+    } else if (b && lastByMe) {
+      pts = 20;
+      label = 'TOOLED';
+    } else if (!b && o && o.kind !== 'in') {
+      pts = 10;
+      label = 'HITTER ERROR';
+    } else if (!b && o && o.kind === 'in' && o.side === 1) {
+      label = 'KILLED';
+    } else {
+      label = 'NO TOUCH';
+    }
+    this.score += pts;
+    this.bumpStreak(good);
+    g.hud.showBanner(pts > 0 ? `${label}  +${pts}` : label, good ? 'good' : 'bad');
+    this.updateScore();
+  }
+
+  private nextRep(): void {
+    const g = this.g;
+    g.judge.disarm();
+    g.ball.hide();
+    for (const h of this.hitters) {
+      h.brain.reset();
+      const lane = laneFor(h.pos, -1);
+      h.a.place(lane.sx, lane.sz, Math.PI);
+    }
+    this.setter.place(-SETTER_SPOT.x, -SETTER_SPOT.z, -Math.PI / 2);
+    this.target = null;
+    const me = g.me;
+    if (Math.abs(me.pos.z) > 1.6 || me.state !== 'ground') g.hud.fade(() => g.placeUser(BLOCK_X[this.position], 0.5, 0));
+    this.toPhase('feed');
+  }
+
+  private toPhase(p: Phase): void {
+    this.phase = p;
+    this.t = 0;
+    if (p === 'feed') this.tossed = false;
+  }
+}

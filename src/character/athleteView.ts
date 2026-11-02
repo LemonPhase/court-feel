@@ -91,6 +91,9 @@ export class AthleteView {
   private landImpact = 0;
   private loadFeetInit = false;
   private hideHead = false;
+  private fpApplied = false;
+  /** next arm update copies targets directly (camera toggle) */
+  private snapArms = false;
   private opacity = 1;
   onFootstep: ((a: Athlete, speed: number) => void) | null = null;
   private stepToggle = 0;
@@ -183,9 +186,17 @@ export class AthleteView {
       this.resetFeet();
     }
     if (dt <= 0) {
-      // frozen (hit-stop / pause): keep the last pose
-      return;
+      // frozen (hit-stop / pause): keep the last pose, but camera toggles still apply
+      if (this.rig.bones.head.scale.x !== (this.hideHead ? 0.001 : 1)) {
+        this.rig.bones.head.scale.setScalar(this.hideHead ? 0.001 : 1);
+        this.root.updateMatrixWorld(true);
+      }
+      if (this.fpApplied === this.hideHead) return;
+      // re-pose once so the FP view-model offsets take effect immediately
+      dt = 1e-4;
     }
+    if (this.fpApplied !== this.hideHead) this.snapArms = true;
+    this.fpApplied = this.hideHead;
     // smoothed velocity from rendered motion
     const inst = _t1.subVectors(a.rpos, this.lastPos).divideScalar(Math.max(dt, 1e-4));
     inst.y = 0;
@@ -355,6 +366,8 @@ export class AthleteView {
 
     // ================================================== arms
     this.updateArms(dt, tr, swingS, swingF, swing);
+
+    this.snapArms = false;
 
     // ================================================== head look
     this.updateHead(dt);
@@ -714,7 +727,7 @@ export class AthleteView {
       const kk = damp(rate, dt);
       arm.w.lerp(w, kk);
       arm.pole.lerp(pole, kk);
-      if (rate >= 80) {
+      if (rate >= 80 || this.snapArms) {
         arm.w.copy(w);
         arm.pole.copy(pole);
       }

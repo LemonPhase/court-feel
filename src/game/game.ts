@@ -25,7 +25,7 @@ import { createMode } from './modes/registry';
 import { makeRingTexture } from '../world/textures';
 import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
-import { SpikeBot, type BotQuality } from './bot';
+import { BlockBot, SpikeBot, type BotQuality } from './bot';
 
 export type GameEvents = {
   toggleCam: { fp: boolean };
@@ -69,7 +69,7 @@ export class Game {
   modeId: ModeId = 'spike';
   position: PositionId = 'OH';
   /** autopilot driving the user's inputs (tests / attract mode) */
-  bot: SpikeBot | null = null;
+  bot: { step(dt: number): void; after(): void } | null = null;
 
   simTime = 0;
   private lastRenderSimT = 0;
@@ -400,7 +400,8 @@ export class Game {
   }
 
   enableBot(q: string): void {
-    this.bot = new SpikeBot(this, (['perfect', 'good', 'sloppy', 'tip'].includes(q) ? q : 'perfect') as BotQuality);
+    const quality = (['perfect', 'good', 'sloppy', 'tip'].includes(q) ? q : 'perfect') as BotQuality;
+    this.bot = this.modeId === 'block' ? new BlockBot(this, quality) : new SpikeBot(this, quality);
   }
 
   /** start-screen background: the bot runs the spike drill under an orbiting camera */

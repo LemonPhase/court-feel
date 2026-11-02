@@ -3,7 +3,7 @@
 Read this first when resuming.
 
 ## Current milestone
-M5 — blocking and the block drill.
+M6 — passing/digging, setting, serving (Free Play, Serve Receive/Dig, Setter Drill).
 
 ## Done
 - **M1** Court, lighting, camera, FP/TP toggle, capsule movement.
@@ -62,11 +62,23 @@ M5 — blocking and the block drill.
     kinematics, presses Space/LMB through the real input path. Perfect bot: 5/5 Perfect for every
     position; tip bot verified; sloppy bot produces Early/Late/Miss.
 
+- **M5** Blocking and the block drill.
+  - Block contact: hands volume above/over the net, extension ramps over 120 ms, penetrates
+    further when airborne; grade from jump height fraction at contact (Perfect ≥ 88% → stuff,
+    Good ≥ 66% → stuff/soft, else Early/Late → soft/tooled; feet on the floor = Late).
+  - `src/ai/approach.ts`: the bot's simulation planner extracted for all AI hitters.
+  - `src/ai/hitter.ts` (reads its set, simulated approach, shot choice line/cross/sharp/seam/tip
+    steering away from blockers, skill-based timing error through the same contact system) and
+    `src/ai/blocker.ts` (reads the set, shades the line, times the jump).
+  - Block drill: opponent setter + OH/MB/OPP hitters + coach; scoring for stuff / soft block /
+    tooled / hitter error / killed. BlockBot autopilot verified (stuffs MB and OH lanes), FP view
+    shows your own hands over the net.
+
 ## Known issues
 - Headless Chromium uses SwiftShader, so on-screen FPS in screenshots is not representative.
 
 ## Next steps
-- M5 block drill (AI opponent setter + hitter), block timing grades.
+- M6 pass/dig drill, setter drill, free play machine, serving.
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)

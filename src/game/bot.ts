@@ -243,3 +243,66 @@ export class SpikeBot {
     this.offset = q === 'perfect' ? 0 : q === 'good' ? rnd * 0.05 : rnd * 0.13;
   }
 }
+
+/**
+ * Block-drill autopilot: reads the set, shuffles along the net, raises the
+ * hands (RMB) and presses Space so the block peaks as the ball crosses.
+ */
+export class BlockBot {
+  private jumped = false;
+  private mx = 0;
+  private b: V3 = { x: 0, y: 0, z: 0 };
+  private offset = 0;
+  results: string[] = [];
+
+  constructor(private g: Game, private quality: BotQuality = 'perfect') {}
+
+  step(_dt: number): void {
+    const g = this.g;
+    const me = g.me;
+    const ball = g.ball;
+    const now = g.simTime;
+    const lt = ball.lastTouch;
+    const theirSet = ball.active && lt && lt.side !== me.side && lt.kind === 'set';
+    g.rig.yaw = 0;
+    g.rig.pitch = g.rig.mode === 'fp' ? 0.1 : -0.15;
+    this.mx = 0;
+    if (!theirSet) {
+      if (me.state === 'ground') {
+        g.input.up('Mouse2');
+        g.input.up('Space');
+        this.jumped = false;
+      }
+      return;
+    }
+    const pred = ball.ensurePrediction(g.env, now);
+    const tc = pred.descendThrough(3.25, now);
+    if (tc < 0) return;
+    pred.posAt(tc, this.b);
+    const tx = this.b.x + Math.sign(this.b.x) * 0.2;
+    const dx = tx - me.pos.x;
+    if (Math.abs(dx) > 0.08 && me.state === 'ground') this.mx = Math.sign(dx) * Math.min(1, Math.abs(dx) / 0.4);
+    if (!this.jumped) {
+      if (this.offset === 0 && this.quality !== 'perfect') this.offset = (g.rng.next() * 2 - 1) * (this.quality === 'good' ? 0.06 : 0.16);
+      // standing block jump: load min + rise to peak
+      const H = me.jumpMax * me.stats.standingJumpFrac;
+      const vy = Math.sqrt(2 * BALL.gravity * H);
+      const tUp = (vy - PLAYER.apexBand) / BALL.gravity + PLAYER.apexBand / (BALL.gravity * PLAYER.apexGravityScale);
+      const tJump = tc + 0.1 - tUp - PLAYER.loadMin + this.offset;
+      if (now >= tJump - 0.25) g.input.down('Mouse2');
+      if (now >= tJump) {
+        g.input.down('Space');
+        this.jumped = true;
+      }
+    } else {
+      g.input.up('Space');
+    }
+  }
+
+  after(): void {
+    const me = this.g.me;
+    me.cmd.moveX = this.mx;
+    me.cmd.moveZ = 0;
+    me.cmd.sprint = false;
+  }
+}

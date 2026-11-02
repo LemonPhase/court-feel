@@ -187,7 +187,7 @@ export const CONTACT = {
   spikeReachStretch: 0.62,
   passRadius: 0.55,
   setRadius: 0.48,
-  blockHalfWidth: 0.5,
+  blockHalfWidth: 0.45,
   blockHeight: 0.55,
   /** speeds (m/s) */
   spikePerfect: 30,
