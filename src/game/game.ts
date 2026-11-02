@@ -209,11 +209,55 @@ export class Game {
 
   /** set the user's body + camera facing (teleport) */
   placeUser(x: number, z: number, yaw: number): void {
+    this.ret = null;
     this.me.place(x, z, yaw);
     this.rig.yaw = yaw;
     this.rig.snap();
     this.user.clear();
     this.eyeInit = false;
+  }
+
+  /** the user's athlete jogs back to a drill spot between reps (no teleport, no black cut) */
+  private ret: { x: number; z: number; yaw: number; t: number; maxT: number; userDriven: boolean } | null = null;
+
+  returnUser(x: number, z: number, yaw: number, maxT = 2.6): void {
+    this.ret = { x, z, yaw, t: 0, maxT, userDriven: false };
+  }
+
+  /** a drill should hold its next feed while this is true */
+  get userReturning(): boolean {
+    return this.ret !== null;
+  }
+
+  private stepReturn(dt: number): void {
+    const r = this.ret;
+    if (!r) return;
+    const me = this.me;
+    r.t += dt;
+    const d = Math.hypot(me.pos.x - r.x, me.pos.z - r.z);
+    const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.input.isDown(k));
+    if (keys) r.userDriven = true;
+    if (d < 0.3 || (r.userDriven && d < 0.9)) {
+      this.ret = null;
+      return;
+    }
+    if (r.t > r.maxT) {
+      // still far (or the player wandered off): snap with a soft dip, not a black cut
+      if (!r.userDriven || r.t > r.maxT + 2) {
+        if (!r.userDriven) {
+          this.hud.dip();
+          this.placeUser(r.x, r.z, r.yaw);
+        }
+        this.ret = null;
+      }
+      return;
+    }
+    if (keys || me.state !== 'ground' || Math.hypot(me.cmd.moveX, me.cmd.moveZ) > 0.05) return;
+    // jog back (body keeps facing where the camera looks: a backpedal when looking at the net)
+    const m = Math.min(1, d / 0.6);
+    me.cmd.moveX = ((r.x - me.pos.x) / d) * m;
+    me.cmd.moveZ = ((r.z - me.pos.z) / d) * m;
+    me.cmd.sprint = d > 2.5;
   }
 
   /** change the user's position stats (height, jump, etc) */
@@ -360,6 +404,7 @@ export class Game {
   private qAcc = 0;
   private qFrames = 0;
   private qCooldown = 3;
+  private qSlow = 0;
 
   private governQuality(dt: number): void {
     if (this.manual || document.hidden) return;
@@ -371,8 +416,12 @@ export class Game {
     this.qAcc = 0;
     this.qFrames = 0;
     if (this.qCooldown > 0 || this.quality >= 2) return;
-    // below ~50 fps on average: step down one level
-    if (avg > 1 / 50) this.setQuality(this.quality + 1);
+    // two slow windows in a row (below ~50 fps for 4 s): step down one level
+    this.qSlow = avg > 1 / 50 ? this.qSlow + 1 : 0;
+    if (this.qSlow >= 2) {
+      this.qSlow = 0;
+      this.setQuality(this.quality + 1);
+    }
   }
 
   setQuality(q: number): void {
@@ -402,9 +451,10 @@ export class Game {
     const realDt = Math.min((now - this.last) / 1000, SIM.maxFrameDt);
     this.last = now;
     if (realDt <= 0) return;
+    // quality changes resize the canvas, which clears it: do it before drawing this frame
+    this.governQuality(realDt);
     if (this.manual) this.render(realDt);
     else this.tick(realDt, true);
-    this.governQuality(realDt);
     this.frameMs = performance.now() - t0;
     this.fpsAcc += realDt;
     this.fpsFrames++;
@@ -458,6 +508,7 @@ export class Game {
         this.bot.step(dt);
         this.user.frame(dt);
         this.bot.after();
+        this.stepReturn(dt);
       }
       return;
     }
@@ -468,6 +519,7 @@ export class Game {
     if (this.input.consumePress('KeyR')) this.mode?.restartRep();
     this.user.frame(dt);
     this.bot?.after();
+    this.stepReturn(dt);
   }
 
   enableBot(q: string): void {

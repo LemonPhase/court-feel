@@ -747,6 +747,14 @@ export class AthleteView {
       this.bodyToWorld(arm.w.x * s, arm.w.y, arm.w.z, _t3);
       const target = _t4.copy(shoulder).add(_t3);
       if (ikWorld) target.lerp(ikWorld, ikBlend);
+      // first person: keep the hand and forearm clear of the lens (a wrist sweeping past the
+      // camera would fill the screen with a dark blur)
+      if (this.hideHead) {
+        _f3.subVectors(target, this.eyePos);
+        const dl = _f3.length();
+        const minD = 0.42;
+        if (dl < minD) target.copy(this.eyePos).addScaledVector(dl > 1e-4 ? _f3.divideScalar(dl) : _f3.set(0, 0.3, 0), minD);
+      }
       this.bodyToWorld(arm.pole.x * s, arm.pole.y, arm.pole.z, _pole);
       const upper = B[`upperArm${L}` as BoneName];
       const lower = B[`lowerArm${L}` as BoneName];

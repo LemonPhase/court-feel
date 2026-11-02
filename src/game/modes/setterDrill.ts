@@ -6,8 +6,9 @@ import { HitterBrain } from '../../ai/hitter';
 import { Athlete } from '../athlete';
 import type { ContactEvent, SetOption } from '../contact';
 import { outcomeLabel, type Outcome } from '../judge';
-import { attackHeight, laneFor, SETTER_SPOT, SETTER_TARGET } from '../plays';
+import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, SETTER_TARGET, setterTouchY } from '../plays';
 import { kbd, makeFloorRing, Mode } from './mode';
+import type { Game } from '../game';
 
 type Phase = 'intro' | 'feed' | 'live' | 'result';
 type Lane = 'OH' | 'MB' | 'OPP';
@@ -45,6 +46,8 @@ export class SetterDrill extends Mode {
       brain.isMySet = () => this.setFor === a && this.g.ball.lastTouch?.kind === 'set';
       brain.blockers = () => [this.blocker];
       brain.skill = 0.82;
+      // the middle goes on the pass, timed to your touch
+      if (pos === 'MB') brain.passToSetter = (gm) => this.passToMe(gm);
       g.setBrain(a, brain);
       this.hitters.set(pos, { a, brain });
       const m = makeFloorRing(pos === 'OH' ? 0xffc23a : pos === 'MB' ? 0x6fe3ff : 0xff6fb0, 1.0);
@@ -72,12 +75,29 @@ export class SetterDrill extends Mode {
     this.toPhase('intro');
   }
 
+  /** while the pass is coming: when and where it reaches your hands */
+  private passToMe(g: Game): { t: number; x: number } | null {
+    const lt = g.ball.lastTouch;
+    if (!g.ball.active || lt?.athlete !== this.passer || lt.kind !== 'pass') return null;
+    const pred = g.ball.ensurePrediction(g.env, g.simTime);
+    const t = pred.descendThrough(setterTouchY(g.me), g.simTime);
+    if (t < 0) return null;
+    const p = { x: 0, y: 0, z: 0 };
+    pred.posAt(t, p);
+    return { t, x: p.x };
+  }
+
   setOptions(a: Athlete): SetOption[] {
     const out: SetOption[] = [];
     for (const [pos, h] of this.hitters) {
+      if (pos === 'MB') {
+        // the quick is met at the top of the middle's jump when they are up with your touch
+        out.push(quickSetFor(h.a, this.g.simTime, this.g.ball.pos, h.brain.releaseAt));
+        continue;
+      }
       const lane = laneFor(pos, a.side);
       const y = attackHeight(h.a);
-      out.push({ target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove, hitter: h.a, label: pos === 'OH' ? 'Outside' : pos === 'MB' ? 'Quick' : 'Back set' });
+      out.push({ target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove, hitter: h.a, label: pos === 'OH' ? 'Outside' : 'Back set' });
     }
     return out;
   }
@@ -124,6 +144,10 @@ export class SetterDrill extends Mode {
         if (this.t > 1.2) this.toPhase('feed');
         break;
       case 'feed':
+        if (g.userReturning) {
+          this.t = 0;
+          break;
+        }
         if (!this.tossed && this.t > 0.4) {
           this.tossed = true;
           this.passer.startAction('pass', g.simTime);
@@ -206,7 +230,7 @@ export class SetterDrill extends Mode {
     }
     this.blocker.place(0, -0.5, Math.PI);
     const me = g.me;
-    if (Math.hypot(me.pos.x - SETTER_SPOT.x, me.pos.z - SETTER_SPOT.z) > 2.2 || me.state !== 'ground') g.hud.fade(() => g.placeUser(SETTER_SPOT.x, SETTER_SPOT.z + 0.3, Math.PI / 2));
+    if (Math.hypot(me.pos.x - SETTER_SPOT.x, me.pos.z - SETTER_SPOT.z - 0.3) > 1.0 || me.state !== 'ground') g.returnUser(SETTER_SPOT.x, SETTER_SPOT.z + 0.3, Math.PI / 2);
     this.toPhase('feed');
   }
 

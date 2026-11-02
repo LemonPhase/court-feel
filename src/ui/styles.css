@@ -60,7 +60,7 @@ canvas { display: block; outline: none; }
 .crosshair::after { content: ''; position: absolute; left: 50%; top: 50%; width: 2px; height: 2px; margin: -1px 0 0 -1px; background: #fff; border-radius: 50%; }
 .crosshair.active { border-color: var(--gold); transform: scale(1.25); transition: transform 0.08s; }
 .fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.35s ease-out; z-index: 40; }
-.fade.on { opacity: 1; }
+.fade.dip { opacity: 0.4; }
 
 /* ------------------------------------------------------------------ menu */
 button { font: inherit; color: inherit; cursor: pointer; }

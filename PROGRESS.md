@@ -9,7 +9,7 @@ Serve Receive/Dig, Setter, 6v6 Mini Rally), five positions, instant FP/TP switch
 deterministic ball simulation, procedurally built and animated athletes with IK, graded timing
 (Perfect / Good / Early / Late) with buffering and adjustable assist, a full juice package
 (hit-stop, shake, streak sparks, fire trails, shockwave, dust, floor cracks, hand flashes,
-slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (36
+slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (40
 unit tests + a Playwright e2e that plays every drill through the real input path).
 
 ### Acceptance criteria
@@ -26,7 +26,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   dig, set, serve toss; planted feet; head look-at. Side-view screenshot sheets checked.
 - [x] **Realistic ball physics** — set apex, spike landing, topspin dip, net/tape/antenna, women's
   net, floor bounce, determinism and predictor tests; arcs and spike speeds (25-30 m/s) at 1:1 scale.
-- [x] **60 fps target, no console errors, all tests pass** — 36/36 tests; e2e: no console errors;
+- [x] **60 fps target, no console errors, all tests pass** — 40/40 tests; e2e: no console errors;
   CPU frame median ~4.6 ms (p95 ~12 ms, from set-time AI planning) with 86 draw calls / 107k
   triangles; adaptive quality governor (MSAA → render scale → shadow size) protects weaker GPUs.
   No memory growth: 0 geometry/texture growth across repeated mode switches, JS heap flat over a
@@ -174,12 +174,28 @@ unit tests + a Playwright e2e that plays every drill through the real input path
     rallies; disposal fixed for drill floor rings and net-height toggles. WebGL context loss handled.
   - Production build (`npm run build`, 780 kB JS / 213 kB gzip) checked under `vite preview`.
 
+- **Playtest round 1** (feedback from the first hands-on session).
+  - *Black flash on contact*: the rep reset cut the screen to black; replaced by the athlete
+    jogging back to the start spot (snap with a soft dip only if it takes too long). Also added a
+    NaN/Inf sanitize pass before bloom, capped point-sprite size, kept the FP arm out of the near
+    plane (lens clearance + 0.22 m FP near plane), and the quality governor now resizes before render.
+  - *Audio "cutting off" at high frequency*: the master compressor pumped the crowd hiss on every
+    hit. New mix: limiter on SFX only, crowd bypasses it, tanh soft clip on the master, smoother
+    reverb tail, lower bright-band gains. Offline render: peaks 0.16-0.34, 0 clipped samples, crowd
+    bed RMS identical before/after a spike.
+  - *Outside sets too far inside*: OH/OPP now hit at the pins (x = -4.05 / 4.0, ~0.5 m inside the
+    antennae) from approach starts outside the sideline; blockers and formations moved out to match.
+  - *Middle too slow*: real first-tempo quick. The middle runs on the pass and leaves the floor as
+    the setter touches the ball; the set is solved for a fixed flight time to where the hitter's hand
+    will be at the top of the jump (`quickSetFor`, `predictJump`, `planQuick`). If the middle is not
+    up the setter goes elsewhere (AI) or the quick comes late. AI middles act as decoys when the set
+    goes wide; the block drill middle has to commit-jump with them. Rally probe: MB takeoff within
+    0-20 ms of the setter's touch, contact ~0.42 s after the set.
+
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
   well within a 16.7 ms budget, and the quality governor degrades gracefully if the GPU is slow.
-- Pushing to GitHub failed from this session (403: the GitHub App/connection lacks access to
-  `LemonPhase/court-feel`). All work is committed locally on `claude/hopeful-albattani-j9by9c`.
 - Pointer lock can be refused in some embedded browsers; the game falls back to drag-to-look.
 - Athletes don't physically collide with each other (AI spacing keeps it rare).
 - No rotation in the Mini Rally: positions are fixed slots (a sandbox, not a match).
@@ -187,7 +203,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 ## Ideas for later
 - Real rotations and libero substitutions in the rally; a full scoring mode.
 - Approach paths with curved slide / broad-jump attacks for middles and opposites; back-row D/pipe.
-- Jump-set and setter dump decisions for the AI; read-blocking vs commit-blocking options.
+- Jump-set and setter dump decisions for the AI; AI blockers that commit on quicks; slides / 31s.
 - Dive / sprawl animations for desperate digs; overhead (hands) passing of free balls.
 - Ghost replays of your best spike, and a "timing trainer" overlay that shows your click history.
 - Per-player handedness (lefties), body-type variety, jersey numbers and names.
@@ -197,8 +213,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Mobile/touch layout.
 
 ## Next steps
-- None required. If resuming: retry the GitHub push once access is granted, then pick from
-  "Ideas for later".
+- None required. If resuming: pick from "Ideas for later" or the next round of playtest notes.
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
@@ -215,8 +230,11 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Aim depth = depth into the opponent court (not distance from the hitter), so spikes and serves
   share one mapping and the reticle is always on their side.
 - Zone contacts (pass/set) resolve at the closest approach, not first entry into the reach sphere.
-- Back set (OPP) and quick (MB) are set a bit higher than elite tempo so they are reachable when
-  reacting to the set; the MB quick is a "2" ball, not a "1".
+- Back set (OPP) is set a bit higher than elite tempo so it is reachable when reacting to the set.
+- The MB quick is a true "1": the hitter jumps with the setter's touch and the set adapts to the
+  hitter (fixed flight time to the predicted hand position at the top of the jump), because a quick
+  timed off the set is unhittable at real tempo.
+- Pin sets are met ~0.5 m inside the antenna; AI hitters still read a single block and go around it.
 - Key light nearly overhead (arena look, readable shadow under players, no floor hotspot).
 - `PCFSoftShadowMap` was removed in three r187; using `PCFShadowMap` with shadow radius.
 - Body yaw always follows camera yaw (both cameras): volleyball players face the play while

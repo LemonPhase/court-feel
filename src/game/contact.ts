@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ASSIST, BALL, CONTACT, COURT, TIMING } from '../config';
 import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
-import { netClearance, solveApex, solveSpeedToFloor } from '../physics/solve';
+import { netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
 import { Athlete, type Action, type Grade } from './athlete';
 import type { BallEntity, TouchKind } from './ballEntity';
 
@@ -56,6 +56,8 @@ export interface SetOption {
   apex: number;
   hitter: Athlete | null;
   label: string;
+  /** fixed flight time (a quick meeting a hitter already in the air) instead of an apex */
+  time?: number;
 }
 
 const GRADE_RANK: Record<Grade, number> = { Perfect: 3, Good: 2, Early: 1, Late: 1, Miss: 0 };
@@ -478,7 +480,9 @@ export class ContactSystem {
       z: best.target.z + (h.rand() * 2 - 1) * err * 0.6,
     };
     const out = { x: 0, y: 0, z: 0 };
-    solveApex({ x: bp.x, y: bp.y, z: bp.z }, tgt, best.apex + (rank === 3 ? 0 : (h.rand() - 0.5) * 0.6), { x: 0, y: 0, z: 0 }, out);
+    const from = { x: bp.x, y: bp.y, z: bp.z };
+    if (best.time) solveFixedTime(from, tgt, Math.max(0.15, best.time * (rank === 3 ? 1 : 1 + (h.rand() - 0.5) * 0.3)), { x: 0, y: 0, z: 0 }, out);
+    else solveApex(from, tgt, best.apex + (rank === 3 ? 0 : (h.rand() - 0.5) * 0.6), { x: 0, y: 0, z: 0 }, out);
     ball.hit(out, { x: 0, y: 0, z: 0 }, 0, t);
     ball.lastTouch = { athlete: a, kind: 'set', t, side: a.side };
     a.lastTouchT = t;

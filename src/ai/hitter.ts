@@ -3,8 +3,8 @@ import { AI, COURT, TIMING } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
-import type { AttackLane } from '../game/plays';
-import { planApproach, type ApproachPlan } from './approach';
+import { quickSpot, type AttackLane } from '../game/plays';
+import { planApproach, planQuick, type ApproachPlan } from './approach';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 
 /**
@@ -26,6 +26,14 @@ export class HitterBrain implements Brain {
   private err = 0;
   /** stay at the ready spot instead of the approach start (e.g. while defending) */
   holdSpot: { x: number; z: number } | null = null;
+  /**
+   * Quick hitters: while a pass is on its way to our setter, when and where
+   * the setter will touch it (null otherwise). The middle runs on the pass and
+   * leaves the floor with the setter's touch; if the set goes elsewhere the
+   * jump was a decoy.
+   */
+  passToSetter: ((g: Game) => { t: number; x: number } | null) | null = null;
+  private quickFor: unknown = null;
   enabled = true;
   lastShot = '';
 
@@ -35,6 +43,12 @@ export class HitterBrain implements Brain {
     this.phase = 'ready';
     this.plan = null;
     this.swung = false;
+    this.quickFor = null;
+  }
+
+  /** when this hitter will release its plant (for the setter's read), if planned */
+  get releaseAt(): number | undefined {
+    return this.plan && (this.phase === 'approach' || this.phase === 'load') ? this.plan.tPress + this.plan.hold : undefined;
   }
 
   step(_dt: number, g: Game): void {
@@ -46,6 +60,21 @@ export class HitterBrain implements Brain {
       case 'ready': {
         const spot = this.holdSpot ?? { x: this.lane.sx, z: this.lane.sz };
         moveTo(a, spot.x, spot.z, { face, arrive: 0.5 });
+        const lt = g.ball.lastTouch;
+        if (this.lane.quick && this.passToSetter && g.ball.active && a.state === 'ground' && lt !== this.quickFor && lt?.athlete !== a) {
+          const ps = this.passToSetter(g);
+          if (ps && ps.t - now > 0.3) {
+            this.quickFor = lt;
+            const plan = planQuick(a, now, quickSpot(ps.x, a.side), ps.t, face, face);
+            if (plan && plan.error < 0.6) {
+              this.plan = plan;
+              this.phase = 'approach';
+              this.swung = false;
+              this.err = g.rng.gauss() * (0.012 + (1 - this.skill) * 0.06);
+              break;
+            }
+          }
+        }
         if (g.ball.active && this.isMySet(g) && a.state === 'ground') {
           const pred = g.ball.ensurePrediction(g.env, now);
           const aim = this.chooseAim(g, pred.land.x);
@@ -86,7 +115,8 @@ export class HitterBrain implements Brain {
       case 'air': {
         const p = this.plan!;
         stop(a, p.airYaw);
-        if (!this.swung && a.state === 'air') {
+        // (a quick hitter jumps before the set: swing only if it came to us)
+        if (!this.swung && a.state === 'air' && this.isMySet(g)) {
           const info = g.contact.ideal(a, now, 0.6);
           if (info && now >= info.t - TIMING.swingNominal + this.err - 1e-4) {
             const aim = this.chooseAim(g, info.ball.x);

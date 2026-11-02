@@ -73,41 +73,42 @@ export function simulateApproach(
   return a;
 }
 
+/** rise time from takeoff to the top of a jump of height H (apex hang included) */
+export function riseTime(H: number): number {
+  const g0 = BALL.gravity;
+  const b = PLAYER.apexBand;
+  const sc = PLAYER.apexGravityScale;
+  const vy = Math.sqrt(Math.max(2 * g0 * H + b * b * (1 - 1 / sc), b * b + 0.01));
+  return (vy - b) / g0 + b / (g0 * sc);
+}
+
 /**
- * Plan an attack approach onto a predicted ball: find when the ball drops
- * through this athlete's contact height, where the feet must be, when to
- * plant (so the jump peaks at contact) and when to start running (binary
- * search over simulated runs).
+ * Shared approach solver: `target(H)` gives the contact point and time for a
+ * jump of height H; plant so the jump peaks then, start running so the feet
+ * arrive under it (binary search over simulated runs). Iterates because the
+ * jump height depends on the run.
  */
-export function planApproach(
-  me: Athlete, pred: BallPredictor, now: number, runYaw: number, airYaw: number,
-  hold = PLAYER.loadMax - 0.02,
+function planTo(
+  me: Athlete, now: number, runYaw: number, airYaw: number, hold: number,
+  target: (H: number) => { tc: number; contact: THREE.Vector3 } | null,
 ): ApproachPlan | null {
   const off = new THREE.Vector3();
   const prevYaw = me.yaw;
   me.yaw = runYaw;
   me.idealContact(off, new THREE.Vector3(0, 0, 0));
   me.yaw = prevYaw;
-  const reachY = me.standReach - 0.16;
   let H = me.jumpMax;
   let best: ApproachPlan | null = null;
   for (let iter = 0; iter < 2; iter++) {
-    const hc = reachY + H * 0.97;
-    const tc = pred.descendThrough(hc, now);
-    if (tc < 0) return best;
-    pred.posAt(tc, _b);
-    const contact = new THREE.Vector3(_b.x, _b.y, _b.z);
+    const tg = target(H);
+    if (!tg) return best;
+    const { tc, contact } = tg;
     const feet = new THREE.Vector3(contact.x - off.x, 0, contact.z - off.z);
     const dir = new THREE.Vector3(feet.x - me.pos.x, 0, feet.z - me.pos.z);
     const total = dir.length();
     if (total > 1e-4) dir.normalize();
     else dir.set(0, 0, -me.side);
-    const g0 = BALL.gravity;
-    const b = PLAYER.apexBand;
-    const sc = PLAYER.apexGravityScale;
-    const vy = Math.sqrt(Math.max(2 * g0 * H + b * b * (1 - 1 / sc), b * b + 0.01));
-    const tUp = (vy - b) / g0 + b / (g0 * sc);
-    const tPress = Math.max(now + 0.02, tc - tUp - hold);
+    const tPress = Math.max(now + 0.02, tc - riseTime(H) - hold);
     let lo = now;
     let hi = tPress;
     for (let i = 0; i < 11; i++) {
@@ -126,4 +127,96 @@ export function planApproach(
     H = r.jumpH;
   }
   return best;
+}
+
+/**
+ * Plan an attack approach onto a predicted ball: find when the ball drops
+ * through this athlete's contact height, where the feet must be, when to
+ * plant (so the jump peaks at contact) and when to start running.
+ */
+export function planApproach(
+  me: Athlete, pred: BallPredictor, now: number, runYaw: number, airYaw: number,
+  hold = PLAYER.loadMax - 0.02,
+): ApproachPlan | null {
+  const reachY = me.standReach - 0.16;
+  return planTo(me, now, runYaw, airYaw, hold, (H) => {
+    const tc = pred.descendThrough(reachY + H * 0.97, now);
+    if (tc < 0) return null;
+    pred.posAt(tc, _b);
+    return { tc, contact: new THREE.Vector3(_b.x, _b.y, _b.z) };
+  });
+}
+
+/**
+ * Plan a first-tempo (quick) approach: leave the floor at `tTakeoff` (the
+ * moment the setter touches the ball) and peak over `spot`, where the set
+ * will meet the hand.
+ */
+export function planQuick(
+  me: Athlete, now: number, spot: { x: number; z: number }, tTakeoff: number, runYaw: number, airYaw: number,
+  hold = PLAYER.loadMax - 0.02,
+): ApproachPlan | null {
+  const reachY = me.standReach - 0.16;
+  return planTo(me, now, runYaw, airYaw, hold, (H) => ({
+    tc: tTakeoff + riseTime(H),
+    contact: new THREE.Vector3(spot.x, reachY + H, spot.z),
+  }));
+}
+
+export interface JumpPrediction {
+  /** absolute sim time of the predicted contact moment */
+  t: number;
+  /** ideal ball-centre contact point at that moment */
+  contact: THREE.Vector3;
+}
+
+const _peak = new Map<string, Athlete>();
+
+/**
+ * Forward-simulate a hitter who is planting or airborne (no further input) to
+ * the top of the jump, or to `now + minT` if the top comes sooner, and return
+ * where the ball should be met then. Null if they are not jumping or land first.
+ */
+export function predictJump(me: Athlete, now: number, releaseAt = now, minT = 0): JumpPrediction | null {
+  if (me.state !== 'air' && me.state !== 'load') return null;
+  const key = me.role + me.side;
+  let a = _peak.get(key);
+  if (!a) {
+    a = new Athlete(me.role, me.side);
+    _peak.set(key, a);
+  }
+  a.pos.copy(me.pos);
+  a.vel.copy(me.vel);
+  a.yaw = me.yaw;
+  a.state = me.state;
+  a.stateT = me.stateT;
+  a.loadT = me.loadT;
+  a.loadApproach = me.loadApproach;
+  a.loadRelease = me.loadRelease;
+  a.jumpH = me.jumpH;
+  a.jumpMax = me.jumpMax;
+  a.takeoffT = me.takeoffT;
+  a.takeoffY = me.takeoffY;
+  a.takeoffYaw = me.takeoffYaw;
+  a.peakY = me.peakY;
+  a.airT = me.airT;
+  a.time = me.time;
+  a.action = null;
+  a.onStep = a.onLand = a.onTakeoff = null;
+  a.airNudge.set(0, 0, 0);
+  a.cmd.moveX = a.cmd.moveZ = 0;
+  a.cmd.sprint = false;
+  a.cmd.faceYaw = me.cmd.faceYaw;
+  const dt = 1 / SIM.hz;
+  let t = now;
+  for (let i = 0; i < SIM.hz * 2; i++) {
+    if (a.state === 'load' && t >= releaseAt - 1e-9) a.jumpRelease();
+    if (a.state === 'air' && a.vel.y <= 0 && t >= now + minT - 1e-9) {
+      return { t, contact: a.idealContact(new THREE.Vector3()) };
+    }
+    if (a.state !== 'air' && a.state !== 'load') return null;
+    t += dt;
+    a.step(dt, t);
+  }
+  return null;
 }

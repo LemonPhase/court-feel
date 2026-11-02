@@ -184,8 +184,10 @@ export class CameraRig {
   private setFov(f: number, dt: number, smooth: boolean): void {
     const cam = this.camera;
     const nf = smooth ? lerp(cam.fov, f, damp(3, dt)) : f;
-    if (Math.abs(nf - cam.fov) > 1e-3) {
+    const near = this.mode === 'fp' ? CAMERA.fpNear : CAMERA.near;
+    if (Math.abs(nf - cam.fov) > 1e-3 || cam.near !== near) {
       cam.fov = nf;
+      cam.near = near;
       cam.updateProjectionMatrix();
     }
   }

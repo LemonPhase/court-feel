@@ -71,11 +71,8 @@ export class MiniRally extends Mode {
     this.away.place(awayForm);
     const spot = this.home.formSpot(homeForm, USER_SLOT[this.position]);
     const me = g.me;
-    if (first || Math.hypot(me.pos.x - spot.x, me.pos.z - spot.z) > 1.5) {
-      const place = () => g.placeUser(spot.x, spot.z, 0);
-      if (first) place();
-      else g.hud.fade(place);
-    }
+    if (first) g.placeUser(spot.x, spot.z, 0);
+    else if (Math.hypot(me.pos.x - spot.x, me.pos.z - spot.z) > 0.6) g.returnUser(spot.x, spot.z, 0, 1.5);
     this.phase = 'prepare';
     this.t = 0;
     this.userTouches = 0;
@@ -119,6 +116,7 @@ export class MiniRally extends Mode {
     if (this.home.receiver === me) return `YOUR BALL · ${kbd('E')} pass / dig`;
     if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set') return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · ${kbd('LMB')}`;
     if (me.role === 'S' && this.home.touches === 1) return `Your set · look at a hitter · ${kbd('RMB')}`;
+    if (me.role === 'MB' && this.home.passToSetter(g)) return `QUICK · run in now · ${kbd('Space')} as the setter touches it · ${kbd('LMB')}`;
     if (Math.abs(me.pos.z) < 1.4) return `${kbd('RMB')} hands + ${kbd('Space')} block · ${kbd('V')} camera`;
     return `${kbd('WASD')} move · ${kbd('E')} pass · ${kbd('LMB')} attack · ${kbd('RMB')} block/set · ${kbd('V')} camera`;
   }

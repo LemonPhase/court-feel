@@ -3,6 +3,27 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+
+/**
+ * Guards the HDR buffer before bloom: any NaN/Inf pixel (an overflowing half
+ * float, a degenerate vertex on some GPUs) would be blurred across the bloom
+ * mips and tone-map to black, flashing the whole screen. Clamp and replace them.
+ */
+const SanitizeShader = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      bool bad = any(isnan(c)) || any(isinf(c));
+      gl_FragColor = bad ? vec4(0.0, 0.0, 0.0, 1.0) : vec4(clamp(c.rgb, 0.0, 32.0), clamp(c.a, 0.0, 1.0));
+    }`,
+};
 import { FX } from '../config';
 
 /**
@@ -25,6 +46,7 @@ export class Post {
     this.composer = new EffectComposer(renderer, rt);
     this.renderPass = new RenderPass(scene, camera);
     this.composer.addPass(this.renderPass);
+    this.composer.addPass(new ShaderPass(SanitizeShader));
     this.bloom = new UnrealBloomPass(
       new THREE.Vector2(Math.floor(size.x / 2), Math.floor(size.y / 2)),
       FX.bloomStrength,

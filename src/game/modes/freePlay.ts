@@ -88,7 +88,8 @@ export class FreePlay extends Mode {
     if (this.feed === 'practice') {
       const g = this.g;
       g.ball.hide();
-      g.hud.fade(() => g.placeUser(0.5, 10.4, 0));
+      g.hud.dip();
+      g.placeUser(0.5, 10.4, 0);
       this.pickZone();
       g.hud.message('Behind the end line: Q to toss, Left click to hit (jump for a jump serve)', 3);
       return;

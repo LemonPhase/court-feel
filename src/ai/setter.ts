@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { AI, CONTACT } from '../config';
 import type { V3 } from '../physics/ball';
-import { solveApex } from '../physics/solve';
+import { solveApex, solveFixedTime } from '../physics/solve';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
 import { moveTo, stop, type Brain } from './brain';
@@ -12,6 +12,8 @@ export interface SetCall {
   apex: number;
   /** who the set is for (for the rally logic) */
   hitter: Athlete | null;
+  /** fixed flight time (quick sets that must meet a hitter already in the air); else `apex` shapes the arc */
+  time?: number;
 }
 
 /**
@@ -89,7 +91,9 @@ export class SetterBrain implements Brain {
     const err = this.accuracy * (0.4 + Math.min(1.5, a.speed) * 0.5);
     const t = { x: call.target.x + g.rng.gauss() * err * 0.5, y: call.target.y, z: call.target.z + g.rng.gauss() * err * 0.3 };
     const out = { x: 0, y: 0, z: 0 };
-    solveApex({ x: bp.x, y: bp.y, z: bp.z }, t, call.apex + g.rng.gauss() * err * 0.2, { x: 0, y: 0, z: 0 }, out);
+    const from = { x: bp.x, y: bp.y, z: bp.z };
+    if (call.time) solveFixedTime(from, t, Math.max(0.15, call.time + g.rng.gauss() * err * 0.06), { x: 0, y: 0, z: 0 }, out);
+    else solveApex(from, t, call.apex + g.rng.gauss() * err * 0.2, { x: 0, y: 0, z: 0 }, out);
     ball.hit(out, { x: 0, y: 0, z: 0 }, 0, g.simTime);
     ball.lastTouch = { athlete: a, kind: 'set', t: g.simTime, side: a.side };
     a.lastTouchT = g.simTime;

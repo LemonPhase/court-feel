@@ -171,7 +171,7 @@ export class SpritePool {
         void main() {
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mv;
-          gl_PointSize = aAlpha > 0.0 ? aSize * uScale / max(0.1, -mv.z) : 0.0;
+          gl_PointSize = aAlpha > 0.0 ? min(220.0, aSize * uScale / max(0.25, -mv.z)) : 0.0;
           vA = aAlpha; vCol = aCol;
         }`,
       fragmentShader: /* glsl */ `

@@ -1,18 +1,19 @@
 import { yawFromDir } from '../../core/mathx';
 import { solveApex } from '../../physics/solve';
 import { HitterBrain } from '../../ai/hitter';
+import type { Game } from '../game';
 import { SetterBrain } from '../../ai/setter';
 import type { PositionId } from '../../config';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
-import { attackHeight, laneFor, SETTER_SPOT, SETTER_TARGET } from '../plays';
+import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, SETTER_TARGET, setterTouchY } from '../plays';
 import { kbd, Mode } from './mode';
 
 type Phase = 'intro' | 'feed' | 'live' | 'result';
 
 /** where the user starts blocking, by position (x along the net, home side) */
-const BLOCK_X: Record<PositionId, number> = { OH: -2.7, OPP: 2.7, MB: 0, S: 2.4, L: 0 };
+const BLOCK_X: Record<PositionId, number> = { OH: -3.2, OPP: 3.2, MB: 0, S: 2.6, L: 0 };
 
 /**
  * Block drill: the opponent setter sets one of three hitters; read the set,
@@ -45,6 +46,7 @@ export class BlockDrill extends Mode {
     sb.call = () => {
       const h = this.pickHitter();
       this.target = h.a;
+      if (h.pos === 'MB') return quickSetFor(h.a, this.g.simTime, this.g.ball.pos, h.brain.releaseAt);
       const lane = laneFor(h.pos, -1);
       const y = attackHeight(h.a);
       return { target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove, hitter: h.a };
@@ -61,6 +63,8 @@ export class BlockDrill extends Mode {
       const brain = new HitterBrain(a, lane);
       brain.isMySet = () => this.target === a && this.g.ball.lastTouch?.kind === 'set';
       brain.blockers = () => [this.g.me];
+      // their middle runs a quick on every ball (a decoy when the set goes wide)
+      if (pos === 'MB') brain.passToSetter = (gm) => this.feedToSetter(gm);
       g.setBrain(a, brain);
       this.hitters.push({ a, brain, pos });
     }
@@ -72,7 +76,12 @@ export class BlockDrill extends Mode {
     this.coach.airIntent = 'neutral';
     g.hud.setTitle('Block Drill');
     this.updateScore();
-    g.hud.message('Read the set · shuffle A/D · hold RMB for hands · Space to jump', 3.2);
+    g.hud.message(
+      this.position === 'MB'
+        ? 'Their middle hits quicks: if they jump with the setter, jump with them · otherwise read the set'
+        : 'Read the set · shuffle A/D · hold RMB for hands · Space to jump',
+      3.6,
+    );
     this.toPhase('intro');
   }
 
@@ -88,7 +97,7 @@ export class BlockDrill extends Mode {
   hint(): string {
     const me = this.g.me;
     if (me.state === 'air') return `hold ${kbd('RMB')} hands over the net`;
-    return `${kbd('A')}${kbd('D')} shuffle · ${kbd('RMB')} hands up · ${kbd('Space')} block jump · ${kbd('V')} camera · ${kbd('R')} reset`;
+    return `${kbd('A')}${kbd('D')} shuffle · ${kbd('RMB')} hands up · ${kbd('Space')} block jump (vs the quick: go up with their middle) · ${kbd('V')} camera · ${kbd('R')} reset`;
   }
 
   private updateScore(): void {
@@ -108,6 +117,10 @@ export class BlockDrill extends Mode {
         if (this.t > 1.2) this.toPhase('feed');
         break;
       case 'feed':
+        if (g.userReturning) {
+          this.t = 0;
+          break;
+        }
         if (!this.tossed && this.t > 0.3) {
           this.coach.startAction('toss', g.simTime);
           this.tossed = true;
@@ -131,6 +144,17 @@ export class BlockDrill extends Mode {
         if (this.t > 2.0) this.nextRep();
         break;
     }
+  }
+
+  private feedToSetter(g: Game): { t: number; x: number } | null {
+    const lt = g.ball.lastTouch;
+    if (!g.ball.active || lt?.kind !== 'feed' || lt.side !== -1) return null;
+    const pred = g.ball.ensurePrediction(g.env, g.simTime);
+    const t = pred.descendThrough(setterTouchY(this.setter), g.simTime);
+    if (t < 0) return null;
+    const p = { x: 0, y: 0, z: 0 };
+    pred.posAt(t, p);
+    return { t, x: p.x };
   }
 
   onContact(ev: ContactEvent): void {
@@ -191,7 +215,7 @@ export class BlockDrill extends Mode {
     this.setter.place(-SETTER_SPOT.x, -SETTER_SPOT.z, -Math.PI / 2);
     this.target = null;
     const me = g.me;
-    if (Math.abs(me.pos.z) > 1.6 || me.state !== 'ground') g.hud.fade(() => g.placeUser(BLOCK_X[this.position], 0.5, 0));
+    if (Math.hypot(me.pos.x - BLOCK_X[this.position], me.pos.z - 0.5) > 0.8 || me.state !== 'ground') g.returnUser(BLOCK_X[this.position], 0.5, 0);
     this.toPhase('feed');
   }
 

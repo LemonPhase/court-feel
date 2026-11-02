@@ -6,9 +6,9 @@ import { SetterBrain } from '../../ai/setter';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import { outcomeLabel, type Outcome } from '../judge';
-import { attackHeight, laneFor, SETTER_SPOT, SETTER_TARGET } from '../plays';
+import { attackHeight, laneFor, quickSetFor, quickSpot, SETTER_SPOT, SETTER_TARGET, setterTouchY } from '../plays';
 import { kbd, makeFloorRing, Mode, ZoneMarker } from './mode';
-import { planApproach } from '../../ai/approach';
+import { planApproach, planQuick } from '../../ai/approach';
 
 interface Zone {
   name: string;
@@ -49,6 +49,7 @@ export class SpikeDrill extends Mode {
   private goAt = -1;
   private plannedFor: unknown = null;
   private ringPulse = 0;
+  private tmp = { x: 0, y: 0, z: 0 };
 
   setup(): void {
     const g = this.g;
@@ -65,6 +66,8 @@ export class SpikeDrill extends Mode {
       const b = new SetterBrain(s, SETTER_SPOT, Math.PI / 2);
       b.shouldPlay = () => !this.userTouched && this.g.ball.lastTouch?.kind === 'feed';
       b.call = () => {
+        // the middle's quick meets you at the top of your jump if you went with the setter's touch
+        if (this.position === 'MB') return quickSetFor(me, this.g.simTime, this.g.ball.pos);
         const target = laneFor(this.position, 1);
         const y = attackHeight(me);
         return { target: { x: target.x, y, z: target.z }, apex: y + target.apexAbove, hitter: me };
@@ -86,7 +89,12 @@ export class SpikeDrill extends Mode {
     this.updateScore();
     this.phase = 'intro';
     this.t = 0;
-    g.hud.message('Approach: Shift + W · plant: Space · hit: Left click', 3);
+    g.hud.message(
+      this.position === 'MB'
+        ? 'Quick: run on the pass · jump as the setter touches it · hit: Left click'
+        : 'Approach: Shift + W · plant: Space · hit: Left click',
+      3.4,
+    );
   }
 
   private pickZone(): void {
@@ -105,6 +113,7 @@ export class SpikeDrill extends Mode {
     const me = this.g.me;
     if (me.state === 'air') return `${kbd('LMB')} hold = spike · tap = tip &nbsp; aim with the mouse`;
     if (me.state === 'load') return `release ${kbd('Space')} to jump`;
+    if (this.position === 'MB') return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch · ${kbd('V')} camera · ${kbd('R')} reset rep`;
     return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump · ${kbd('V')} camera · ${kbd('R')} reset rep`;
   }
 
@@ -122,6 +131,10 @@ export class SpikeDrill extends Mode {
         if (this.t > 1.2) this.toPhase('feed');
         break;
       case 'feed': {
+        if (g.userReturning) {
+          this.t = 0;
+          break;
+        }
         if (!this.tossed && this.t > 0.35) {
           this.coach.startAction('toss', g.simTime);
           this.tossed = true;
@@ -147,13 +160,24 @@ export class SpikeDrill extends Mode {
     const me = g.me;
     const off = new THREE.Vector3();
     me.idealContact(off, new THREE.Vector3(0, 0, 0)).setY(0);
-    this.approachRing.position.set(lane.x - off.x, 0.011, lane.z - off.z);
+    const quick = this.position === 'MB';
+    const spot = quick ? quickSpot(SETTER_TARGET.x, 1) : lane;
+    this.approachRing.position.set(spot.x - off.x, 0.011, spot.z - off.z);
     // GO cue: plan the ideal approach the moment the set leaves the setter's hands
+    // (a quick goes on the pass: you leave the floor as the setter touches it)
     const lt = g.ball.lastTouch;
-    const setUp = g.ball.active && lt && (lt.kind === 'set' || (this.position === 'S' && lt.kind === 'feed'));
+    const setUp = g.ball.active && lt && (quick ? lt.kind === 'feed' : lt.kind === 'set' || (this.position === 'S' && lt.kind === 'feed'));
     if (setUp && lt !== this.plannedFor && me.state === 'ground') {
       this.plannedFor = lt;
-      const plan = planApproach(me, g.ball.ensurePrediction(g.env, g.simTime), g.simTime, 0, 0);
+      const pred = g.ball.ensurePrediction(g.env, g.simTime);
+      let plan = null;
+      if (quick) {
+        const tSet = pred.descendThrough(setterTouchY(this.setter), g.simTime);
+        if (tSet > 0) {
+          pred.posAt(tSet, this.tmp);
+          plan = planQuick(me, g.simTime, quickSpot(this.tmp.x, 1), tSet, 0, 0);
+        }
+      } else plan = planApproach(me, pred, g.simTime, 0, 0);
       this.goAt = plan && plan.error < 0.6 ? plan.tStart : -1;
     }
     if (this.goAt > 0 && g.simTime >= this.goAt) {
@@ -256,16 +280,12 @@ export class SpikeDrill extends Mode {
     g.judge.disarm();
     const lane = laneFor(this.position, 1);
     const me = g.me;
-    const far = Math.hypot(me.pos.x - lane.sx, me.pos.z - lane.sz) > 1.2 || me.state !== 'ground';
-    const reset = () => {
-      if (far) g.placeUser(lane.sx, lane.sz, 0);
-      g.ball.hide();
-      if (this.setter) this.setter.place(SETTER_SPOT.x, SETTER_SPOT.z, Math.PI / 2);
-      this.pickZone();
-      this.updateScore();
-    };
-    if (far) g.hud.fade(reset);
-    else reset();
+    g.ball.hide();
+    if (this.setter) this.setter.place(SETTER_SPOT.x, SETTER_SPOT.z, Math.PI / 2);
+    this.pickZone();
+    this.updateScore();
+    // jog back to the approach start; the next toss waits for you
+    if (Math.hypot(me.pos.x - lane.sx, me.pos.z - lane.sz) > 0.6 || me.state !== 'ground') g.returnUser(lane.sx, lane.sz, 0);
     this.toPhase('feed');
   }
 

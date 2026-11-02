@@ -7,7 +7,9 @@ import { AUDIO } from '../config';
  * `rate` < 1 pitches everything down (slow-motion replay).
  */
 export class AudioEngine {
-  ctx: AudioContext | null = null;
+  ctx: BaseAudioContext | null = null;
+  /** rendering into an OfflineAudioContext (tests): skip the running check */
+  private offline = false;
   private master!: GainNode;
   private sfx!: GainNode;
   private crowdBus!: GainNode;
@@ -24,39 +26,57 @@ export class AudioEngine {
   /** must be called from a user gesture */
   unlock(): void {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume();
+      if (this.ctx.state === 'suspended' && 'resume' in this.ctx) void (this.ctx as AudioContext).resume();
       return;
     }
     try {
       const Ctx = window.AudioContext || (window as any).webkitAudioContext;
       if (!Ctx) return;
-      const ctx = new Ctx();
+      this.attach(new Ctx());
+    } catch {
+      this.ctx = null;
+    }
+  }
+
+  /** build the graph on a context (live, or offline for measurements) */
+  attach(ctx: BaseAudioContext, offline = false): void {
+    {
+      this.offline = offline;
       this.ctx = ctx;
+      // Mix: contact sounds (+ their reverb) -> peak limiter -> master; the crowd joins after the
+      // limiter so a loud hit never ducks the arena bed (no pumping), then a soft clip catches strays.
       this.master = ctx.createGain();
       this.master.gain.value = this.volume;
-      const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -14;
-      comp.knee.value = 10;
-      comp.ratio.value = 4;
-      comp.attack.value = 0.003;
-      comp.release.value = 0.2;
-      this.master.connect(comp).connect(ctx.destination);
+      const soft = ctx.createWaveShaper();
+      const curve = new Float32Array(2048);
+      for (let i = 0; i < curve.length; i++) {
+        const x = (i / (curve.length - 1)) * 2 - 1;
+        curve[i] = Math.abs(x) < 0.7 ? x : Math.sign(x) * (0.7 + 0.3 * Math.tanh((Math.abs(x) - 0.7) / 0.3));
+      }
+      soft.curve = curve;
+      soft.oversample = '2x';
+      this.master.connect(soft).connect(ctx.destination);
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.001;
+      limiter.release.value = 0.12;
+      limiter.connect(this.master);
       this.sfx = ctx.createGain();
-      this.sfx.gain.value = AUDIO.sfx;
-      this.sfx.connect(this.master);
+      this.sfx.gain.value = AUDIO.sfx * 0.8;
+      this.sfx.connect(limiter);
       this.crowdBus = ctx.createGain();
       this.crowdBus.gain.value = AUDIO.crowd;
       this.crowdBus.connect(this.master);
       this.reverb = ctx.createConvolver();
-      this.reverb.buffer = this.makeImpulse(2.2, 2.8);
+      this.reverb.buffer = this.makeImpulse(2.0, 3.0);
       this.reverbSend = ctx.createGain();
-      this.reverbSend.gain.value = 0.32;
-      this.reverbSend.connect(this.reverb).connect(this.master);
+      this.reverbSend.gain.value = 0.3;
+      this.reverbSend.connect(this.reverb).connect(limiter);
       this.noise = this.makeNoise(2, false);
       this.pink = this.makeNoise(4, true);
       this.startCrowd();
-    } catch {
-      this.ctx = null;
     }
   }
 
@@ -91,14 +111,21 @@ export class AudioEngine {
   private makeImpulse(sec: number, decay: number): AudioBuffer {
     const ctx = this.ctx!;
     const len = Math.floor(ctx.sampleRate * sec);
+    const pre = Math.floor(ctx.sampleRate * 0.012);
     const buf = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let c = 0; c < 2; c++) {
       const d = buf.getChannelData(c);
+      let lp = 0;
       for (let i = 0; i < len; i++) {
-        const t = i / len;
-        // early reflections then a diffuse tail
-        const er = i < ctx.sampleRate * 0.06 && Math.random() < 0.004 ? 0.8 : 0;
-        d[i] = ((Math.random() * 2 - 1) * Math.pow(1 - t, decay) + er) * 0.5;
+        if (i < pre) {
+          d[i] = 0;
+          continue;
+        }
+        const t = (i - pre) / (len - pre);
+        // one-pole lowpass that closes as the tail decays: big-room air, no metallic ticks
+        const k = 0.55 - 0.4 * t;
+        lp += k * ((Math.random() * 2 - 1) - lp);
+        d[i] = lp * Math.pow(1 - t, decay) * 0.6;
       }
     }
     return buf;
@@ -150,7 +177,7 @@ export class AudioEngine {
   }
 
   private get ok(): boolean {
-    return !!this.ctx && this.ctx.state === 'running';
+    return !!this.ctx && (this.offline || this.ctx.state === 'running');
   }
 
   // ------------------------------------------------------------ sounds
@@ -159,13 +186,13 @@ export class AudioEngine {
     if (!this.ok) return;
     const t = this.ctx!.currentTime;
     void pan;
-    this.noiseBurst(t, 0.06 / rate, 2400 * rate, 0.9, 0.9 * (0.5 + power * 0.5), 'bandpass', 0.35);
-    this.noiseBurst(t, 0.03 / rate, 5200 * rate, 0.7, 0.4 * power, 'highpass', 0.1);
-    this.tone(t, 180 * rate, 70 * rate, 0.11 / rate, 0.75 * (0.4 + power * 0.6), 'sine', 0.25);
+    this.noiseBurst(t, 0.06 / rate, 2400 * rate, 0.9, 0.6 * (0.5 + power * 0.5), 'bandpass', 0.35);
+    this.noiseBurst(t, 0.03 / rate, 4200 * rate, 1.0, 0.18 * power, 'bandpass', 0.1);
+    this.tone(t, 180 * rate, 70 * rate, 0.11 / rate, 0.55 * (0.4 + power * 0.6), 'sine', 0.25);
     if (perfect) {
-      this.tone(t, 90 * rate, 38 * rate, 0.4 / rate, 0.9, 'sine', 0.5);
-      this.noiseBurst(t, 0.018 / rate, 7000 * rate, 0.6, 0.6, 'highpass', 0.2);
-      this.tone(t + 0.005, 1400 * rate, 1200 * rate, 0.25 / rate, 0.06, 'triangle', 0.6);
+      this.tone(t, 90 * rate, 38 * rate, 0.4 / rate, 0.6, 'sine', 0.5);
+      this.noiseBurst(t, 0.018 / rate, 5500 * rate, 1.2, 0.22, 'bandpass', 0.2);
+      this.tone(t + 0.005, 1400 * rate, 1200 * rate, 0.25 / rate, 0.04, 'triangle', 0.6);
     }
   }
 
@@ -192,9 +219,9 @@ export class AudioEngine {
   block(stuff: boolean, rate = 1): void {
     if (!this.ok) return;
     const t = this.ctx!.currentTime;
-    this.noiseBurst(t, 0.07 / rate, 1700 * rate, 0.8, 0.9, 'bandpass', 0.4);
-    this.tone(t, 160 * rate, 60 * rate, 0.16 / rate, 0.8, 'sine', 0.3);
-    if (stuff) this.tone(t, 70 * rate, 35 * rate, 0.45 / rate, 0.9, 'sine', 0.6);
+    this.noiseBurst(t, 0.07 / rate, 1700 * rate, 0.8, 0.6, 'bandpass', 0.4);
+    this.tone(t, 160 * rate, 60 * rate, 0.16 / rate, 0.55, 'sine', 0.3);
+    if (stuff) this.tone(t, 70 * rate, 35 * rate, 0.45 / rate, 0.6, 'sine', 0.6);
   }
 
   floor(impact: number, heavy: boolean, rate = 1): void {
@@ -204,8 +231,8 @@ export class AudioEngine {
     this.noiseBurst(t, (0.06 + k * 0.05) / rate, 500 * rate, 0.7, 0.25 + k * 0.6, 'lowpass', 0.45);
     this.tone(t, (110 + k * 40) * rate, 55 * rate, (0.08 + k * 0.1) / rate, 0.2 + k * 0.6, 'sine', 0.4);
     if (heavy) {
-      this.tone(t, 60 * rate, 28 * rate, 0.7 / rate, 1.0, 'sine', 0.8);
-      this.noiseBurst(t, 0.35 / rate, 180 * rate, 0.5, 0.6, 'lowpass', 0.8);
+      this.tone(t, 60 * rate, 28 * rate, 0.7 / rate, 0.65, 'sine', 0.8);
+      this.noiseBurst(t, 0.35 / rate, 180 * rate, 0.5, 0.4, 'lowpass', 0.8);
     }
   }
 
@@ -314,28 +341,38 @@ export class AudioEngine {
     src.loop = true;
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.value = 900;
-    filter.Q.value = 0.6;
+    filter.frequency.value = 650;
+    filter.Q.value = 0.8;
+    const warm = ctx.createBiquadFilter();
+    warm.type = 'lowpass';
+    warm.frequency.value = 1500;
+    warm.Q.value = 0.5;
     const gain = ctx.createGain();
-    gain.gain.value = 0.18;
+    gain.gain.value = 0.16;
     // slow murmur modulation
     const lfo = ctx.createOscillator();
     lfo.frequency.value = 0.23;
     const lg = ctx.createGain();
     lg.gain.value = 0.04;
     lfo.connect(lg).connect(gain.gain);
-    src.connect(filter).connect(gain).connect(this.crowdBus);
+    src.connect(filter).connect(warm).connect(gain).connect(this.crowdBus);
     src.start();
     lfo.start();
     this.crowdBed = { gain, filter };
   }
 
   /** crowd bed level follows the tension of the moment (0..1) */
+  private lastTension = -1;
   setCrowdTension(x: number): void {
     if (!this.ok || !this.crowdBed) return;
+    // only schedule when it actually moves (not one automation event per frame)
+    if (Math.abs(x - this.lastTension) < 0.05) return;
+    this.lastTension = x;
     const t = this.ctx!.currentTime;
-    this.crowdBed.gain.gain.setTargetAtTime(0.14 + x * 0.16, t, 0.4);
-    this.crowdBed.filter.frequency.setTargetAtTime(800 + x * 500, t, 0.4);
+    this.crowdBed.gain.gain.cancelScheduledValues(t);
+    this.crowdBed.gain.gain.setTargetAtTime(0.13 + x * 0.12, t, 0.4);
+    this.crowdBed.filter.frequency.cancelScheduledValues(t);
+    this.crowdBed.filter.frequency.setTargetAtTime(600 + x * 250, t, 0.4);
   }
 
   /** crowd reaction: cheer (swell of voices) or groan */
@@ -349,7 +386,7 @@ export class AudioEngine {
     src.playbackRate.value = cheer ? 1.1 : 0.8;
     const f1 = ctx.createBiquadFilter();
     f1.type = 'bandpass';
-    f1.frequency.value = cheer ? 1100 : 500;
+    f1.frequency.value = cheer ? 900 : 450;
     f1.Q.value = 0.9;
     // vowel-ish formant wobble makes it read as voices
     const lfo = ctx.createOscillator();
@@ -358,7 +395,7 @@ export class AudioEngine {
     lg.gain.value = cheer ? 300 : 120;
     lfo.connect(lg).connect(f1.frequency);
     const g = ctx.createGain();
-    const peak = Math.min(0.9, 0.25 + amount * 0.55);
+    const peak = Math.min(0.6, 0.18 + amount * 0.38);
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(peak, t + 0.18);
     g.gain.exponentialRampToValueAtTime(peak * 0.6, t + dur * 0.5);

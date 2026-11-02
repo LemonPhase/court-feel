@@ -4,7 +4,7 @@ import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
-import { attackHeight, laneFor, SETTER_SPOT } from '../game/plays';
+import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, setterTouchY } from '../game/plays';
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 import { HitterBrain } from './hitter';
@@ -25,12 +25,12 @@ const FORM: Record<'receive' | 'defense' | 'offense', Record<Slot, Spot>> = {
     OPP: { x: 3.4, z: 3.0 }, OH2: { x: 0.0, z: 6.5 }, L: { x: 2.5, z: 6.2 },
   },
   defense: {
-    S: { x: 2.8, z: 6.2 }, OH1: { x: -2.7, z: 0.7 }, MB: { x: 0.0, z: 0.7 },
-    OPP: { x: 2.7, z: 0.7 }, OH2: { x: -2.9, z: 6.2 }, L: { x: 0.0, z: 7.3 },
+    S: { x: 2.8, z: 6.2 }, OH1: { x: -3.0, z: 0.7 }, MB: { x: 0.0, z: 0.7 },
+    OPP: { x: 3.0, z: 0.7 }, OH2: { x: -2.9, z: 6.2 }, L: { x: 0.0, z: 7.3 },
   },
   offense: {
-    S: { x: SETTER_SPOT.x, z: SETTER_SPOT.z }, OH1: { x: -4.2, z: 3.7 }, MB: { x: 0.35, z: 2.2 },
-    OPP: { x: 4.0, z: 3.3 }, OH2: { x: -0.4, z: 6.4 }, L: { x: 1.2, z: 6.0 },
+    S: { x: SETTER_SPOT.x, z: SETTER_SPOT.z }, OH1: { x: -4.85, z: 3.7 }, MB: { x: 0.35, z: 2.8 },
+    OPP: { x: 4.7, z: 3.4 }, OH2: { x: -0.4, z: 6.4 }, L: { x: 1.2, z: 6.0 },
   },
 };
 
@@ -61,6 +61,7 @@ export class TeamPlayer implements Brain {
     if (this.hitter) {
       this.hitter.isMySet = (g) => team.setFor === athlete && g.ball.lastTouch?.kind === 'set' && g.ball.lastTouch.side === s;
       this.hitter.blockers = () => team.opponents?.frontRow() ?? [];
+      if (slot === 'MB') this.hitter.passToSetter = (g) => team.passToSetter(g);
     }
     this.blocker = new BlockerBrain(athlete, FORM.defense[slot].x * s, slot === 'MB' ? 2.8 : 1.3);
     this.server = new ServerBrain(athlete);
@@ -210,12 +211,40 @@ export class TeamAI {
     return this.userSlot ? this.players.get(this.userSlot) ?? null : null;
   }
 
-  /** set call for a specific hitter in a lane */
-  callSetFor(h: Athlete, lanePos: PositionId) {
+  /** set call for a specific hitter in a lane (the middle gets a quick timed to their jump) */
+  callSetFor(h: Athlete, lanePos: PositionId): { target: V3; apex: number; hitter: Athlete | null; time?: number } {
+    if (lanePos === 'MB') return this.quickFor(h);
     const lane = laneFor(lanePos, this.side);
     const y = attackHeight(h);
     return { target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove, hitter: h };
   }
+
+  /** the quick for our middle, met at the top of their jump if they are up */
+  private quickFor(h: Athlete) {
+    const g = this.g;
+    const releaseAt = h.isUser ? undefined : this.brains.get(h)?.hitter?.releaseAt;
+    return quickSetFor(h, g.simTime, g.ball.pos, releaseAt);
+  }
+
+  /**
+   * A pass on its way to our setter: when and where the setter will touch it.
+   * Null for anything else, or for a pass too far off the net to run a quick.
+   */
+  passToSetter(g: Game): { t: number; x: number } | null {
+    const lt = g.ball.lastTouch;
+    const s = this.side;
+    if (!g.ball.active || !lt || lt.side !== s || (lt.kind !== 'pass' && lt.kind !== 'dig' && lt.kind !== 'free')) return null;
+    if (this.touches !== 1) return null;
+    const setter = this.players.get('S');
+    if (!setter || lt.athlete === setter) return null;
+    const pred = g.ball.ensurePrediction(g.env, g.simTime);
+    const t = pred.descendThrough(setterTouchY(setter), g.simTime);
+    if (t < 0) return null;
+    pred.posAt(t, this.qp);
+    if (Math.hypot(this.qp.x - SETTER_SPOT.x * s, this.qp.z - SETTER_SPOT.z * s) > 1.5) return null;
+    return { t, x: this.qp.x };
+  }
+  private qp: V3 = { x: 0, y: 0, z: 0 };
 
   /** the setter's call: who gets the ball */
   callSet(g: Game, setter: Athlete) {
@@ -227,8 +256,11 @@ export class TeamAI {
     };
     add('OH1', 'OH', 1.2);
     add('OPP', 'OPP', 1.0);
-    add('MB', 'MB', 0.8);
     add('OH2', 'L', 0.35);
+    // the quick only goes if the middle is up with the setter's touch
+    const mb = this.players.get('MB');
+    const quick = mb && mb !== setter ? this.quickFor(mb) : null;
+    if (mb && quick?.onTime) options.push({ slot: 'MB', a: mb, lane: 'MB', w: 0.75 });
     // bad pass: high ball to the outside
     const passQuality = Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s);
     if (passQuality > 1.6) for (const o of options) if (o.lane === 'MB') o.w = 0.05;
@@ -247,6 +279,7 @@ export class TeamAI {
         }
       }
     }
+    if (pick.lane === 'MB' && quick) return quick;
     const lane = laneFor(pick.lane, s);
     const y = attackHeight(pick.a);
     const apexBoost = passQuality > 1.6 ? 0.4 : 0;

@@ -146,16 +146,15 @@ export class Hud {
     this.cross.classList.toggle('active', active);
   }
 
-  /** cut to black, run the (synchronous) teleport, then fade back in */
-  fade(cb: () => void): void {
-    cb();
+  /** soft partial dip that masks a camera snap (never a full black cut) */
+  dip(): void {
     if (this.root.style.display === 'none') return;
     const f = this.fadeEl;
     f.style.transition = 'none';
-    f.classList.add('on');
+    f.classList.add('dip');
     void f.offsetWidth;
     f.style.transition = '';
-    requestAnimationFrame(() => f.classList.remove('on'));
+    requestAnimationFrame(() => f.classList.remove('dip'));
   }
 
   update(dt: number): void {

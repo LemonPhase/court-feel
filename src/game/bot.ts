@@ -5,6 +5,8 @@ import { AIM_DEPTH, aimPitchRange } from './contact';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Game } from './game';
+import { planQuick } from '../ai/approach';
+import { quickSpot, setterTouchY } from './plays';
 
 export type BotQuality = 'perfect' | 'good' | 'sloppy' | 'tip';
 
@@ -50,12 +52,17 @@ export class SpikeBot {
     const now = g.simTime;
     const lt = ball.lastTouch;
     // a set from the setter, or (setter's attack on two) the coach's pass
-    const team = (g.mode as any)?.home as { setFor: unknown } | undefined;
+    const team = (g.mode as any)?.home as { setFor: unknown; passToSetter(g: Game): { t: number; x: number } | null } | undefined;
+    // a middle goes on the pass (the drill's toss, or a team-mate's pass to our setter)
+    const quickCue =
+      me.role === 'MB' && ball.active && lt && lt.athlete !== me && lt.side === me.side &&
+      (lt.kind === 'feed' || (!!team && (lt.kind === 'pass' || lt.kind === 'dig') && !!team.passToSetter(g)));
     const setForMe =
-      ball.active && lt && lt.athlete !== me && lt.side === me.side &&
-      (lt.kind === 'set' || (lt.kind === 'feed' && me.role === 'S')) &&
-      (!team || team.setFor === me);
-    if (!setForMe && this.phase !== 'air') {
+      quickCue ||
+      (ball.active && lt && lt.athlete !== me && lt.side === me.side &&
+        (lt.kind === 'set' || (lt.kind === 'feed' && me.role === 'S')) &&
+        (!team || team.setFor === me));
+    if (!setForMe && (this.phase !== 'air' || me.state === 'ground')) {
       if (this.phase !== 'wait') this.release();
       this.phase = 'wait';
       this.plan = null;
@@ -104,7 +111,8 @@ export class SpikeBot {
         const t = clamp((Math.abs(plan.aim.z) - AIM_DEPTH[0]) / (AIM_DEPTH[1] - AIM_DEPTH[0]), 0, 1);
         g.rig.pitch = lo + (hi - lo) * t;
         g.rig.yaw = aimYaw;
-        if (this.clickAt < 0) {
+        // a quick: we are up before the set; read it once it leaves the setter's hands
+        if (this.clickAt < 0 && (me.role !== 'MB' || lt?.kind === 'set')) {
           const info = g.contact.ideal(me, now, 0.9);
           if (info) {
             const fire = info.t - TIMING.swingNominal + this.offset;
@@ -201,7 +209,29 @@ export class SpikeBot {
     const zone = (g.mode as any)?.zone;
     if (zone && typeof zone.x0 === 'number' && typeof zone.z0 === 'number') aim.set((zone.x0 + zone.x1) / 2, 0, (zone.z0 + zone.z1) / 2);
     let best: { tStart: number; tPress: number; tc: number; contact: THREE.Vector3; dir: THREE.Vector3 } | null = null;
-    for (let iter = 0; iter < 3; iter++) {
+    const quick = me.role === 'MB' && g.ball.lastTouch?.kind !== 'set';
+    if (quick) {
+      // middle quick: leave the floor as the setter touches the pass
+      const team = (g.mode as any)?.home as { passToSetter(g: Game): { t: number; x: number } | null } | undefined;
+      let tSet = -1;
+      let sx = 0;
+      if (team) {
+        const ps = team.passToSetter(g);
+        if (ps) {
+          tSet = ps.t;
+          sx = ps.x;
+        }
+      } else {
+        tSet = pred.descendThrough(setterTouchY(null), now);
+        pred.posAt(tSet, this.b);
+        sx = this.b.x;
+      }
+      if (tSet < 0) return;
+      this.aimYawGuess = 0;
+      const p = planQuick(me, now, quickSpot(sx, me.side), tSet, 0, 0, hold);
+      if (p) best = { tStart: p.tStart, tPress: p.tPress, tc: p.tc, contact: p.contact, dir: p.dir };
+    }
+    for (let iter = 0; iter < 3 && !quick; iter++) {
       const hc = off.y + H * 0.97;
       const tc = pred.descendThrough(hc, now);
       if (tc < 0) return;
@@ -269,8 +299,20 @@ export class BlockBot {
     g.rig.yaw = 0;
     g.rig.pitch = g.rig.mode === 'fp' ? 0.1 : -0.15;
     this.mx = 0;
+    // commit block: their middle leaving the floor in front of us before the set is a quick
+    // (too fast to read off the setter's hands), so go up with them
+    if (!theirSet && ball.active && lt && lt.side !== me.side && lt.kind !== 'spike' && !this.jumped && me.state === 'ground') {
+      const mb = g.athletes.find((a) => a.side !== me.side && a.role === 'MB' && a.state === 'air' && a.vel.y > 0);
+      if (mb && Math.abs(mb.pos.x - me.pos.x) < 1.3) {
+        g.input.down('Mouse2');
+        g.input.down('Space');
+        this.jumped = true;
+        return;
+      }
+    }
+    if (this.jumped && me.state === 'load') g.input.up('Space');
     if (!theirSet) {
-      if (me.state === 'ground') {
+      if (me.state === 'ground' && !(this.jumped && ball.active && lt && lt.side !== me.side)) {
         g.input.up('Mouse2');
         g.input.up('Space');
         this.jumped = false;

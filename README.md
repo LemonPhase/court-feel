@@ -59,9 +59,9 @@ power and ball control, where drills start you, and what the AI asks of you.
 
 | | Height | Jump | Specialty |
 |---|---|---|---|
-| **Outside Hitter (OH)** | 1.95 m | 0.86 m | High outside ball from the left, passes serve |
-| **Opposite (OPP)** | 1.99 m | 0.90 m | Biggest jump and power, back sets on the right |
-| **Middle Blocker (MB)** | 2.04 m | 0.82 m | Quick tempo attacks, blocks along the net |
+| **Outside Hitter (OH)** | 1.95 m | 0.86 m | High ball to the left pin, passes serve |
+| **Opposite (OPP)** | 1.99 m | 0.90 m | Biggest jump and power, back sets to the right pin |
+| **Middle Blocker (MB)** | 2.04 m | 0.82 m | First-tempo quick (jump as the setter touches the ball), blocks along the net |
 | **Setter (S)** | 1.90 m | 0.74 m | Sets every second ball, attacks on two |
 | **Libero (L)** | 1.82 m | 0.66 m | Fastest feet and cleanest passing (back-row pipe in the spike drill) |
 
@@ -73,9 +73,14 @@ power and ball control, where drills start you, and what the AI asks of you.
    mouse (jump for a topspin jump serve) at a target zone.
 2. **Spike Drill** — a coach tosses to the setter, the setter sets your lane.
    Score = timing grade + power (km/h) + kill + hitting the highlighted target
-   zone. A cyan ring shows where your feet should be at contact.
+   zone. A cyan ring shows where your feet should be at contact. As the middle
+   you hit a real quick: run in as the pass goes up and leave the floor as the
+   setter touches the ball — the set is sent to where your hand will be at the
+   top of your jump (jump late and the quick comes to the usual spot, too fast).
 3. **Block Drill** — the opponent setter sets one of three hitters. Read it,
    shuffle, hands up, time the jump. Stuffs, soft blocks and touches score.
+   Their middle runs a quick on every ball: to stop it, jump with them
+   (commit) — if the set goes outside, you were fooled by the decoy.
 4. **Serve Receive / Dig** — float serves and attacks come at you; pass to the
    green setter target. Passes are rated 0–3; your setter and hitter finish
    good passes.
@@ -132,10 +137,12 @@ the pause menu and persist in `localStorage`.
 
 ## Testing
 
-* `npm test` — 36 Vitest tests: set apex, spike landing point, topspin dip,
+* `npm test` — 40 Vitest tests: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
-  acceleration, aim mapping, line judge, and the spike timing grades driven
+  acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the
+  middle leaves the floor on the setter's touch and the set meets the hand at
+  the top of the jump), and the spike timing grades driven
   through the real contact system.
 * `npm run e2e` — starts Vite, loads the game in headless Chromium, runs every
   drill with an autopilot that plays through the real input path (it plans

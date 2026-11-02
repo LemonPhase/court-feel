@@ -1,4 +1,7 @@
 import type { PositionId } from '../config';
+import { clamp } from '../core/mathx';
+import type { V3 } from '../physics/ball';
+import { predictJump } from '../ai/approach';
 import type { Athlete } from './athlete';
 import type { SetOption } from './contact';
 
@@ -17,12 +20,16 @@ export interface AttackLane {
   sx: number;
   sz: number;
   label: string;
+  /** first tempo: the hitter is already in the air when the setter touches the ball */
+  quick?: boolean;
 }
 
 export const LANES: Record<PositionId, AttackLane> = {
-  OH: { x: -3.45, z: 1.0, apexAbove: 1.65, sx: -4.2, sz: 3.7, label: 'Outside high ball (4)' },
-  OPP: { x: 3.4, z: 1.0, apexAbove: 1.55, sx: 4.0, sz: 3.3, label: 'Opposite back set (red)' },
-  MB: { x: 0.25, z: 0.8, apexAbove: 0.85, sx: 0.35, sz: 2.2, label: 'Middle quick (2)' },
+  // pin sets: met about half a metre inside the antenna, approach from outside the court
+  OH: { x: -4.05, z: 0.9, apexAbove: 1.65, sx: -4.85, sz: 3.7, label: 'Outside high ball (4)' },
+  OPP: { x: 4.0, z: 0.9, apexAbove: 1.55, sx: 4.7, sz: 3.4, label: 'Opposite back set (red)' },
+  // first-tempo quick: in the air as the setter touches it (x is a default; see quickSpot)
+  MB: { x: 0.2, z: 0.75, apexAbove: 0.5, sx: 0.35, sz: 2.8, label: 'Middle quick (1)', quick: true },
   S: { x: 1.05, z: 0.55, apexAbove: 0.75, sx: 1.2, sz: 1.3, label: 'Setter attack on two' },
   L: { x: -0.4, z: 3.75, apexAbove: 1.45, sx: -0.4, sz: 6.4, label: 'Back-row pipe' },
 };
@@ -35,6 +42,56 @@ export const SETTER_TARGET = { x: 1.0, z: 0.9, height: 3.6 };
 export function laneFor(pos: PositionId, side: 1 | -1): AttackLane {
   const l = LANES[pos];
   return { ...l, x: l.x * side, z: l.z * side, sx: l.sx * side, sz: l.sz * side };
+}
+
+/** first-tempo set timing (seconds of ball flight from the setter's hands) */
+export const QUICK = {
+  /** shortest / longest flight the setter will send to meet a jumping hitter */
+  minT: 0.24,
+  maxT: 0.8,
+  /** flight when the hitter is not up yet (they are late) */
+  lateT: 0.6,
+  /** how far in front of the setter the quick is hit, along the net */
+  inFront: 0.85,
+};
+
+/**
+ * Ball-centre height where the setter touches a dropping pass. AI setters
+ * take it as it enters their hands (CONTACT.setRadius above the hands point);
+ * a user's set resolves at the closest approach, right at the hands.
+ */
+export function setterTouchY(setter: Athlete | null | undefined): number {
+  const hands = (setter ? setter.height : 1.9) + 0.17;
+  return setter?.isUser ? hands + 0.05 : hands + 0.45;
+}
+
+/** where a quick is hit for a setter touching the ball at x: just in front of them, along the net */
+export function quickSpot(setterX: number, side: 1 | -1): { x: number; z: number } {
+  return { x: clamp(setterX - side * QUICK.inFront, -2.6, 2.6), z: LANES.MB.z * side };
+}
+
+export interface QuickSet extends SetOption {
+  time: number;
+  /** the hitter is up: the ball meets their hand at the top of the jump */
+  onTime: boolean;
+}
+
+/**
+ * The quick set for a middle. If they are planting or already in the air
+ * (they jumped with the setter's touch), the ball is sent to where their
+ * hitting hand will be at the top of the jump, arriving exactly then: the set
+ * meets the hitter, not the other way round. Otherwise it goes to the usual
+ * spot on a default tempo, and they will be late.
+ */
+export function quickSetFor(hitter: Athlete, now: number, from: V3, releaseAt?: number): QuickSet {
+  const j = predictJump(hitter, now, releaseAt ?? now, QUICK.minT);
+  if (j && j.t - now <= QUICK.maxT) {
+    const c = j.contact;
+    return { target: { x: c.x, y: c.y, z: c.z }, apex: c.y, hitter, label: 'Quick', time: j.t - now, onTime: true };
+  }
+  const q = quickSpot(from.x, hitter.side);
+  const y = attackHeight(hitter);
+  return { target: { x: q.x, y, z: q.z }, apex: y + LANES.MB.apexAbove, hitter, label: 'Quick', time: QUICK.lateT, onTime: false };
 }
 
 /** height of the ball centre at the top of a good approach jump */

@@ -4,9 +4,11 @@ import { COURT, PLAYER, POSITIONS, SIM, TIMING, type PositionId } from '../src/c
 import { Athlete } from '../src/game/athlete';
 import { aimPitchRange, aimTargetFromLook, AIM_DEPTH, ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
 import { Judge } from '../src/game/judge';
-import { copyBall, makeBall, stepBall, type BallState, type CollisionEvent } from '../src/physics/ball';
+import { copyBall, makeBall, R, stepBall, type BallState, type CollisionEvent } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
-import { solveApex } from '../src/physics/solve';
+import { flyFor, solveApex, solveFixedTime } from '../src/physics/solve';
+import { planQuick } from '../src/ai/approach';
+import { laneFor, QUICK, quickSetFor, quickSpot } from '../src/game/plays';
 
 const DT = 1 / SIM.hz;
 
@@ -284,5 +286,84 @@ describe('line judge', () => {
     const o = j.step(ball, [], COURT.netHeightMen)!;
     expect(o.kind).toBe('outside-antenna');
     expect(o.winner).toBe(-1);
+  });
+});
+
+describe('set plays', () => {
+  it('outside and opposite sets go to the pins, inside the antennae', () => {
+    for (const pos of ['OH', 'OPP'] as const) {
+      const l = laneFor(pos, 1);
+      expect(Math.abs(l.x)).toBeGreaterThan(3.9);
+      // ball edge stays well inside the antenna
+      expect(Math.abs(l.x) + R).toBeLessThan(COURT.antennaX - 0.3);
+      // the approach starts wider than the contact (out by the sideline)
+      expect(Math.abs(l.sx)).toBeGreaterThan(Math.abs(l.x));
+    }
+  });
+
+  it('a middle planning a quick leaves the floor as the setter touches the ball', () => {
+    const a = new Athlete('MB', 1);
+    const lane = laneFor('MB', 1);
+    a.place(lane.sx, lane.sz, 0);
+    const tTouch = 1.4;
+    const spot = quickSpot(1.0, 1);
+    const plan = planQuick(a, 0, spot, tTouch, 0, 0)!;
+    expect(plan).not.toBeNull();
+    expect(plan.error).toBeLessThan(0.25);
+    // run the plan with the real kinematics
+    let t = 0;
+    let takeoff = -1;
+    a.onTakeoff = () => (takeoff = t);
+    let pressed = false;
+    let released = false;
+    while (t < plan.tc) {
+      const run = t >= plan.tStart && !pressed;
+      a.cmd = { moveX: run ? plan.dir.x : 0, moveZ: run ? plan.dir.z : 0, sprint: run, faceYaw: 0 };
+      if (!pressed && t >= plan.tPress - 1e-9) pressed = a.jumpPress();
+      if (pressed && !released && t >= plan.tPress + plan.hold - 1e-9) {
+        a.jumpRelease();
+        released = true;
+      }
+      t += DT;
+      a.step(DT, t);
+    }
+    expect(Math.abs(takeoff - tTouch)).toBeLessThan(0.03);
+  });
+
+  it('a quick to a hitter already in the air arrives at their hand at the top of the jump', () => {
+    const a = new Athlete('MB', 1);
+    a.place(0.2, 1.0, 0);
+    a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };
+    let t = 0;
+    a.jumpPress();
+    for (let i = 0; i < SIM.hz * PLAYER.loadMax; i++) a.step(DT, (t += DT));
+    a.jumpRelease();
+    while (a.state !== 'air') a.step(DT, (t += DT));
+    // the setter touches it now, from just behind
+    const from = { x: 1.05, y: 2.5, z: 0.85 };
+    const q = quickSetFor(a, t, from);
+    expect(q.onTime).toBe(true);
+    expect(q.time).toBeGreaterThan(0.25);
+    expect(q.time).toBeLessThan(0.55);
+    // the ball, solved for that flight time, is at the target then
+    const v = { x: 0, y: 0, z: 0 };
+    solveFixedTime(from, q.target, q.time, { x: 0, y: 0, z: 0 }, v);
+    const end = { x: 0, y: 0, z: 0 };
+    flyFor(from, v, { x: 0, y: 0, z: 0 }, q.time, end);
+    expect(Math.hypot(end.x - q.target.x, end.y - q.target.y, end.z - q.target.z)).toBeLessThan(0.02);
+    // and the hitter's ideal contact point is there at the same moment
+    const t1 = t + q.time;
+    while (t < t1 - 1e-9) a.step(DT, (t += DT));
+    const p = a.idealContact(new THREE.Vector3());
+    expect(Math.hypot(p.x - q.target.x, p.y - q.target.y, p.z - q.target.z)).toBeLessThan(0.04);
+    expect(a.vel.y).toBeLessThan(0.3);
+  });
+
+  it('a middle still on the floor gets the late default quick', () => {
+    const a = new Athlete('MB', 1);
+    a.place(0.3, 2.5, 0);
+    const q = quickSetFor(a, 0, { x: 1.0, y: 2.5, z: 0.9 });
+    expect(q.onTime).toBe(false);
+    expect(q.time).toBeCloseTo(QUICK.lateT);
   });
 });

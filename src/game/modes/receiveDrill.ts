@@ -179,6 +179,7 @@ export class ReceiveDrill extends Mode {
         if (this.t > 1.2) this.toPhase('feed');
         break;
       case 'feed':
+        if (g.userReturning) break;
         this.kind = this.reps % 3 === 2 ? 'attack' : 'serve';
         this.passed = null;
         this.toPhase('live');
@@ -261,7 +262,7 @@ export class ReceiveDrill extends Mode {
     this.hitter.place(lane.sx, lane.sz, 0);
     const spot = RECEIVE_SPOT[this.position];
     const me = g.me;
-    if (Math.hypot(me.pos.x - spot.x, me.pos.z - spot.z) > 2.5) g.hud.fade(() => g.placeUser(spot.x, spot.z, 0));
+    if (Math.hypot(me.pos.x - spot.x, me.pos.z - spot.z) > 1.2) g.returnUser(spot.x, spot.z, 0);
     this.toPhase('feed');
   }
 

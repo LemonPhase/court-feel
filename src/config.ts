@@ -223,6 +223,8 @@ export const CAMERA = {
   fov: 72,
   fovApproachBoost: 6,
   near: 0.04,
+  /** FP clips anything closer than this (your own shoulder beside the eye) */
+  fpNear: 0.22,
   far: 140,
   sensitivity: 0.0022,
   fpEyeForward: 0.09,
