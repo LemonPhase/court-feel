@@ -109,6 +109,8 @@ export class Effects {
     const ev = g.events;
     ev.on('contact', (e) => this.onContact(e));
     ev.on('aiContact', (e) => {
+      this.trail.intensity = 0;
+      this.trail.fade();
       if (e.kind === 'set') this.audio.set();
       if (e.kind === 'pass' || e.kind === 'dig') this.audio.pass(0.5);
     });
@@ -163,6 +165,11 @@ export class Effects {
     const g = this.g;
     const user = e.athlete.isUser;
     const p = e.point;
+    // a new touch ends the previous ball's trail (attacks re-ignite their own)
+    if (e.kind === 'pass' || e.kind === 'dig' || e.kind === 'set') {
+      this.trail.intensity = 0;
+      this.trail.fade();
+    }
     switch (e.kind) {
       case 'spike':
       case 'serve': {
@@ -197,10 +204,14 @@ export class Effects {
         const v = g.views.get(e.athlete);
         this.audio.block(stuff);
         if (v) {
-          this.flash(v.palmL, stuff ? 0.75 : 0.45, new THREE.Color(2.2, 3.2, 4.2));
-          this.flash(v.palmR, stuff ? 0.75 : 0.45, new THREE.Color(2.2, 3.2, 4.2));
+          // your own hands in first person are right at the lens: a small, cooler flash
+          const fpSelf = user && g.rig.mode === 'fp';
+          const size = fpSelf ? 0.12 : stuff ? 0.75 : 0.45;
+          const col = fpSelf ? new THREE.Color(0.9, 1.2, 1.6) : new THREE.Color(2.2, 3.2, 4.2);
+          this.flash(v.palmL, size, col);
+          this.flash(v.palmR, size, col);
         }
-        this.burst(p, stuff ? 26 : 10, new THREE.Color(2.5, 3.2, 4.5), 5, stuff ? 1 : 0.6);
+        this.burst(p, stuff ? 26 : 10, new THREE.Color(2.5, 3.2, 4.5), 5, stuff ? (user && g.rig.mode === 'fp' ? 0.5 : 1) : 0.6);
         if (stuff) this.trail.ignite(0, 0.7, g.ball.rpos);
         if (user || this.near(p, 6)) {
           g.rig.addTrauma(FX.shakeBlock * (stuff ? 1 : 0.5) * (user ? 1 : 0.4));

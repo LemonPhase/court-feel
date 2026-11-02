@@ -204,7 +204,9 @@ export class ContactSystem {
     act.note = note;
     act.contactPoint.set(bp.x, bp.y, bp.z);
 
-    const serve = this.serving === a;
+    // a serve only if this is still the ball you tossed (nobody touched it since)
+    const lt0 = ball.lastTouch;
+    const serve = this.serving === a && !!lt0 && lt0.athlete === a && lt0.kind === 'feed';
     this.serving = null;
     // ---- tap vs hold
     const heldThrough = act.held;

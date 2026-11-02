@@ -49,8 +49,11 @@ export abstract class Mode {
       o.traverse((c) => {
         const m = c as THREE.Mesh;
         if (m.geometry) m.geometry.dispose();
-        const mat = m.material as THREE.Material | undefined;
-        if (mat) mat.dispose();
+        const mat = m.material as (THREE.Material & { map?: THREE.Texture | null }) | undefined;
+        if (mat) {
+          mat.map?.dispose();
+          mat.dispose();
+        }
       });
     }
     this.objects = [];

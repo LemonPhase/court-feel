@@ -1,0 +1,288 @@
+import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+import { COURT, PLAYER, POSITIONS, SIM, TIMING, type PositionId } from '../src/config';
+import { Athlete } from '../src/game/athlete';
+import { aimPitchRange, aimTargetFromLook, AIM_DEPTH, ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
+import { Judge } from '../src/game/judge';
+import { copyBall, makeBall, stepBall, type BallState, type CollisionEvent } from '../src/physics/ball';
+import { BallPredictor } from '../src/physics/predict';
+import { solveApex } from '../src/physics/solve';
+
+const DT = 1 / SIM.hz;
+
+/** run an athlete's full approach jump and return peak height and hang time */
+function jump(role: PositionId, approach: boolean, load: number) {
+  const a = new Athlete(role, 1);
+  a.place(0, 8.8, 0);
+  let t = 0;
+  if (approach) {
+    a.cmd = { moveX: 0, moveZ: -1, sprint: true, faceYaw: 0 };
+    for (let i = 0; i < SIM.hz * 0.9; i++) a.step(DT, (t += DT));
+  }
+  a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };
+  a.jumpPress();
+  let peak = 0;
+  let airT = 0;
+  let released = false;
+  for (let i = 0; i < SIM.hz * 3; i++) {
+    if (!released && a.loadT >= load) {
+      a.jumpRelease();
+      released = true;
+    }
+    a.step(DT, (t += DT));
+    if (a.state === 'air') airT += DT;
+    peak = Math.max(peak, a.pos.y);
+    if (a.state === 'land') break;
+  }
+  return { peak, airT };
+}
+
+describe('athlete jumps', () => {
+  for (const role of Object.keys(POSITIONS) as PositionId[]) {
+    it(`${role}: approach jump 0.65-0.92 m, believable hang time`, () => {
+      const full = jump(role, true, PLAYER.loadMax);
+      expect(full.peak).toBeGreaterThan(0.64);
+      expect(full.peak).toBeLessThan(0.93);
+      expect(Math.abs(full.peak - POSITIONS[role].jump)).toBeLessThan(0.03);
+      expect(full.airT).toBeGreaterThan(0.7);
+      expect(full.airT).toBeLessThan(0.95);
+      const tap = jump(role, false, 0);
+      expect(tap.peak).toBeLessThan(full.peak * 0.8);
+      expect(tap.peak).toBeGreaterThan(0.4);
+    });
+  }
+
+  it('standing reach is about 2.45 m for a 1.95 m athlete', () => {
+    const a = new Athlete('OH', 1);
+    expect(a.standReach).toBeGreaterThan(2.4);
+    expect(a.standReach).toBeLessThan(2.55);
+  });
+
+  it('predictAir matches the real airborne integration', () => {
+    const a = new Athlete('OPP', 1);
+    a.place(0, 4, 0);
+    a.jumpPress();
+    let t = 0;
+    for (let i = 0; i < 20; i++) a.step(DT, (t += DT));
+    a.jumpRelease();
+    while (a.state !== 'air') a.step(DT, (t += DT));
+    const predicted = a.predictAir(0.3, new THREE.Vector3());
+    for (let i = 0; i < Math.round(0.3 / DT); i++) a.step(DT, (t += DT));
+    expect(Math.abs(predicted.y - a.pos.y)).toBeLessThan(0.02);
+    expect(Math.abs(predicted.z - a.pos.z)).toBeLessThan(0.02);
+  });
+});
+
+describe('movement feel', () => {
+  it('accelerates and decelerates instead of snapping', () => {
+    const a = new Athlete('OH', 1);
+    a.place(0, 6, 0);
+    a.cmd = { moveX: 0, moveZ: -1, sprint: true, faceYaw: 0 };
+    a.step(DT, DT);
+    expect(a.speed).toBeLessThan(POSITIONS.OH.accel * DT * 1.01);
+    let t = DT;
+    let reach = 0;
+    while (a.speed < POSITIONS.OH.approachSpeed * 0.98 && t < 2) {
+      a.step(DT, (t += DT));
+      reach = t;
+    }
+    expect(reach).toBeGreaterThan(0.25);
+    expect(reach).toBeLessThan(0.5);
+    a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };
+    let stopT = 0;
+    while (a.speed > 0.01 && stopT < 2) {
+      a.step(DT, (t += DT));
+      stopT += DT;
+    }
+    expect(stopT).toBeGreaterThan(0.15);
+    expect(stopT).toBeLessThan(0.35);
+  });
+
+  it('cannot cross the centre line', () => {
+    const a = new Athlete('MB', 1);
+    a.place(0, 1, 0);
+    a.cmd = { moveX: 0, moveZ: -1, sprint: true, faceYaw: 0 };
+    let t = 0;
+    for (let i = 0; i < SIM.hz * 2; i++) a.step(DT, (t += DT));
+    expect(a.pos.z).toBeGreaterThan(0);
+  });
+});
+
+describe('aim mapping', () => {
+  it('always targets the opponent half when facing the net, from the net or the end line', () => {
+    for (const fp of [false, true]) {
+      const [lo, hi] = aimPitchRange(fp);
+      for (const fromZ of [0.8, 3, 9.5]) {
+        for (const pitch of [lo, (lo + hi) / 2, hi]) {
+          const out = aimTargetFromLook(0, fromZ, 0.1, pitch, fp, 1, new THREE.Vector3());
+          expect(out.z).toBeLessThan(0);
+          expect(-out.z).toBeGreaterThanOrEqual(AIM_DEPTH[0] - 1e-6);
+          expect(-out.z).toBeLessThanOrEqual(AIM_DEPTH[1] + 1e-6);
+        }
+      }
+    }
+  });
+
+  it('looking higher hits deeper', () => {
+    const a = aimTargetFromLook(0, 1, 0, -0.5, false, 1, new THREE.Vector3());
+    const b = aimTargetFromLook(0, 1, 0, -0.1, false, 1, new THREE.Vector3());
+    expect(-b.z).toBeGreaterThan(-a.z);
+  });
+});
+
+// ------------------------------------------------------------------ fake ball for the contact system
+class FakeBall {
+  state: BallState = makeBall();
+  predictor = new BallPredictor(DT, SIM.predictHorizon);
+  version = 0;
+  private pv = -1;
+  lastTouch: any = null;
+  active = true;
+  get pos() {
+    return this.state.p;
+  }
+  get vel() {
+    return this.state.v;
+  }
+  speed() {
+    const v = this.state.v;
+    return Math.hypot(v.x, v.y, v.z);
+  }
+  ensurePrediction(env: { netTop: number }, t: number) {
+    if (this.pv !== this.version) {
+      this.predictor.compute(this.state, env, t);
+      this.pv = this.version;
+    }
+    return this.predictor;
+  }
+  hit(v: any, w: any) {
+    Object.assign(this.state.v, v);
+    Object.assign(this.state.w, w);
+    this.version++;
+  }
+}
+
+function makeHost(ball: FakeBall, events: ContactEvent[]) {
+  const host = {
+    ball: ball as any,
+    simTime: 0,
+    env: { netTop: COURT.netHeightMen },
+    aimAssist: () => 0,
+    aimTargetFor: (_a: Athlete, out: THREE.Vector3) => out.set(1, 0.105, -6),
+    emitContact: (e: ContactEvent) => events.push(e),
+    rand: () => 0.5,
+    passTarget: () => ({ x: 1, y: 2.35, z: 0.9, apex: 4 }),
+    setOptions: () => [],
+    canServe: () => true,
+  } satisfies ContactHost;
+  return host;
+}
+
+/**
+ * Put a hitter in the air under a set and click `offset` seconds from the
+ * ideal moment; returns the graded contact.
+ */
+function spikeWithOffset(offset: number, release?: number) {
+  const ball = new FakeBall();
+  const events: ContactEvent[] = [];
+  const host = makeHost(ball, events);
+  const cs = new ContactSystem(host);
+  const a = new Athlete('OH', 1);
+  a.place(-3.4, 1.4, 0);
+  // jump straight up with a full load
+  a.jumpPress();
+  let t = 0;
+  for (let i = 0; i < Math.round(PLAYER.loadMax / DT) + 1; i++) a.step(DT, (t += DT));
+  // ball: a set that peaks and falls through the hitter's ideal point at the jump apex
+  const tApex = t + a.timeToApex();
+  const ideal = new THREE.Vector3();
+  a.idealContact(ideal, a.predictAir(tApex - t, new THREE.Vector3()));
+  const p0 = { x: 1, y: 2.4, z: 0.8 };
+  const v = { x: 0, y: 0, z: 0 };
+  const res = solveApex(p0, { x: ideal.x, y: ideal.y, z: ideal.z }, ideal.y + 1.2, { x: 0, y: 0, z: 0 }, v);
+  // launch so that it arrives exactly at the apex
+  const launchT = tApex - res.T;
+  // rewind: simulate from launch by stepping the ball before the jump begins
+  Object.assign(ball.state.p, p0);
+  Object.assign(ball.state.v, v);
+  const sim = copyBall(ball.state, makeBall());
+  const steps = Math.round((t - launchT) / DT);
+  for (let i = 0; i < steps; i++) stepBall(sim, DT, host.env);
+  copyBall(sim, ball.state);
+  ball.version++;
+  host.simTime = t;
+  // wait for the click
+  const info = cs.ideal(a, t, 0.9)!;
+  const clickAt = info.t - TIMING.swingNominal + offset;
+  let act: any = null;
+  const evs: CollisionEvent[] = [];
+  for (let i = 0; i < SIM.hz * 1.5; i++) {
+    if (!act && host.simTime >= clickAt - 1e-9) act = cs.startSwing(a);
+    if (act && release !== undefined && act.held && host.simTime >= act.t0 + release) {
+      act.held = false;
+      act.releaseT = host.simTime;
+    }
+    host.simTime += DT;
+    a.step(DT, host.simTime);
+    cs.step([a]);
+    stepBall(ball.state, DT, host.env, evs);
+    if (events.length) break;
+  }
+  return events[0];
+}
+
+describe('spike timing grades (real contact system)', () => {
+  it('a click on the ideal moment is Perfect and fast', () => {
+    const e = spikeWithOffset(0);
+    expect(e.grade).toBe('Perfect');
+    expect(e.speed).toBeGreaterThan(26);
+    expect(e.tip).toBe(false);
+  });
+  it('50 ms off is Good', () => {
+    expect(spikeWithOffset(0.05).grade).toBe('Good');
+    expect(spikeWithOffset(-0.05).grade).toBe('Good');
+  });
+  it('100 ms early / late are Early / Late and slower', () => {
+    const early = spikeWithOffset(-0.1);
+    const late = spikeWithOffset(0.1);
+    expect(early.grade).toBe('Early');
+    expect(late.grade).toBe('Late');
+    expect(early.speed).toBeLessThan(spikeWithOffset(0).speed);
+  });
+  it('a wild click whiffs', () => {
+    expect(spikeWithOffset(-0.4).grade).toBe('Miss');
+  });
+  it('a quick tap released before contact is a tip', () => {
+    const e = spikeWithOffset(0, 0.03);
+    expect(e.tip).toBe(true);
+    expect(e.speed).toBeLessThan(12);
+  });
+});
+
+describe('line judge', () => {
+  function judgeFloor(x: number, z: number, side: 1 | -1) {
+    const j = new Judge();
+    const ball = { pos: { x, y: 1, z }, active: true, lastTouch: { side } } as any;
+    j.arm(ball);
+    return j.step(ball, [{ kind: 'floor', x, y: 0.105, z, impact: 10 }], COURT.netHeightMen)!;
+  }
+  it('ball on the line is in', () => {
+    const o = judgeFloor(4.5, -6, 1);
+    expect(o.kind).toBe('in');
+    expect(o.winner).toBe(1);
+  });
+  it('ball out gives the point to the other side', () => {
+    const o = judgeFloor(4.7, -6, 1);
+    expect(o.kind).toBe('out');
+    expect(o.winner).toBe(-1);
+  });
+  it('crossing outside the antennae is a fault', () => {
+    const j = new Judge();
+    const ball = { pos: { x: 5.2, y: 3, z: 0.3 }, active: true, lastTouch: { side: 1 } } as any;
+    j.arm(ball);
+    ball.pos = { x: 5.25, y: 3, z: -0.3 };
+    const o = j.step(ball, [], COURT.netHeightMen)!;
+    expect(o.kind).toBe('outside-antenna');
+    expect(o.winner).toBe(-1);
+  });
+});

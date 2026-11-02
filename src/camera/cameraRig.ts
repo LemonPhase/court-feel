@@ -77,6 +77,12 @@ export class CameraRig {
     this.clampPitch();
   }
 
+  /** jump straight to the target next update (after a teleport) */
+  snap(): void {
+    this.pivotInit = false;
+    this.tpDist = CAMERA.tpDistance;
+  }
+
   addTrauma(t: number): void {
     this.trauma = Math.min(1, this.trauma + t);
   }

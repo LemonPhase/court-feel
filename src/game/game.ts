@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ASSIST, COURT, SIM, TIMING, type PositionId, type Settings } from '../config';
+import { ASSIST, CAMERA, COURT, SIM, TIMING, type PositionId, type Settings } from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
@@ -210,6 +210,7 @@ export class Game {
   placeUser(x: number, z: number, yaw: number): void {
     this.me.place(x, z, yaw);
     this.rig.yaw = yaw;
+    this.rig.snap();
     this.user.clear();
     this.eyeInit = false;
   }
@@ -541,7 +542,9 @@ export class Game {
     this.eye.z = me.rpos.z;
     const k = 1 - Math.exp(-dt * (me.state === 'air' ? 40 : 14));
     const stand = me.rpos.y + me.height * 0.935;
-    const ty = stand + (v.eyePos.y - stand) * 0.6;
+    // follow crouch/landing dips fully, filter the small head sway (no motion sickness)
+    const dy = v.eyePos.y - stand;
+    const ty = stand + (dy < -0.05 ? dy * 0.85 : dy * CAMERA.fpBobScale);
     this.eye.y += (ty - this.eye.y) * k;
   }
 
@@ -576,9 +579,24 @@ export class Game {
     f.height = me.height;
     f.side = me.side;
     this.rig.update(realDt, this.inMenu ? null : f);
-    // fade our own body when the TP camera is very close
-    const myView = this.views.get(me);
-    if (myView) myView.setOpacity(this.rig.mode === 'tp' ? clamp01((this.rig.tpCamToPivot - 0.5) / 0.6) * 0.75 + 0.25 : 1);
+    // fade our own body when the TP camera is very close, and anyone standing in the camera's way
+    const camPos = this.rig.camera.position;
+    for (const [a, v] of this.views) {
+      if (a === me) {
+        v.setOpacity(this.rig.mode === 'tp' ? clamp01((this.rig.tpCamToPivot - 0.5) / 0.6) * 0.75 + 0.25 : 1);
+        continue;
+      }
+      if (this.rig.mode !== 'tp' && this.rig.mode !== 'fp') {
+        v.setOpacity(1);
+        continue;
+      }
+      // distance from the camera to the athlete's body axis
+      const dx = camPos.x - a.rpos.x;
+      const dz = camPos.z - a.rpos.z;
+      const inBody = camPos.y > a.rpos.y - 0.1 && camPos.y < a.rpos.y + a.height + 0.15;
+      const d = Math.hypot(dx, dz);
+      v.setOpacity(inBody ? clamp01((d - 0.35) / 0.5) * 0.8 + 0.2 : 1);
+    }
     this.arena.update(realDt);
     this.updateAimReticle(realDt);
     this.hud.update(realDt);

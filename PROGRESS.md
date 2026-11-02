@@ -3,7 +3,7 @@
 Read this first when resuming.
 
 ## Current milestone
-M9 — feel and polish pass.
+M9/M10 — feel, polish, performance and robustness.
 
 ## Done
 - **M1** Court, lighting, camera, FP/TP toggle, capsule movement.
@@ -117,6 +117,20 @@ M9 — feel and polish pass.
     landing, two-tone whistle, Perfect chime, pink-noise crowd bed that swells with tension, cheers
     with formant wobble and claps; generated convolution reverb for the arena.
   - Bloom picks up only HDR effect colours (threshold 1.0). Smoke-tested every sound path (no errors).
+
+- **M9** Feel and polish (in progress).
+  - FP eye: follows crouch/landing dips, filters head sway to `CAMERA.fpBobScale`; TP camera snaps on
+    teleports (no swoosh across the court); athletes standing in the TP camera's way fade out.
+  - FP aim range tuned so looking at the ball gives a mid-court shot; trail fades near the lens; your
+    own block flash is small in FP (it washed the screen white).
+  - Arena static meshes merged (stands, trusses, screens, banners by colour) to cut draw calls.
+  - Mode teardown disposes textures (floor-ring textures leaked one per drill start).
+  - 19 more unit tests (36 total): per-position jump heights and hang time, acceleration/no
+    snapping, centre line, predictAir, aim mapping, line judge, and timing grades through the real
+    contact system (0 ms → Perfect, ±50 ms → Good, ±100 ms → Early/Late, wild → Miss, tap → tip).
+  - `npm run e2e`: Vite + headless Chromium, every drill with the autopilots, FP/TP screenshots,
+    console errors, frame time, draw calls and a soak. First run: no console errors; spike drill
+    5/5 positions Perfect; CPU frame median 5.4 ms / p95 12.6 ms; heap flat.
 
 ## Known issues
 - Headless Chromium uses SwiftShader, so on-screen FPS in screenshots is not representative.

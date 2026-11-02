@@ -288,6 +288,9 @@ export class Arena {
     const rowDepth = 0.85;
     const rowRise = 0.48;
     const seats: { x: number; y: number; z: number; rot: number }[] = [];
+    // all tiers merged into two meshes (one per material): few draw calls
+    const standGeos: THREE.BufferGeometry[] = [];
+    const seatGeos: THREE.BufferGeometry[] = [];
     const rng = new Rng(5);
     const sideStart = COURT.halfWidth + COURT.freeZoneSide + 2.2;
     const endStart = COURT.halfLength + COURT.freeZoneEnd + 2.2;
@@ -296,10 +299,9 @@ export class Arena {
         const d = (axis === 'x' ? sideStart : endStart) + r * rowDepth;
         const y = 0.7 + r * rowRise;
         const g = new THREE.BoxGeometry(axis === 'x' ? rowDepth : span, y, axis === 'x' ? span : rowDepth);
-        const m = new THREE.Mesh(g, r % 2 ? standMat : seatMat);
-        if (axis === 'x') m.position.set(sign * (d + rowDepth / 2), y / 2, 0);
-        else m.position.set(0, y / 2, sign * (d + rowDepth / 2));
-        this.group.add(m);
+        if (axis === 'x') g.translate(sign * (d + rowDepth / 2), y / 2, 0);
+        else g.translate(0, y / 2, sign * (d + rowDepth / 2));
+        (r % 2 ? standGeos : seatGeos).push(g);
         // fans
         const n = Math.floor(span / 0.55);
         for (let i = 0; i < n; i++) {
@@ -315,6 +317,7 @@ export class Arena {
     addBlock('x', 1, 30);
     addBlock('z', -1, 2 * (COURT.halfWidth + COURT.freeZoneSide + 1.5));
     addBlock('z', 1, 2 * (COURT.halfWidth + COURT.freeZoneSide + 1.5));
+    this.group.add(new THREE.Mesh(mergeGeometries(standGeos), standMat), new THREE.Mesh(mergeGeometries(seatGeos), seatMat));
     this.buildCrowd(seats);
   }
 
@@ -416,33 +419,40 @@ export class Arena {
     sb.position.set(0, H - 3.2, 0);
     this.group.add(sb);
     const screenMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.16, 0.3, 0.75) });
+    const screens: THREE.BufferGeometry[] = [];
     for (let k = 0; k < 4; k++) {
-      const scr = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 2.0), screenMat);
       const a = (k * Math.PI) / 2;
-      scr.position.set(Math.sin(a) * 2.12, H - 3.2, Math.cos(a) * 2.12);
-      scr.rotation.y = a;
-      this.group.add(scr);
+      const g = new THREE.PlaneGeometry(3.8, 2.0);
+      g.rotateY(a);
+      g.translate(Math.sin(a) * 2.12, H - 3.2, Math.cos(a) * 2.12);
+      screens.push(g);
     }
+    this.group.add(new THREE.Mesh(mergeGeometries(screens), screenMat));
     // trusses
     const trussMat = new THREE.MeshStandardMaterial({ color: 0x30343e, roughness: 0.6, metalness: 0.4 });
+    const trusses: THREE.BufferGeometry[] = [];
     for (let i = -3; i <= 3; i++) {
-      const t = new THREE.Mesh(new THREE.BoxGeometry(X * 2, 0.35, 0.3), trussMat);
-      t.position.set(0, H - 0.3, i * 5);
-      this.group.add(t);
+      const g = new THREE.BoxGeometry(X * 2, 0.35, 0.3);
+      g.translate(0, H - 0.3, i * 5);
+      trusses.push(g);
     }
+    this.group.add(new THREE.Mesh(mergeGeometries(trusses), trussMat));
     // team banners hanging on the long walls
     const colors = [0xd23a2a, 0x2456c8, 0xf2b632, 0x22a06b, 0xf5f5f5];
     const rng = new Rng(3);
+    const byColor = new Map<number, THREE.BufferGeometry[]>();
     for (const s of [-1, 1]) {
       for (let i = -4; i <= 4; i++) {
-        const m = new THREE.Mesh(
-          new THREE.PlaneGeometry(1.6, 3.2),
-          new THREE.MeshStandardMaterial({ color: colors[Math.floor(rng.next() * colors.length)], roughness: 0.9, side: THREE.DoubleSide }),
-        );
-        m.position.set(s * (X - 0.05), H - 4, i * 4.2);
-        m.rotation.y = -s * Math.PI / 2;
-        this.group.add(m);
+        const c = colors[Math.floor(rng.next() * colors.length)];
+        const g = new THREE.PlaneGeometry(1.6, 3.2);
+        g.rotateY((-s * Math.PI) / 2);
+        g.translate(s * (X - 0.05), H - 4, i * 4.2);
+        if (!byColor.has(c)) byColor.set(c, []);
+        byColor.get(c)!.push(g);
       }
+    }
+    for (const [c, geos] of byColor) {
+      this.group.add(new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, side: THREE.DoubleSide })));
     }
   }
 
