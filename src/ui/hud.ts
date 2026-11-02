@@ -33,6 +33,8 @@ export class Hud {
   private cross: HTMLDivElement;
   private fadeEl: HTMLDivElement;
   private camTag: HTMLDivElement;
+  private loadRing: HTMLDivElement;
+  private goCue: HTMLDivElement;
   private gradeTimer = 0;
   private bannerTimer = 0;
   private msgTimer = 0;
@@ -59,6 +61,8 @@ export class Hud {
     this.msg = el('div', 'hud-msg', this.root);
     this.cross = el('div', 'crosshair', this.root);
     this.camTag = el('div', 'hud-cam', this.root, 'TP');
+    this.loadRing = el('div', 'load-ring', this.root);
+    this.goCue = el('div', 'go-cue', this.root, 'GO');
     this.fadeEl = el('div', 'fade', parent);
   }
 
@@ -117,6 +121,24 @@ export class Hud {
     this.streakVal.textContent = String(n);
     this.streakBox.classList.toggle('hot', n >= 3);
     this.streakBox.classList.toggle('fire', n >= 6);
+  }
+
+  /** jump load meter under the crosshair (null hides it) */
+  setLoad(frac: number | null): void {
+    if (frac === null) {
+      this.loadRing.style.opacity = '0';
+      return;
+    }
+    this.loadRing.style.opacity = '1';
+    this.loadRing.style.setProperty('--p', `${Math.round(frac * 100)}%`);
+    this.loadRing.classList.toggle('full', frac >= 0.99);
+  }
+
+  /** approach timing cue */
+  go(): void {
+    this.goCue.classList.remove('show');
+    void this.goCue.offsetWidth;
+    this.goCue.classList.add('show');
   }
 
   setCrosshair(visible: boolean, active = false): void {

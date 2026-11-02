@@ -29,8 +29,8 @@ const FORM: Record<'receive' | 'defense' | 'offense', Record<Slot, Spot>> = {
     OPP: { x: 2.7, z: 0.7 }, OH2: { x: -2.9, z: 6.2 }, L: { x: 0.0, z: 7.3 },
   },
   offense: {
-    S: { x: SETTER_SPOT.x, z: SETTER_SPOT.z }, OH1: { x: -4.35, z: 4.6 }, MB: { x: 0.35, z: 2.7 },
-    OPP: { x: 4.1, z: 3.9 }, OH2: { x: -1.8, z: 6.6 }, L: { x: 1.2, z: 6.0 },
+    S: { x: SETTER_SPOT.x, z: SETTER_SPOT.z }, OH1: { x: -4.2, z: 3.7 }, MB: { x: 0.35, z: 2.2 },
+    OPP: { x: 4.0, z: 3.3 }, OH2: { x: -0.4, z: 6.4 }, L: { x: 1.2, z: 6.0 },
   },
 };
 

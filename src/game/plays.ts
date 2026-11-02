@@ -20,11 +20,11 @@ export interface AttackLane {
 }
 
 export const LANES: Record<PositionId, AttackLane> = {
-  OH: { x: -3.45, z: 1.0, apexAbove: 1.35, sx: -4.35, sz: 4.6, label: 'Outside high ball (4)' },
-  OPP: { x: 3.4, z: 1.0, apexAbove: 1.35, sx: 4.1, sz: 3.9, label: 'Opposite back set (red)' },
-  MB: { x: 0.25, z: 0.8, apexAbove: 0.85, sx: 0.35, sz: 2.7, label: 'Middle quick (2)' },
+  OH: { x: -3.45, z: 1.0, apexAbove: 1.65, sx: -4.2, sz: 3.7, label: 'Outside high ball (4)' },
+  OPP: { x: 3.4, z: 1.0, apexAbove: 1.55, sx: 4.0, sz: 3.3, label: 'Opposite back set (red)' },
+  MB: { x: 0.25, z: 0.8, apexAbove: 0.85, sx: 0.35, sz: 2.2, label: 'Middle quick (2)' },
   S: { x: 1.05, z: 0.55, apexAbove: 0.75, sx: 1.2, sz: 1.3, label: 'Setter attack on two' },
-  L: { x: -0.4, z: 3.75, apexAbove: 1.2, sx: -0.4, sz: 7.3, label: 'Back-row pipe' },
+  L: { x: -0.4, z: 3.75, apexAbove: 1.45, sx: -0.4, sz: 6.4, label: 'Back-row pipe' },
 };
 
 /** the setter's home spot (right of centre, close to the net) */

@@ -8,6 +8,7 @@ import type { ContactEvent } from '../contact';
 import { outcomeLabel, type Outcome } from '../judge';
 import { attackHeight, laneFor, SETTER_SPOT, SETTER_TARGET } from '../plays';
 import { kbd, makeFloorRing, Mode, ZoneMarker } from './mode';
+import { planApproach } from '../../ai/approach';
 
 interface Zone {
   name: string;
@@ -44,6 +45,10 @@ export class SpikeDrill extends Mode {
   private lastGrade: ContactEvent | null = null;
   private userTouched = false;
   private tossed = false;
+  /** when a perfect approach would start for the current set (the GO cue) */
+  private goAt = -1;
+  private plannedFor: unknown = null;
+  private ringPulse = 0;
 
   setup(): void {
     const g = this.g;
@@ -143,7 +148,25 @@ export class SpikeDrill extends Mode {
     const off = new THREE.Vector3();
     me.idealContact(off, new THREE.Vector3(0, 0, 0)).setY(0);
     this.approachRing.position.set(lane.x - off.x, 0.011, lane.z - off.z);
-    (this.approachRing.material as THREE.MeshBasicMaterial).opacity = g.settings.landingMarker ? 0.45 : 0;
+    // GO cue: plan the ideal approach the moment the set leaves the setter's hands
+    const lt = g.ball.lastTouch;
+    const setUp = g.ball.active && lt && (lt.kind === 'set' || (this.position === 'S' && lt.kind === 'feed'));
+    if (setUp && lt !== this.plannedFor && me.state === 'ground') {
+      this.plannedFor = lt;
+      const plan = planApproach(me, g.ball.ensurePrediction(g.env, g.simTime), g.simTime, 0, 0);
+      this.goAt = plan && plan.error < 0.6 ? plan.tStart : -1;
+    }
+    if (this.goAt > 0 && g.simTime >= this.goAt) {
+      this.goAt = -1;
+      if (g.settings.landingMarker) {
+        g.hud.go();
+        this.ringPulse = 1;
+      }
+    }
+    this.ringPulse = Math.max(0, this.ringPulse - dt * 2.5);
+    const mat = this.approachRing.material as THREE.MeshBasicMaterial;
+    mat.opacity = g.settings.landingMarker ? 0.45 + this.ringPulse * 0.55 : 0;
+    this.approachRing.scale.setScalar(1 + this.ringPulse * 0.6);
   }
 
   frame(dt: number): void {

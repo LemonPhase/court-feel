@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, COURT, SIM, TIMING, type PositionId, type Settings } from '../config';
+import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, type PositionId, type Settings } from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
@@ -642,6 +642,7 @@ export class Game {
     this.hud.update(realDt);
     if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint());
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
+    this.hud.setLoad(me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null);
     if (!draw) return;
     this.renderer.info.reset();
     this.post.render(realDt);
