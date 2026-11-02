@@ -37,12 +37,12 @@ mouse (pointer lock). **Esc** pauses and opens settings.
 | Left mouse | Attack / hit at contact. **Hold** through contact = power spike, **tap** = tip (short) or roll shot (deep). Also hits your serve. |
 | Right mouse | Block (hands up, they press over the net in the air). When the ball is dropping onto you from your own side it **sets** instead — look at the hitter you want. |
 | E | Bump / pass / dig (press early so the platform is ready; hold it) |
-| Q | Serve toss (Free Play), then Left mouse to hit — standing = float serve, jump = topspin serve |
+| Q | Serve toss (Free Play, feed 5 = serve practice), then Left mouse to hit — standing = float serve, jump = topspin serve |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Reset the current rep |
 | Esc | Pause / settings |
 | F3 | Debug overlay: FPS, physics step time, ball state, timing window, contact gizmos |
-| Free Play only | 1-4 feed type (set / free ball / float serve / hard attack), F feed now, T auto-feed |
+| Free Play only | 1-5 feed type (set / free ball / float serve / hard attack / **serve practice**), F feed now, T auto-feed |
 
 ### Aiming
 
@@ -68,7 +68,9 @@ power and ball control, where drills start you, and what the AI asks of you.
 ## Modes
 
 1. **Free Play** — a ball machine feeds you (set, free ball, float serve, hard
-   attack). Spike, pass, block, set or serve your own.
+   attack). Spike, pass, block, set or serve your own. Feed **5** is serve
+   practice: you start behind the end line, toss with Q and hit with the left
+   mouse (jump for a topspin jump serve) at a target zone.
 2. **Spike Drill** — a coach tosses to the setter, the setter sets your lane.
    Score = timing grade + power (km/h) + kill + hitting the highlighted target
    zone. A cyan ring shows where your feet should be at contact.

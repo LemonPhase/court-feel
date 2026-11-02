@@ -4,11 +4,21 @@ import { solveApex, solveSpeedToFloor } from '../../physics/solve';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
 import { attackHeight, laneFor, SETTER_SPOT } from '../plays';
-import { kbd, Mode } from './mode';
+import { kbd, Mode, ZoneMarker } from './mode';
 
-type Feed = 'set' | 'free' | 'serve' | 'attack';
-const FEEDS: Feed[] = ['set', 'free', 'serve', 'attack'];
-const FEED_LABEL: Record<Feed, string> = { set: 'Set to you', free: 'Free ball', serve: 'Float serve', attack: 'Hard attack' };
+type Feed = 'set' | 'free' | 'serve' | 'attack' | 'practice';
+const FEEDS: Feed[] = ['set', 'free', 'serve', 'attack', 'practice'];
+const FEED_LABEL: Record<Feed, string> = {
+  set: 'Set to you', free: 'Free ball', serve: 'Float serve', attack: 'Hard attack', practice: 'Serve practice (Q toss, LMB hit)',
+};
+/** serve-practice target zones on the far court */
+const SERVE_ZONES = [
+  { x0: -4.5, x1: -2.0, z0: -9, z1: -6.5 },
+  { x0: 2.0, x1: 4.5, z0: -9, z1: -6.5 },
+  { x0: -1.5, x1: 1.5, z0: -9, z1: -6.5 },
+  { x0: -4.5, x1: -2.0, z0: -4.5, z1: -2.5 },
+  { x0: 2.0, x1: 4.5, z0: -4.5, z1: -2.5 },
+];
 
 /** a ball machine: base, drum and barrel that aims where it shoots */
 function makeMachine(): { group: THREE.Group; barrel: THREE.Group; lamp: THREE.Mesh } {
@@ -53,6 +63,9 @@ export class FreePlay extends Mode {
   private machine!: ReturnType<typeof makeMachine>;
   private lastWasMachine = false;
   private requested = false;
+  private zone = new ZoneMarker(0x7dff9b);
+  private zoneIdx = 0;
+  private served = false;
 
   setup(): void {
     const g = this.g;
@@ -60,6 +73,8 @@ export class FreePlay extends Mode {
     g.placeUser(lane.sx, lane.sz, 0);
     this.machine = makeMachine();
     this.add(this.machine.group);
+    this.add(this.zone.group);
+    this.zone.group.visible = false;
     this.placeMachine();
     g.hud.setTitle('Free Play');
     this.updateScore();
@@ -68,6 +83,16 @@ export class FreePlay extends Mode {
 
   private placeMachine(): void {
     const m = this.machine.group;
+    m.visible = this.feed !== 'practice';
+    this.zone.group.visible = this.feed === 'practice';
+    if (this.feed === 'practice') {
+      const g = this.g;
+      g.ball.hide();
+      g.hud.fade(() => g.placeUser(0.5, 10.4, 0));
+      this.pickZone();
+      g.hud.message('Behind the end line: Q to toss, Left click to hit (jump for a jump serve)', 3);
+      return;
+    }
     switch (this.feed) {
       case 'set':
         m.position.set(SETTER_SPOT.x, 0, SETTER_SPOT.z + 0.2);
@@ -89,17 +114,25 @@ export class FreePlay extends Mode {
     this.g.hud.setScore(`Feed: ${FEED_LABEL[this.feed]} · auto ${this.auto ? 'on' : 'off'} · ${this.score} pts`);
   }
 
+  private pickZone(): void {
+    this.zoneIdx = (this.zoneIdx + 1 + Math.floor(this.g.rng.next() * (SERVE_ZONES.length - 1))) % SERVE_ZONES.length;
+    const z = SERVE_ZONES[this.zoneIdx];
+    this.zone.set(z.x0, z.x1, z.z0, z.z1);
+  }
+
   hint(): string {
-    return `${kbd('1')}-${kbd('4')} feed type · ${kbd('F')} feed · ${kbd('T')} auto · ${kbd('Q')} serve toss · ${kbd('LMB')} hit · ${kbd('E')} pass · ${kbd('RMB')} block/set`;
+    if (this.feed === 'practice') return `${kbd('Q')} toss · ${kbd('LMB')} serve (aim with the mouse, jump for a jump serve) · ${kbd('1')}-${kbd('5')} feed type`;
+    return `${kbd('1')}-${kbd('5')} feed type · ${kbd('F')} feed · ${kbd('T')} auto · ${kbd('Q')} serve toss · ${kbd('LMB')} hit · ${kbd('E')} pass · ${kbd('RMB')} block/set`;
   }
 
   canServe(): boolean {
     const b = this.g.ball;
-    return !b.active || b.state.rest || this.lastWasMachine;
+    return !b.active || b.state.rest || this.lastWasMachine || (this.feed === 'practice' && !this.served);
   }
 
-  frame(_dt: number): void {
+  frame(dt: number): void {
     const inp = this.g.input;
+    this.zone.update(dt);
     for (let i = 0; i < FEEDS.length; i++) {
       if (inp.consumePress('Digit' + (i + 1))) {
         this.feed = FEEDS[i];
@@ -129,6 +162,7 @@ export class FreePlay extends Mode {
     (this.machine.lamp.material as THREE.MeshBasicMaterial).color.setRGB(idle && this.wait < 0.6 ? 2.5 : 0.3, idle && this.wait < 0.6 ? 2.2 : 1.6, 0.4);
     if (!idle) return;
     if (g.me.action?.kind === 'toss') return; // the user is serving
+    if (this.feed === 'practice') return; // the machine stands down
     this.wait -= dt;
     if ((this.auto && this.wait <= 0) || this.requested) {
       this.fire();
@@ -188,6 +222,7 @@ export class FreePlay extends Mode {
   onContact(ev: ContactEvent): void {
     if (ev.athlete !== this.g.me) return;
     this.lastWasMachine = false;
+    if (ev.kind === 'serve') this.served = true;
     const pts = ev.grade === 'Perfect' ? 30 : ev.grade === 'Good' ? 15 : ev.grade === 'Miss' ? 0 : 5;
     this.score += pts;
     this.bumpStreak(ev.grade === 'Perfect' || ev.grade === 'Good');
@@ -196,6 +231,24 @@ export class FreePlay extends Mode {
 
   onOutcome(o: Outcome): void {
     const lt = this.g.ball.lastTouch;
+    if (this.feed === 'practice' && this.served && lt?.athlete === this.g.me) {
+      this.served = false;
+      const z = SERVE_ZONES[this.zoneIdx];
+      const inZone = o.kind === 'in' && o.x >= z.x0 && o.x <= z.x1 && o.z >= z.z0 && o.z <= z.z1;
+      if (o.kind === 'in' && o.side === -1) {
+        const pts = inZone ? 60 : 20;
+        this.score += pts;
+        this.bumpStreak(inZone);
+        this.g.hud.showBanner(inZone ? `ON TARGET  +${pts}` : `IN  +${pts}`, 'good');
+        this.g.crowd(inZone ? 0.6 : 0.25);
+        if (inZone) this.pickZone();
+      } else {
+        this.bumpStreak(false);
+        this.g.hud.showBanner(o.kind === 'in' ? 'NET' : 'OUT', 'bad');
+      }
+      this.updateScore();
+      return;
+    }
     if (lt?.athlete === this.g.me && o.kind === 'in' && o.side === -1) {
       this.g.hud.showBanner('IN!', 'good');
       this.g.crowd(0.4);
