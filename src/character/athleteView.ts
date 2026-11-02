@@ -70,6 +70,8 @@ const FP_KEYS: Partial<Record<ArmKey, { w: readonly number[]; pole: readonly num
   pass: { w: [-0.09, -0.18, 0.25], pole: [1, -0.8, 0.2] },
   swingUp: { w: [0.05, 0.2, 0.22], pole: [0.6, -0.3, -0.8] },
   toss: { w: [0.02, 0.2, 0.24], pole: [1, -0.3, -0.5] },
+  setPrep: { w: [-0.075, 0.165, 0.2], pole: [1, -0.4, 0.1] },
+  setRelease: { w: [-0.06, 0.27, 0.22], pole: [1, -0.3, 0.1] },
 };
 
 export class AthleteView {

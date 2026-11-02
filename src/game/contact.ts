@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ASSIST, BALL, CONTACT, COURT, TIMING } from '../config';
 import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
-import { solveApex, solveSpeedToFloor } from '../physics/solve';
+import { netClearance, solveApex, solveSpeedToFloor } from '../physics/solve';
 import type { Action, Athlete, Grade } from './athlete';
 import type { BallEntity, TouchKind } from './ballEntity';
 
@@ -240,7 +240,16 @@ export class ContactSystem {
       // standing float serve: no spin, knuckles
       speed = CONTACT.serveFloatSpeed * (rank === 3 ? 1.08 : rank === 2 ? 1 : 0.88) * lerp(0.9, 1.05, pos.power - 0.75);
       const land = { x: 0, y: 0, z: 0 };
-      solveSpeedToFloor({ x: bp.x, y: bp.y, z: bp.z }, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
+      const p0 = { x: bp.x, y: bp.y, z: bp.z };
+      solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
+      // floaters wobble: keep a margin over the tape (good serves skim it, bad ones may not)
+      const margin = rank >= 2 ? 0.28 : 0.12;
+      for (let k = 0; k < 4; k++) {
+        const c = netClearance(p0, out, w);
+        if (!c || c.y > h.env.netTop + R + margin) break;
+        target.z += side * 0.8;
+        solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
+      }
       ball.hit(out, { x: 0, y: 0, z: 0 }, BALL.floatWobble * (rank === 3 ? 1.2 : 0.8), h.simTime);
     } else {
       const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
@@ -296,24 +305,37 @@ export class ContactSystem {
     const dz = bp.z - P.z;
     // forgiving vertically for low digs
     const d = Math.hypot(dx, dy * (dy < 0 ? 0.6 : 1), dz);
-    const approaching = ball.vel.x * -dx + ball.vel.y * -dy + ball.vel.z * -dz > 0 || ball.vel.y < 0;
-    if (d > r || !approaching || bp.y > a.pos.y + a.height * 0.75) return false;
+    if (d > r || bp.y > a.pos.y + a.height * 0.75) {
+      act.minD = 1e9;
+      return false;
+    }
+    // resolve at the closest approach (or when it is basically centred)
+    if (d < act.minD - 1e-4 && d > 0.08) {
+      act.minD = d;
+      return false;
+    }
+    const dBest = Math.min(d, act.minD);
     const t = h.simTime;
     const lead = t - act.t0;
     const incoming = ball.speed();
     let grade: Grade;
     let note = '';
-    const diff = lead - TIMING.passLead;
-    if (lead < 0.06) {
+    // hard-driven balls leave no time: the ideal platform lead shrinks for digs
+    const fast = clamp01((incoming - 12) / 10);
+    const idealLead = lerp(TIMING.passLead, TIMING.digLead, fast);
+    const perfectW = lerp(TIMING.passPerfect, TIMING.digPerfect, fast);
+    const goodW = lerp(TIMING.passGood, TIMING.digGood, fast);
+    const diff = lead - idealLead;
+    if (lead < 0.05) {
       grade = 'Late';
       note = 'Platform late';
-    } else if (Math.abs(diff) <= TIMING.passPerfect) grade = 'Perfect';
-    else if (Math.abs(diff) <= TIMING.passGood) grade = 'Good';
+    } else if (Math.abs(diff) <= perfectW) grade = 'Perfect';
+    else if (Math.abs(diff) <= goodW) grade = 'Good';
     else {
       grade = diff < 0 ? 'Late' : 'Early';
       note = diff < 0 ? 'Platform late' : 'Platform early';
     }
-    if (d > r * 0.65) {
+    if (dBest > r * 0.6) {
       grade = downgrade(grade, false);
       note = note || 'Off the platform';
     }
@@ -376,7 +398,15 @@ export class ContactSystem {
     const P = this.handsPoint(a, this._p);
     const r = CONTACT.setRadius + h.aimAssist(a) * 0.2;
     const d = Math.hypot(bp.x - P.x, bp.y - P.y, bp.z - P.z);
-    if (d > r || ball.vel.y > 0.5) return false;
+    if (d > r || ball.vel.y > 0.5) {
+      act.minD = 1e9;
+      return false;
+    }
+    if (d < act.minD - 1e-4 && d > 0.07) {
+      act.minD = d;
+      return false;
+    }
+    const dBest = Math.min(d, act.minD);
     const t = h.simTime;
     const lead = t - act.t0;
     const diff = lead - TIMING.setLead;
@@ -391,7 +421,7 @@ export class ContactSystem {
       grade = diff < 0 ? 'Late' : 'Early';
       note = diff < 0 ? 'Hands late' : 'Hands early';
     }
-    if (d > r * 0.7) {
+    if (dBest > r * 0.65) {
       grade = downgrade(grade, false);
       note = note || 'Off the hands';
     }
@@ -558,18 +588,34 @@ function downgrade(g: Grade, early: boolean): Grade {
   return g;
 }
 
-/** map the camera look onto a floor target in the opponent court */
-export function aimTargetFromLook(
-  fromX: number, fromZ: number, yaw: number, pitch: number, fp: boolean, out: THREE.Vector3,
-): THREE.Vector3 {
+/** pitch range (radians) that maps onto shallow..deep, per camera */
+export function aimPitchRange(fp: boolean): [number, number] {
   // FP lets you look up at the ball while aiming deep; TP looks down at the court
-  const lo = fp ? -0.55 : -0.75;
-  const hi = fp ? 0.75 : 0.05;
+  return fp ? [-0.55, 0.75] : [-0.75, 0.05];
+}
+export const AIM_DEPTH: [number, number] = [1.0, 9.6];
+
+/**
+ * Map the camera look onto a floor target: yaw gives the direction, pitch
+ * gives how deep into the opponent's court (works from the net or the end line).
+ */
+export function aimTargetFromLook(
+  fromX: number, fromZ: number, yaw: number, pitch: number, fp: boolean, side: 1 | -1, out: THREE.Vector3,
+): THREE.Vector3 {
+  const [lo, hi] = aimPitchRange(fp);
   const t = clamp01((pitch - lo) / (hi - lo));
-  const dist = lerp(2.4, 11.5, t);
   const dx = -Math.sin(yaw);
   const dz = -Math.cos(yaw);
-  out.set(fromX + dx * dist, R, fromZ + dz * dist);
+  const depth = lerp(AIM_DEPTH[0], AIM_DEPTH[1], t);
+  const zT = -side * depth;
+  if (dz * -side > 0.08 && (zT - fromZ) * dz > 0) {
+    const s = (zT - fromZ) / dz;
+    out.set(fromX + dx * s, R, zT);
+  } else {
+    // looking sideways or backwards: just along the look direction
+    const dist = lerp(2.4, 11.5, t);
+    out.set(fromX + dx * dist, R, fromZ + dz * dist);
+  }
   out.x = clamp(out.x, -COURT.halfWidth - 3, COURT.halfWidth + 3);
   return out;
 }

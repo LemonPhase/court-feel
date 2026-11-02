@@ -25,7 +25,7 @@ import { createMode } from './modes/registry';
 import { makeRingTexture } from '../world/textures';
 import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
-import { BlockBot, SpikeBot, type BotQuality } from './bot';
+import { BlockBot, SpikeBot, TouchBot, type BotQuality } from './bot';
 
 export type GameEvents = {
   toggleCam: { fp: boolean };
@@ -143,7 +143,7 @@ export class Game {
         return game.simTime;
       },
       env: this.env,
-      aimAssist: (a) => (a.isUser ? this.settings.aimAssist : 0.7),
+      aimAssist: (a) => (a.isUser ? this.settings.aimAssist : 0.3),
       aimTargetFor: (a, out) => this.aimTargetFor(a, out),
       emitContact: (ev) => this.onContact(ev),
       rand: () => this.rng.next(),
@@ -282,7 +282,7 @@ export class Game {
   aimTargetFor(a: Athlete, out: THREE.Vector3): THREE.Vector3 {
     if (a.isUser) {
       const from = a.action && a.action.kind === 'swing' ? a.action.contactPoint : a.pos;
-      return aimTargetFromLook(from.x, from.z, this.rig.yaw, this.rig.pitch, this.rig.mode === 'fp', out);
+      return aimTargetFromLook(from.x, from.z, this.rig.yaw, this.rig.pitch, this.rig.mode === 'fp', a.side, out);
     }
     return out.copy(a.aiAim);
   }
@@ -401,7 +401,11 @@ export class Game {
 
   enableBot(q: string): void {
     const quality = (['perfect', 'good', 'sloppy', 'tip'].includes(q) ? q : 'perfect') as BotQuality;
-    this.bot = this.modeId === 'block' ? new BlockBot(this, quality) : new SpikeBot(this, quality);
+    this.bot =
+      this.modeId === 'block' ? new BlockBot(this, quality)
+      : this.modeId === 'receive' ? new TouchBot(this, 'pass', quality)
+      : this.modeId === 'setter' ? new TouchBot(this, 'set', quality)
+      : new SpikeBot(this, quality);
   }
 
   /** start-screen background: the bot runs the spike drill under an orbiting camera */

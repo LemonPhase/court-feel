@@ -29,6 +29,8 @@ export interface Action {
   /** timing error for the grade (s), + = late */
   err: number;
   note: string;
+  /** closest ball distance seen so far by a zone contact (pass/set) */
+  minD: number;
 }
 
 export interface AthleteCmd {
@@ -401,6 +403,7 @@ export class Athlete {
     const act: Action = {
       kind, t0: t, held: true, releaseT: -1, contactT: -1, contactPoint: new THREE.Vector3(),
       resolved: false, grade: null, tip: false, miss: false, hand: 'R', aim: new THREE.Vector3(0, 0, -1), err: 0, note: '',
+      minD: 1e9,
     };
     this.action = act;
     return act;

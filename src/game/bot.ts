@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BALL, PLAYER, SIM, TIMING } from '../config';
 import { Athlete } from './athlete';
+import { AIM_DEPTH, aimPitchRange } from './contact';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Game } from './game';
@@ -94,12 +95,9 @@ export class SpikeBot {
       }
       case 'air': {
         this.mx = this.mz = 0;
-        const depth = Math.hypot(plan.aim.x - plan.contact.x, plan.aim.z - plan.contact.z);
-        // invert the aim mapping (see aimTargetFromLook)
-        const fp = g.rig.mode === 'fp';
-        const lo = fp ? -0.55 : -0.75;
-        const hi = fp ? 0.75 : 0.05;
-        const t = clamp((depth - 2.4) / (11.5 - 2.4), 0, 1);
+        // invert the aim mapping (see aimTargetFromLook): depth into their court
+        const [lo, hi] = aimPitchRange(g.rig.mode === 'fp');
+        const t = clamp((Math.abs(plan.aim.z) - AIM_DEPTH[0]) / (AIM_DEPTH[1] - AIM_DEPTH[0]), 0, 1);
         g.rig.pitch = lo + (hi - lo) * t;
         g.rig.yaw = aimYaw;
         if (this.clickAt < 0) {
@@ -304,5 +302,84 @@ export class BlockBot {
     me.cmd.moveX = this.mx;
     me.cmd.moveZ = 0;
     me.cmd.sprint = false;
+  }
+}
+
+/**
+ * Pass / set autopilot: moves so the platform (or hands) meets the ball's
+ * predicted path and presses E / RMB the ideal lead time before arrival.
+ */
+export class TouchBot {
+  private mx = 0;
+  private mz = 0;
+  private pressed = false;
+  private b: V3 = { x: 0, y: 0, z: 0 };
+  private offset = 0;
+  /** setter: which option to aim at (cycles) */
+  private pick = 0;
+
+  constructor(private g: Game, private kind: 'pass' | 'set', private quality: BotQuality = 'perfect') {}
+
+  step(_dt: number): void {
+    const g = this.g;
+    const me = g.me;
+    const ball = g.ball;
+    const now = g.simTime;
+    const lt = ball.lastTouch;
+    this.mx = this.mz = 0;
+    const key = this.kind === 'pass' ? 'KeyE' : 'Mouse2';
+    const incoming =
+      ball.active && !ball.state.rest && lt && lt.athlete !== me &&
+      (this.kind === 'pass' ? lt.side !== me.side || lt.kind === 'feed' : lt.side === me.side);
+    if (!incoming) {
+      if (this.pressed) g.input.up(key);
+      this.pressed = false;
+      this.offset = 0;
+      return;
+    }
+    const pred = ball.ensurePrediction(g.env, now);
+    let yaw = 0;
+    if (this.kind === 'set') {
+      const opts = (g.mode as any)?.setOptions?.(me) as { target: V3 }[] | undefined;
+      if (opts && opts.length) {
+        const o = opts[this.pick % opts.length].target;
+        yaw = yawFromDir(o.x - me.pos.x, o.z - me.pos.z);
+      } else yaw = Math.PI / 2;
+    }
+    g.rig.yaw = yaw;
+    g.rig.pitch = this.kind === 'set' ? 0.3 : -0.1;
+    const fx = -Math.sin(yaw);
+    const fz = -Math.cos(yaw);
+    const h = this.kind === 'pass' ? me.height * 0.34 + 0.05 : me.height + 0.17;
+    const fwd = this.kind === 'pass' ? 0.45 : 0.14;
+    const tArr = pred.descendThrough(h, now);
+    if (tArr < 0) return;
+    pred.posAt(tArr, this.b);
+    const sx = this.b.x - fx * fwd;
+    const sz = this.b.z - fz * fwd;
+    const dx = sx - me.pos.x;
+    const dz = sz - me.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 0.05 && !this.pressed) {
+      const m = Math.min(1, d / 0.5);
+      this.mx = (dx / d) * m;
+      this.mz = (dz / d) * m;
+    }
+    if (this.offset === 0 && this.quality !== 'perfect') this.offset = (g.rng.next() * 2 - 1) * (this.quality === 'good' ? 0.08 : 0.25);
+    const spd = ball.speed();
+    const fast = Math.min(1, Math.max(0, (spd - 12) / 10));
+    const lead = this.kind === 'pass' ? TIMING.passLead + (TIMING.digLead - TIMING.passLead) * fast : TIMING.setLead;
+    if (!this.pressed && now >= tArr - lead + this.offset) {
+      g.input.down(key);
+      this.pressed = true;
+      this.pick++;
+    }
+  }
+
+  after(): void {
+    const me = this.g.me;
+    me.cmd.moveX = this.mx;
+    me.cmd.moveZ = this.mz;
+    me.cmd.sprint = Math.hypot(this.mx, this.mz) > 0.9;
   }
 }

@@ -172,6 +172,10 @@ export const TIMING = {
   passPerfect: 0.1,
   passGood: 0.2,
   passHoldMax: 0.75,
+  /** digs (fast incoming balls): shorter ideal lead, similar windows */
+  digLead: 0.13,
+  digPerfect: 0.07,
+  digGood: 0.15,
   setLead: 0.18,
   setPerfect: 0.08,
   setGood: 0.16,

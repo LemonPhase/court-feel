@@ -3,7 +3,7 @@
 Read this first when resuming.
 
 ## Current milestone
-M6 — passing/digging, setting, serving (Free Play, Serve Receive/Dig, Setter Drill).
+M7 — AI teams, position selection, Mini Rally.
 
 ## Done
 - **M1** Court, lighting, camera, FP/TP toggle, capsule movement.
@@ -74,11 +74,24 @@ M6 — passing/digging, setting, serving (Free Play, Serve Receive/Dig, Setter D
     tooled / hitter error / killed. BlockBot autopilot verified (stuffs MB and OH lanes), FP view
     shows your own hands over the net.
 
+- **M6** Passing/digging, setting, serving.
+  - Pass/dig (E): platform zone resolved at the ball's closest approach; graded on platform lead
+    time (0.26 s ideal for serves, shrinking to 0.13 s for hard-driven digs) and centring; error to
+    the setter target scales with grade and the position's ball control. Passes rated 0-3.
+  - Set (RMB when the ball drops onto you from your side): hands zone at closest approach, graded
+    on lead (0.18 s ideal); your gaze picks Outside / Quick / Back set.
+  - Serve (Q toss, LMB hit): standing float (knuckles) or jump serve (topspin) when airborne; aim
+    depth is "how deep into their court" so it works from the end line; floaters keep a tape margin.
+  - Free Play ball machine (1-4: set / free ball / float serve / hard attack, F feed, T auto),
+    Serve Receive/Dig drill (AI server + opponent attack at you, your setter and hitter finish),
+    Setter Drill (three AI hitters vs one AI blocker, hitter highlighted by your gaze).
+  - Pass/set autopilots verified: Perfect passes, Perfect sets to all three options, kills.
+
 ## Known issues
 - Headless Chromium uses SwiftShader, so on-screen FPS in screenshots is not representative.
 
 ## Next steps
-- M6 pass/dig drill, setter drill, free play machine, serving.
+- M7 6v6 AI teams and the Mini Rally loop.
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
@@ -90,6 +103,9 @@ M6 — passing/digging, setting, serving (Free Play, Serve Receive/Dig, Setter D
 - Airborne body yaw is limited to ±0.35 rad from takeoff (the arm aims, not the hips); otherwise
   aiming cross-court mid-air swung the contact point away and made timing feel random.
 - FP aim depth comes from pitch with a range that lets you look up at the ball (looking higher = deeper).
+- Aim depth = depth into the opponent court (not distance from the hitter), so spikes and serves
+  share one mapping and the reticle is always on their side.
+- Zone contacts (pass/set) resolve at the closest approach, not first entry into the reach sphere.
 - Back set (OPP) and quick (MB) are set a bit higher than elite tempo so they are reachable when
   reacting to the set; the MB quick is a "2" ball, not a "1".
 - Key light nearly overhead (arena look, readable shadow under players, no floor hotspot).
