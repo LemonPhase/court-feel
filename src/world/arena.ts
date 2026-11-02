@@ -58,7 +58,7 @@ export class Arena {
       return { mat, m, r, tile };
     };
     // natural wood everywhere
-    const base = mkMat(0xf2e2d0, 0.95);
+    const base = mkMat(0xf2e2d0, 1.4);
     base.m.repeat.set(fullX / 4, fullZ / 4);
     base.r.repeat.copy(base.m.repeat);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(fullX, fullZ), base.mat);
@@ -70,8 +70,8 @@ export class Arena {
     // free zone paint (deep blue, still glossy so reflections read)
     const fzX = COURT.halfWidth + COURT.freeZoneSide;
     const fzZ = COURT.halfLength + COURT.freeZoneEnd;
-    const free = mkMat(0x2a63c4, 0.8, 4, true);
-    const court = mkMat(0xffe0c0, 0.85);
+    const free = mkMat(0x2a63c4, 1.3, 4, true);
+    const court = mkMat(0xffe0c0, 1.2);
     const paint = (mat: THREE.MeshStandardMaterial, x0: number, x1: number, z0: number, z1: number, y: number, tex: THREE.Texture[]) => {
       const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
       // world-aligned UVs so planks line up with the base floor
@@ -450,7 +450,7 @@ export class Arena {
     const hemi = new THREE.HemisphereLight(0xdfe6ff, 0x9a7650, 0.42);
     this.group.add(hemi);
     const key = new THREE.DirectionalLight(0xfff4e6, 2.1);
-    key.position.set(4, 22, 6);
+    key.position.set(1.5, 24, 3.5);
     key.target.position.set(0, 0, 0);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -468,9 +468,9 @@ export class Arena {
     this.keyLight = key;
     // two soft fills from the long sides (no shadows)
     const f1 = new THREE.DirectionalLight(0xdde6ff, 0.55);
-    f1.position.set(-14, 12, -4);
+    f1.position.set(-10, 18, -5);
     const f2 = new THREE.DirectionalLight(0xfff0dd, 0.45);
-    f2.position.set(14, 12, 8);
+    f2.position.set(10, 18, 7);
     this.group.add(f1, f2);
   }
 

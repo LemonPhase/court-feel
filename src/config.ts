@@ -126,8 +126,6 @@ export const POSITIONS: Record<PositionId, PositionStats> = {
 };
 
 export const PLAYER = {
-  /** standing reach as a multiple of height (real athletes ~1.3) */
-  reachPerHeight: 1.29,
   /** ground movement */
   sprintMultiplier: 1.0,
   decel: 20,

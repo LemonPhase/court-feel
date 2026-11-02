@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BALL, COURT, PLAYER, POSITIONS, type PositionId, type PositionStats } from '../config';
+import { standingReach } from '../character/rig';
 import { angleLerp, clamp, clamp01, damp, dirFromYaw, lerp, rightFromYaw, wrapAngle } from '../core/mathx';
 
 export type AState = 'ground' | 'load' | 'air' | 'land';
@@ -95,6 +96,10 @@ export class Athlete {
   readyAmount = 1;
   /** look target for head IK (set by game) */
   readonly lookAt = new THREE.Vector3(0, 2, 0);
+  /** what the arms prepare for while airborne */
+  airIntent: 'attack' | 'block' | 'set' | 'neutral' = 'attack';
+  /** live ball position for reaching (set by the game each frame) */
+  ballPos: THREE.Vector3 | null = null;
   /** assist nudge velocity in air */
   readonly airNudge = new THREE.Vector3();
   jersey = 0;
@@ -108,7 +113,7 @@ export class Athlete {
     this.side = side;
     this.team = side === 1 ? 0 : 1;
     this.height = opts.height ?? this.stats.height;
-    this.standReach = this.height * PLAYER.reachPerHeight;
+    this.standReach = standingReach(this.height);
     this.jumpMax = this.stats.jump;
     this.yaw = side === 1 ? 0 : Math.PI;
     this.prevYaw = this.ryaw = this.yaw;
@@ -118,7 +123,7 @@ export class Athlete {
     this.role = role;
     this.stats = POSITIONS[role];
     this.height = this.stats.height;
-    this.standReach = this.height * PLAYER.reachPerHeight;
+    this.standReach = standingReach(this.height);
     this.jumpMax = this.stats.jump;
   }
 
@@ -379,6 +384,36 @@ export class Athlete {
   interpolate(alpha: number): void {
     this.rpos.lerpVectors(this.prevPos, this.pos, alpha);
     this.ryaw = angleLerp(this.prevYaw, this.yaw, alpha);
+  }
+
+  /** begin an action (animation + contact bookkeeping read it) */
+  startAction(kind: ActionKind, t: number): Action {
+    if (this.action) this.lastAction = this.action;
+    const act: Action = {
+      kind, t0: t, held: true, releaseT: -1, contactT: -1, contactPoint: new THREE.Vector3(),
+      resolved: false, grade: null, tip: false, miss: false, hand: 'R', aim: new THREE.Vector3(0, 0, -1), err: 0, note: '',
+    };
+    this.action = act;
+    return act;
+  }
+
+  endAction(): void {
+    if (this.action) this.lastAction = this.action;
+    this.action = null;
+  }
+
+  /** world position of the ideal spike contact point for the current body position */
+  idealContact(out: THREE.Vector3, at?: THREE.Vector3): THREE.Vector3 {
+    const p = at ?? this.pos;
+    const f = dirFromYaw(this.yaw, _f);
+    const r = rightFromYaw(this.yaw, _r);
+    const H = this.height;
+    // ball centre in front of the hitting shoulder, a palm below full reach
+    return out.set(
+      p.x + r.x * 0.09 * H + f.x * 0.1 * H,
+      p.y + this.standReach - 0.16,
+      p.z + r.z * 0.09 * H + f.z * 0.1 * H,
+    );
   }
 
   /** right / hitting-hand side vector */

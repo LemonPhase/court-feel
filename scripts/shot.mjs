@@ -26,6 +26,7 @@ for (const s of steps) {
   }
   if (s.waitFor) await page.waitForFunction(s.waitFor, null, { timeout: s.timeout ?? 30000, polling: 50 });
   if (s.shot) {
+    await page.evaluate(() => { const g = window.__court; if (g && g.holdRender) g.renderNow(); });
     await page.screenshot({ path: path.join(outDir, s.shot + '.png') });
     console.log('shot', s.shot);
   }

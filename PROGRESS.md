@@ -3,7 +3,7 @@
 Read this first when resuming.
 
 ## Current milestone
-M3 — animated character.
+M4 — spike drill with timing grades.
 
 ## Done
 - **M1** Court, lighting, camera, FP/TP toggle, capsule movement.
@@ -31,17 +31,34 @@ M3 — animated character.
     landing ring, F3 trajectory gizmo. 17 vitest tests (set apex, spike landing, topspin dip, net,
     tape, antenna, women's net, floor bounce, determinism, 120 vs 480 Hz, predictor == live sim).
 
+- **M3** Animated character with approach, jump, arm swing and IK.
+  - `src/character/rig.ts`: 19-bone skeleton with anatomical proportions (shoulder 0.818H, eye 0.935H,
+    arm 0.44H -> standing reach 2.47 m at 1.95 m), lofted skinned limbs/torso with blended joint
+    weights, vertex-coloured kit (jersey, trim, shorts, knee pads, socks, shoes, hair styles).
+  - `src/character/athleteView.ts`: procedural animator. Torso crouch/lean/twist; feet planted with
+    stepping when idle, distance-driven gait (no sliding) when moving, two-step plant on jump load,
+    body-relative tuck in the air, touch-down planting on landing; arms authored as wrist targets
+    relative to the shoulders (ready, run swing, plant-back, double-arm swing up, bow-and-arrow cock,
+    off-arm aims at the ball, Bezier whip to contact, follow-through across the body, block, platform,
+    set, toss, land) solved with analytic two-bone IK; hitting hand IK-locked to the contact point;
+    clavicle shrug; head look-at; FP view-model offsets so block/swing hands are visible.
+  - Verified with side-on screenshot sheets (idle, run, plant, takeoff, cock, swing, contact, follow,
+    land, block, pass) and FP sheets.
+
 ## Known issues
 - Headless Chromium uses SwiftShader, so on-screen FPS in screenshots is not representative.
 
 ## Next steps
-- M3 rigged character, procedural animation, IK.
+- M4 contact system, timing grades, spike drill, HUD.
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,
   and no CC0 pack ships volleyball-specific motions anyway, so the athlete is a procedurally
   built skinned mesh with code-authored poses + IK (see CREDITS.md). Logged per the tech-stack rule.
+- Arm motion is authored as wrist positions + IK rather than joint angles: blends become spatial arcs
+  and the contact-point IK falls out for free.
+- Key light nearly overhead (arena look, readable shadow under players, no floor hotspot).
 - `PCFSoftShadowMap` was removed in three r187; using `PCFShadowMap` with shadow radius.
 - Body yaw always follows camera yaw (both cameras): volleyball players face the play while
   shuffling, and it keeps the aim consistent.
