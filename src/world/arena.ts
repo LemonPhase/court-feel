@@ -245,7 +245,13 @@ export class Arena {
     if (Math.abs(h - this.netTop) < 1e-4) return;
     this.netTop = h;
     this.netGroup.traverse((o) => {
-      if ((o as THREE.Mesh).geometry) (o as THREE.Mesh).geometry.dispose();
+      const m = o as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      const mat = m.material as (THREE.Material & { map?: THREE.Texture | null }) | undefined;
+      if (mat) {
+        mat.map?.dispose();
+        mat.dispose();
+      }
     });
     this.buildNet();
   }
