@@ -9,6 +9,11 @@ import { Post } from '../fx/post';
 import { Athlete } from './athlete';
 import { UserController } from './userController';
 import { DebugOverlay } from '../ui/debug';
+import { BallEntity } from './ballEntity';
+import { DebugGizmos } from './debugGizmos';
+import type { BallEnv } from '../physics/ball';
+import { solveApex } from '../physics/solve';
+import { Rng } from '../core/mathx';
 
 export type GameEvents = {
   toggleCam: { fp: boolean };
@@ -53,6 +58,10 @@ export class Game {
   readonly debug: DebugOverlay;
   athletes: Athlete[] = [];
   me!: Athlete;
+  readonly ball: BallEntity;
+  readonly env: BallEnv = { netTop: 2.43 };
+  readonly rng = new Rng(2024);
+  readonly gizmos: DebugGizmos;
   private views: CapsuleView[] = [];
 
   simTime = 0;
@@ -93,6 +102,9 @@ export class Game {
     this.input = new Input(this.renderer.domElement);
     this.user = new UserController(this.input, this.rig);
     this.debug = new DebugOverlay(container);
+    this.ball = new BallEntity(this.scene);
+    this.ball.hide();
+    this.gizmos = new DebugGizmos(this.scene);
 
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
@@ -119,6 +131,9 @@ export class Game {
     this.rig.shakeScale = s.shake;
     this.arena.setNetHeight(s.womenNet ? COURT.netHeightWomen : COURT.netHeightMen);
     this.rig.netTop = this.arena.netTop;
+    this.env.netTop = this.arena.netTop;
+    if (this.ball) this.ball.version++;
+    if (this.ball) this.ball.showMarker = s.landingMarker;
     this.rig.blockers = this.arena.cameraBlockers;
     this.rig.setMode(s.firstPerson ? 'fp' : 'tp');
     saveSettings(s);
@@ -162,7 +177,11 @@ export class Game {
       if (this.input.consumePress('KeyV')) this.toggleCamera();
       this.user.frame(realDt);
     }
-    if (this.input.consumePress('F3')) this.debug.toggle();
+    if (this.input.consumePress('F3')) {
+      this.debug.toggle();
+      this.gizmos.setVisible(this.debug.visible);
+    }
+    if (this.input.consumePress('KeyR') && !this.paused) this.feed();
 
     if (!this.manual) this.advance(realDt);
 
@@ -215,6 +234,24 @@ export class Game {
   fixedStep(dt: number): void {
     this.simTime += dt;
     for (const a of this.athletes) a.step(dt, this.simTime);
+    this.ball.step(dt, this.env);
+  }
+
+  /** debug feeder: a free ball from the far side towards the user */
+  feed(): void {
+    const me = this.me;
+    const p0 = { x: this.rng.range(-2, 2), y: 1.2, z: -7 * me.side };
+    const target = { x: me.pos.x + this.rng.range(-1.5, 1.5), y: 0.9, z: me.pos.z + this.rng.range(-1.5, 1.5) };
+    const v = { x: 0, y: 0, z: 0 };
+    solveApex(p0, target, 5.5, { x: 0, y: 0, z: 0 }, v);
+    this.ball.launch(p0, v, { x: -8, y: 0, z: 0 }, 0, this.simTime);
+  }
+
+  private ballDebug(): string {
+    const b = this.ball.state;
+    const sp = this.ball.speed();
+    const w = Math.hypot(b.w.x, b.w.y, b.w.z);
+    return `ball ${this.ball.active ? '' : '(idle) '}p ${b.p.x.toFixed(2)},${b.p.y.toFixed(2)},${b.p.z.toFixed(2)} v ${b.v.x.toFixed(1)},${b.v.y.toFixed(1)},${b.v.z.toFixed(1)} |v| ${sp.toFixed(1)} m/s (${(sp * 3.6).toFixed(0)} km/h) spin ${(w / (2 * Math.PI)).toFixed(1)} rps`;
   }
 
   private follow: FollowTarget = { root: new THREE.Vector3(), eye: new THREE.Vector3(), sprint: 0, height: 1.95, side: 1 };
@@ -223,6 +260,10 @@ export class Game {
     const alpha = this.accum / (1 / SIM.hz);
     for (const a of this.athletes) a.interpolate(alpha);
     for (const v of this.views) v.update(this.rig.mode === 'fp');
+    this.ball.interpolate(alpha);
+    this.ball.updateVisuals(realDt, this.simTime, this.env);
+    this.rig.ballPos = this.ball.active ? this.ball.rpos : null;
+    if (this.ball.active) this.gizmos.updatePath(this.ball.ensurePrediction(this.env, this.simTime), this.simTime);
     const me = this.me;
     const f = this.follow;
     f.root.copy(me.rpos);
@@ -244,6 +285,7 @@ export class Game {
         `me ${me.state} pos ${me.pos.x.toFixed(2)},${me.pos.y.toFixed(2)},${me.pos.z.toFixed(2)} spd ${me.speed.toFixed(2)}`,
         `cam ${this.rig.mode} yaw ${this.rig.yaw.toFixed(2)} pitch ${this.rig.pitch.toFixed(2)}`,
         `draws ${this.renderer.info.render.calls} tris ${this.renderer.info.render.triangles}`,
+        this.ballDebug(),
       ],
       window: null,
     });

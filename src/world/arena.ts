@@ -392,7 +392,7 @@ export class Arena {
     const X = COURT.arenaHalfX + 6;
     const Z = COURT.arenaHalfZ + 6;
     const H = 16;
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x141826, roughness: 0.95, side: THREE.BackSide });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x232a3d, roughness: 0.95, side: THREE.BackSide });
     const room = new THREE.Mesh(new THREE.BoxGeometry(X * 2, H, Z * 2), wallMat);
     room.position.y = H / 2 - 0.01;
     this.group.add(room);
@@ -447,7 +447,7 @@ export class Arena {
   }
 
   private buildLights(): void {
-    const hemi = new THREE.HemisphereLight(0xdfe6ff, 0x5a4026, 0.35);
+    const hemi = new THREE.HemisphereLight(0xdfe6ff, 0x9a7650, 0.42);
     this.group.add(hemi);
     const key = new THREE.DirectionalLight(0xfff4e6, 2.1);
     key.position.set(4, 22, 6);
