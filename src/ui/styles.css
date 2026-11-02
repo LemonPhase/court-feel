@@ -1,0 +1,8 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #07080c; color: #f2f2f2;
+  font-family: Inter, 'Segoe UI', Roboto, Helvetica, Arial, system-ui, sans-serif; }
+#app { position: fixed; inset: 0; }
+canvas { display: block; outline: none; }
+.debug { position: absolute; top: 8px; left: 8px; z-index: 30; pointer-events: none;
+  background: rgba(0,0,0,0.55); padding: 8px 10px; border-radius: 6px; font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; }
+.debug pre { margin: 0 0 6px; white-space: pre; }
