@@ -147,6 +147,9 @@ export const PLAYER = {
   apexBand: 1.1,
   landRecover: 0.2,
   bodyTurnRate: 14,
+  /** airborne: max body rotation from the takeoff yaw, and its rate */
+  airTurnMax: 0.35,
+  airTurnRate: 4,
 };
 
 export const TIMING = {
@@ -228,8 +231,8 @@ export const CAMERA = {
   fpBobScale: 0.35,
   fpPitchMin: -1.35,
   fpPitchMax: 1.35,
-  tpDistance: 4.2,
-  tpDistanceMax: 7.2,
+  tpDistance: 3.7,
+  tpDistanceMax: 5.6,
   tpHeight: 1.55,
   tpShoulder: 0.45,
   /** TP look pitch range (negative = looking down) */

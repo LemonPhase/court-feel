@@ -1,0 +1,153 @@
+import type { Grade } from '../game/athlete';
+
+const GRADE_CLASS: Record<Grade, string> = {
+  Perfect: 'g-perfect',
+  Good: 'g-good',
+  Early: 'g-early',
+  Late: 'g-late',
+  Miss: 'g-miss',
+};
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, text = ''): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  e.className = cls;
+  if (text) e.textContent = text;
+  parent.appendChild(e);
+  return e;
+}
+
+/** In-game HUD: timing grade, ball speed, streak, score line, key hints. */
+export class Hud {
+  readonly root: HTMLDivElement;
+  private title: HTMLDivElement;
+  private score: HTMLDivElement;
+  private grade: HTMLDivElement;
+  private gradeText: HTMLDivElement;
+  private gradeSub: HTMLDivElement;
+  private banner: HTMLDivElement;
+  private speedVal: HTMLSpanElement;
+  private streakBox: HTMLDivElement;
+  private streakVal: HTMLSpanElement;
+  private hint: HTMLDivElement;
+  private msg: HTMLDivElement;
+  private cross: HTMLDivElement;
+  private fadeEl: HTMLDivElement;
+  private camTag: HTMLDivElement;
+  private gradeTimer = 0;
+  private bannerTimer = 0;
+  private msgTimer = 0;
+  showHints = true;
+
+  constructor(parent: HTMLElement) {
+    this.root = el('div', 'hud', parent);
+    const top = el('div', 'hud-top', this.root);
+    this.title = el('div', 'hud-title', top);
+    this.score = el('div', 'hud-score', top);
+    this.grade = el('div', 'hud-grade', this.root);
+    this.gradeText = el('div', 'hud-grade-text', this.grade);
+    this.gradeSub = el('div', 'hud-grade-sub', this.grade);
+    this.banner = el('div', 'hud-banner', this.root);
+    const bl = el('div', 'hud-bl', this.root);
+    const sp = el('div', 'hud-speed', bl);
+    this.speedVal = el('span', 'hud-speed-val', sp, '--');
+    el('span', 'hud-speed-unit', sp, 'km/h');
+    el('div', 'hud-speed-label', bl, 'last ball');
+    this.streakBox = el('div', 'hud-streak', this.root);
+    el('span', 'hud-streak-label', this.streakBox, 'STREAK');
+    this.streakVal = el('span', 'hud-streak-val', this.streakBox, '0');
+    this.hint = el('div', 'hud-hint', this.root);
+    this.msg = el('div', 'hud-msg', this.root);
+    this.cross = el('div', 'crosshair', this.root);
+    this.camTag = el('div', 'hud-cam', this.root, 'TP');
+    this.fadeEl = el('div', 'fade', parent);
+  }
+
+  setVisible(v: boolean): void {
+    this.root.style.display = v ? 'block' : 'none';
+  }
+
+  setTitle(t: string): void {
+    this.title.textContent = t;
+  }
+
+  setScore(t: string): void {
+    this.score.textContent = t;
+  }
+
+  setHint(t: string): void {
+    this.hint.innerHTML = this.showHints ? t : '';
+  }
+
+  setCam(fp: boolean): void {
+    this.camTag.textContent = fp ? 'FIRST PERSON' : 'THIRD PERSON';
+    this.camTag.classList.remove('pulse');
+    void this.camTag.offsetWidth;
+    this.camTag.classList.add('pulse');
+  }
+
+  showGrade(g: Grade, sub: string): void {
+    this.gradeText.textContent = g === 'Miss' ? 'MISS' : g.toUpperCase();
+    this.grade.className = 'hud-grade show ' + GRADE_CLASS[g];
+    this.gradeSub.textContent = sub;
+    // restart animation
+    void this.grade.offsetWidth;
+    this.grade.classList.add('pop');
+    this.gradeTimer = g === 'Perfect' ? 1.6 : 1.2;
+  }
+
+  showBanner(text: string, kind: 'good' | 'bad' | 'neutral' = 'neutral'): void {
+    this.banner.textContent = text;
+    this.banner.className = 'hud-banner show b-' + kind;
+    void this.banner.offsetWidth;
+    this.banner.classList.add('pop');
+    this.bannerTimer = 1.5;
+  }
+
+  message(text: string, dur = 1.5): void {
+    this.msg.textContent = text;
+    this.msg.classList.add('show');
+    this.msgTimer = dur;
+  }
+
+  setSpeed(kmh: number | null): void {
+    this.speedVal.textContent = kmh === null ? '--' : kmh.toFixed(0);
+  }
+
+  setStreak(n: number): void {
+    this.streakVal.textContent = String(n);
+    this.streakBox.classList.toggle('hot', n >= 3);
+    this.streakBox.classList.toggle('fire', n >= 6);
+  }
+
+  setCrosshair(visible: boolean, active = false): void {
+    this.cross.style.display = visible ? 'block' : 'none';
+    this.cross.classList.toggle('active', active);
+  }
+
+  /** cut to black, run the (synchronous) teleport, then fade back in */
+  fade(cb: () => void): void {
+    cb();
+    if (this.root.style.display === 'none') return;
+    const f = this.fadeEl;
+    f.style.transition = 'none';
+    f.classList.add('on');
+    void f.offsetWidth;
+    f.style.transition = '';
+    requestAnimationFrame(() => f.classList.remove('on'));
+  }
+
+  update(dt: number): void {
+    if (this.gradeTimer > 0) {
+      this.gradeTimer -= dt;
+      if (this.gradeTimer <= 0) this.grade.classList.remove('show');
+    }
+    if (this.bannerTimer > 0) {
+      this.bannerTimer -= dt;
+      if (this.bannerTimer <= 0) this.banner.classList.remove('show');
+    }
+    if (this.msgTimer > 0) {
+      this.msgTimer -= dt;
+      if (this.msgTimer <= 0) this.msg.classList.remove('show');
+    }
+  }
+}

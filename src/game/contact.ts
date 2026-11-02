@@ -1,0 +1,575 @@
+import * as THREE from 'three';
+import { ASSIST, BALL, CONTACT, COURT, TIMING } from '../config';
+import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
+import { R, topspinFor, type V3 } from '../physics/ball';
+import { solveApex, solveSpeedToFloor } from '../physics/solve';
+import type { Action, Athlete, Grade } from './athlete';
+import type { BallEntity, TouchKind } from './ballEntity';
+
+export interface ContactEvent {
+  athlete: Athlete;
+  kind: TouchKind;
+  grade: Grade | null;
+  note: string;
+  /** outgoing ball speed (m/s) */
+  speed: number;
+  point: THREE.Vector3;
+  /** 0..1 how good it was (drives FX intensity) */
+  quality: number;
+  perfect: boolean;
+  tip: boolean;
+  /** intended target (floor) */
+  target: THREE.Vector3;
+}
+
+export interface IdealInfo {
+  /** absolute sim time of the best contact */
+  t: number;
+  /** distance between ball and ideal contact point at that time */
+  d: number;
+  /** ball position at that time */
+  ball: THREE.Vector3;
+  /** athlete's ideal contact point at that time */
+  point: THREE.Vector3;
+}
+
+export interface ContactHost {
+  ball: BallEntity;
+  simTime: number;
+  env: { netTop: number };
+  aimAssist(a: Athlete): number;
+  /** user aim target on the floor for this athlete (or null for AI-provided) */
+  aimTargetFor(a: Athlete, out: THREE.Vector3): THREE.Vector3;
+  emitContact(ev: ContactEvent): void;
+  /** random number 0..1 */
+  rand(): number;
+  /** where a pass from this athlete should go (ball centre, apex) */
+  passTarget(a: Athlete): { x: number; y: number; z: number; apex: number };
+  /** set choices for a setter (the aim picks one) */
+  setOptions(a: Athlete): SetOption[];
+  /** can this athlete toss a serve now */
+  canServe(a: Athlete): boolean;
+}
+
+export interface SetOption {
+  target: V3;
+  apex: number;
+  hitter: Athlete | null;
+  label: string;
+}
+
+const GRADE_RANK: Record<Grade, number> = { Perfect: 3, Good: 2, Early: 1, Late: 1, Miss: 0 };
+
+/**
+ * Timing + contact resolution for scheduled swings (spikes, serves, tips).
+ * The swing begins on the input frame; its contact is scheduled at the
+ * predicted best moment, clamped to what a real arm swing can stretch to, and
+ * graded on how far the click was from ideal (plus jump timing and reach).
+ */
+export class ContactSystem {
+  constructor(private host: ContactHost) {}
+
+  private _a = new THREE.Vector3();
+  private _p = new THREE.Vector3();
+  private _b: V3 = { x: 0, y: 0, z: 0 };
+
+  /** search the next `horizon` seconds for the moment the ball is closest to the athlete's ideal point */
+  ideal(a: Athlete, from: number, horizon = TIMING.contactLookahead, out?: IdealInfo): IdealInfo | null {
+    const h = this.host;
+    if (!h.ball.active) return null;
+    const pred = h.ball.ensurePrediction(h.env, h.simTime);
+    const res = out ?? { t: 0, d: 1e9, ball: new THREE.Vector3(), point: new THREE.Vector3() };
+    res.d = 1e9;
+    const dt = pred.dt;
+    for (let t = from; t <= from + horizon; t += dt) {
+      if (pred.landT > 0 && t > pred.landT) break;
+      pred.posAt(t, this._b);
+      a.predictAir(t - h.simTime, this._a);
+      a.idealContact(this._p, this._a);
+      const d = Math.hypot(this._b.x - this._p.x, this._b.y - this._p.y, this._b.z - this._p.z);
+      if (d < res.d) {
+        res.d = d;
+        res.t = t;
+        res.ball.set(this._b.x, this._b.y, this._b.z);
+        res.point.copy(this._p);
+      }
+    }
+    return res.d < 1e8 ? res : null;
+  }
+
+  reach(a: Athlete): number {
+    return CONTACT.spikeReach + this.host.aimAssist(a) * ASSIST.reachBonus;
+  }
+
+  /** begin a spike/serve swing on the input frame */
+  startSwing(a: Athlete, opts: { aiErr?: number } = {}): Action {
+    const h = this.host;
+    const t = h.simTime;
+    const act = a.startAction('swing', t);
+    const info = this.ideal(a, t + TIMING.swingMin * 0.5);
+    let tStar = t + TIMING.swingNominal;
+    if (info && info.d < CONTACT.spikeReachStretch + 0.8) tStar = info.t;
+    // AI hitters "click" with a skill-based error instead of reading input
+    const clickT = opts.aiErr !== undefined ? tStar - TIMING.swingNominal + opts.aiErr : t;
+    act.err = clickT + TIMING.swingNominal - tStar;
+    act.contactT = clamp(tStar, t + TIMING.swingMin, t + TIMING.swingMax);
+    if (opts.aiErr !== undefined) act.contactT = clamp(tStar + opts.aiErr * 0.5, t + TIMING.swingMin, t + TIMING.swingMax + 0.1);
+    // provisional contact point for the animator (refined every step)
+    h.ball.ensurePrediction(h.env, t).posAt(act.contactT, this._b);
+    act.contactPoint.set(this._b.x, this._b.y, this._b.z);
+    h.aimTargetFor(a, this._a);
+    act.aim.copy(this._a).sub(act.contactPoint).normalize();
+    return act;
+  }
+
+  /** per fixed step: assist magnet, contact point tracking, resolution */
+  step(athletes: Athlete[]): void {
+    const h = this.host;
+    const t = h.simTime;
+    for (const a of athletes) {
+      const act = a.action;
+      if (!act || act.kind !== 'swing' || act.resolved) continue;
+      // keep the animator's target on the real ball path
+      const pred = h.ball.ensurePrediction(h.env, t);
+      pred.posAt(act.contactT, this._b);
+      act.contactPoint.set(this._b.x, this._b.y, this._b.z);
+      h.aimTargetFor(a, this._a);
+      act.aim.copy(this._a).sub(act.contactPoint).normalize();
+      if (t + 1e-6 >= act.contactT) this.resolveSwing(a, act);
+    }
+  }
+
+  /** air magnet: nudge an airborne hitter towards the ball's path (assist strength) */
+  magnet(a: Athlete): void {
+    const h = this.host;
+    const assist = h.aimAssist(a);
+    a.airNudge.set(0, 0, 0);
+    if (assist <= 0 || a.state !== 'air' || !h.ball.active) return;
+    if (a.action && a.action.resolved) return;
+    const info = this.ideal(a, h.simTime, 0.5);
+    if (!info || info.d > this.reach(a) + 0.7) return;
+    const dt = Math.max(0.08, info.t - h.simTime);
+    const ex = info.ball.x - info.point.x;
+    const ez = info.ball.z - info.point.z;
+    const max = ASSIST.airMagnet * assist;
+    a.airNudge.set(clamp(ex / dt, -max, max), 0, clamp(ez / dt, -max, max));
+  }
+
+  private resolveSwing(a: Athlete, act: Action): void {
+    const h = this.host;
+    act.resolved = true;
+    const ball = h.ball;
+    const bp = ball.pos;
+    a.idealContact(this._p);
+    const dc = Math.hypot(bp.x - this._p.x, bp.y - this._p.y, bp.z - this._p.z);
+    const reach = this.reach(a);
+    const stretch = CONTACT.spikeReachStretch + h.aimAssist(a) * ASSIST.reachBonus;
+    const lastTouchedBySelf = ball.lastTouch?.athlete === a && h.simTime - ball.lastTouch.t < 1.0;
+    if (!ball.active || dc > stretch || lastTouchedBySelf) {
+      act.miss = true;
+      act.grade = 'Miss';
+      act.note = dc > stretch ? (act.err < 0 ? 'Swung early' : 'Swung late') : '';
+      act.contactPoint.copy(this._p);
+      h.emitContact({
+        athlete: a, kind: 'spike', grade: 'Miss', note: act.note, speed: 0, point: this._p.clone(),
+        quality: 0, perfect: false, tip: false, target: new THREE.Vector3(),
+      });
+      return;
+    }
+    // ---- grade
+    const err = act.err;
+    let grade: Grade;
+    let note = '';
+    const ae = Math.abs(err);
+    if (ae <= TIMING.spikePerfect) grade = 'Perfect';
+    else if (ae <= TIMING.spikeGood) grade = 'Good';
+    else grade = err < 0 ? 'Early' : 'Late';
+    if (grade === 'Early') note = 'Swing early';
+    if (grade === 'Late') note = 'Swing late';
+    // jump timing: contact far below the jump peak = jumped too early/late
+    if (a.state === 'air' && a.jumpH > 0.1) {
+      const hf = a.pos.y / a.jumpH;
+      if (hf < 0.72) {
+        const early = a.vel.y < 0;
+        grade = downgrade(grade, early);
+        note = early ? 'Jumped early' : 'Jumped late';
+      }
+    }
+    // stretch for the ball
+    if (dc > reach) {
+      grade = downgrade(grade, err < 0);
+      note = note || 'Reaching';
+    }
+    act.grade = grade;
+    act.note = note;
+    act.contactPoint.set(bp.x, bp.y, bp.z);
+
+    const serve = this.serving === a;
+    this.serving = null;
+    // ---- tap vs hold
+    const heldThrough = act.held;
+    const pressDur = (act.releaseT > 0 ? act.releaseT : h.simTime) - act.t0;
+    const tip = !serve && !heldThrough && pressDur < TIMING.tapThreshold;
+    act.tip = tip;
+
+    // ---- target with timing-dependent error
+    const target = h.aimTargetFor(a, new THREE.Vector3());
+    const rank = GRADE_RANK[grade];
+    const side = -a.side; // the opponent court
+    const spread = rank === 3 ? 0 : rank === 2 ? 0.45 : 1.3;
+    target.x += (h.rand() * 2 - 1) * spread;
+    target.z += (h.rand() * 2 - 1) * spread * 0.6;
+    if (grade === 'Early') target.z += side * 2.2; // contact under the ball: sails long
+    if (grade === 'Late') target.z -= side * 1.8; // over the top: drives down into the net
+    const pos = a.stats;
+    const hf = a.state === 'air' && a.jumpH > 0 ? clamp01(a.pos.y / a.jumpH) : 0.6;
+    const out = { x: 0, y: 0, z: 0 };
+    const w = { x: 0, y: 0, z: 0 };
+    let speed: number;
+    if (tip) {
+      // tip / roll shot: short = tip over the block, deep = topspin roll
+      const depth = Math.abs(target.z);
+      const roll = depth > 4.5;
+      const apex = bp.y + (roll ? 0.9 : 0.45);
+      const dir = { x: target.x - bp.x, z: target.z - bp.z };
+      if (roll) topspinFor(dir.x, dir.z, CONTACT.rollSpin, w);
+      solveApex({ x: bp.x, y: bp.y, z: bp.z }, { x: target.x, y: R, z: target.z }, apex, w, out);
+      speed = Math.hypot(out.x, out.y, out.z);
+      ball.hit(out, w, 0, h.simTime);
+    } else if (serve && a.state !== 'air') {
+      // standing float serve: no spin, knuckles
+      speed = CONTACT.serveFloatSpeed * (rank === 3 ? 1.08 : rank === 2 ? 1 : 0.88) * lerp(0.9, 1.05, pos.power - 0.75);
+      const land = { x: 0, y: 0, z: 0 };
+      solveSpeedToFloor({ x: bp.x, y: bp.y, z: bp.z }, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
+      ball.hit(out, { x: 0, y: 0, z: 0 }, BALL.floatWobble * (rank === 3 ? 1.2 : 0.8), h.simTime);
+    } else {
+      const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
+      const gradeK = serve ? (rank === 3 ? 1.1 : rank === 2 ? 1 : 0.8) : 1;
+      speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1);
+      const spin = serve ? CONTACT.serveJumpSpin : rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk;
+      const land = { x: 0, y: 0, z: 0 };
+      solveSpeedToFloor({ x: bp.x, y: bp.y, z: bp.z }, target.x, target.z, speed, spin, out, w, land);
+      ball.hit(out, w, 0, h.simTime);
+    }
+    ball.lastTouch = { athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', t: h.simTime, side: a.side };
+    a.lastTouchT = h.simTime;
+    const quality = rank === 3 ? 1 : rank === 2 ? 0.6 : 0.3;
+    h.emitContact({
+      athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', grade, note, speed, point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      quality: tip ? 0.2 : quality, perfect: grade === 'Perfect' && !tip, tip, target,
+    });
+  }
+
+  // ================================================================ zone contacts
+
+  private ballIncoming(a: Athlete): boolean {
+    const h = this.host;
+    const lt = h.ball.lastTouch;
+    if (!h.ball.active || h.ball.state.rest) return false;
+    if (lt && lt.athlete === a && h.simTime - lt.t < 0.6) return false;
+    return true;
+  }
+
+  /** platform centre for a pass / dig */
+  platformPoint(a: Athlete, out: THREE.Vector3): THREE.Vector3 {
+    const f = dirFromYaw(a.yaw, _f);
+    return out.set(a.pos.x + f.x * 0.45, a.pos.y + a.height * 0.34, a.pos.z + f.z * 0.45);
+  }
+
+  /** setter's hands point (ball centre at contact) */
+  handsPoint(a: Athlete, out: THREE.Vector3): THREE.Vector3 {
+    const f = dirFromYaw(a.yaw, _f);
+    return out.set(a.pos.x + f.x * 0.14, a.pos.y + a.height + 0.17, a.pos.z + f.z * 0.14);
+  }
+
+  /** E held / tapped: resolve a forearm pass when the ball reaches the platform */
+  tryPass(a: Athlete, act: Action): boolean {
+    const h = this.host;
+    if (!this.ballIncoming(a)) return false;
+    const ball = h.ball;
+    const bp = ball.pos;
+    const P = this.platformPoint(a, this._p);
+    const assist = h.aimAssist(a);
+    const r = CONTACT.passRadius + assist * 0.25;
+    const dx = bp.x - P.x;
+    const dy = bp.y - P.y;
+    const dz = bp.z - P.z;
+    // forgiving vertically for low digs
+    const d = Math.hypot(dx, dy * (dy < 0 ? 0.6 : 1), dz);
+    const approaching = ball.vel.x * -dx + ball.vel.y * -dy + ball.vel.z * -dz > 0 || ball.vel.y < 0;
+    if (d > r || !approaching || bp.y > a.pos.y + a.height * 0.75) return false;
+    const t = h.simTime;
+    const lead = t - act.t0;
+    const incoming = ball.speed();
+    let grade: Grade;
+    let note = '';
+    const diff = lead - TIMING.passLead;
+    if (lead < 0.06) {
+      grade = 'Late';
+      note = 'Platform late';
+    } else if (Math.abs(diff) <= TIMING.passPerfect) grade = 'Perfect';
+    else if (Math.abs(diff) <= TIMING.passGood) grade = 'Good';
+    else {
+      grade = diff < 0 ? 'Late' : 'Early';
+      note = diff < 0 ? 'Platform late' : 'Platform early';
+    }
+    if (d > r * 0.65) {
+      grade = downgrade(grade, false);
+      note = note || 'Off the platform';
+    }
+    const dig = incoming > 14;
+    if (dig && grade === 'Good' && incoming > 22) grade = 'Late';
+    const skill = a.stats.ballControl;
+    const errBase = grade === 'Perfect' ? CONTACT.passErrPerfect : grade === 'Good' ? CONTACT.passErrGood : CONTACT.passErrOk;
+    const err = errBase * (1.3 - skill * 0.5) * (dig ? 1.3 : 1);
+    const T = h.passTarget(a);
+    const ang = h.rand() * Math.PI * 2;
+    const rad = err * Math.sqrt(h.rand());
+    const target = { x: T.x + Math.cos(ang) * rad, y: T.y, z: T.z + Math.sin(ang) * rad * 0.7 };
+    // never pass it over our own end line: keep shanks wild but plausible
+    if (grade !== 'Perfect' && grade !== 'Good' && h.rand() < 0.35) {
+      target.x += (h.rand() * 2 - 1) * 3;
+      target.z += a.side * (h.rand() * 3);
+    }
+    const out = { x: 0, y: 0, z: 0 };
+    const apex = Math.max(T.apex + (grade === 'Perfect' ? 0 : (h.rand() - 0.3) * 1.2), bp.y + 0.6);
+    solveApex({ x: bp.x, y: bp.y, z: bp.z }, target, apex, { x: 0, y: 0, z: 0 }, out);
+    ball.hit(out, { x: (h.rand() - 0.5) * 6, y: 0, z: (h.rand() - 0.5) * 6 }, 0, t);
+    ball.lastTouch = { athlete: a, kind: dig ? 'dig' : 'pass', t, side: a.side };
+    a.lastTouchT = t;
+    act.resolved = true;
+    act.contactT = t;
+    act.grade = grade;
+    act.note = note;
+    act.contactPoint.set(bp.x, bp.y, bp.z);
+    h.emitContact({
+      athlete: a, kind: dig ? 'dig' : 'pass', grade, note, speed: Math.hypot(out.x, out.y, out.z),
+      point: new THREE.Vector3(bp.x, bp.y, bp.z), quality: GRADE_RANK[grade] / 3, perfect: grade === 'Perfect', tip: false,
+      target: new THREE.Vector3(target.x, target.y, target.z),
+    });
+    return true;
+  }
+
+  /** should the right button set (ball dropping onto us from our own side) */
+  wantsSet(a: Athlete): boolean {
+    const h = this.host;
+    if (!this.ballIncoming(a)) return a.role === 'S';
+    const ball = h.ball;
+    const pred = ball.ensurePrediction(h.env, h.simTime);
+    const handsY = a.pos.y + a.height + 0.17;
+    const tc = pred.descendThrough(handsY, h.simTime);
+    if (tc < 0 || tc - h.simTime > 1.6) return false;
+    pred.posAt(tc, this._b);
+    if (this._b.z * a.side < 0.2) return false; // the ball will still be on their side: block
+    const near = Math.hypot(this._b.x - a.pos.x, this._b.z - a.pos.z) < 2.5;
+    const lt = ball.lastTouch;
+    const friendly = !lt || lt.side === a.side || lt.kind === 'feed';
+    return near && friendly;
+  }
+
+  /** RMB set: resolve when the ball drops onto the hands; aim picks the hitter */
+  trySet(a: Athlete, act: Action): boolean {
+    const h = this.host;
+    if (!this.ballIncoming(a)) return false;
+    const ball = h.ball;
+    const bp = ball.pos;
+    const P = this.handsPoint(a, this._p);
+    const r = CONTACT.setRadius + h.aimAssist(a) * 0.2;
+    const d = Math.hypot(bp.x - P.x, bp.y - P.y, bp.z - P.z);
+    if (d > r || ball.vel.y > 0.5) return false;
+    const t = h.simTime;
+    const lead = t - act.t0;
+    const diff = lead - TIMING.setLead;
+    let grade: Grade;
+    let note = '';
+    if (lead < 0.05) {
+      grade = 'Late';
+      note = 'Hands late';
+    } else if (Math.abs(diff) <= TIMING.setPerfect) grade = 'Perfect';
+    else if (Math.abs(diff) <= TIMING.setGood) grade = 'Good';
+    else {
+      grade = diff < 0 ? 'Late' : 'Early';
+      note = diff < 0 ? 'Hands late' : 'Hands early';
+    }
+    if (d > r * 0.7) {
+      grade = downgrade(grade, false);
+      note = note || 'Off the hands';
+    }
+    // choose the option closest to where the user is looking (AI: aiAim)
+    const opts = h.setOptions(a);
+    if (!opts.length) return false;
+    const aimYaw = a.isUser ? this.userAimYaw() : yawFromDir(a.aiAim.x - bp.x, a.aiAim.z - bp.z);
+    let best = opts[0];
+    let bestD = 1e9;
+    for (const o of opts) {
+      const oy = yawFromDir(o.target.x - bp.x, o.target.z - bp.z);
+      const dd = Math.abs(wrapAngle(oy - aimYaw));
+      if (dd < bestD) {
+        bestD = dd;
+        best = o;
+      }
+    }
+    const rank = GRADE_RANK[grade];
+    const err = rank === 3 ? 0.08 : rank === 2 ? 0.3 : 0.85;
+    const tgt = {
+      x: best.target.x + (h.rand() * 2 - 1) * err,
+      y: best.target.y + (h.rand() * 2 - 1) * err * 0.3,
+      z: best.target.z + (h.rand() * 2 - 1) * err * 0.6,
+    };
+    const out = { x: 0, y: 0, z: 0 };
+    solveApex({ x: bp.x, y: bp.y, z: bp.z }, tgt, best.apex + (rank === 3 ? 0 : (h.rand() - 0.5) * 0.6), { x: 0, y: 0, z: 0 }, out);
+    ball.hit(out, { x: 0, y: 0, z: 0 }, 0, t);
+    ball.lastTouch = { athlete: a, kind: 'set', t, side: a.side };
+    a.lastTouchT = t;
+    act.resolved = true;
+    act.contactT = t;
+    act.grade = grade;
+    act.note = note || best.label;
+    act.contactPoint.set(bp.x, bp.y, bp.z);
+    this.lastSet = best;
+    h.emitContact({
+      athlete: a, kind: 'set', grade, note: note || best.label, speed: Math.hypot(out.x, out.y, out.z),
+      point: new THREE.Vector3(bp.x, bp.y, bp.z), quality: rank / 3, perfect: rank === 3, tip: false,
+      target: new THREE.Vector3(tgt.x, tgt.y, tgt.z),
+    });
+    return true;
+  }
+  lastSet: SetOption | null = null;
+  userAimYaw: () => number = () => 0;
+
+  /** RMB block: hands volume above / over the net */
+  tryBlock(a: Athlete, act: Action): boolean {
+    const h = this.host;
+    const ball = h.ball;
+    if (!ball.active || ball.state.rest) return false;
+    const lt = ball.lastTouch;
+    if (!lt || lt.side === a.side) return false; // only block the other team's attack
+    if (lt.athlete === a) return false;
+    const bp = ball.pos;
+    const bv = ball.vel;
+    if (bv.z * a.side <= 0) return false; // moving away from our court
+    if (Math.abs(a.pos.z) > 1.3) return false; // must be at the net
+    const t = h.simTime;
+    const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
+    const assist = h.aimAssist(a);
+    const halfW = CONTACT.blockHalfWidth + assist * 0.12;
+    const top = a.pos.y + a.standReach + 0.04;
+    const bottom = top - CONTACT.blockHeight;
+    // hands reach over the net: from our side up to 0.3m into theirs
+    const pen = (a.state === 'air' ? 0.32 : 0.12) * ext;
+    const zNear = a.side * 0.22;
+    const zFar = -a.side * pen;
+    const zmin = Math.min(zNear, zFar) - R;
+    const zmax = Math.max(zNear, zFar) + R;
+    if (bp.y < bottom - R || bp.y > top + R) return false;
+    if (Math.abs(bp.x - a.pos.x) > halfW + R) return false;
+    if (bp.z < zmin || bp.z > zmax) return false;
+    if (ext < 0.35) return false;
+    // ---- grade
+    let grade: Grade;
+    let note = '';
+    if (a.state === 'air' && a.jumpH > 0.1) {
+      const hf = a.pos.y / a.jumpH;
+      if (hf >= TIMING.blockPerfectHeight && ext > 0.85) grade = 'Perfect';
+      else if (hf >= TIMING.blockGoodHeight) grade = 'Good';
+      else {
+        grade = a.vel.y < 0 ? 'Early' : 'Late';
+        note = a.vel.y < 0 ? 'Jumped early' : 'Jumped late';
+      }
+    } else {
+      grade = 'Late';
+      note = 'Feet on the floor';
+    }
+    const incoming = Math.hypot(bv.x, bv.y, bv.z);
+    const rank = GRADE_RANK[grade];
+    const out = { x: 0, y: 0, z: 0 };
+    let kind: 'stuff' | 'soft' | 'tool' = 'soft';
+    const roll = h.rand();
+    if (rank === 3 || (rank === 2 && roll < 0.5)) {
+      // stuff: driven down into their court, close to the net
+      kind = 'stuff';
+      const sp = Math.max(9, incoming * (rank === 3 ? 0.62 : 0.45));
+      const ang = -lerp(0.75, 1.05, h.rand());
+      const lat = (h.rand() * 2 - 1) * 0.35;
+      out.x = bv.x * 0.2 + Math.sin(lat) * sp * 0.4;
+      out.y = Math.sin(ang) * sp;
+      out.z = -a.side * Math.cos(ang) * sp;
+    } else if (rank >= 2 || roll < 0.55) {
+      // soft block: ball pops up, slowed, usually stays playable on our side
+      kind = 'soft';
+      out.x = bv.x * 0.3 + (h.rand() * 2 - 1) * 1.2;
+      out.y = 3.2 + h.rand() * 2.5;
+      out.z = bv.z * 0.18;
+    } else {
+      // tooled: off the fingers and wide
+      kind = 'tool';
+      const sgn = h.rand() < 0.5 ? -1 : 1;
+      out.x = sgn * (4 + h.rand() * 4);
+      out.y = 2 + h.rand() * 4;
+      out.z = bv.z * 0.55;
+    }
+    ball.hit(out, { x: 0, y: 0, z: 0 }, 0, t);
+    // pop the ball out of the hands volume so it doesn't re-collide
+    ball.state.p.z = kind === 'stuff' ? -a.side * (R + 0.02) : ball.state.p.z;
+    ball.lastTouch = { athlete: a, kind: 'block', t, side: a.side };
+    a.lastTouchT = t;
+    act.resolved = true;
+    act.contactT = t;
+    act.grade = grade;
+    act.note = kind === 'stuff' ? 'Stuff!' : kind === 'soft' ? 'Soft block' : 'Tooled';
+    act.contactPoint.set(bp.x, bp.y, bp.z);
+    h.emitContact({
+      athlete: a, kind: 'block', grade, note: note || act.note, speed: Math.hypot(out.x, out.y, out.z),
+      point: new THREE.Vector3(bp.x, bp.y, bp.z), quality: kind === 'stuff' ? (rank === 3 ? 1 : 0.7) : 0.3,
+      perfect: kind === 'stuff' && rank === 3, tip: false, target: new THREE.Vector3(),
+    });
+    return true;
+  }
+
+  /** Q: toss for a serve (ball appears in the tossing hand) */
+  serveToss(a: Athlete): boolean {
+    const h = this.host;
+    if (!h.canServe(a)) return false;
+    if (a.state !== 'ground') return false;
+    const f = dirFromYaw(a.yaw, _f);
+    const r = rightFromYaw(a.yaw, _r);
+    const p = { x: a.pos.x + f.x * 0.3 + r.x * 0.12, y: a.pos.y + a.height * 0.82, z: a.pos.z + f.z * 0.3 + r.z * 0.12 };
+    // toss to ~1.1 m above standing reach, drifting forward for a jump serve approach
+    const apex = a.standReach + 1.15;
+    const vy = Math.sqrt(2 * BALL.gravity * (apex - p.y));
+    const tUp = vy / BALL.gravity;
+    const fwd = 0.25 / (tUp * 2);
+    h.ball.launch(p, { x: f.x * fwd + r.x * 0.05, y: vy, z: f.z * fwd + r.z * 0.05 }, { x: 0, y: 0, z: 0 }, 0, h.simTime);
+    h.ball.lastTouch = { athlete: a, kind: 'feed', t: h.simTime - 1, side: a.side };
+    a.startAction('toss', h.simTime);
+    this.serving = a;
+    return true;
+  }
+  /** the athlete whose toss is in the air (next swing is a serve) */
+  serving: Athlete | null = null;
+}
+
+const _f = new THREE.Vector3();
+const _r = new THREE.Vector3();
+
+function downgrade(g: Grade, early: boolean): Grade {
+  if (g === 'Perfect') return 'Good';
+  if (g === 'Good') return early ? 'Early' : 'Late';
+  return g;
+}
+
+/** map the camera look onto a floor target in the opponent court */
+export function aimTargetFromLook(
+  fromX: number, fromZ: number, yaw: number, pitch: number, fp: boolean, out: THREE.Vector3,
+): THREE.Vector3 {
+  // FP lets you look up at the ball while aiming deep; TP looks down at the court
+  const lo = fp ? -0.55 : -0.75;
+  const hi = fp ? 0.75 : 0.05;
+  const t = clamp01((pitch - lo) / (hi - lo));
+  const dist = lerp(2.4, 11.5, t);
+  const dx = -Math.sin(yaw);
+  const dz = -Math.cos(yaw);
+  out.set(fromX + dx * dist, R, fromZ + dz * dist);
+  out.x = clamp(out.x, -COURT.halfWidth - 3, COURT.halfWidth + 3);
+  return out;
+}

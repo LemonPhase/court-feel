@@ -3,7 +3,7 @@
 Read this first when resuming.
 
 ## Current milestone
-M4 — spike drill with timing grades.
+M5 — blocking and the block drill.
 
 ## Done
 - **M1** Court, lighting, camera, FP/TP toggle, capsule movement.
@@ -45,11 +45,28 @@ M4 — spike drill with timing grades.
   - Verified with side-on screenshot sheets (idle, run, plant, takeoff, cock, swing, contact, follow,
     land, block, pass) and FP sheets.
 
+- **M4** Spike drill end to end with timing grades.
+  - `src/game/contact.ts`: on click the swing starts immediately; the contact is scheduled at the
+    predicted best moment (ball vs. the athlete's ideal contact point along its ballistic path),
+    stretched/clamped to a 45–170 ms arm swing. Grade = click error (Perfect ≤30 ms, Good ≤70 ms,
+    else Early/Late) downgraded for jump timing (contact below 72% of the jump) and reaching. Tap
+    released before contact = tip (short) / roll shot (deep). Early sails long, Late drives into the
+    net. Aim = camera yaw + pitch-mapped depth with a floor reticle. Air magnet + reach bonus scale
+    with the aim-assist setting (0 disables both). Also pass/dig, set, block and serve-toss contacts.
+  - `src/game/judge.ts` line judge (in/out, antenna, outside antennae, under the net).
+  - Setter AI (reads the ball, gets under it, solved set to the hitter's lane), coach feeder,
+    spike drill with target zones, score, streak and per-position lanes (OH 4, OPP red, MB 2, S
+    attack-on-two, L pipe). HUD (grade popup, km/h, streak, score, key hints, crosshair), start
+    screen with position + drill select, pause + settings panel, attract mode behind the menu.
+  - `src/game/bot.ts` autopilot: plans the approach by forward-simulating the athlete's own
+    kinematics, presses Space/LMB through the real input path. Perfect bot: 5/5 Perfect for every
+    position; tip bot verified; sloppy bot produces Early/Late/Miss.
+
 ## Known issues
 - Headless Chromium uses SwiftShader, so on-screen FPS in screenshots is not representative.
 
 ## Next steps
-- M4 contact system, timing grades, spike drill, HUD.
+- M5 block drill (AI opponent setter + hitter), block timing grades.
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
@@ -58,6 +75,11 @@ M4 — spike drill with timing grades.
   built skinned mesh with code-authored poses + IK (see CREDITS.md). Logged per the tech-stack rule.
 - Arm motion is authored as wrist positions + IK rather than joint angles: blends become spatial arcs
   and the contact-point IK falls out for free.
+- Airborne body yaw is limited to ±0.35 rad from takeoff (the arm aims, not the hips); otherwise
+  aiming cross-court mid-air swung the contact point away and made timing feel random.
+- FP aim depth comes from pitch with a range that lets you look up at the ball (looking higher = deeper).
+- Back set (OPP) and quick (MB) are set a bit higher than elite tempo so they are reachable when
+  reacting to the set; the MB quick is a "2" ball, not a "1".
 - Key light nearly overhead (arena look, readable shadow under players, no floor hotspot).
 - `PCFSoftShadowMap` was removed in three r187; using `PCFShadowMap` with shadow radius.
 - Body yaw always follows camera yaw (both cameras): volleyball players face the play while

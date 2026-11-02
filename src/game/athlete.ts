@@ -76,6 +76,7 @@ export class Athlete {
   jumpH = 0;
   takeoffT = 0;
   takeoffY = 0;
+  takeoffYaw = 0;
   peakY = 0;
   airT = 0;
   landImpact = 0;
@@ -98,6 +99,8 @@ export class Athlete {
   readonly lookAt = new THREE.Vector3(0, 2, 0);
   /** what the arms prepare for while airborne */
   airIntent: 'attack' | 'block' | 'set' | 'neutral' = 'attack';
+  /** AI attack / pass target */
+  readonly aiAim = new THREE.Vector3(0, 0, -6);
   /** live ball position for reaching (set by the game each frame) */
   ballPos: THREE.Vector3 | null = null;
   /** assist nudge velocity in air */
@@ -199,6 +202,7 @@ export class Athlete {
     this.state = 'air';
     this.stateT = 0;
     this.takeoffT = this.time;
+    this.takeoffYaw = this.yaw;
     this.takeoffY = this.pos.y;
     this.peakY = this.pos.y;
     this.airT = 0;
@@ -264,11 +268,16 @@ export class Athlete {
     const st = this.stats;
     const cmd = this.cmd;
 
-    // ---- facing
+    // ---- facing (in the air the body barely rotates: the arm aims, not the hips)
     if (cmd.faceYaw !== null) {
-      const rate = this.state === 'air' ? PLAYER.bodyTurnRate * 0.5 : PLAYER.bodyTurnRate;
-      this.yaw = angleLerp(this.yaw, cmd.faceYaw, damp(rate, dt));
-      this.yaw = wrapAngle(this.yaw);
+      let want = cmd.faceYaw;
+      let rate = PLAYER.bodyTurnRate;
+      if (this.state === 'air') {
+        const d = clamp(wrapAngle(want - this.takeoffYaw), -PLAYER.airTurnMax, PLAYER.airTurnMax);
+        want = this.takeoffYaw + d;
+        rate = PLAYER.airTurnRate;
+      }
+      this.yaw = wrapAngle(angleLerp(this.yaw, want, damp(rate, dt)));
     }
 
     // ---- horizontal movement
