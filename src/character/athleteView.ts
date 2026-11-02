@@ -324,7 +324,7 @@ export class AthleteView {
       }
     }
     // wind-up: chest turns away and the back arches as the charge builds
-    if (act && act.kind === 'windup') {
+    if (act && act.kind === 'windup' && st !== 'load') {
       const ch = windupCharge(act.t0, tr);
       const p = smooth01((tr - act.t0) / 0.12);
       chestY = lerp(chestY, -0.5 - 0.22 * ch, p);
@@ -741,7 +741,8 @@ export class AthleteView {
           if (ikWorld) ikBlend = reachBlend;
         }
       }
-      if (act && act.kind === 'windup') {
+      // (during the plant the arms still swing back; the wind-up shows from takeoff)
+      if (act && act.kind === 'windup' && st !== 'load') {
         const p = smooth01((tr - act.t0) / 0.12);
         if (hitting) {
           this.cockAt(windupCharge(act.t0, tr), _a, _b);

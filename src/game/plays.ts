@@ -1,4 +1,4 @@
-import type { PositionId } from '../config';
+import { PLAYER, type PositionId } from '../config';
 import { clamp } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import { predictJump } from '../ai/approach';
@@ -65,9 +65,12 @@ export function setterTouchY(setter: Athlete | null | undefined): number {
   return setter?.isUser ? hands + 0.05 : hands + 0.45;
 }
 
-/** where a quick is hit for a setter touching the ball at x: just in front of them, along the net */
-export function quickSpot(setterX: number, side: 1 | -1): { x: number; z: number } {
-  return { x: clamp(setterX - side * QUICK.inFront, -2.6, 2.6), z: LANES.MB.z * side };
+/**
+ * Where a quick is hit for a setter touching the ball at x: `inFront` metres
+ * along the net in front of them (negative = behind the setter's back).
+ */
+export function quickSpot(setterX: number, side: 1 | -1, inFront = QUICK.inFront): { x: number; z: number } {
+  return { x: clamp(setterX - side * inFront, -3.2, 3.6), z: LANES.MB.z * side };
 }
 
 export interface QuickSet extends SetOption {
@@ -83,16 +86,55 @@ export interface QuickSet extends SetOption {
  * meets the hitter, not the other way round. Otherwise it goes to the usual
  * spot on a default tempo, and they will be late.
  */
-export function quickSetFor(hitter: Athlete, now: number, from: V3, releaseAt?: number): QuickSet {
-  const j = predictJump(hitter, now, releaseAt ?? now, QUICK.minT);
+export function quickSetFor(hitter: Athlete, now: number, from: V3, releaseAt?: number, inFront = QUICK.inFront): QuickSet {
+  // still in the plant with no known release: expect a full load (what the load meter teaches)
+  const rel = releaseAt ?? (hitter.state === 'load' ? now + Math.max(0, PLAYER.loadMax - 0.02 - hitter.loadT) : now);
+  const j = predictJump(hitter, now, rel, QUICK.minT);
   if (j && j.t - now <= QUICK.maxT) {
     const c = j.contact;
     return { target: { x: c.x, y: c.y, z: c.z }, apex: c.y, hitter, label: 'Quick', time: j.t - now, onTime: true };
   }
-  const q = quickSpot(from.x, hitter.side);
+  const q = quickSpot(from.x, hitter.side, inFront);
   const y = attackHeight(hitter);
   return { target: { x: q.x, y, z: q.z }, apex: y + LANES.MB.apexAbove, hitter, label: 'Quick', time: QUICK.lateT, onTime: false };
 }
+
+/**
+ * Set calls a hitter can ask for in the spike drill (keys 1-3). Each is a
+ * lane: where the ball is met, how high the set goes above the contact (the
+ * tempo) and where the approach starts. Quicks give `inFront` instead: the
+ * hitter is up with the setter's touch and the set meets them that far along
+ * the net from the setter (negative = behind the setter).
+ */
+export interface SetPlay {
+  name: string;
+  lane: AttackLane;
+  inFront?: number;
+}
+
+export const SET_PLAYS: Partial<Record<PositionId, SetPlay[]>> = {
+  OH: [
+    { name: 'High ball', lane: LANES.OH },
+    // second tempo: a flat fast set to the pin, you are already running when it leaves the hands
+    { name: 'Go (fast to the pin)', lane: { ...LANES.OH, x: -4.0, z: 0.85, apexAbove: 0.45, sx: -4.85, sz: 3.5, label: 'Outside go' } },
+    // run in from outside and hit between the middle and the pin
+    { name: '3 ball (inside)', lane: { ...LANES.OH, x: -2.1, z: 0.8, apexAbove: 0.75, sx: -4.6, sz: 3.7, label: 'Inside 3 ball' } },
+  ],
+  MB: [
+    { name: '1 (quick in front)', lane: LANES.MB, inFront: QUICK.inFront },
+    // shoot ("31"): the middle runs out towards the outside and the setter fires it flat to them
+    { name: 'Shoot (31)', lane: { ...LANES.MB, x: -1.4, sx: 0.0, sz: 2.9, label: 'Middle shoot (31)' }, inFront: 2.4 },
+    // back quick: up behind the setter's back
+    { name: 'Back quick', lane: { ...LANES.MB, x: 2.3, sx: 1.0, sz: 2.9, label: 'Middle back quick' }, inFront: -1.2 },
+  ],
+  OPP: [
+    { name: 'Back set (pin)', lane: LANES.OPP },
+    // fast back set: low and flat to the right pin
+    { name: 'Fast back', lane: { ...LANES.OPP, x: 3.95, z: 0.85, apexAbove: 0.45, sx: 4.7, sz: 3.3, label: 'Opposite fast back' } },
+    // close behind the setter
+    { name: 'Back 2 (behind the setter)', lane: { ...LANES.OPP, x: 2.45, z: 0.8, apexAbove: 0.6, sx: 3.7, sz: 3.2, label: 'Opposite back 2' } },
+  ],
+};
 
 /** height of the ball centre at the top of a good approach jump */
 export function attackHeight(a: Athlete): number {

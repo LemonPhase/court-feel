@@ -163,6 +163,14 @@ export function planQuick(
   }));
 }
 
+/** plan to meet a ball that will be at `contact` at time `tc` (a set not yet made: tempo balls) */
+export function planToPoint(
+  me: Athlete, now: number, contact: THREE.Vector3, tc: number, runYaw: number, airYaw: number,
+  hold = PLAYER.loadMax - 0.02,
+): ApproachPlan | null {
+  return planTo(me, now, runYaw, airYaw, hold, () => ({ tc, contact }));
+}
+
 export interface JumpPrediction {
   /** absolute sim time of the predicted contact moment */
   t: number;

@@ -40,6 +40,7 @@ mouse (pointer lock). **Esc** pauses and opens settings.
 | Q | Serve toss (Free Play, feed 5 = serve practice), then hold and release Left mouse to hit — standing = float serve, jump = topspin serve |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Reset the current rep |
+| 1 / 2 / 3 | Spike Drill: set call for the next ball (outside, middle, opposite — see below) |
 | Esc | Pause / settings |
 | F3 | Debug overlay: FPS, physics step time, ball state, timing window, contact gizmos |
 | Free Play only | 1-5 feed type (set / free ball / float serve / hard attack / **serve practice**), F feed now, T auto-feed |
@@ -77,6 +78,17 @@ power and ball control, where drills start you, and what the AI asks of you.
    you hit a real quick: run in as the pass goes up and leave the floor as the
    setter touches the ball — the set is sent to where your hand will be at the
    top of your jump (jump late and the quick comes to the usual spot, too fast).
+   Keys **1 / 2 / 3** call the set:
+
+   | | 1 | 2 | 3 |
+   |---|---|---|---|
+   | Outside | High ball to the pin | Go: fast and flat to the pin | 3 ball: run inside, hit between middle and pin |
+   | Middle | 1: quick in front of the setter | Shoot (31): out towards the outside, fired flat | Back quick: behind the setter |
+   | Opposite | Back set to the pin | Fast back set | Back 2: close behind the setter |
+
+   For fast sets the GO cue comes off the pass, because the run has to start
+   before the setter touches the ball. Target zones follow your position: line
+   and cross are mirrored for the opposite, and the middle aims at zone 1 or 5.
 3. **Block Drill** — the opponent setter sets one of three hitters. Read it,
    shuffle, hands up, time the jump. Stuffs, soft blocks and touches score.
    Their middle runs a quick on every ball: to stop it, jump with them
@@ -137,13 +149,15 @@ the pause menu and persist in `localStorage`.
 
 ## Testing
 
-* `npm test` — 43 Vitest tests: set apex, spike landing point, topspin dip,
+* `npm test` — 48 Vitest tests: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
   acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the
   middle leaves the floor on the setter's touch and the set meets the hand at
   the top of the jump), the spike timing grades driven through the real
-  contact system (press, hold, release), and hold-to-charge power.
+  contact system (press, hold, release), hold-to-charge power, the set calls
+  (pins inside the antennae, shoot / back quick geometry, a back quick meeting
+  the hitter), middles hitting zone 1 / 5, and hit-sound power.
 * `npm run e2e` — starts Vite, loads the game in headless Chromium, runs every
   drill with an autopilot that plays through the real input path (it plans
   its approach by forward-simulating the athlete), screenshots first- and

@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import { COURT } from '../../config';
+import { COURT, type PositionId } from '../../config';
 import { R } from '../../physics/ball';
 import { solveApex } from '../../physics/solve';
 import { SetterBrain } from '../../ai/setter';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import { outcomeLabel, type Outcome } from '../judge';
-import { attackHeight, laneFor, quickSetFor, quickSpot, SETTER_SPOT, SETTER_TARGET, setterTouchY } from '../plays';
+import { attackHeight, laneFor, quickSetFor, quickSpot, SET_PLAYS, SETTER_SPOT, SETTER_TARGET, setterTouchY, type AttackLane, type SetPlay } from '../plays';
 import { kbd, makeFloorRing, Mode, ZoneMarker } from './mode';
-import { planApproach, planQuick } from '../../ai/approach';
+import { planApproach, planQuick, planToPoint, type ApproachPlan } from '../../ai/approach';
 
 interface Zone {
   name: string;
@@ -18,7 +18,7 @@ interface Zone {
   z1: number;
 }
 
-/** opponent-court target zones (far side, z < 0) */
+/** opponent-court target zones (far side, z < 0) for a left-side attacker */
 const ZONES: Zone[] = [
   { name: 'Deep line', x0: -4.5, x1: -1.8, z0: -9, z1: -6 },
   { name: 'Deep cross', x0: 1.8, x1: 4.5, z0: -9, z1: -6 },
@@ -26,6 +26,18 @@ const ZONES: Zone[] = [
   { name: 'Sharp cut', x0: 1.5, x1: 4.5, z0: -4.2, z1: -1.5 },
   { name: 'Line short', x0: -4.5, x1: -2, z0: -4.5, z1: -2 },
 ];
+
+/** target zones for this position: mirrored for right-side attackers; a middle hits zone 1 or 5 */
+function zonesFor(pos: PositionId): Zone[] {
+  if (pos === 'MB') {
+    return [
+      { name: 'Zone 1 (deep left)', x0: -4.5, x1: -1.5, z0: -9, z1: -5.6 },
+      { name: 'Zone 5 (deep right)', x0: 1.5, x1: 4.5, z0: -9, z1: -5.6 },
+    ];
+  }
+  if (pos === 'OPP' || pos === 'S') return ZONES.map((z) => ({ ...z, x0: -z.x1, x1: -z.x0 }));
+  return ZONES;
+}
 
 type Phase = 'intro' | 'feed' | 'live' | 'result';
 
@@ -50,11 +62,43 @@ export class SpikeDrill extends Mode {
   private plannedFor: unknown = null;
   private ringPulse = 0;
   private tmp = { x: 0, y: 0, z: 0 };
+  /** set calls for this position (keys 1-3), if it has any */
+  private plays: SetPlay[] | null = null;
+  private callIdx = 0;
+  /** an approach planned before the set (quick / tempo balls) for the autopilot */
+  earlyPlan: ApproachPlan | null = null;
+  earlyFor: unknown = null;
+
+  private get play(): SetPlay | null {
+    return this.plays ? this.plays[this.callIdx] : null;
+  }
+
+  /** the lane of the current set call */
+  private get lane(): AttackLane {
+    return this.play?.lane ?? laneFor(this.position, 1);
+  }
+
+  /** choose the set call for the next ball (0-based) */
+  selectCall(i: number): void {
+    if (!this.plays || i < 0 || i >= this.plays.length) return;
+    this.callIdx = i;
+    const g = this.g;
+    g.hud.setTitle('Spike Drill · ' + this.lane.label);
+    g.hud.message(`Next set: ${i + 1} · ${this.plays[i].name}`, 1.6);
+    this.updateScore();
+    // not tossed yet: head to the new approach start
+    if ((this.phase === 'intro' || this.phase === 'feed') && !this.tossed) {
+      const l = this.lane;
+      if (Math.hypot(g.me.pos.x - l.sx, g.me.pos.z - l.sz) > 0.6) g.returnUser(l.sx, l.sz, 0);
+    }
+  }
 
   setup(): void {
     const g = this.g;
     const me = g.me;
-    const lane = laneFor(this.position, 1);
+    this.plays = SET_PLAYS[this.position] ?? null;
+    this.callIdx = 0;
+    const lane = this.lane;
     g.placeUser(lane.sx, lane.sz, 0);
     // setter (unless the user is the setter: then the coach passes straight to you)
     if (this.position !== 'S') {
@@ -66,9 +110,10 @@ export class SpikeDrill extends Mode {
       const b = new SetterBrain(s, SETTER_SPOT, Math.PI / 2);
       b.shouldPlay = () => !this.userTouched && this.g.ball.lastTouch?.kind === 'feed';
       b.call = () => {
-        // the middle's quick meets you at the top of your jump if you went with the setter's touch
-        if (this.position === 'MB') return quickSetFor(me, this.g.simTime, this.g.ball.pos);
-        const target = laneFor(this.position, 1);
+        // a quick meets you at the top of your jump if you went with the setter's touch
+        const play = this.play;
+        if (play?.inFront !== undefined) return quickSetFor(me, this.g.simTime, this.g.ball.pos, undefined, play.inFront);
+        const target = this.lane;
         const y = attackHeight(me);
         return { target: { x: target.x, y, z: target.z }, apex: y + target.apexAbove, hitter: me };
       };
@@ -91,30 +136,35 @@ export class SpikeDrill extends Mode {
     this.t = 0;
     g.hud.message(
       this.position === 'MB'
-        ? 'Quick: run on the pass · jump as the setter touches it · hold LMB, release to hit'
-        : 'Approach: Shift + W · plant: Space · hold LMB to wind up, release to hit',
-      3.4,
+        ? 'Quick: run on the pass · jump as the setter touches it · hold LMB, release to hit · 1-3 set call'
+        : this.plays
+          ? 'Approach: Shift + W · plant: Space · hold LMB, release to hit · 1-3 set call'
+          : 'Approach: Shift + W · plant: Space · hold LMB to wind up, release to hit',
+      3.6,
     );
   }
 
   private pickZone(): void {
     const prev = this.zone;
-    do this.zone = ZONES[Math.floor(this.g.rng.next() * ZONES.length)];
-    while (prev && this.zone === prev);
+    const zones = zonesFor(this.position);
+    do this.zone = zones[Math.floor(this.g.rng.next() * zones.length)];
+    while (prev && this.zone === prev && zones.length > 2);
     const z = this.zone;
     this.zoneMarker.set(z.x0, z.x1, z.z0, z.z1);
   }
 
   private updateScore(): void {
-    this.g.hud.setScore(`${this.score} pts · rep ${this.reps} · target: ${this.zone.name}`);
+    const call = this.play ? ` · set ${this.callIdx + 1}: ${this.play.name}` : '';
+    this.g.hud.setScore(`${this.score} pts · rep ${this.reps}${call} · target: ${this.zone.name}`);
   }
 
   hint(): string {
     const me = this.g.me;
     if (me.state === 'air' || me.action?.kind === 'windup') return `hold ${kbd('LMB')} = wind up (longer = harder) · release = hit · tap = tip &nbsp; aim with the mouse`;
     if (me.state === 'load') return `release ${kbd('Space')} to jump`;
-    if (this.position === 'MB') return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch · ${kbd('V')} camera · ${kbd('R')} reset rep`;
-    return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump · ${kbd('V')} camera · ${kbd('R')} reset rep`;
+    const calls = this.plays ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call` : '';
+    if (this.play?.inFront !== undefined) return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch${calls} · ${kbd('V')} camera · ${kbd('R')} reset rep`;
+    return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump${calls} · ${kbd('V')} camera · ${kbd('R')} reset rep`;
   }
 
   restartRep(): void {
@@ -156,27 +206,39 @@ export class SpikeDrill extends Mode {
         break;
     }
     // approach ring: where your feet should be when you hit (fades once the set is up)
-    const lane = laneFor(this.position, 1);
+    const lane = this.lane;
     const me = g.me;
+    const play = this.play;
+    const quick = play?.inFront !== undefined;
+    // fast sets (quicks, go / fast back) need the run to start before the set: plan them from the pass
+    const early = !!play && (quick || lane.apexAbove < 1.0);
     const off = new THREE.Vector3();
     me.idealContact(off, new THREE.Vector3(0, 0, 0)).setY(0);
-    const quick = this.position === 'MB';
-    const spot = quick ? quickSpot(SETTER_TARGET.x, 1) : lane;
+    const spot = quick ? quickSpot(SETTER_TARGET.x, 1, play!.inFront) : lane;
     this.approachRing.position.set(spot.x - off.x, 0.011, spot.z - off.z);
-    // GO cue: plan the ideal approach the moment the set leaves the setter's hands
-    // (a quick goes on the pass: you leave the floor as the setter touches it)
+    // GO cue: when a perfect approach would start
     const lt = g.ball.lastTouch;
-    const setUp = g.ball.active && lt && (quick ? lt.kind === 'feed' : lt.kind === 'set' || (this.position === 'S' && lt.kind === 'feed'));
+    const setUp = g.ball.active && lt && (early ? lt.kind === 'feed' : lt.kind === 'set' || (this.position === 'S' && lt.kind === 'feed'));
     if (setUp && lt !== this.plannedFor && me.state === 'ground') {
       this.plannedFor = lt;
       const pred = g.ball.ensurePrediction(g.env, g.simTime);
-      let plan = null;
-      if (quick) {
+      let plan: ApproachPlan | null = null;
+      if (early) {
         const tSet = pred.descendThrough(setterTouchY(this.setter), g.simTime);
         if (tSet > 0) {
           pred.posAt(tSet, this.tmp);
-          plan = planQuick(me, g.simTime, quickSpot(this.tmp.x, 1), tSet, 0, 0);
+          if (quick) plan = planQuick(me, g.simTime, quickSpot(this.tmp.x, 1, play!.inFront), tSet, 0, 0);
+          else {
+            // where and when the set will meet you (the setter's solved arc)
+            const y = attackHeight(me);
+            const contact = new THREE.Vector3(lane.x, y, lane.z);
+            const v = { x: 0, y: 0, z: 0 };
+            const arc = solveApex({ ...this.tmp }, contact, y + lane.apexAbove, { x: 0, y: 0, z: 0 }, v);
+            plan = planToPoint(me, g.simTime, contact, tSet + arc.T, 0, 0);
+          }
         }
+        this.earlyPlan = plan;
+        this.earlyFor = lt;
       } else plan = planApproach(me, pred, g.simTime, 0, 0);
       this.goAt = plan && plan.error < 0.6 ? plan.tStart : -1;
     }
@@ -195,6 +257,9 @@ export class SpikeDrill extends Mode {
 
   frame(dt: number): void {
     this.zoneMarker.update(dt);
+    if (this.plays) {
+      for (let i = 0; i < this.plays.length; i++) if (this.g.input.consumePress('Digit' + (i + 1))) this.selectCall(i);
+    }
   }
 
   private feedBall(): void {
@@ -278,7 +343,7 @@ export class SpikeDrill extends Mode {
   private nextRep(): void {
     const g = this.g;
     g.judge.disarm();
-    const lane = laneFor(this.position, 1);
+    const lane = this.lane;
     const me = g.me;
     g.ball.hide();
     if (this.setter) this.setter.place(SETTER_SPOT.x, SETTER_SPOT.z, Math.PI / 2);

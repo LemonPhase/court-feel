@@ -150,7 +150,7 @@ export class HitterBrain implements Brain {
     }
   }
 
-  /** pick a shot: line, cross or seam, steering away from where the block is */
+  /** pick a shot: line, cross or seam (a middle: zone 1 or 5), steering away from where the block is */
   chooseAim(g: Game, hitX: number): THREE.Vector3 {
     const a = this.athlete;
     const opp = -a.side; // the other court
@@ -158,12 +158,20 @@ export class HitterBrain implements Brain {
     // line = straight down our sideline; cross = to the far corner
     const lineX = clamp(hitX, -hw + 0.6, hw - 0.6);
     const crossX = -Math.sign(hitX || 1) * (hw - 1.0);
-    const options = [
-      { x: lineX, z: opp * 7.6, w: 1, name: 'line' },
-      { x: crossX, z: opp * 6.8, w: 1.2, name: 'cross' },
-      { x: crossX * 0.9, z: opp * 3.6, w: 0.5, name: 'sharp' },
-      { x: hitX * 0.15, z: opp * 6.5, w: 0.6, name: 'seam' },
-    ];
+    // the receiving team's right hand is +x for the home side, -x for the away side
+    const zone1X = opp * (hw - 1.2);
+    const options = this.lane.quick
+      ? [
+          // a middle hits the deep corners: zone 1 (their right back) or zone 5 (their left back)
+          { x: zone1X, z: opp * 7.3, w: 1, name: 'zone 1' },
+          { x: -zone1X, z: opp * 7.3, w: 1, name: 'zone 5' },
+        ]
+      : [
+          { x: lineX, z: opp * 7.6, w: 1, name: 'line' },
+          { x: crossX, z: opp * 6.8, w: 1.2, name: 'cross' },
+          { x: crossX * 0.9, z: opp * 3.6, w: 0.5, name: 'sharp' },
+          { x: hitX * 0.15, z: opp * 6.5, w: 0.6, name: 'seam' },
+        ];
     // avoid the block: penalise shots whose direction passes over a blocker's hands
     for (const b of this.blockers()) {
       if (Math.abs(b.pos.z) > 1.4) continue;

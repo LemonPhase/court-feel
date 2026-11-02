@@ -8,7 +8,9 @@ import { copyBall, makeBall, R, stepBall, type BallState, type CollisionEvent } 
 import { BallPredictor } from '../src/physics/predict';
 import { flyFor, solveApex, solveFixedTime } from '../src/physics/solve';
 import { planQuick } from '../src/ai/approach';
-import { laneFor, QUICK, quickSetFor, quickSpot } from '../src/game/plays';
+import { laneFor, QUICK, quickSetFor, quickSpot, SET_PLAYS, SETTER_TARGET } from '../src/game/plays';
+import { HitterBrain } from '../src/ai/hitter';
+import { AudioEngine } from '../src/audio/audio';
 
 const DT = 1 / SIM.hz;
 
@@ -406,5 +408,85 @@ describe('set plays', () => {
     const q = quickSetFor(a, 0, { x: 1.0, y: 2.5, z: 0.9 });
     expect(q.onTime).toBe(false);
     expect(q.time).toBeCloseTo(QUICK.lateT);
+  });
+});
+
+describe('spike drill set calls', () => {
+  it('every outside / opposite call is met inside the antennae', () => {
+    for (const pos of ['OH', 'OPP'] as const) {
+      const plays = SET_PLAYS[pos]!;
+      expect(plays.length).toBe(3);
+      for (const p of plays) {
+        expect(Math.abs(p.lane.x) + R).toBeLessThan(COURT.antennaX - 0.3);
+        expect(p.lane.z).toBeGreaterThan(0.5);
+        expect(p.inFront).toBeUndefined();
+      }
+    }
+    // fast sets are flatter than the high ball
+    expect(SET_PLAYS.OH![1].lane.apexAbove).toBeLessThan(SET_PLAYS.OH![0].lane.apexAbove);
+    expect(SET_PLAYS.OPP![1].lane.apexAbove).toBeLessThan(SET_PLAYS.OPP![0].lane.apexAbove);
+  });
+
+  it('middle calls: 1 in front of the setter, shoot further out, back quick behind', () => {
+    const [one, shoot, back] = SET_PLAYS.MB!;
+    const sx = SETTER_TARGET.x;
+    // home setter faces -x (towards the outside): in front = smaller x
+    expect(quickSpot(sx, 1, one.inFront).x).toBeLessThan(sx);
+    expect(sx - quickSpot(sx, 1, shoot.inFront).x).toBeGreaterThan(2);
+    expect(quickSpot(sx, 1, back.inFront).x).toBeGreaterThan(sx + 0.9);
+    // mirrored for the far side
+    expect(quickSpot(-sx, -1, back.inFront).x).toBeLessThan(-sx - 0.9);
+  });
+
+  it('a back quick set over the setter\'s head still meets the hitter at the top of the jump', () => {
+    const a = new Athlete('MB', 1);
+    a.place(2.1, 1.0, 0);
+    a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };
+    let t = 0;
+    a.jumpPress();
+    for (let i = 0; i < SIM.hz * PLAYER.loadMax; i++) a.step(DT, (t += DT));
+    a.jumpRelease();
+    while (a.state !== 'air') a.step(DT, (t += DT));
+    const from = { x: 1.05, y: 2.5, z: 0.85 };
+    const q = quickSetFor(a, t, from, undefined, SET_PLAYS.MB![2].inFront);
+    expect(q.onTime).toBe(true);
+    expect(q.target.x).toBeGreaterThan(from.x + 0.8);
+    const t1 = t + q.time;
+    while (t < t1 - 1e-9) a.step(DT, (t += DT));
+    const p = a.idealContact(new THREE.Vector3());
+    expect(Math.hypot(p.x - q.target.x, p.y - q.target.y, p.z - q.target.z)).toBeLessThan(0.04);
+  });
+});
+
+describe('middle shot choice', () => {
+  it('a middle only hits the deep corners, zone 1 or zone 5', () => {
+    for (const side of [1, -1] as const) {
+      const a = new Athlete('MB', side);
+      const brain = new HitterBrain(a, laneFor('MB', side));
+      const seen = new Set<string>();
+      for (let i = 0; i < 40; i++) {
+        const r = (i + 0.5) / 40;
+        const g = { rng: { next: () => r, gauss: () => 0 } } as any;
+        const aim = brain.chooseAim(g, 0.2 * side);
+        seen.add(brain.lastShot);
+        expect(Math.abs(aim.x)).toBeGreaterThan(2.8);
+        expect(aim.z * side).toBeLessThan(-6.5);
+      }
+      expect([...seen].sort()).toEqual(['zone 1', 'zone 5']);
+      // zone 1 is the receiving team's right back: x < 0 when the home team attacks
+      const g1 = { rng: { next: () => 0.1, gauss: () => 0 } } as any;
+      const z1 = brain.chooseAim(g1, 0);
+      expect(brain.lastShot).toBe('zone 1');
+      expect(Math.sign(z1.x)).toBe(-side);
+    }
+  });
+});
+
+describe('hit sound power', () => {
+  it('grows with the ball speed: a float serve is soft, a full spike is the full boom', () => {
+    expect(AudioEngine.powerFromSpeed(17)).toBeLessThan(0.35);
+    expect(AudioEngine.powerFromSpeed(22)).toBeGreaterThan(AudioEngine.powerFromSpeed(17));
+    expect(AudioEngine.powerFromSpeed(30)).toBe(1);
+    expect(AudioEngine.powerFromSpeed(5)).toBe(0);
   });
 });

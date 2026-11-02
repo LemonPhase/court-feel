@@ -5,7 +5,7 @@ import { AIM_DEPTH, aimPitchRange } from './contact';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Game } from './game';
-import { planQuick } from '../ai/approach';
+import { planQuick, type ApproachPlan } from '../ai/approach';
 import { quickSpot, setterTouchY } from './plays';
 
 export type BotQuality = 'perfect' | 'good' | 'sloppy' | 'tip';
@@ -60,8 +60,12 @@ export class SpikeBot {
     const quickCue =
       me.role === 'MB' && ball.active && lt && lt.athlete !== me && lt.side === me.side &&
       (lt.kind === 'feed' || (!!team && (lt.kind === 'pass' || lt.kind === 'dig') && !!team.passToSetter(g)));
+    // the spike drill plans fast sets (quicks, go balls) from the pass: follow that plan
+    const drill = g.mode as any;
+    const drillEarly = !!drill?.earlyPlan && lt?.kind === 'feed' && drill.earlyFor === lt;
     const setForMe =
       quickCue ||
+      drillEarly ||
       (ball.active && lt && lt.athlete !== me && lt.side === me.side &&
         (lt.kind === 'set' || (lt.kind === 'feed' && me.role === 'S')) &&
         (!team || team.setFor === me));
@@ -103,6 +107,11 @@ export class SpikeBot {
       }
       case 'load': {
         this.mx = this.mz = 0;
+        // start the wind-up on the plant: a late takeoff then still has a real swing (not a tap)
+        if (this.quality !== 'tip' && !this.holding) {
+          g.input.down('Mouse0');
+          this.holding = true;
+        }
         if (now - this.pressAt >= plan.hold) {
           g.input.up('Space');
           this.phase = 'air';
@@ -123,8 +132,10 @@ export class SpikeBot {
           g.input.down('Mouse0');
           this.holding = true;
         }
-        // a quick: we are up before the set; read it once it leaves the setter's hands
-        if (this.clickAt < 0 && (me.role !== 'MB' || lt?.kind === 'set')) {
+        // on quicks we are up before the set: read the ball once it leaves the setter's hands
+        // (only a set meant for us: a decoy jump just lands)
+        const mine = (lt?.kind === 'set' && (!team || team.setFor === me)) || (me.role === 'S' && lt?.kind === 'feed');
+        if (this.clickAt < 0 && mine) {
           const info = g.contact.ideal(me, now, 0.9);
           if (info) {
             const fire = info.t - TIMING.swingNominal + this.offset;
@@ -226,8 +237,13 @@ export class SpikeBot {
     const zone = (g.mode as any)?.zone;
     if (zone && typeof zone.x0 === 'number' && typeof zone.z0 === 'number') aim.set((zone.x0 + zone.x1) / 2, 0, (zone.z0 + zone.z1) / 2);
     let best: { tStart: number; tPress: number; tc: number; contact: THREE.Vector3; dir: THREE.Vector3 } | null = null;
-    const quick = me.role === 'MB' && g.ball.lastTouch?.kind !== 'set';
-    if (quick) {
+    const drill = g.mode as any;
+    const early: ApproachPlan | null = drill?.earlyPlan && drill.earlyFor === g.ball.lastTouch ? drill.earlyPlan : null;
+    const quick = !early && me.role === 'MB' && g.ball.lastTouch?.kind !== 'set';
+    if (early) {
+      this.aimYawGuess = 0;
+      best = { tStart: early.tStart, tPress: early.tPress, tc: early.tc, contact: early.contact, dir: early.dir };
+    } else if (quick) {
       // middle quick: leave the floor as the setter touches the pass
       const team = (g.mode as any)?.home as { passToSetter(g: Game): { t: number; x: number } | null } | undefined;
       let tSet = -1;
@@ -248,7 +264,7 @@ export class SpikeBot {
       const p = planQuick(me, now, quickSpot(sx, me.side), tSet, 0, 0, hold);
       if (p) best = { tStart: p.tStart, tPress: p.tPress, tc: p.tc, contact: p.contact, dir: p.dir };
     }
-    for (let iter = 0; iter < 3 && !quick; iter++) {
+    for (let iter = 0; iter < 3 && !quick && !early; iter++) {
       const hc = off.y + H * 0.97;
       const tc = pred.descendThrough(hc, now);
       if (tc < 0) return;

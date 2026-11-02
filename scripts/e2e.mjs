@@ -71,10 +71,11 @@ await page.evaluate(() => {
     }
     return -1;
   };
-  window.start = (mode, pos, fp, bot = 'perfect') => {
+  window.start = (mode, pos, fp, bot = 'perfect', call = 0) => {
     g.settings.firstPerson = fp;
     g.startMode(mode, pos);
     window.__menu.showStart(false);
+    if (call) g.mode.selectCall?.(call);
     g.hud.setVisible(true);
     if (bot) g.enableBot(bot);
     window.log = [];
@@ -129,20 +130,23 @@ for (const fp of [false, true]) {
 // ---- every drill with its bot (and the rally both all-AI and with the user)
 const runs = [
   ['spike', 'OH'], ['spike', 'OPP'], ['spike', 'MB'], ['spike', 'S'], ['spike', 'L'],
+  // spike drill set calls (keys 2 and 3): go / inside 3, shoot / back quick, fast back / back 2
+  ['spike', 'OH', 1], ['spike', 'OH', 2], ['spike', 'MB', 1], ['spike', 'MB', 2], ['spike', 'OPP', 1], ['spike', 'OPP', 2],
   ['block', 'MB'], ['receive', 'L'], ['setter', 'S'], ['free', 'OH'], ['rally', 'MB'], ['rally', 'L'],
 ];
-for (const [mode, pos] of runs) {
-  const r = await page.evaluate(([mode, pos]) => {
-    window.start(mode, pos, false);
+for (const [mode, pos, call = 0] of runs) {
+  const r = await page.evaluate(([mode, pos, call]) => {
+    window.start(mode, pos, false, 'perfect', call);
     const g = window.__court;
     for (let i = 0; i < 60 * 30; i++) g.play(1 / 60);
     const mine = window.log.filter((l) => l.who === 'me');
     const grades = {};
     for (const m of mine) grades[m.kind + ':' + m.grade] = (grades[m.kind + ':' + m.grade] || 0) + 1;
     return { score: g.mode.score, reps: g.mode.reps, home: g.mode.scoreHome, away: g.mode.scoreAway, myContacts: grades, events: window.log.length };
-  }, [mode, pos]);
-  report.modes[`${mode}_${pos}`] = r;
-  console.log(mode, pos, JSON.stringify(r));
+  }, [mode, pos, call]);
+  const key = call ? `${mode}_${pos}_call${call + 1}` : `${mode}_${pos}`;
+  report.modes[key] = r;
+  console.log(mode, pos + (call ? ` call${call + 1}` : ''), JSON.stringify(r));
 }
 
 // ---- block FP + rally screenshots

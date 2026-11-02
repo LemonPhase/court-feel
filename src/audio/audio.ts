@@ -15,6 +15,8 @@ export class AudioEngine {
   private crowdBus!: GainNode;
   private reverb!: ConvolverNode;
   private reverbSend!: GainNode;
+  /** low booms go through a gentle saturator: harmonics make them read on small speakers */
+  private boomBus!: GainNode;
   private noise!: AudioBuffer;
   private pink!: AudioBuffer;
   private crowdBed: { gain: GainNode; filter: BiquadFilterNode } | null = null;
@@ -74,6 +76,19 @@ export class AudioEngine {
       this.reverbSend = ctx.createGain();
       this.reverbSend.gain.value = 0.3;
       this.reverbSend.connect(this.reverb).connect(limiter);
+      this.boomBus = ctx.createGain();
+      this.boomBus.gain.value = 1.6;
+      const sat = ctx.createWaveShaper();
+      const sc = new Float32Array(1024);
+      for (let i = 0; i < sc.length; i++) {
+        const x = (i / (sc.length - 1)) * 2 - 1;
+        sc[i] = Math.tanh(x * 1.8) / Math.tanh(1.8);
+      }
+      sat.curve = sc;
+      sat.oversample = '4x';
+      const boomOut = ctx.createGain();
+      boomOut.gain.value = 0.55;
+      this.boomBus.connect(sat).connect(boomOut).connect(this.sfx);
       this.noise = this.makeNoise(2, false);
       this.pink = this.makeNoise(4, true);
       this.startCrowd();
@@ -156,7 +171,7 @@ export class AudioEngine {
     src.stop(t + dur + 0.05);
   }
 
-  private tone(t: number, f0: number, f1: number, dur: number, gain: number, type: OscillatorType = 'sine', rev = 0.2, attack = 0.002): void {
+  private tone(t: number, f0: number, f1: number, dur: number, gain: number, type: OscillatorType = 'sine', rev = 0.2, attack = 0.002, dest?: AudioNode): void {
     const ctx = this.ctx!;
     const o = ctx.createOscillator();
     o.type = type;
@@ -166,7 +181,7 @@ export class AudioEngine {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(gain, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(this.sfx);
+    o.connect(g).connect(dest ?? this.sfx);
     if (rev > 0) {
       const s = ctx.createGain();
       s.gain.value = rev;
@@ -181,19 +196,36 @@ export class AudioEngine {
   }
 
   // ------------------------------------------------------------ sounds
-  /** spike / serve: thwack. power 0..1, perfect adds sub boom + crack */
-  spike(power: number, perfect: boolean, rate = 1, pan = 0): void {
+  /**
+   * Spike / serve contact. `power` 0..1 follows the ball speed: a soft swing
+   * is a hand slap and a thump; a hard one adds the leather crack and a deep
+   * boom that hangs in the arena. `near` 0..1 is how close it is to the camera.
+   */
+  spike(power: number, perfect: boolean, rate = 1, near = 1): void {
     if (!this.ok) return;
     const t = this.ctx!.currentTime;
-    void pan;
-    this.noiseBurst(t, 0.06 / rate, 2400 * rate, 0.9, 0.6 * (0.5 + power * 0.5), 'bandpass', 0.35);
-    this.noiseBurst(t, 0.03 / rate, 4200 * rate, 1.0, 0.18 * power, 'bandpass', 0.1);
-    this.tone(t, 180 * rate, 70 * rate, 0.11 / rate, 0.55 * (0.4 + power * 0.6), 'sine', 0.25);
-    if (perfect) {
-      this.tone(t, 90 * rate, 38 * rate, 0.4 / rate, 0.6, 'sine', 0.5);
-      this.noiseBurst(t, 0.018 / rate, 5500 * rate, 1.2, 0.22, 'bandpass', 0.2);
-      this.tone(t + 0.005, 1400 * rate, 1200 * rate, 0.25 / rate, 0.04, 'triangle', 0.6);
+    const p = Math.max(0, Math.min(1, power));
+    const v = 0.5 + 0.5 * Math.max(0, Math.min(1, near));
+    const boom = p <= 0.3 ? 0 : Math.pow((p - 0.3) / 0.7, 1.3);
+    // hand on the ball: brighter and fuller the harder it is
+    this.noiseBurst(t, (0.045 + 0.03 * p) / rate, (1800 + 900 * p) * rate, 0.85, (0.55 + 0.3 * p) * v, 'bandpass', 0.22 + 0.3 * p);
+    // the crack of the leather snapping (real swings only)
+    if (p > 0.35) this.noiseBurst(t, (0.008 + 0.012 * p) / rate, 5200 * rate, 1.1, 0.3 * p * p * v, 'bandpass', 0.18);
+    // ball body thump, dropping lower with power
+    this.tone(t, (220 - 50 * p) * rate, 72 * rate, (0.09 + 0.06 * p) / rate, (0.5 + 0.2 * p) * v, 'sine', 0.18 + 0.2 * p);
+    if (boom > 0) {
+      // the boom: a deep pitch drop that lives in the room, plus an upper harmonic for laptop speakers
+      this.tone(t, 115 * rate, 36 * rate, (0.22 + 0.4 * boom) / rate, 0.75 * boom * v, 'sine', 0.3 + 0.45 * boom, 0.003, this.boomBus);
+      this.tone(t, 200 * rate, 68 * rate, (0.14 + 0.16 * boom) / rate, 0.3 * boom * v, 'triangle', 0.25, 0.003, this.boomBus);
+      // a little air pushed out of the ball
+      this.noiseBurst(t + 0.004, (0.06 + 0.08 * boom) / rate, 420 * rate, 0.7, 0.16 * boom * v, 'lowpass', 0.4 * boom);
     }
+    if (perfect) this.tone(t + 0.005, 1400 * rate, 1200 * rate, 0.25 / rate, 0.04, 'triangle', 0.6);
+  }
+
+  /** contact power 0..1 from the outgoing ball speed (m/s): a float serve ~0.3, a full spike 1 */
+  static powerFromSpeed(speed: number): number {
+    return Math.max(0, Math.min(1, (speed - 12) / (30 - 12)));
   }
 
   /** wind-up reached full power: a small bright tick */

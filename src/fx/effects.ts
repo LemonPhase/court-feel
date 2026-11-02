@@ -249,7 +249,10 @@ export class Effects {
       const perfect = d.perfect > 0.5;
       const at = new THREE.Vector3(d.x, d.y, d.z);
       const rate = fromReplay ? 0.55 : 1;
-      this.audio.spike(Math.max(0.35, q), perfect, rate);
+      // the sound follows how hard the ball was actually hit (and how close it is)
+      const speed = Math.hypot(d.vx, d.vy, d.vz);
+      const near = fromReplay ? 1 : Math.max(0, Math.min(1, 1.35 - at.distanceTo(g.rig.camera.position) / 16));
+      this.audio.spike(AudioEngine.powerFromSpeed(speed), perfect, rate, near);
       const col = perfect ? new THREE.Color(6, 3.8, 1.4) : q > 0.5 ? new THREE.Color(3.2, 3.0, 2.6) : new THREE.Color(1.6, 1.6, 1.6);
       const n = Math.round(FX.sparkCount * FX.intensity * (perfect ? 1 : q > 0.5 ? 0.35 : 0.12));
       this.burst(at, n, col, perfect ? 11 : 6, perfect ? 1.3 : 0.8, new THREE.Vector3(d.vx, d.vy, d.vz));

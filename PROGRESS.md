@@ -9,7 +9,7 @@ Serve Receive/Dig, Setter, 6v6 Mini Rally), five positions, instant FP/TP switch
 deterministic ball simulation, procedurally built and animated athletes with IK, graded timing
 (Perfect / Good / Early / Late) with buffering and adjustable assist, a full juice package
 (hit-stop, shake, streak sparks, fire trails, shockwave, dust, floor cracks, hand flashes,
-slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (43
+slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (48
 unit tests + a Playwright e2e that plays every drill through the real input path).
 
 ### Acceptance criteria
@@ -26,7 +26,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   dig, set, serve toss; planted feet; head look-at. Side-view screenshot sheets checked.
 - [x] **Realistic ball physics** — set apex, spike landing, topspin dip, net/tape/antenna, women's
   net, floor bounce, determinism and predictor tests; arcs and spike speeds (25-30 m/s) at 1:1 scale.
-- [x] **60 fps target, no console errors, all tests pass** — 43/43 tests; e2e: no console errors;
+- [x] **60 fps target, no console errors, all tests pass** — 48/48 tests; e2e: no console errors;
   CPU frame median ~4.6 ms (p95 ~12 ms, from set-time AI planning) with 86 draw calls / 107k
   triangles; adaptive quality governor (MSAA → render scale → shadow size) protects weaker GPUs.
   No memory growth: 0 geometry/texture growth across repeated mode switches, JS heap flat over a
@@ -203,6 +203,21 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   jump (middles before the quick arrives, so decoys land with it dropped). Full-charge tick and a
   release swish in the audio; the grade line shows the power.
 
+- **Playtest round 3.**
+  - *Middle shots*: AI middles only hit the deep corners (zone 1 / zone 5), steering away from the
+    block; the spike drill's targets for a middle are zone 1 and 5. The drill's line/cross zones are
+    now mirrored for right-side attackers (they were absolute, so an opposite's "line" was cross).
+  - *Hit sound follows power*: the spike/serve sound is driven by the outgoing ball speed (12 m/s =
+    0, 30 m/s = 1): hand slap and body thump always, a leather crack on real swings, and above ~30%
+    a deep pitch-dropping boom (through a saturator so it carries on laptop speakers) with more arena
+    reverb. Offline: peak 0.06 soft -> 0.30 full, ~24x the low-end energy, no clipping. Quieter
+    with distance from the camera.
+  - *Set calls in the spike drill (keys 1-3)*: OH high / go / inside 3 ball; MB 1 / shoot (31) /
+    back quick; OPP back set / fast back / back 2 (`SET_PLAYS` in plays.ts). Quicks reuse the
+    adaptive quick (offset along the net from the setter, negative = behind); tempo balls (apex less
+    than 1 m above contact) plan the approach and the GO cue from the pass with the setter's solved
+    arc. Bot probe: all nine calls Perfect; middles take off within ~15 ms of the setter's touch.
+
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
@@ -214,7 +229,8 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 ## Ideas for later
 - Real rotations and libero substitutions in the rally; a full scoring mode.
 - Approach paths with curved slide / broad-jump attacks for middles and opposites; back-row D/pipe.
-- Jump-set and setter dump decisions for the AI; AI blockers that commit on quicks; slides / 31s.
+- Jump-set and setter dump decisions for the AI; AI blockers that commit on quicks; slides; AI
+  teams using the go / shoot / back-quick calls in rallies.
 - Dive / sprawl animations for desperate digs; overhead (hands) passing of free balls.
 - Ghost replays of your best spike, and a "timing trainer" overlay that shows your click history.
 - Per-player handedness (lefties), body-type variety, jersey numbers and names.
