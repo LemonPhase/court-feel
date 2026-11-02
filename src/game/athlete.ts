@@ -271,7 +271,7 @@ export class Athlete {
     const cmd = this.cmd;
 
     // ---- facing (in the air the body barely rotates: the arm aims, not the hips)
-    if (cmd.faceYaw !== null) {
+    if (cmd.faceYaw !== null && Number.isFinite(cmd.faceYaw)) {
       let want = cmd.faceYaw;
       let rate = PLAYER.bodyTurnRate;
       if (this.state === 'air') {

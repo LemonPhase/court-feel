@@ -199,7 +199,7 @@ export class SpikeBot {
     let H = me.jumpMax;
     const aim = new THREE.Vector3(2.5, 0, -7);
     const zone = (g.mode as any)?.zone;
-    if (zone) aim.set((zone.x0 + zone.x1) / 2, 0, (zone.z0 + zone.z1) / 2);
+    if (zone && typeof zone.x0 === 'number' && typeof zone.z0 === 'number') aim.set((zone.x0 + zone.x1) / 2, 0, (zone.z0 + zone.z1) / 2);
     let best: { tStart: number; tPress: number; tc: number; contact: THREE.Vector3; dir: THREE.Vector3 } | null = null;
     for (let iter = 0; iter < 3; iter++) {
       const hc = off.y + H * 0.97;

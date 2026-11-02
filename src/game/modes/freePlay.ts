@@ -63,7 +63,7 @@ export class FreePlay extends Mode {
   private machine!: ReturnType<typeof makeMachine>;
   private lastWasMachine = false;
   private requested = false;
-  private zone = new ZoneMarker(0x7dff9b);
+  private serveZone = new ZoneMarker(0x7dff9b);
   private zoneIdx = 0;
   private served = false;
 
@@ -73,8 +73,8 @@ export class FreePlay extends Mode {
     g.placeUser(lane.sx, lane.sz, 0);
     this.machine = makeMachine();
     this.add(this.machine.group);
-    this.add(this.zone.group);
-    this.zone.group.visible = false;
+    this.add(this.serveZone.group);
+    this.serveZone.group.visible = false;
     this.placeMachine();
     g.hud.setTitle('Free Play');
     this.updateScore();
@@ -84,7 +84,7 @@ export class FreePlay extends Mode {
   private placeMachine(): void {
     const m = this.machine.group;
     m.visible = this.feed !== 'practice';
-    this.zone.group.visible = this.feed === 'practice';
+    this.serveZone.group.visible = this.feed === 'practice';
     if (this.feed === 'practice') {
       const g = this.g;
       g.ball.hide();
@@ -117,7 +117,7 @@ export class FreePlay extends Mode {
   private pickZone(): void {
     this.zoneIdx = (this.zoneIdx + 1 + Math.floor(this.g.rng.next() * (SERVE_ZONES.length - 1))) % SERVE_ZONES.length;
     const z = SERVE_ZONES[this.zoneIdx];
-    this.zone.set(z.x0, z.x1, z.z0, z.z1);
+    this.serveZone.set(z.x0, z.x1, z.z0, z.z1);
   }
 
   hint(): string {
@@ -132,7 +132,7 @@ export class FreePlay extends Mode {
 
   frame(dt: number): void {
     const inp = this.g.input;
-    this.zone.update(dt);
+    this.serveZone.update(dt);
     for (let i = 0; i < FEEDS.length; i++) {
       if (inp.consumePress('Digit' + (i + 1))) {
         this.feed = FEEDS[i];
