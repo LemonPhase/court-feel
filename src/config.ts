@@ -152,13 +152,18 @@ export const PLAYER = {
 export const TIMING = {
   /** input buffer for actions pressed slightly early */
   bufferWindow: 0.12,
-  /** spike: nominal swing time from click to contact */
+  /** spike: swing time from release to contact for an uncharged arm */
   swingNominal: 0.1,
+  /** a fully drawn arm whips through faster: the ideal release is a little later */
+  swingCharged: 0.09,
   swingMin: 0.045,
   swingMax: 0.17,
-  /** spike grade windows on |click error| */
+  /** spike grade windows on the release error: early side ... */
   spikePerfect: 0.03,
   spikeGood: 0.07,
+  /** ... and a more forgiving late side (releasing as the ball arrives is the natural instinct) */
+  spikePerfectLate: 0.07,
+  spikeGoodLate: 0.11,
   spikeOk: 0.15,
   /** attack button held shorter than this => tip/roll instead of a swing */
   tapThreshold: 0.09,

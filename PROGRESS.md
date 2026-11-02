@@ -9,7 +9,7 @@ Serve Receive/Dig, Setter, 6v6 Mini Rally), five positions, instant FP/TP switch
 deterministic ball simulation, procedurally built and animated athletes with IK, graded timing
 (Perfect / Good / Early / Late) with buffering and adjustable assist, a full juice package
 (hit-stop, shake, streak sparks, fire trails, shockwave, dust, floor cracks, hand flashes,
-slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (48
+slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (50
 unit tests + a Playwright e2e that plays every drill through the real input path).
 
 ### Acceptance criteria
@@ -26,7 +26,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   dig, set, serve toss; planted feet; head look-at. Side-view screenshot sheets checked.
 - [x] **Realistic ball physics** — set apex, spike landing, topspin dip, net/tape/antenna, women's
   net, floor bounce, determinism and predictor tests; arcs and spike speeds (25-30 m/s) at 1:1 scale.
-- [x] **60 fps target, no console errors, all tests pass** — 48/48 tests; e2e: no console errors;
+- [x] **60 fps target, no console errors, all tests pass** — 50/50 tests; e2e: no console errors;
   CPU frame median ~4.6 ms (p95 ~12 ms, from set-time AI planning) with 86 draw calls / 107k
   triangles; adaptive quality governor (MSAA → render scale → shadow size) protects weaker GPUs.
   No memory growth: 0 geometry/texture growth across repeated mode switches, JS heap flat over a
@@ -218,6 +218,15 @@ unit tests + a Playwright e2e that plays every drill through the real input path
     than 1 m above contact) plan the approach and the GO cue from the pass with the setter's solved
     arc. Bot probe: all nine calls Perfect; middles take off within ~15 ms of the setter's touch.
 
+- **Playtest round 4: more forgiving late releases.** Full-power swings released a touch late were
+  graded Late. Three changes: (1) the grade window is asymmetric, Perfect -30/+70 ms and Good
+  -70/+110 ms around the ideal release (`spikePerfectLate`, `spikeGoodLate`); (2) a fully drawn arm
+  swings through in 0.09 s instead of 0.1 s (`swingCharged`), so its ideal release is 10 ms later;
+  (3) late releases are measured against the real closest approach the wind-up tracked, not the
+  start of the forward search window (which clamped every late release to about +78 ms).
+  Full charge, by release time before contact: -170 ms Early, -150..-130 Good, -120..-25 Perfect
+  (was -130..-70), -20..+20 Good, +30..+50 Late, +70 Miss.
+
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
@@ -257,6 +266,8 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Aim depth = depth into the opponent court (not distance from the hitter), so spikes and serves
   share one mapping and the reticle is always on their side.
 - Zone contacts (pass/set) resolve at the closest approach, not first entry into the reach sphere.
+- The spike timing window is wider on the late side: players release as the ball arrives, and the
+  extra input/display latency of a browser lands on that side too.
 - Spike power comes from the wind-up hold, timing from the release: holding longer is never
   penalised directly, the risk is holding past the moment the ball is in reach (you can only release
   so late) or landing first. Full charge caps at 0.32 s so a full-power swing fits in any jump.

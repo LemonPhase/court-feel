@@ -1,11 +1,12 @@
 import * as THREE from 'three';
-import { AI, COURT, TIMING } from '../config';
+import { AI, COURT } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
 import { quickSpot, type AttackLane } from '../game/plays';
 import { planApproach, planQuick, type ApproachPlan } from './approach';
 import { moveTo, netYaw, stop, type Brain } from './brain';
+import { ContactSystem } from '../game/contact';
 
 /**
  * AI attacker: waits at its approach start, reads a set meant for it, plans a
@@ -120,7 +121,9 @@ export class HitterBrain implements Brain {
         // (a quick hitter jumps before the set: swing only if it came to us)
         if (!this.swung && a.state === 'air' && this.isMySet(g)) {
           const info = g.contact.ideal(a, now, 0.6);
-          if (info && now >= info.t - TIMING.swingNominal + this.err - 1e-4) {
+          const w = a.action?.kind === 'windup' ? a.action : null;
+          const lead = ContactSystem.swingLead(w ? ContactSystem.chargeFor(now - w.t0) : 1);
+          if (info && now >= info.t - lead + this.err - 1e-4) {
             const aim = this.chooseAim(g, info.ball.x);
             a.aiAim.copy(aim);
             const tip = g.rng.next() < this.tipChance;

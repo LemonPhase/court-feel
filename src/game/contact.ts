@@ -126,6 +126,11 @@ export class ContactSystem {
     return a.startAction('windup', this.host.simTime);
   }
 
+  /** release-to-contact swing time: a fully charged arm comes through a little faster */
+  static swingLead(charge: number): number {
+    return lerp(TIMING.swingNominal, TIMING.swingCharged, clamp01(charge));
+  }
+
   /** 0..1 power a wind-up started at t0 has built by `now` (0 until it is longer than a tap) */
   static chargeFor(holdS: number): number {
     return clamp01((holdS - TIMING.tapThreshold) / (TIMING.chargeFull - TIMING.tapThreshold));
@@ -141,22 +146,51 @@ export class ContactSystem {
     if (!act || act.kind !== 'windup') return null;
     const hold = this.host.simTime - act.t0;
     const tip = opts.tip ?? hold < TIMING.tapThreshold;
-    return this.startSwing(a, { aiErr: opts.aiErr, charge: tip ? 0 : ContactSystem.chargeFor(hold), tip });
+    // the closest approach the wind-up saw for this ball (it may already be behind a late release)
+    const seen = act.idealFor === this.host.ball.lastTouch && act.idealT > 0 ? { t: act.idealT, d: act.idealD } : undefined;
+    return this.startSwing(a, { aiErr: opts.aiErr, charge: tip ? 0 : ContactSystem.chargeFor(hold), tip, seen });
   }
 
+  /** during a wind-up: remember the closest approach of the ball to the ideal contact point */
+  private trackIdeal(a: Athlete, act: Action): void {
+    const h = this.host;
+    const lt = h.ball.lastTouch;
+    if (act.idealFor !== lt) {
+      act.idealFor = lt;
+      act.idealT = -1;
+      act.idealD = 1e9;
+    }
+    // only where the prediction is real: in the air, or standing under your own serve toss
+    if (!h.ball.active || !(a.state === 'air' || (a.state === 'ground' && this.serving === a))) return;
+    const info = this.ideal(a, h.simTime, 0.4, this._wi);
+    if (info && info.d < act.idealD) {
+      act.idealD = info.d;
+      act.idealT = info.t;
+    }
+  }
+  private _wi: IdealInfo = { t: 0, d: 1e9, ball: new THREE.Vector3(), point: new THREE.Vector3() };
+
   /** begin a spike/serve swing now (the release of the wind-up) */
-  startSwing(a: Athlete, opts: { aiErr?: number; charge?: number; tip?: boolean } = {}): Action {
+  startSwing(a: Athlete, opts: { aiErr?: number; charge?: number; tip?: boolean; seen?: { t: number; d: number } } = {}): Action {
     const h = this.host;
     const t = h.simTime;
     const act = a.startAction('swing', t);
     act.charge = opts.charge ?? 1;
     act.tip = opts.tip ?? false;
+    const lead = ContactSystem.swingLead(act.tip ? 0 : act.charge);
     const info = this.ideal(a, t + TIMING.swingMin * 0.5);
-    let tStar = t + TIMING.swingNominal;
+    let tStar = t + lead;
     if (info && info.d < CONTACT.spikeReachStretch + 0.8) tStar = info.t;
-    // AI hitters "click" with a skill-based error instead of reading input
-    const clickT = opts.aiErr !== undefined ? tStar - TIMING.swingNominal + opts.aiErr : t;
-    act.err = clickT + TIMING.swingNominal - tStar;
+    // grade against the true best moment: on a late release it can already be behind us,
+    // where the forward search would only find the edge of its window
+    // (only when the forward search lands on the very start of its window: the ball is already past)
+    let idealT = tStar;
+    const seen = opts.seen;
+    const pastBest = !info || info.t <= t + TIMING.swingMin * 0.5 + 0.02;
+    if (pastBest && seen && seen.t < tStar - 1e-3 && seen.t > t - 0.3 && (!info || seen.d <= info.d + 0.02)) idealT = seen.t;
+    // AI hitters "release" with a skill-based error instead of reading input
+    const clickT = opts.aiErr !== undefined ? idealT - lead + opts.aiErr : t;
+    act.err = clickT + lead - idealT;
     act.contactT = clamp(tStar, t + TIMING.swingMin, t + TIMING.swingMax);
     if (opts.aiErr !== undefined) act.contactT = clamp(tStar + opts.aiErr * 0.5, t + TIMING.swingMin, t + TIMING.swingMax + 0.1);
     // provisional contact point for the animator (refined every step)
@@ -173,6 +207,10 @@ export class ContactSystem {
     const t = h.simTime;
     for (const a of athletes) {
       const act = a.action;
+      if (act && act.kind === 'windup') {
+        this.trackIdeal(a, act);
+        continue;
+      }
       if (!act || act.kind !== 'swing' || act.resolved) continue;
       // keep the animator's target on the real ball path
       const pred = h.ball.ensurePrediction(h.env, t);
@@ -226,9 +264,10 @@ export class ContactSystem {
     let grade: Grade;
     let note = '';
     const ae = Math.abs(err);
-    if (ae <= TIMING.spikePerfect) grade = 'Perfect';
-    else if (ae <= TIMING.spikeGood) grade = 'Good';
-    else grade = err < 0 ? 'Early' : 'Late';
+    const late = err > 0;
+    if (ae <= (late ? TIMING.spikePerfectLate : TIMING.spikePerfect)) grade = 'Perfect';
+    else if (ae <= (late ? TIMING.spikeGoodLate : TIMING.spikeGood)) grade = 'Good';
+    else grade = late ? 'Late' : 'Early';
     if (grade === 'Early') note = 'Swing early';
     if (grade === 'Late') note = 'Swing late';
     // jump timing: contact far below the jump peak = jumped too early/late

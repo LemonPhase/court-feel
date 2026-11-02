@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { AI, COURT, TIMING } from '../config';
+import { AI, COURT } from '../config';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
+import { ContactSystem } from '../game/contact';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 
 /**
@@ -60,7 +61,7 @@ export class ServerBrain implements Brain {
         stop(a, face);
         if (a.action?.kind === 'toss') {
           const info = g.contact.ideal(a, g.simTime, 0.8);
-          if (info && g.simTime >= info.t - TIMING.swingNominal + this.err) {
+          if (info && g.simTime >= info.t - ContactSystem.swingLead(1) + this.err) {
             a.aiAim.copy(this.target);
             g.contact.startSwing(a, { aiErr: this.err });
             this.phase = 'done';

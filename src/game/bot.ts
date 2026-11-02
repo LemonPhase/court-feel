@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BALL, PLAYER, SIM, TIMING } from '../config';
 import { Athlete } from './athlete';
-import { AIM_DEPTH, aimPitchRange } from './contact';
+import { AIM_DEPTH, aimPitchRange, ContactSystem } from './contact';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Game } from './game';
@@ -138,7 +138,8 @@ export class SpikeBot {
         if (this.clickAt < 0 && mine) {
           const info = g.contact.ideal(me, now, 0.9);
           if (info) {
-            const fire = info.t - TIMING.swingNominal + this.offset;
+            const w = me.action?.kind === 'windup' ? me.action : null;
+            const fire = info.t - ContactSystem.swingLead(w ? ContactSystem.chargeFor(now - w.t0) : 0) + this.offset;
             if (tip && !this.holding && now >= fire - 0.05 - 1e-4) {
               g.input.down('Mouse0');
               this.holding = true;

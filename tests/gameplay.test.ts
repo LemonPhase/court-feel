@@ -217,7 +217,7 @@ function spikeWithOffset(offset: number, hold = 0.45) {
   host.simTime = t;
   // press (wind-up) `hold` before the release, release on the timing
   const info = cs.ideal(a, t, 0.9)!;
-  const releaseAt = info.t - TIMING.swingNominal + offset;
+  const releaseAt = info.t - ContactSystem.swingLead(ContactSystem.chargeFor(hold)) + offset;
   const pressAt = releaseAt - hold;
   // rewind the clock for early presses (the hitter stands in the plant until then)
   let pressed = pressAt < host.simTime;
@@ -249,16 +249,24 @@ describe('spike timing grades (real contact system)', () => {
     expect(e.speed).toBeGreaterThan(26);
     expect(e.tip).toBe(false);
   });
-  it('50 ms off is Good', () => {
-    expect(spikeWithOffset(0.05).grade).toBe('Good');
+  it('the window is more forgiving on the late side', () => {
+    // 50 ms early is Good, 50 ms late is still Perfect
     expect(spikeWithOffset(-0.05).grade).toBe('Good');
+    expect(spikeWithOffset(0.05).grade).toBe('Perfect');
+    expect(spikeWithOffset(0.09).grade).toBe('Good');
   });
-  it('100 ms early / late are Early / Late and slower', () => {
+  it('releasing as the ball reaches the hand is still a Good contact', () => {
+    // offset = the whole swing time: the release happens at the ideal contact moment
+    const e = spikeWithOffset(ContactSystem.swingLead(1));
+    expect(e.grade).toBe('Good');
+  });
+  it('100 ms early / 130 ms late are Early / Late and slower', () => {
     const early = spikeWithOffset(-0.1);
-    const late = spikeWithOffset(0.1);
+    const late = spikeWithOffset(0.13);
     expect(early.grade).toBe('Early');
     expect(late.grade).toBe('Late');
     expect(early.speed).toBeLessThan(spikeWithOffset(0).speed);
+    expect(late.speed).toBeLessThan(spikeWithOffset(0).speed);
   });
   it('a wild click whiffs', () => {
     expect(spikeWithOffset(-0.4).grade).toBe('Miss');
@@ -299,8 +307,12 @@ describe('hold-to-charge spike power', () => {
   });
 
   it('timing is graded on the release, whatever the hold', () => {
-    expect(spikeWithOffset(0.05, 0.2).grade).toBe('Good');
+    expect(spikeWithOffset(0.09, 0.2).grade).toBe('Good');
     expect(spikeWithOffset(-0.1, 0.5).grade).toBe('Early');
+  });
+
+  it('a fully drawn arm comes through faster: its ideal release is later', () => {
+    expect(ContactSystem.swingLead(1)).toBeLessThan(ContactSystem.swingLead(0));
   });
 });
 

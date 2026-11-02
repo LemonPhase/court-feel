@@ -33,6 +33,10 @@ export interface Action {
   minD: number;
   /** swing power 0..1 from how long the wind-up was held */
   charge: number;
+  /** wind-up: the closest approach seen so far for the current ball (time, distance, which touch) */
+  idealT: number;
+  idealD: number;
+  idealFor: unknown;
 }
 
 export interface AthleteCmd {
@@ -405,7 +409,7 @@ export class Athlete {
     const act: Action = {
       kind, t0: t, held: true, releaseT: -1, contactT: -1, contactPoint: new THREE.Vector3(),
       resolved: false, grade: null, tip: false, miss: false, hand: 'R', aim: new THREE.Vector3(0, 0, -1), err: 0, note: '',
-      minD: 1e9, charge: 0,
+      minD: 1e9, charge: 0, idealT: -1, idealD: 1e9, idealFor: null,
     };
     this.action = act;
     return act;

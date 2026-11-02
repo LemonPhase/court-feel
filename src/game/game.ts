@@ -737,7 +737,8 @@ export class Game {
     const me = this.me;
     let window: DebugInfo['window'] = null;
     if (this.idealValid) {
-      const ideal = this.idealCache.t - this.simTime - TIMING.swingNominal;
+      const w = me.action?.kind === 'windup' ? me.action : null;
+      const ideal = this.idealCache.t - this.simTime - ContactSystem.swingLead(w ? ContactSystem.chargeFor(this.simTime - w.t0) : 1);
       window = {
         now: 0,
         ideal,
