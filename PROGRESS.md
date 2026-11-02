@@ -3,7 +3,7 @@
 Read this first when resuming.
 
 ## Current milestone
-M8 — effects and audio pass.
+M9 — feel and polish pass.
 
 ## Done
 - **M1** Court, lighting, camera, FP/TP toggle, capsule movement.
@@ -101,12 +101,28 @@ M8 — effects and audio pass.
     With autopilots in the user's seat: libero passes, setter sets, middle 8/8 Perfect spikes.
   - AI attackers read the net (hit deeper/softer from low or deep contacts); users get honest physics.
 
+- **M8** Effects and audio (everything in "Juice").
+  - `src/fx/particles.ts`: GPU velocity-aligned streak sparks (instanced, additive HDR) and soft
+    sprite pools (dust, glows); `src/fx/trail.ts`: camera-facing ribbon, clean white-blue for normal
+    spikes, flickering HDR fire for Perfect, faded near the lens; `src/fx/effects.ts`: event-driven
+    director scaling everything by timing quality: Perfect spike = 70 ms hit-stop, shake, spark burst
+    along the ball's new direction, fire trail, chime, shockwave + dust ring + floor crack decal and a
+    heavy boom on impact, crowd surge, then a slow-mo (0.32x) replay from a broadcast side angle that
+    glides to a low impact view (letterboxed, any key skips, events and pitched-down audio replayed).
+    Normal spike = lighter white trail + solid thwack. Block = hand flashes on both palms, spark spray,
+    shake, slap + boom on stuffs, 50 ms hit-stop for your stuffs. Dig/pass = dust puff + thud + crowd.
+    Landings, takeoff squeaks, footsteps.
+  - `src/audio/audio.ts`: all synthesised (Web Audio): thwack layers, sub boom, crack, pass thud,
+    finger-set taps, block slap, floor thuds, net rustle, antenna tink, sneaker squeaks, footsteps,
+    landing, two-tone whistle, Perfect chime, pink-noise crowd bed that swells with tension, cheers
+    with formant wobble and claps; generated convolution reverb for the arena.
+  - Bloom picks up only HDR effect colours (threshold 1.0). Smoke-tested every sound path (no errors).
+
 ## Known issues
 - Headless Chromium uses SwiftShader, so on-screen FPS in screenshots is not representative.
 
 ## Next steps
-- M8 effects (hit-stop, shake, sparks, trails, shockwave, crack decal, dust, hand flash, crowd,
-  replay) and Web Audio.
+- M9 feel/polish pass, M10 performance + robustness, README.
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
@@ -118,6 +134,8 @@ M8 — effects and audio pass.
 - Airborne body yaw is limited to ±0.35 rad from takeoff (the arm aims, not the hips); otherwise
   aiming cross-court mid-air swung the contact point away and made timing feel random.
 - FP aim depth comes from pitch with a range that lets you look up at the ball (looking higher = deeper).
+- FP aim pitch range [-0.25, 1.15]: looking at the ball while hitting gives a mid-court shot, so
+  the natural FP behaviour keeps the contact (arm, sparks) in view.
 - Aim depth = depth into the opponent court (not distance from the hitter), so spikes and serves
   share one mapping and the reticle is always on their side.
 - Zone contacts (pass/set) resolve at the closest approach, not first entry into the reach sphere.

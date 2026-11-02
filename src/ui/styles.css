@@ -116,3 +116,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .set-row input[type=range] { width: 100%; accent-color: #ffd23f; }
 @media (max-width: 900px) { .pos-row { grid-template-columns: repeat(3, 1fr); } .mode-grid { grid-template-columns: repeat(2, 1fr); }
   .logo { font-size: 44px; } .settings-box { min-width: 0; width: 92vw; } .set-row { grid-template-columns: 1fr 1fr 50px; } }
+
+/* ------------------------------------------------------------------ replay */
+.letterbox { position: absolute; inset: 0; pointer-events: none; z-index: 12; }
+.letterbox::before, .letterbox::after { content: ''; position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height 0.35s ease; }
+.letterbox::before { top: 0; } .letterbox::after { bottom: 0; }
+body.replaying .letterbox::before, body.replaying .letterbox::after { height: 9vh; }
+.replay-tag { position: absolute; top: calc(9vh + 14px); left: 28px; z-index: 13; font-weight: 900; font-style: italic; letter-spacing: 0.2em;
+  font-size: 18px; opacity: 0; transition: opacity 0.3s; pointer-events: none; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
+.replay-tag span { color: #ff3b4f; animation: blink 1s steps(2) infinite; }
+.replay-tag small { font-size: 10px; letter-spacing: 0.15em; opacity: 0.6; margin-left: 10px; font-style: normal; font-weight: 600; }
+body.replaying .replay-tag { opacity: 1; }
+body.replaying .hud { opacity: 0.25; }
+@keyframes blink { 50% { opacity: 0.2; } }

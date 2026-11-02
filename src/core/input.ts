@@ -129,6 +129,14 @@ export class Input {
     return d;
   }
 
+  /** true if anything was pressed since the last call (edges are cleared) */
+  consumeAny(): boolean {
+    const any = this.pressed.size > 0;
+    this.pressed.clear();
+    this.released.clear();
+    return any;
+  }
+
   /** drop any stale edges (e.g. after closing a menu) */
   clearEdges(): void {
     this.pressed.clear();

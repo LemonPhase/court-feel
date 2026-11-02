@@ -14,6 +14,7 @@ let lastPlay: { mode: ModeId; pos: PositionId } = { mode: 'spike', pos: 'OH' };
 
 const menu = new Menu(app, settings, {
   play(mode, pos) {
+    game.fx.audio.unlock();
     lastPlay = { mode, pos };
     menu.showStart(false);
     game.startMode(mode, pos);
@@ -69,6 +70,8 @@ window.addEventListener('keydown', (e) => {
     else (game.paused = true), menu.showPause(true);
   }
 });
+window.addEventListener('pointerdown', () => game.fx.audio.unlock(), { once: false });
+window.addEventListener('keydown', () => game.fx.audio.unlock());
 app.addEventListener('mousedown', () => {
   if (!game.inMenu && !game.paused && !game.input.pointerLocked && !game.input.dragLook) game.input.requestLock();
 });

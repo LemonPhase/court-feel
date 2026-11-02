@@ -605,8 +605,9 @@ function downgrade(g: Grade, early: boolean): Grade {
 
 /** pitch range (radians) that maps onto shallow..deep, per camera */
 export function aimPitchRange(fp: boolean): [number, number] {
-  // FP lets you look up at the ball while aiming deep; TP looks down at the court
-  return fp ? [-0.55, 0.75] : [-0.75, 0.05];
+  // FP: looking at the ball (~+0.5 rad) is a mid-court shot, higher = deeper, lower = sharper.
+  // TP looks down at the court from behind.
+  return fp ? [-0.25, 1.15] : [-0.75, 0.05];
 }
 export const AIM_DEPTH: [number, number] = [1.0, 9.6];
 

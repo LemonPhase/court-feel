@@ -26,6 +26,7 @@ import { makeRingTexture } from '../world/textures';
 import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
 import { BlockBot, SpikeBot, TouchBot, type BotQuality } from './bot';
+import { Effects } from '../fx/effects';
 
 export type GameEvents = {
   toggleCam: { fp: boolean };
@@ -65,6 +66,7 @@ export class Game {
   readonly contact: ContactSystem;
   readonly judge = new Judge();
   readonly actions: UserActions;
+  readonly fx: Effects;
   mode: Mode | null = null;
   modeId: ModeId = 'spike';
   position: PositionId = 'OH';
@@ -163,6 +165,7 @@ export class Game {
     this.addAthlete(this.me);
     this.user.athlete = this.me;
     this.actions = new UserActions(this);
+    this.fx = new Effects(this, container);
 
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
@@ -240,6 +243,7 @@ export class Game {
     this.hud.setStreak(0);
     this.hud.setSpeed(null);
     mode.setup();
+    this.fx.onModeStart();
     this.inMenu = false;
     this.rig.setMode(this.settings.firstPerson ? 'fp' : 'tp');
     this.hud.setCam(this.settings.firstPerson);
@@ -265,6 +269,7 @@ export class Game {
     this.rig.blockers = this.arena.cameraBlockers;
     if (!this.inMenu) this.rig.setMode(s.firstPerson ? 'fp' : 'tp');
     this.hud.showHints = s.showHints;
+    this.fx?.audio.setVolume(s.volume);
     saveSettings(s);
   }
 
@@ -370,10 +375,29 @@ export class Game {
   }
 
   private tick(dt: number, draw: boolean): void {
+    if (this.fx.replaying) {
+      // slow-motion replay: the simulation is frozen, any key skips
+      this.input.takeMouse();
+      if (this.input.consumeAny() && !this.inMenu) this.fx.endReplay();
+      else this.fx.replayStep(dt);
+      this.renderReplay(dt, draw);
+      return;
+    }
     this.frameInput(dt);
     this.advance(dt);
     this.mode?.frame(dt);
     this.render(dt, draw);
+  }
+
+  private renderReplay(dt: number, draw: boolean): void {
+    this.rig.update(dt, null);
+    this.fx.update(dt * this.fx.replay.speed);
+    this.arena.update(dt);
+    this.hud.update(dt);
+    this.hud.setCrosshair(false);
+    if (!draw) return;
+    this.renderer.info.reset();
+    this.post.render(dt);
   }
 
   /** frame-level input: look, toggles, immediate action starts (same frame as the input) */
@@ -448,6 +472,10 @@ export class Game {
       this.fixedStep(step);
       this.accum -= step;
       n++;
+      if (this.fx.replaying) {
+        this.accum = 0;
+        break;
+      }
       if (n > 24) {
         this.accum = 0;
         break;
@@ -483,6 +511,7 @@ export class Game {
       this.mode?.onOutcome(out);
     }
     this.mode?.step(dt);
+    this.fx.checkReplay();
     // timing window cache for HUD / slow-mo / debug
     const info = this.me.state === 'air' || this.me.state === 'load' ? this.contact.ideal(this.me, this.simTime, 0.9, this.idealCache) : null;
     this.idealValid = !!info;
@@ -534,6 +563,8 @@ export class Game {
       v.update(animDt, tr);
     }
     this.ball.updateVisuals(realDt, this.simTime, this.env);
+    this.fx.replay.record(tr, this.ball.mesh, this.ball.mesh.visible);
+    this.fx.update(animDt);
     this.rig.ballPos = this.ball.active ? this.ball.rpos : null;
     if (this.ball.active && this.debug.visible) this.gizmos.updatePath(this.ball.ensurePrediction(this.env, this.simTime), this.simTime);
     const me = this.me;
