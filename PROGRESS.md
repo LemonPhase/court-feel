@@ -2,8 +2,38 @@
 
 Read this first when resuming.
 
-## Current milestone
-M9/M10 — feel, polish, performance and robustness.
+## Final summary
+All ten milestones are done. Court Feel is a browser volleyball feel sandbox (TypeScript + Vite +
+three.js r187) with six drills (Free Play with a ball machine and serve practice, Spike, Block,
+Serve Receive/Dig, Setter, 6v6 Mini Rally), five positions, instant FP/TP switching, a 120 Hz
+deterministic ball simulation, procedurally built and animated athletes with IK, graded timing
+(Perfect / Good / Early / Late) with buffering and adjustable assist, a full juice package
+(hit-stop, shake, streak sparks, fire trails, shockwave, dust, floor cracks, hand flashes,
+slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (36
+unit tests + a Playwright e2e that plays every drill through the real input path).
+
+### Acceptance criteria
+- [x] **All 6 modes playable from a start screen with position select** — start screen with
+  position cards + drill cards; e2e runs every drill with autopilots (no console errors).
+- [x] **FP/TP toggle instant, mid-rally, no glitches** — shared yaw/pitch; FP view-model re-poses on
+  the toggle frame even during hit-stop; TP pivot snaps; net/post occlusion test, occluders fade.
+  Verified with a toggle sequence mid-rally (screenshots).
+- [x] **Perfect spike triggers the full effects package in both cameras** — 70 ms hit-stop, shake,
+  spark burst, fire trail, chime, shockwave + dust ring + crack decal + heavy boom on impact,
+  crowd surge, slow-mo replay. Screenshots: `scripts/out/10-15_*` (TP, FP, replay).
+- [x] **Believable animation** — approach (run, step-step-plant, arms back), takeoff double-arm
+  swing, bow-and-arrow, whip with hand IK onto the ball, follow-through, land absorb, block, pass,
+  dig, set, serve toss; planted feet; head look-at. Side-view screenshot sheets checked.
+- [x] **Realistic ball physics** — set apex, spike landing, topspin dip, net/tape/antenna, women's
+  net, floor bounce, determinism and predictor tests; arcs and spike speeds (25-30 m/s) at 1:1 scale.
+- [x] **60 fps target, no console errors, all tests pass** — 36/36 tests; e2e: no console errors;
+  CPU frame median ~4.6 ms (p95 ~12 ms, from set-time AI planning) with 86 draw calls / 107k
+  triangles; adaptive quality governor (MSAA → render scale → shadow size) protects weaker GPUs.
+  No memory growth: 0 geometry/texture growth across repeated mode switches, JS heap flat over a
+  300 s rally with forced GC (23.9 → 24.6 MB), 600 s soak clean. (GPU frame time cannot be
+  measured in this headless SwiftShader container; see Known issues.)
+- [x] **README** — controls, modes, how to run, how to tune (config sections), testing.
+- [x] **PROGRESS.md** — this summary, the milestone log, decisions and ideas for later.
 
 ## Done
 - **M1** Court, lighting, camera, FP/TP toggle, capsule movement.
@@ -118,7 +148,7 @@ M9/M10 — feel, polish, performance and robustness.
     with formant wobble and claps; generated convolution reverb for the arena.
   - Bloom picks up only HDR effect colours (threshold 1.0). Smoke-tested every sound path (no errors).
 
-- **M9** Feel and polish (in progress).
+- **M9** Feel and polish.
   - FP eye: follows crouch/landing dips, filters head sway to `CAMERA.fpBobScale`; TP camera snaps on
     teleports (no swoosh across the court); athletes standing in the TP camera's way fade out.
   - FP aim range tuned so looking at the ball gives a mid-court shot; trail fades near the lens; your
@@ -131,12 +161,44 @@ M9/M10 — feel, polish, performance and robustness.
   - `npm run e2e`: Vite + headless Chromium, every drill with the autopilots, FP/TP screenshots,
     console errors, frame time, draw calls and a soak. First run: no console errors; spike drill
     5/5 positions Perfect; CPU frame median 5.4 ms / p95 12.6 ms; heap flat.
+  - Approach GO cue (the drill plans your ideal approach with the AI planner and pulses the ring when
+    a perfect approach would start), jump-load ring meter, higher outside/opposite/pipe sets and
+    closer lane starts so there is a learnable set-then-go beat.
+  - Free Play feed 5: serve practice behind the end line with target zones.
+  - Intervening touches cancel a spike's impact package (no cracks/replay for blocked spikes).
+- **M10** Performance and robustness.
+  - Quality governor: below ~50 fps on average it steps down MSAA, then render scale, then shadow
+    resolution. Ideal-contact search made O(n); approach planner trimmed (3.5 ms per set).
+  - Merged static arena meshes: 119 → 86 draw calls. Composer sized at start-up.
+  - Leak checks with forced GC: zero GPU resource growth per mode switch; heap flat over long
+    rallies; disposal fixed for drill floor rings and net-height toggles. WebGL context loss handled.
+  - Production build (`npm run build`, 780 kB JS / 213 kB gzip) checked under `vite preview`.
 
 ## Known issues
-- Headless Chromium uses SwiftShader, so on-screen FPS in screenshots is not representative.
+- This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
+  real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
+  well within a 16.7 ms budget, and the quality governor degrades gracefully if the GPU is slow.
+- Pushing to GitHub failed from this session (403: the GitHub App/connection lacks access to
+  `LemonPhase/court-feel`). All work is committed locally on `claude/hopeful-albattani-j9by9c`.
+- Pointer lock can be refused in some embedded browsers; the game falls back to drag-to-look.
+- Athletes don't physically collide with each other (AI spacing keeps it rare).
+- No rotation in the Mini Rally: positions are fixed slots (a sandbox, not a match).
+
+## Ideas for later
+- Real rotations and libero substitutions in the rally; a full scoring mode.
+- Approach paths with curved slide / broad-jump attacks for middles and opposites; back-row D/pipe.
+- Jump-set and setter dump decisions for the AI; read-blocking vs commit-blocking options.
+- Dive / sprawl animations for desperate digs; overhead (hands) passing of free balls.
+- Ghost replays of your best spike, and a "timing trainer" overlay that shows your click history.
+- Per-player handedness (lefties), body-type variety, jersey numbers and names.
+- Gamepad support with analogue approach speed and trigger-pressure for power.
+- Tunable difficulty presets for the AI and assist; accessibility options (colour-blind cues).
+- Audio: stereo panning by position, crowd chants, PA announcer stingers.
+- Mobile/touch layout.
 
 ## Next steps
-- M9 feel/polish pass, M10 performance + robustness, README.
+- None required. If resuming: retry the GitHub push once access is granted, then pick from
+  "Ideas for later".
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
