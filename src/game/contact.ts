@@ -20,6 +20,8 @@ export interface ContactEvent {
   tip: boolean;
   /** intended target (floor) */
   target: THREE.Vector3;
+  /** swing power 0..1 from the wind-up hold (spikes / serves) */
+  power?: number;
 }
 
 export interface IdealInfo {
@@ -119,11 +121,36 @@ export class ContactSystem {
     return CONTACT.spikeReach + this.host.aimAssist(a) * ASSIST.reachBonus;
   }
 
-  /** begin a spike/serve swing on the input frame */
-  startSwing(a: Athlete, opts: { aiErr?: number } = {}): Action {
+  /** attack button down: draw the arm back; power builds while it is held */
+  beginWindup(a: Athlete): Action {
+    return a.startAction('windup', this.host.simTime);
+  }
+
+  /** 0..1 power a wind-up started at t0 has built by `now` (0 until it is longer than a tap) */
+  static chargeFor(holdS: number): number {
+    return clamp01((holdS - TIMING.tapThreshold) / (TIMING.chargeFull - TIMING.tapThreshold));
+  }
+
+  /**
+   * Attack button up: the swing starts now and meets the ball at the best
+   * moment it can still reach (graded on this release). A hold shorter than
+   * a tap becomes a tip; longer holds hit harder up to full charge.
+   */
+  releaseWindup(a: Athlete, opts: { aiErr?: number; tip?: boolean } = {}): Action | null {
+    const act = a.action;
+    if (!act || act.kind !== 'windup') return null;
+    const hold = this.host.simTime - act.t0;
+    const tip = opts.tip ?? hold < TIMING.tapThreshold;
+    return this.startSwing(a, { aiErr: opts.aiErr, charge: tip ? 0 : ContactSystem.chargeFor(hold), tip });
+  }
+
+  /** begin a spike/serve swing now (the release of the wind-up) */
+  startSwing(a: Athlete, opts: { aiErr?: number; charge?: number; tip?: boolean } = {}): Action {
     const h = this.host;
     const t = h.simTime;
     const act = a.startAction('swing', t);
+    act.charge = opts.charge ?? 1;
+    act.tip = opts.tip ?? false;
     const info = this.ideal(a, t + TIMING.swingMin * 0.5);
     let tStar = t + TIMING.swingNominal;
     if (info && info.d < CONTACT.spikeReachStretch + 0.8) tStar = info.t;
@@ -226,11 +253,12 @@ export class ContactSystem {
     const lt0 = ball.lastTouch;
     const serve = this.serving === a && !!lt0 && lt0.athlete === a && lt0.kind === 'feed';
     this.serving = null;
-    // ---- tap vs hold
-    const heldThrough = act.held;
-    const pressDur = (act.releaseT > 0 ? act.releaseT : h.simTime) - act.t0;
-    const tip = !serve && !heldThrough && pressDur < TIMING.tapThreshold;
+    // ---- tap vs wind-up (a serve is always a full swing)
+    const tip = !serve && act.tip;
     act.tip = tip;
+    // power from the wind-up: a short hold is a controlled roll-shot speed, full charge the full swing
+    const charge = tip ? 0 : act.charge;
+    const power = lerp(CONTACT.chargePowerMin, 1, 1 - (1 - charge) * (1 - charge));
 
     // ---- target with timing-dependent error
     const target = h.aimTargetFor(a, new THREE.Vector3());
@@ -258,7 +286,7 @@ export class ContactSystem {
       ball.hit(out, w, 0, h.simTime);
     } else if (serve && a.state !== 'air') {
       // standing float serve: no spin, knuckles
-      speed = CONTACT.serveFloatSpeed * (rank === 3 ? 1.08 : rank === 2 ? 1 : 0.88) * lerp(0.9, 1.05, pos.power - 0.75);
+      speed = CONTACT.serveFloatSpeed * (rank === 3 ? 1.08 : rank === 2 ? 1 : 0.88) * lerp(0.9, 1.05, pos.power - 0.75) * lerp(0.85, 1, power);
       const land = { x: 0, y: 0, z: 0 };
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
@@ -274,8 +302,8 @@ export class ContactSystem {
     } else {
       const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
       const gradeK = serve ? (rank === 3 ? 1.1 : rank === 2 ? 1 : 0.8) : 1;
-      speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1);
-      const spin = serve ? CONTACT.serveJumpSpin : rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk;
+      speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1) * power;
+      const spin = (serve ? CONTACT.serveJumpSpin : rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk) * lerp(0.75, 1, power);
       const land = { x: 0, y: 0, z: 0 };
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, spin, out, w, land);
@@ -293,10 +321,11 @@ export class ContactSystem {
     }
     ball.lastTouch = { athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', t: h.simTime, side: a.side };
     a.lastTouchT = h.simTime;
-    const quality = rank === 3 ? 1 : rank === 2 ? 0.6 : 0.3;
+    // FX intensity follows timing and power; the full Perfect package needs a real wind-up
+    const quality = (rank === 3 ? 1 : rank === 2 ? 0.6 : 0.3) * lerp(0.55, 1, charge);
     h.emitContact({
       athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', grade, note, speed, point: new THREE.Vector3(bp.x, bp.y, bp.z),
-      quality: tip ? 0.2 : quality, perfect: grade === 'Perfect' && !tip, tip, target,
+      quality: tip ? 0.2 : quality, perfect: grade === 'Perfect' && !tip && charge >= 0.5, tip, target, power: tip ? 0 : charge,
     });
   }
 

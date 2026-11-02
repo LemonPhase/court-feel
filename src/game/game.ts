@@ -348,7 +348,8 @@ export class Game {
     if (ev.athlete.isUser) {
       if (ev.grade) {
         const kmh = ev.speed * 3.6;
-        const sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+        const pw = ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
+        const sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
         this.hud.showGrade(ev.grade, sub);
       }
       if (ev.speed > 0) this.hud.setSpeed(ev.speed * 3.6);
@@ -591,6 +592,8 @@ export class Game {
       const act = a.action;
       if (!act) continue;
       if (act.kind === 'swing' && act.resolved && this.simTime > act.contactT + 0.35) a.endAction();
+      // a wind-up never released before landing is dropped
+      else if (act.kind === 'windup' && a.state === 'land' && a.stateT >= 0 && act.t0 < this.simTime - a.stateT) a.endAction();
       else if (act.kind === 'block' && !act.held && this.simTime > act.releaseT + 0.25) a.endAction();
       else if (act.kind === 'toss' && this.simTime > act.t0 + 1.6) a.endAction();
       else if (act.kind === 'set' && act.resolved && this.simTime > act.contactT + 0.45) a.endAction();
@@ -695,6 +698,16 @@ export class Game {
     if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint());
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
     this.hud.setLoad(me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null);
+    // spike wind-up: power ring, a tick at full charge, a swish on release
+    const wind = me.action?.kind === 'windup' ? me.action : null;
+    const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;
+    this.hud.setCharge(wind && !this.inMenu ? charge : null);
+    if (charge >= 1 && this.lastCharge < 1) this.fx?.audio.chargeFull();
+    if (!wind && me.action?.kind === 'swing' && me.action !== this.swished) {
+      this.swished = me.action;
+      if (!me.action.tip) this.fx?.audio.swish(me.action.charge);
+    }
+    this.lastCharge = charge;
     if (!draw) return;
     this.renderer.info.reset();
     this.post.render(realDt);
@@ -704,7 +717,7 @@ export class Game {
   private updateAimReticle(dt: number): void {
     const me = this.me;
     const mat = this.aimReticle.material as THREE.MeshBasicMaterial;
-    const show = !this.inMenu && (me.state === 'air' || me.state === 'load' || (me.action?.kind === 'toss'));
+    const show = !this.inMenu && (me.state === 'air' || me.state === 'load' || me.action?.kind === 'toss' || me.action?.kind === 'windup');
     mat.opacity = lerp(mat.opacity, show ? 0.75 : 0, damp(12, dt));
     this.aimReticle.visible = mat.opacity > 0.02;
     if (this.aimReticle.visible) {
@@ -712,6 +725,9 @@ export class Game {
       this.aimReticle.position.set(this._aim.x, 0.013, this._aim.z);
     }
   }
+
+  private lastCharge = -1;
+  private swished: unknown = null;
 
   notePress(at: number, ideal: number): void {
     this.lastPress = { at, ideal };
@@ -728,7 +744,7 @@ export class Game {
         perfect: TIMING.spikePerfect,
         good: TIMING.spikeGood,
         ok: TIMING.spikeOk,
-        label: `click in ${(ideal * 1000).toFixed(0)} ms · miss dist ${this.idealCache.d.toFixed(2)} m`,
+        label: `release in ${(ideal * 1000).toFixed(0)} ms · miss dist ${this.idealCache.d.toFixed(2)} m`,
       };
       this.gizmos.contact.visible = true;
       this.gizmos.contact.position.copy(this.idealCache.point);
@@ -744,7 +760,7 @@ export class Game {
       this.gizmos.lastHit.visible = true;
       this.gizmos.lastHit.position.copy(act.contactPoint);
     }
-    const lp = this.lastPress ? ` last click err ${(this.lastPress.at * 1000).toFixed(0)} ms` : '';
+    const lp = this.lastPress ? ` last release err ${(this.lastPress.at * 1000).toFixed(0)} ms` : '';
     return {
       fps: this.fps,
       frameMs: this.frameMs,

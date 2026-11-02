@@ -139,6 +139,12 @@ body.replaying .hud { opacity: 0.25; }
   background: conic-gradient(var(--gold) var(--p), rgba(255,255,255,0.12) 0);
   -webkit-mask: radial-gradient(circle, transparent 13px, #000 14px); mask: radial-gradient(circle, transparent 13px, #000 14px); }
 .load-ring.full { background: conic-gradient(#ff8a3d 100%, transparent 0); filter: drop-shadow(0 0 6px rgba(255,140,40,0.9)); }
+.charge-ring { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; opacity: 0;
+  transition: opacity 0.1s; --p: 0%;
+  background: conic-gradient(from 180deg, #ffd23f, #ff8a3d var(--p), rgba(255,255,255,0.1) 0);
+  -webkit-mask: radial-gradient(circle, transparent 21px, #000 22px, #000 25px, transparent 26px); mask: radial-gradient(circle, transparent 21px, #000 22px, #000 25px, transparent 26px); }
+.charge-ring.full { background: conic-gradient(#ff6a2a 100%, transparent 0); filter: drop-shadow(0 0 8px rgba(255,120,40,0.95)); animation: chargeFull 0.5s ease-in-out infinite alternate; }
+@keyframes chargeFull { from { transform: scale(1); } to { transform: scale(1.08); } }
 .go-cue { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-weight: 900; font-style: italic; font-size: 22px;
   letter-spacing: 0.2em; color: #6fe3ff; opacity: 0; text-shadow: 0 0 14px rgba(80,200,255,0.8); }
 .go-cue.show { animation: goCue 0.7s ease-out; }

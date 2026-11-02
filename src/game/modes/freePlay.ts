@@ -91,7 +91,7 @@ export class FreePlay extends Mode {
       g.hud.dip();
       g.placeUser(0.5, 10.4, 0);
       this.pickZone();
-      g.hud.message('Behind the end line: Q to toss, Left click to hit (jump for a jump serve)', 3);
+      g.hud.message('Behind the end line: Q to toss, hold Left mouse and release to hit (jump for a jump serve)', 3);
       return;
     }
     switch (this.feed) {
@@ -122,8 +122,8 @@ export class FreePlay extends Mode {
   }
 
   hint(): string {
-    if (this.feed === 'practice') return `${kbd('Q')} toss · ${kbd('LMB')} serve (aim with the mouse, jump for a jump serve) · ${kbd('1')}-${kbd('5')} feed type`;
-    return `${kbd('1')}-${kbd('5')} feed type · ${kbd('F')} feed · ${kbd('T')} auto · ${kbd('Q')} serve toss · ${kbd('LMB')} hit · ${kbd('E')} pass · ${kbd('RMB')} block/set`;
+    if (this.feed === 'practice') return `${kbd('Q')} toss · hold/release ${kbd('LMB')} serve (aim with the mouse, jump for a jump serve) · ${kbd('1')}-${kbd('5')} feed type`;
+    return `${kbd('1')}-${kbd('5')} feed type · ${kbd('F')} feed · ${kbd('T')} auto · ${kbd('Q')} serve toss · hold/release ${kbd('LMB')} hit · ${kbd('E')} pass · ${kbd('RMB')} block/set`;
   }
 
   canServe(): boolean {
@@ -162,7 +162,8 @@ export class FreePlay extends Mode {
     // the lamp shows when the machine is about to fire
     (this.machine.lamp.material as THREE.MeshBasicMaterial).color.setRGB(idle && this.wait < 0.6 ? 2.5 : 0.3, idle && this.wait < 0.6 ? 2.2 : 1.6, 0.4);
     if (!idle) return;
-    if (g.me.action?.kind === 'toss') return; // the user is serving
+    const act = g.me.action?.kind;
+    if (act === 'toss' || (act === 'windup' && g.contact.serving === g.me)) return; // the user is serving
     if (this.feed === 'practice') return; // the machine stands down
     this.wait -= dt;
     if ((this.auto && this.wait <= 0) || this.requested) {

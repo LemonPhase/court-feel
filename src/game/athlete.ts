@@ -4,7 +4,7 @@ import { standingReach } from '../character/rig';
 import { angleLerp, clamp, clamp01, damp, dirFromYaw, lerp, rightFromYaw, wrapAngle } from '../core/mathx';
 
 export type AState = 'ground' | 'load' | 'air' | 'land';
-export type ActionKind = 'swing' | 'block' | 'pass' | 'set' | 'toss' | 'serve';
+export type ActionKind = 'swing' | 'windup' | 'block' | 'pass' | 'set' | 'toss' | 'serve';
 export type Grade = 'Perfect' | 'Good' | 'Early' | 'Late' | 'Miss';
 
 export interface Action {
@@ -31,6 +31,8 @@ export interface Action {
   note: string;
   /** closest ball distance seen so far by a zone contact (pass/set) */
   minD: number;
+  /** swing power 0..1 from how long the wind-up was held */
+  charge: number;
 }
 
 export interface AthleteCmd {
@@ -403,7 +405,7 @@ export class Athlete {
     const act: Action = {
       kind, t0: t, held: true, releaseT: -1, contactT: -1, contactPoint: new THREE.Vector3(),
       resolved: false, grade: null, tip: false, miss: false, hand: 'R', aim: new THREE.Vector3(0, 0, -1), err: 0, note: '',
-      minD: 1e9,
+      minD: 1e9, charge: 0,
     };
     this.action = act;
     return act;

@@ -91,8 +91,8 @@ export class SpikeDrill extends Mode {
     this.t = 0;
     g.hud.message(
       this.position === 'MB'
-        ? 'Quick: run on the pass · jump as the setter touches it · hit: Left click'
-        : 'Approach: Shift + W · plant: Space · hit: Left click',
+        ? 'Quick: run on the pass · jump as the setter touches it · hold LMB, release to hit'
+        : 'Approach: Shift + W · plant: Space · hold LMB to wind up, release to hit',
       3.4,
     );
   }
@@ -111,7 +111,7 @@ export class SpikeDrill extends Mode {
 
   hint(): string {
     const me = this.g.me;
-    if (me.state === 'air') return `${kbd('LMB')} hold = spike · tap = tip &nbsp; aim with the mouse`;
+    if (me.state === 'air' || me.action?.kind === 'windup') return `hold ${kbd('LMB')} = wind up (longer = harder) · release = hit · tap = tip &nbsp; aim with the mouse`;
     if (me.state === 'load') return `release ${kbd('Space')} to jump`;
     if (this.position === 'MB') return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch · ${kbd('V')} camera · ${kbd('R')} reset rep`;
     return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump · ${kbd('V')} camera · ${kbd('R')} reset rep`;

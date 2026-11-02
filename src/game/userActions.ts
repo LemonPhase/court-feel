@@ -11,12 +11,11 @@ export class UserActions {
     u.handlers.jump = () => this.g.me.jumpPress();
     u.releaseHandlers.jump = () => this.g.me.jumpRelease();
     u.handlers.attack = () => this.attack();
+    // release the wind-up: the swing goes now (tap = tip, longer hold = more power)
     u.releaseHandlers.attack = () => {
-      const act = this.g.me.action;
-      if (act && act.kind === 'swing' && act.held) {
-        act.held = false;
-        act.releaseT = this.g.simTime;
-      }
+      const g = this.g;
+      const swing = g.contact.releaseWindup(g.me);
+      if (swing) g.notePress(swing.err, swing.contactT);
     };
     u.handlers.block = () => this.rightButton();
     u.releaseHandlers.block = () => {
@@ -37,6 +36,7 @@ export class UserActions {
     u.handlers.toss = () => this.toss();
   }
 
+  /** attack button down: start the wind-up (from the plant, in the air, or under a serve toss) */
   private attack(): boolean {
     const g = this.g;
     const me = g.me;
@@ -44,9 +44,8 @@ export class UserActions {
     // already mid-swing: buffer the press
     if (act && act.kind === 'swing' && !act.resolved) return false;
     if (act && act.kind === 'swing' && g.simTime - act.contactT < 0.25) return false;
-    if (me.state === 'load') return false;
-    const swing = g.contact.startSwing(me);
-    g.notePress(swing.err, swing.contactT);
+    if (act && act.kind === 'windup') return true;
+    g.contact.beginWindup(me);
     return true;
   }
 
@@ -55,6 +54,7 @@ export class UserActions {
     const g = this.g;
     const me = g.me;
     if (me.action && me.action.kind === 'swing' && !me.action.resolved) return false;
+    if (me.action && me.action.kind === 'windup') return false;
     if (g.contact.wantsSet(me)) {
       me.startAction('set', g.simTime);
       return true;

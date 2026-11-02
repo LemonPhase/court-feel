@@ -196,6 +196,20 @@ export class AudioEngine {
     }
   }
 
+  /** wind-up reached full power: a small bright tick */
+  chargeFull(): void {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.tone(t, 1250, 1650, 0.07, 0.045, 'triangle', 0.15, 0.004);
+  }
+
+  /** arm swing whoosh on release, louder with power */
+  swish(power: number): void {
+    if (!this.ok) return;
+    const t = this.ctx!.currentTime;
+    this.noiseBurst(t, 0.09, 900 + power * 700, 1.4, 0.05 + power * 0.07, 'bandpass', 0.1);
+  }
+
   tip(rate = 1): void {
     if (!this.ok) return;
     const t = this.ctx!.currentTime;

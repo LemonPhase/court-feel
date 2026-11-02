@@ -34,10 +34,10 @@ mouse (pointer lock). **Esc** pauses and opens settings.
 | W A S D | Move (accelerates and decelerates; forward is fastest, backpedal slowest) |
 | Shift | Approach / sprint |
 | Space | Plant and jump. **Hold** to load a stronger jump, release to take off (auto at 0.3 s) |
-| Left mouse | Attack / hit at contact. **Hold** through contact = power spike, **tap** = tip (short) or roll shot (deep). Also hits your serve. |
+| Left mouse | Attack. **Press and hold** to wind up (the arm draws back and a ring around the crosshair fills: the longer you hold, the harder the hit, full power at ~0.3 s), **release** to swing — timing is graded on the release (about 0.1 s before the ball reaches your hand). A quick **tap** = tip (short) or roll shot (deep). Landing without releasing drops the swing. Also hits your serve. |
 | Right mouse | Block (hands up, they press over the net in the air). When the ball is dropping onto you from your own side it **sets** instead — look at the hitter you want. |
 | E | Bump / pass / dig (press early so the platform is ready; hold it) |
-| Q | Serve toss (Free Play, feed 5 = serve practice), then Left mouse to hit — standing = float serve, jump = topspin serve |
+| Q | Serve toss (Free Play, feed 5 = serve practice), then hold and release Left mouse to hit — standing = float serve, jump = topspin serve |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Reset the current rep |
 | Esc | Pause / settings |
@@ -121,8 +121,8 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 
 | Section | What it controls |
 |---|---|
-| `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, pass/set/dig lead times, block height thresholds, input buffer |
-| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, pass error by grade |
+| `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
+| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
@@ -137,13 +137,13 @@ the pause menu and persist in `localStorage`.
 
 ## Testing
 
-* `npm test` — 40 Vitest tests: set apex, spike landing point, topspin dip,
+* `npm test` — 43 Vitest tests: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
   acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the
   middle leaves the floor on the setter's touch and the set meets the hand at
-  the top of the jump), and the spike timing grades driven
-  through the real contact system.
+  the top of the jump), the spike timing grades driven through the real
+  contact system (press, hold, release), and hold-to-charge power.
 * `npm run e2e` — starts Vite, loads the game in headless Chromium, runs every
   drill with an autopilot that plays through the real input path (it plans
   its approach by forward-simulating the athlete), screenshots first- and

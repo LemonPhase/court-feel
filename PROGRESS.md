@@ -9,7 +9,7 @@ Serve Receive/Dig, Setter, 6v6 Mini Rally), five positions, instant FP/TP switch
 deterministic ball simulation, procedurally built and animated athletes with IK, graded timing
 (Perfect / Good / Early / Late) with buffering and adjustable assist, a full juice package
 (hit-stop, shake, streak sparks, fire trails, shockwave, dust, floor cracks, hand flashes,
-slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (40
+slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (43
 unit tests + a Playwright e2e that plays every drill through the real input path).
 
 ### Acceptance criteria
@@ -26,7 +26,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   dig, set, serve toss; planted feet; head look-at. Side-view screenshot sheets checked.
 - [x] **Realistic ball physics** — set apex, spike landing, topspin dip, net/tape/antenna, women's
   net, floor bounce, determinism and predictor tests; arcs and spike speeds (25-30 m/s) at 1:1 scale.
-- [x] **60 fps target, no console errors, all tests pass** — 40/40 tests; e2e: no console errors;
+- [x] **60 fps target, no console errors, all tests pass** — 43/43 tests; e2e: no console errors;
   CPU frame median ~4.6 ms (p95 ~12 ms, from set-time AI planning) with 86 draw calls / 107k
   triangles; adaptive quality governor (MSAA → render scale → shadow size) protects weaker GPUs.
   No memory growth: 0 geometry/texture growth across repeated mode switches, JS heap flat over a
@@ -192,6 +192,17 @@ unit tests + a Playwright e2e that plays every drill through the real input path
     goes wide; the block drill middle has to commit-jump with them. Rally probe: MB takeoff within
     0-20 ms of the setter's touch, contact ~0.42 s after the set.
 
+- **Hold-to-charge spike** (playtest round 2). The attack button is now press-hold-release:
+  pressing starts a wind-up (hitting arm draws back, chest turns, a ring around the crosshair fills),
+  power builds with the hold (`TIMING.chargeFull` 0.32 s for full; a hold just past a tap gives
+  `CONTACT.chargePowerMin` = 70% speed), and releasing starts the swing, which meets the ball at the
+  best moment it can still reach. Timing is graded on the release (same windows as before). A hold
+  shorter than `TIMING.tapThreshold` is a tip/roll; landing without releasing drops the wind-up.
+  Perfect timing: tap = tip 32 km/h, 0.1 s = 78, 0.2 s = 99, 0.32 s+ = 108 km/h. The full Perfect
+  effects package needs at least half charge. Applies to serves too. AI hitters wind up early in the
+  jump (middles before the quick arrives, so decoys land with it dropped). Full-charge tick and a
+  release swish in the audio; the grade line shows the power.
+
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
@@ -230,6 +241,9 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Aim depth = depth into the opponent court (not distance from the hitter), so spikes and serves
   share one mapping and the reticle is always on their side.
 - Zone contacts (pass/set) resolve at the closest approach, not first entry into the reach sphere.
+- Spike power comes from the wind-up hold, timing from the release: holding longer is never
+  penalised directly, the risk is holding past the moment the ball is in reach (you can only release
+  so late) or landing first. Full charge caps at 0.32 s so a full-power swing fits in any jump.
 - Back set (OPP) is set a bit higher than elite tempo so it is reachable when reacting to the set.
 - The MB quick is a true "1": the hitter jumps with the setter's touch and the set adapts to the
   hitter (fixed flight time to the predicted hand position at the top of the jump), because a quick

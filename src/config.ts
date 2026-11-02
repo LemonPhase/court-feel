@@ -160,8 +160,10 @@ export const TIMING = {
   spikePerfect: 0.03,
   spikeGood: 0.07,
   spikeOk: 0.15,
-  /** tap shorter than this (released before contact) => tip/roll */
-  tapThreshold: 0.085,
+  /** attack button held shorter than this => tip/roll instead of a swing */
+  tapThreshold: 0.09,
+  /** wind-up hold (s) that reaches full swing power */
+  chargeFull: 0.32,
   /** lookahead for the ideal contact search */
   contactLookahead: 0.55,
   /** passing: ideal time between pressing E and the ball arriving */
@@ -198,6 +200,8 @@ export const CONTACT = {
   spikeSpinGood: 55,
   spikeSpinOk: 35,
   rollSpin: 45,
+  /** swing power at the shortest (just past a tap) wind-up; full charge = 1 */
+  chargePowerMin: 0.7,
   serveFloatSpeed: 17,
   serveJumpSpeed: 24,
   serveJumpSpin: 50,

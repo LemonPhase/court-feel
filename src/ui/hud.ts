@@ -34,6 +34,7 @@ export class Hud {
   private fadeEl: HTMLDivElement;
   private camTag: HTMLDivElement;
   private loadRing: HTMLDivElement;
+  private chargeRing: HTMLDivElement;
   private goCue: HTMLDivElement;
   private gradeTimer = 0;
   private bannerTimer = 0;
@@ -62,6 +63,7 @@ export class Hud {
     this.cross = el('div', 'crosshair', this.root);
     this.camTag = el('div', 'hud-cam', this.root, 'TP');
     this.loadRing = el('div', 'load-ring', this.root);
+    this.chargeRing = el('div', 'charge-ring', this.root);
     this.goCue = el('div', 'go-cue', this.root, 'GO');
     this.fadeEl = el('div', 'fade', parent);
   }
@@ -132,6 +134,18 @@ export class Hud {
     this.loadRing.style.opacity = '1';
     this.loadRing.style.setProperty('--p', `${Math.round(frac * 100)}%`);
     this.loadRing.classList.toggle('full', frac >= 0.99);
+  }
+
+  /** spike wind-up power around the crosshair (null hides it) */
+  setCharge(frac: number | null): void {
+    if (frac === null) {
+      this.chargeRing.style.opacity = '0';
+      this.chargeRing.classList.remove('full');
+      return;
+    }
+    this.chargeRing.style.opacity = '1';
+    this.chargeRing.style.setProperty('--p', `${Math.round(frac * 100)}%`);
+    this.chargeRing.classList.toggle('full', frac >= 0.999);
   }
 
   /** approach timing cue */

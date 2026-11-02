@@ -29,7 +29,8 @@ export class SpikeBot {
   } | null = null;
   private pressAt = 0;
   private clickAt = -1;
-  private releaseAt = -1;
+  private holding = false;
+  private recorded = false;
   private b: V3 = { x: 0, y: 0, z: 0 };
   private offset = 0;
   clicks: { err: number; grade: string | null }[] = [];
@@ -42,7 +43,9 @@ export class SpikeBot {
 
   private release(): void {
     const inp = this.g.input;
-    for (const k of ['Space', 'Mouse0', 'KeyW', 'ShiftLeft']) inp.up(k);
+    for (const k of ['Space', 'KeyW', 'ShiftLeft']) inp.up(k);
+    // mid-air with no ball to hit (a decoy): keep holding; landing drops the wind-up
+    if (this.g.me.state !== 'air') inp.up('Mouse0');
   }
 
   step(_dt: number): void {
@@ -66,6 +69,8 @@ export class SpikeBot {
       if (this.phase !== 'wait') this.release();
       this.phase = 'wait';
       this.plan = null;
+      if (me.state !== 'air' && g.input.isDown('Mouse0')) g.input.up('Mouse0');
+      this.holding = false;
       this.mx = this.mz = 0;
       this.sprint = false;
       g.rig.yaw = 0;
@@ -111,25 +116,37 @@ export class SpikeBot {
         const t = clamp((Math.abs(plan.aim.z) - AIM_DEPTH[0]) / (AIM_DEPTH[1] - AIM_DEPTH[0]), 0, 1);
         g.rig.pitch = lo + (hi - lo) * t;
         g.rig.yaw = aimYaw;
+        // hold the attack button from early in the jump (wind-up), release on the timing
+        // (a tip is a short tap at the same moment)
+        const tip = this.quality === 'tip';
+        if (!tip && !this.holding && this.clickAt < 0 && me.state === 'air') {
+          g.input.down('Mouse0');
+          this.holding = true;
+        }
         // a quick: we are up before the set; read it once it leaves the setter's hands
         if (this.clickAt < 0 && (me.role !== 'MB' || lt?.kind === 'set')) {
           const info = g.contact.ideal(me, now, 0.9);
           if (info) {
             const fire = info.t - TIMING.swingNominal + this.offset;
-            if (now >= fire - 1e-4) {
+            if (tip && !this.holding && now >= fire - 0.05 - 1e-4) {
               g.input.down('Mouse0');
+              this.holding = true;
+            }
+            if (now >= fire - 1e-4) {
+              g.input.up('Mouse0');
+              this.holding = false;
               this.clickAt = now;
-              this.releaseAt = now + (this.quality === 'tip' ? 0.03 : 0.25);
             }
           }
-        } else if (this.releaseAt > 0 && now >= this.releaseAt) {
-          g.input.up('Mouse0');
-          this.releaseAt = -1;
-          const act = me.action ?? me.lastAction;
-          this.clicks.push({ err: act ? act.err : 0, grade: act ? act.grade : null });
+        } else if (this.clickAt >= 0 && !this.recorded) {
+          const act = me.action?.kind === 'swing' ? me.action : me.lastAction;
+          if (act && act.kind === 'swing' && act.resolved) {
+            this.clicks.push({ err: act.err, grade: act.grade });
+            this.recorded = true;
+          }
         }
         if (me.state === 'land' || me.state === 'ground') {
-          if (this.clickAt >= 0 && this.releaseAt < 0) this.phase = 'done';
+          if (this.clickAt >= 0 && this.recorded) this.phase = 'done';
         }
         break;
       }
@@ -269,7 +286,8 @@ export class SpikeBot {
     this.plan = { tc: best.tc, tPress: best.tPress, tStart: best.tStart, dir: best.dir, hold, contact: best.contact, aim };
     this.phase = 'approach';
     this.clickAt = -1;
-    this.releaseAt = -1;
+    this.holding = false;
+    this.recorded = false;
     const q = this.quality;
     const rnd = g.rng.next() * 2 - 1;
     this.offset = q === 'perfect' ? 0 : q === 'good' ? rnd * 0.05 : rnd * 0.13;

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TIMING } from '../config';
 import { clamp, clamp01, damp, easeInCubic, easeOutCubic, lerp, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import { orientBone, twoBoneIK } from './ik';
@@ -37,12 +38,21 @@ interface FootState {
   pitch: number;
 }
 
+/** wind-up power 0..1 after holding since t0 (mirrors ContactSystem.chargeFor) */
+function windupCharge(t0: number, now: number): number {
+  return clamp01((now - t0 - TIMING.tapThreshold) / (TIMING.chargeFull - TIMING.tapThreshold));
+}
+const _ck1 = new THREE.Vector3();
+const _ck2 = new THREE.Vector3();
+
 const ARM_KEYS = {
   ready: { w: [-0.025, -0.19, 0.17], pole: [0.8, -0.35, -0.6] },
   relaxed: { w: [0.02, -0.29, 0.03], pole: [0.2, 0, -1] },
   plantBack: { w: [0.03, -0.17, -0.21], pole: [0.3, 0, 1] },
   swingUp: { w: [0.04, 0.3, 0.1], pole: [0.6, -0.3, -0.8] },
   cock: { w: [-0.02, 0.105, -0.055], pole: [1, 0.6, -0.55] },
+  /** fully drawn bow-and-arrow: elbow high and back (full wind-up charge) */
+  cockDeep: { w: [-0.01, 0.15, -0.135], pole: [1, 0.85, -0.35] },
   over: { w: [0.06, 0.33, -0.06], pole: [1, 0.3, -0.6] },
   follow: { w: [-0.13, -0.2, 0.15], pole: [1, 0, -0.4] },
   followMid: { w: [-0.02, 0.06, 0.3], pole: [1, 0, -0.5] },
@@ -66,6 +76,7 @@ type ArmKey = keyof typeof ARM_KEYS;
 const FP_KEYS: Partial<Record<ArmKey, { w: readonly number[]; pole: readonly number[] }>> = {
   block: { w: [0.07, 0.2, 0.25], pole: [1, -0.45, -0.4] },
   cock: { w: [0.04, 0.17, 0.06], pole: [1, 0.4, -0.5] },
+  cockDeep: { w: [0.075, 0.215, 0.015], pole: [1, 0.7, -0.4] },
   over: { w: [0.07, 0.28, 0.12], pole: [1, 0.3, -0.6] },
   pass: { w: [-0.09, -0.18, 0.25], pole: [1, -0.8, 0.2] },
   swingUp: { w: [0.05, 0.2, 0.22], pole: [0.6, -0.3, -0.8] },
@@ -296,12 +307,13 @@ export class AthleteView {
       if (tr < swing.contactT) swingS = clamp01((tr - swing.t0) / dur);
       else swingF = clamp01((tr - swing.contactT) / (swing.tip ? 0.2 : 0.3));
       bodyRate = 40;
-      const cockY = -0.5;
+      const ch = swing.charge;
+      const cockY = -0.5 - 0.22 * ch;
       if (swingS >= 0) {
         const e = easeInCubic(swingS);
-        chestY = lerp(cockY, 0.12, e);
-        spineX = lerp(0.14, -0.1, e);
-        chestX = lerp(0.16, -0.05, e);
+        chestY = lerp(cockY, 0.12 + 0.06 * ch, e);
+        spineX = lerp(0.14 + 0.1 * ch, -0.1, e);
+        chestX = lerp(0.16 + 0.05 * ch, -0.05, e);
         hipsY = lerp(-0.12, 0.05, e);
       } else if (swingF >= 0 && swingF < 1) {
         const e = easeOutCubic(swingF);
@@ -310,6 +322,16 @@ export class AthleteView {
         chestX = lerp(-0.05, -0.2, e);
         hipsY = lerp(0.05, 0.15, e);
       }
+    }
+    // wind-up: chest turns away and the back arches as the charge builds
+    if (act && act.kind === 'windup') {
+      const ch = windupCharge(act.t0, tr);
+      const p = smooth01((tr - act.t0) / 0.12);
+      chestY = lerp(chestY, -0.5 - 0.22 * ch, p);
+      spineX = lerp(spineX, 0.14 + 0.1 * ch, p);
+      chestX = lerp(chestX, 0.16 + 0.05 * ch, p);
+      hipsY = lerp(hipsY, -0.12 - 0.05 * ch, p);
+      bodyRate = Math.max(bodyRate, 22);
     }
     const passAct = act && act.kind === 'pass' ? act : null;
     if (passAct && st !== 'air') {
@@ -544,6 +566,15 @@ export class AthleteView {
   }
 
   // ------------------------------------------------------------ arms
+  /** hitting-arm cock, drawn further back with the wind-up charge */
+  private cockAt(charge: number, out: V, pole: V): void {
+    this.key('cock', out, pole);
+    if (charge <= 0) return;
+    this.key('cockDeep', _ck1, _ck2);
+    out.lerp(_ck1, charge);
+    pole.lerp(_ck2, charge);
+  }
+
   private key(name: ArmKey, out: V, pole: V): void {
     const k = (this.hideHead && FP_KEYS[name]) || ARM_KEYS[name];
     out.set(k.w[0], k.w[1], k.w[2]).multiplyScalar(this.H);
@@ -635,7 +666,7 @@ export class AthleteView {
           const contactW = _d.copy(cp).addScaledVector(_c, -(0.105 + 0.01)).addScaledVector(_up, -0.03 * H);
           if (swingS >= 0) {
             // cocked -> over the top -> contact (quadratic bezier, whip ease)
-            this.key('cock', _a, _b);
+            this.cockAt(swing.charge, _a, _b);
             this.key('over', _e1, _e2);
             const shoulder = this.shoulderWorld(s, _f1);
             const contactLocal = this.worldToBody(_f2.subVectors(contactW, shoulder), _f2);
@@ -708,6 +739,21 @@ export class AthleteView {
         if (!released) {
           ikWorld = this.reachForBall(s, w, 0.6, 0.6, _g);
           if (ikWorld) ikBlend = reachBlend;
+        }
+      }
+      if (act && act.kind === 'windup') {
+        const p = smooth01((tr - act.t0) / 0.12);
+        if (hitting) {
+          this.cockAt(windupCharge(act.t0, tr), _a, _b);
+          w.lerp(_a, p);
+          pole.lerp(_b, p);
+          rate = 30;
+        } else if (st !== 'air') {
+          // serving: the tossing arm stays up; otherwise it reaches forward for balance
+          this.key(a.lastAction?.kind === 'toss' ? 'toss' : 'airNeutral', _a, _b);
+          w.lerp(_a, p);
+          pole.lerp(_b, p);
+          rate = 25;
         }
       }
       if (act && act.kind === 'toss' && !hitting) {

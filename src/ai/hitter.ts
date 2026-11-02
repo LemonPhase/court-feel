@@ -115,20 +115,22 @@ export class HitterBrain implements Brain {
       case 'air': {
         const p = this.plan!;
         stop(a, p.airYaw);
+        // draw the arm back early in the jump (a middle does it before the set arrives)
+        if (!this.swung && a.state === 'air' && a.stateT > 0.04 && !a.action) g.contact.beginWindup(a);
         // (a quick hitter jumps before the set: swing only if it came to us)
         if (!this.swung && a.state === 'air' && this.isMySet(g)) {
           const info = g.contact.ideal(a, now, 0.6);
           if (info && now >= info.t - TIMING.swingNominal + this.err - 1e-4) {
             const aim = this.chooseAim(g, info.ball.x);
             a.aiAim.copy(aim);
-            const act = g.contact.startSwing(a, { aiErr: this.err });
-            if (g.rng.next() < this.tipChance) {
-              act.held = false;
-              act.releaseT = now + 0.01;
+            const tip = g.rng.next() < this.tipChance;
+            if (tip) {
               // tips go short, just over the block
               a.aiAim.set(clamp(aim.x * 0.5, -3.5, 3.5), aim.y, -a.side * (1.5 + g.rng.next() * 1.5));
               this.lastShot = 'tip';
             }
+            // release the wind-up (AI holds long enough for full power); no wind-up = full swing
+            if (!g.contact.releaseWindup(a, { aiErr: this.err, tip })) g.contact.startSwing(a, { aiErr: this.err, tip });
             this.swung = true;
           }
         }

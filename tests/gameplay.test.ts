@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { COURT, PLAYER, POSITIONS, SIM, TIMING, type PositionId } from '../src/config';
+import { CONTACT, COURT, PLAYER, POSITIONS, SIM, TIMING, type PositionId } from '../src/config';
 import { Athlete } from '../src/game/athlete';
 import { aimPitchRange, aimTargetFromLook, AIM_DEPTH, ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
 import { Judge } from '../src/game/judge';
@@ -181,10 +181,10 @@ function makeHost(ball: FakeBall, events: ContactEvent[]) {
 }
 
 /**
- * Put a hitter in the air under a set and click `offset` seconds from the
- * ideal moment; returns the graded contact.
+ * Put a hitter in the air under a set, wind up for `hold` seconds and release
+ * `offset` seconds from the ideal moment; returns the graded contact.
  */
-function spikeWithOffset(offset: number, release?: number) {
+function spikeWithOffset(offset: number, hold = 0.45) {
   const ball = new FakeBall();
   const events: ContactEvent[] = [];
   const host = makeHost(ball, events);
@@ -213,17 +213,24 @@ function spikeWithOffset(offset: number, release?: number) {
   copyBall(sim, ball.state);
   ball.version++;
   host.simTime = t;
-  // wait for the click
+  // press (wind-up) `hold` before the release, release on the timing
   const info = cs.ideal(a, t, 0.9)!;
-  const clickAt = info.t - TIMING.swingNominal + offset;
+  const releaseAt = info.t - TIMING.swingNominal + offset;
+  const pressAt = releaseAt - hold;
+  // rewind the clock for early presses (the hitter stands in the plant until then)
+  let pressed = pressAt < host.simTime;
+  if (pressed) {
+    cs.beginWindup(a);
+    a.action!.t0 = pressAt;
+  }
   let act: any = null;
   const evs: CollisionEvent[] = [];
   for (let i = 0; i < SIM.hz * 1.5; i++) {
-    if (!act && host.simTime >= clickAt - 1e-9) act = cs.startSwing(a);
-    if (act && release !== undefined && act.held && host.simTime >= act.t0 + release) {
-      act.held = false;
-      act.releaseT = host.simTime;
+    if (!pressed && host.simTime >= pressAt - 1e-9) {
+      cs.beginWindup(a);
+      pressed = true;
     }
+    if (!act && host.simTime >= releaseAt - 1e-9) act = cs.releaseWindup(a);
     host.simTime += DT;
     a.step(DT, host.simTime);
     cs.step([a]);
@@ -254,10 +261,44 @@ describe('spike timing grades (real contact system)', () => {
   it('a wild click whiffs', () => {
     expect(spikeWithOffset(-0.4).grade).toBe('Miss');
   });
-  it('a quick tap released before contact is a tip', () => {
+  it('a quick tap is a tip', () => {
     const e = spikeWithOffset(0, 0.03);
     expect(e.tip).toBe(true);
     expect(e.speed).toBeLessThan(12);
+  });
+});
+
+describe('hold-to-charge spike power', () => {
+  it('the longer the wind-up, the harder the spike, up to full charge', () => {
+    const short = spikeWithOffset(0, TIMING.tapThreshold + 0.02);
+    const mid = spikeWithOffset(0, (TIMING.tapThreshold + TIMING.chargeFull) / 2);
+    const full = spikeWithOffset(0, TIMING.chargeFull + 0.01);
+    const long = spikeWithOffset(0, 0.9);
+    for (const e of [short, mid, full, long]) {
+      expect(e.tip).toBe(false);
+      expect(e.grade).toBe('Perfect');
+    }
+    expect(mid.speed).toBeGreaterThan(short.speed + 1);
+    expect(full.speed).toBeGreaterThan(mid.speed + 0.5);
+    // full charge is the cap: holding longer adds nothing
+    expect(Math.abs(long.speed - full.speed)).toBeLessThan(0.3);
+    expect(short.power!).toBeLessThan(0.15);
+    expect(full.power).toBeCloseTo(1, 5);
+  });
+
+  it('a barely held swing keeps the timing grade but only ~70% of the power', () => {
+    const weak = spikeWithOffset(0, TIMING.tapThreshold + 0.005);
+    const full = spikeWithOffset(0, 0.5);
+    expect(weak.speed / full.speed).toBeGreaterThan(CONTACT.chargePowerMin - 0.03);
+    expect(weak.speed / full.speed).toBeLessThan(CONTACT.chargePowerMin + 0.08);
+    // the full Perfect effects package needs a real wind-up
+    expect(weak.perfect).toBe(false);
+    expect(full.perfect).toBe(true);
+  });
+
+  it('timing is graded on the release, whatever the hold', () => {
+    expect(spikeWithOffset(0.05, 0.2).grade).toBe('Good');
+    expect(spikeWithOffset(-0.1, 0.5).grade).toBe('Early');
   });
 });
 
