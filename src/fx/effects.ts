@@ -111,6 +111,7 @@ export class Effects {
     ev.on('aiContact', (e) => {
       this.trail.intensity = 0;
       this.trail.fade();
+      this.pendingImpact = null;
       if (e.kind === 'set') this.audio.set();
       if (e.kind === 'pass' || e.kind === 'dig') this.audio.pass(0.5);
     });
@@ -165,10 +166,13 @@ export class Effects {
     const g = this.g;
     const user = e.athlete.isUser;
     const p = e.point;
-    // a new touch ends the previous ball's trail (attacks re-ignite their own)
-    if (e.kind === 'pass' || e.kind === 'dig' || e.kind === 'set') {
+    // a new touch ends the previous ball's trail (attacks re-ignite their own) and
+    // cancels the previous attack's floor-impact package (a blocked/dug Perfect spike
+    // must not crack the floor wherever the ball later drops)
+    if (e.kind === 'pass' || e.kind === 'dig' || e.kind === 'set' || e.kind === 'block') {
       this.trail.intensity = 0;
       this.trail.fade();
+      this.pendingImpact = null;
     }
     switch (e.kind) {
       case 'spike':

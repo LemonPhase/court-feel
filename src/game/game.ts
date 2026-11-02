@@ -497,7 +497,7 @@ export class Game {
     let slowTarget = 1;
     if (this.settings.slowmoAssist && this.me.state === 'air' && this.idealValid) {
       const until = this.idealCache.t - this.simTime;
-      if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4) slowTarget = 0.55;
+      if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4) slowTarget = ASSIST.slowmoScale;
     }
     this.slowmo = lerp(this.slowmo, slowTarget, damp(12, realDt));
     let simDt = realDt * this.timeScale * this.slowmo;

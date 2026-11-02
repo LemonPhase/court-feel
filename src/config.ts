@@ -127,15 +127,12 @@ export const POSITIONS: Record<PositionId, PositionStats> = {
 
 export const PLAYER = {
   /** ground movement */
-  sprintMultiplier: 1.0,
   decel: 20,
-  turnAccel: 30,
   backpedalScale: 0.72,
   sideScale: 0.92,
   airControl: 0.6,
   /** fraction of horizontal approach speed kept through the plant */
   plantCarry: 0.38,
-  capsuleRadius: 0.3,
   /** jump load (Space hold) */
   loadMin: 0.09,
   loadMax: 0.3,
@@ -171,7 +168,6 @@ export const TIMING = {
   passLead: 0.26,
   passPerfect: 0.1,
   passGood: 0.2,
-  passHoldMax: 0.75,
   /** digs (fast incoming balls): shorter ideal lead, similar windows */
   digLead: 0.13,
   digPerfect: 0.07,
@@ -197,8 +193,6 @@ export const CONTACT = {
   spikePerfect: 30,
   spikeGood: 26,
   spikeOk: 19,
-  tipSpeed: 7.5,
-  rollSpeed: 12,
   /** topspin (rad/s) */
   spikeSpinPerfect: 70,
   spikeSpinGood: 55,
@@ -220,8 +214,8 @@ export const ASSIST = {
   airMagnet: 1.2,
   /** reach bonus (m) at assist 1 */
   reachBonus: 0.22,
-  /** slow-mo assist: timescale while the user is lining up a contact (1 = off) */
-  slowmo: 1.0,
+  /** slow-mo assist (settings toggle): timescale while lining up a contact, and how early it kicks in */
+  slowmoScale: 0.55,
   slowmoWindow: 0.35,
 };
 

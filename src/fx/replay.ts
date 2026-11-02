@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FX } from '../config';
 import { BONE_ORDER } from '../character/rig';
 import type { AthleteView } from '../character/athleteView';
 
@@ -32,7 +33,7 @@ export class Replay {
   t0 = 0;
   t1 = 0;
   cursor = 0;
-  speed = 0.32;
+  speed = FX.replaySlow;
   focus = new THREE.Vector3();
   impact = new THREE.Vector3();
   contactT = 0;
