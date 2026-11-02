@@ -91,7 +91,7 @@ export function planApproach(
   const reachY = me.standReach - 0.16;
   let H = me.jumpMax;
   let best: ApproachPlan | null = null;
-  for (let iter = 0; iter < 3; iter++) {
+  for (let iter = 0; iter < 2; iter++) {
     const hc = reachY + H * 0.97;
     const tc = pred.descendThrough(hc, now);
     if (tc < 0) return best;
@@ -110,7 +110,7 @@ export function planApproach(
     const tPress = Math.max(now + 0.02, tc - tUp - hold);
     let lo = now;
     let hi = tPress;
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 11; i++) {
       const mid = (lo + hi) / 2;
       const r = simulateApproach(me, now, mid, tPress, hold, dir, runYaw, airYaw, tc);
       const along = (r.pos.x - me.pos.x) * dir.x + (r.pos.z - me.pos.z) * dir.z;

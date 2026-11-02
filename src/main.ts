@@ -89,4 +89,15 @@ if (q.get('mode')) {
   game.hud.setVisible(true);
   if (q.get('bot')) game.enableBot(q.get('bot') as string);
 }
+// robustness: a lost GL context pauses the game and offers a reload
+const canvas = game.renderer.domElement;
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  game.paused = true;
+  const m = document.createElement('div');
+  m.className = 'ctx-lost';
+  m.innerHTML = 'The graphics context was lost.<br><button>Reload</button>';
+  m.querySelector('button')!.addEventListener('click', () => location.reload());
+  app.append(m);
+});
 game.start();

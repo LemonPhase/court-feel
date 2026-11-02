@@ -35,6 +35,16 @@ export class Post {
     this.composer.addPass(new OutputPass());
   }
 
+  /** change MSAA on the HDR targets (they are re-created on next use) */
+  setSamples(n: number): void {
+    for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+      if (rt.samples !== n) {
+        rt.samples = n;
+        rt.dispose();
+      }
+    }
+  }
+
   setCamera(cam: THREE.Camera): void {
     this.renderPass.camera = cam;
   }

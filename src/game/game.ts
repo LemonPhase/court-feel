@@ -169,6 +169,7 @@ export class Game {
 
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
+    this.resize();
   }
 
   // ------------------------------------------------------------ athletes
@@ -353,6 +354,44 @@ export class Game {
     }
   }
 
+  // ------------------------------------------------------------ quality governor
+  /** 0 = full (MSAA, 1.5x DPR cap), 1 = no MSAA + 1x DPR, 2 = 0.8x scale + 1024 shadows */
+  quality = 0;
+  private qAcc = 0;
+  private qFrames = 0;
+  private qCooldown = 3;
+
+  private governQuality(dt: number): void {
+    if (this.manual || document.hidden) return;
+    this.qCooldown -= dt;
+    this.qAcc += dt;
+    this.qFrames++;
+    if (this.qAcc < 2) return;
+    const avg = this.qAcc / this.qFrames;
+    this.qAcc = 0;
+    this.qFrames = 0;
+    if (this.qCooldown > 0 || this.quality >= 2) return;
+    // below ~50 fps on average: step down one level
+    if (avg > 1 / 50) this.setQuality(this.quality + 1);
+  }
+
+  setQuality(q: number): void {
+    this.quality = Math.max(0, Math.min(2, q));
+    this.qCooldown = 4;
+    const dpr = window.devicePixelRatio || 1;
+    this.post.setSamples(this.quality === 0 ? 4 : 0);
+    this.renderer.setPixelRatio(this.quality === 0 ? Math.min(dpr, 1.5) : this.quality === 1 ? Math.min(dpr, 1) : 0.8);
+    this.post.composer.setPixelRatio(this.renderer.getPixelRatio());
+    const sm = this.arena.keyLight.shadow;
+    const size = this.quality === 2 ? 1024 : 2048;
+    if (sm.mapSize.x !== size) {
+      sm.mapSize.set(size, size);
+      sm.map?.dispose();
+      sm.map = null;
+    }
+    this.resize();
+  }
+
   /** one render frame */
   frame(now: number): void {
     if (this.holdRender) {
@@ -365,6 +404,7 @@ export class Game {
     if (realDt <= 0) return;
     if (this.manual) this.render(realDt);
     else this.tick(realDt, true);
+    this.governQuality(realDt);
     this.frameMs = performance.now() - t0;
     this.fpsAcc += realDt;
     this.fpsFrames++;
@@ -659,7 +699,7 @@ export class Game {
       steps: this.stepsThisFrame,
       lines: [
         `me ${me.role} ${me.state} pos ${me.pos.x.toFixed(2)},${me.pos.y.toFixed(2)},${me.pos.z.toFixed(2)} spd ${me.speed.toFixed(2)} jump ${me.jumpH.toFixed(2)}`,
-        `cam ${this.rig.mode} yaw ${this.rig.yaw.toFixed(2)} pitch ${this.rig.pitch.toFixed(2)} timescale ${(this.timeScale * this.slowmo).toFixed(2)}`,
+        `quality ${this.quality} (${['high', 'medium', 'low'][this.quality]}) · cam ${this.rig.mode} yaw ${this.rig.yaw.toFixed(2)} pitch ${this.rig.pitch.toFixed(2)} timescale ${(this.timeScale * this.slowmo).toFixed(2)}`,
         `draws ${this.renderer.info.render.calls} tris ${this.renderer.info.render.triangles} mem geo ${this.renderer.info.memory.geometries} tex ${this.renderer.info.memory.textures}`,
         this.ballDebug(),
         `action ${me.action ? me.action.kind : '-'} grade ${act?.grade ?? '-'} err ${act ? (act.err * 1000).toFixed(0) : '-'} ms${lp}`,

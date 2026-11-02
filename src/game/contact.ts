@@ -3,7 +3,7 @@ import { ASSIST, BALL, CONTACT, COURT, TIMING } from '../config';
 import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
 import { netClearance, solveApex, solveSpeedToFloor } from '../physics/solve';
-import type { Action, Athlete, Grade } from './athlete';
+import { Athlete, type Action, type Grade } from './athlete';
 import type { BallEntity, TouchKind } from './ballEntity';
 
 export interface ContactEvent {
@@ -81,10 +81,26 @@ export class ContactSystem {
     const res = out ?? { t: 0, d: 1e9, ball: new THREE.Vector3(), point: new THREE.Vector3() };
     res.d = 1e9;
     const dt = pred.dt;
+    // integrate the athlete's (ballistic) path incrementally alongside the samples: O(n)
+    const airborne = a.state === 'air';
+    let y = a.pos.y;
+    let vy = a.vel.y;
+    let tAth = h.simTime;
+    const stepTo = (t: number) => {
+      while (airborne && tAth < t - 1e-9) {
+        const st = Math.min(1 / 240, t - tAth);
+        vy -= Athlete.gravityAt(vy) * st;
+        y = Math.max(0, y + vy * st);
+        tAth += st;
+      }
+      tAth = Math.max(tAth, t);
+    };
     for (let t = from; t <= from + horizon; t += dt) {
       if (pred.landT > 0 && t > pred.landT) break;
       pred.posAt(t, this._b);
-      a.predictAir(t - h.simTime, this._a);
+      stepTo(t);
+      const el = t - h.simTime;
+      this._a.set(a.pos.x + a.vel.x * el, airborne ? y : a.pos.y, a.pos.z + a.vel.z * el);
       a.idealContact(this._p, this._a);
       const d = Math.hypot(this._b.x - this._p.x, this._b.y - this._p.y, this._b.z - this._p.z);
       if (d < res.d) {
