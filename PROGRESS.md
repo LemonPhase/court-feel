@@ -3,7 +3,7 @@
 Read this first when resuming.
 
 ## Current milestone
-M7 — AI teams, position selection, Mini Rally.
+M8 — effects and audio pass.
 
 ## Done
 - **M1** Court, lighting, camera, FP/TP toggle, capsule movement.
@@ -87,11 +87,26 @@ M7 — AI teams, position selection, Mini Rally.
     Setter Drill (three AI hitters vs one AI blocker, hitter highlighted by your gaze).
   - Pass/set autopilots verified: Perfect passes, Perfect sets to all three options, kills.
 
+- **M7** AI teams, position selection, Mini Rally.
+  - `src/ai/team.ts`: `TeamAI` coordinator per side (formations for receive / defense / offense,
+    sticky first-ball receiver chosen by time-to-reach with libero priority and the user's zone,
+    setter call biased 60% to the user when they are a front-row hitter, bad pass → high outside
+    ball, wings/middle block only in their zone, free ball over on a failed third contact, touch
+    counting with blocks excluded, four-touch fault). `TeamPlayer` executes jobs with the
+    setter / hitter / blocker / server brains.
+  - Mini Rally: 6v6, user in their chosen slot (OH→OH1, OPP, MB, S, L), AI serves, point banners
+    with reasons (ace, kill, your kill, blocked, out, antenna, under the net, four touches),
+    score, "Your ball!" cue (green landing marker), set-to-you cue, contextual hints.
+  - 400 s all-AI soak: 31 points, 5.8 touches/point (max 12), 14 digs, 9 blocks, 5 tips, 16-16.
+    With autopilots in the user's seat: libero passes, setter sets, middle 8/8 Perfect spikes.
+  - AI attackers read the net (hit deeper/softer from low or deep contacts); users get honest physics.
+
 ## Known issues
 - Headless Chromium uses SwiftShader, so on-screen FPS in screenshots is not representative.
 
 ## Next steps
-- M7 6v6 AI teams and the Mini Rally loop.
+- M8 effects (hit-stop, shake, sparks, trails, shockwave, crack decal, dust, hand flash, crowd,
+  replay) and Web Audio.
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)

@@ -257,7 +257,18 @@ export class ContactSystem {
       speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1);
       const spin = serve ? CONTACT.serveJumpSpin : rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk;
       const land = { x: 0, y: 0, z: 0 };
-      solveSpeedToFloor({ x: bp.x, y: bp.y, z: bp.z }, target.x, target.z, speed, spin, out, w, land);
+      const p0 = { x: bp.x, y: bp.y, z: bp.z };
+      solveSpeedToFloor(p0, target.x, target.z, speed, spin, out, w, land);
+      if (!a.isUser) {
+        // AI attackers read the net: from deep or low contacts they hit deeper / softer
+        for (let k = 0; k < 6; k++) {
+          const c = netClearance(p0, out, w);
+          if (!c || c.y > h.env.netTop + R + 0.12) break;
+          if (Math.abs(target.z) < COURT.halfLength - 0.8) target.z += side * 1.0;
+          else speed *= 0.85;
+          solveSpeedToFloor(p0, target.x, target.z, speed, spin * 0.8, out, w, land);
+        }
+      }
       ball.hit(out, w, 0, h.simTime);
     }
     ball.lastTouch = { athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', t: h.simTime, side: a.side };
@@ -299,7 +310,9 @@ export class ContactSystem {
     const bp = ball.pos;
     const P = this.platformPoint(a, this._p);
     const assist = h.aimAssist(a);
-    const r = CONTACT.passRadius + assist * 0.25;
+    // hard-driven balls: a little extra reach (lunge), more for AI defenders
+    const hard = clamp01((ball.speed() - 14) / 10);
+    const r = CONTACT.passRadius + assist * 0.25 + hard * (a.isUser ? 0.12 : 0.3);
     const dx = bp.x - P.x;
     const dy = bp.y - P.y;
     const dz = bp.z - P.z;
@@ -515,7 +528,9 @@ export class ContactSystem {
     const out = { x: 0, y: 0, z: 0 };
     let kind: 'stuff' | 'soft' | 'tool' = 'soft';
     const roll = h.rand();
-    if (rank === 3 || (rank === 2 && roll < 0.5)) {
+    // AI blockers convert fewer of their good blocks into stuffs than the user
+    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.55 : 0.25;
+    if (rank >= 2 && roll < stuffP) {
       // stuff: driven down into their court, close to the net
       kind = 'stuff';
       const sp = Math.max(9, incoming * (rank === 3 ? 0.62 : 0.45));

@@ -91,6 +91,10 @@ export class Game {
   holdRender = false;
   /** in the menu: attract camera, no user control */
   inMenu = true;
+  /** rally modes: is the ball in play (AI teams read this) */
+  ballLive = false;
+  /** test hook: the user's athlete is driven by the team AI */
+  autoUser = false;
   private aimReticle: THREE.Mesh;
   private idealCache: IdealInfo = { t: 0, d: 0, ball: new THREE.Vector3(), point: new THREE.Vector3() };
   private idealValid = false;
@@ -223,6 +227,8 @@ export class Game {
   startMode(id: ModeId, pos: PositionId): void {
     this.mode?.teardown();
     this.bot = null;
+    this.ballLive = false;
+    this.me.isUser = true;
     this.input.releaseAll();
     this.judge.disarm();
     this.ball.hide();
@@ -401,10 +407,11 @@ export class Game {
 
   enableBot(q: string): void {
     const quality = (['perfect', 'good', 'sloppy', 'tip'].includes(q) ? q : 'perfect') as BotQuality;
+    const role = this.me.role;
     this.bot =
       this.modeId === 'block' ? new BlockBot(this, quality)
-      : this.modeId === 'receive' ? new TouchBot(this, 'pass', quality)
-      : this.modeId === 'setter' ? new TouchBot(this, 'set', quality)
+      : this.modeId === 'receive' || (this.modeId === 'rally' && role === 'L') ? new TouchBot(this, 'pass', quality)
+      : this.modeId === 'setter' || (this.modeId === 'rally' && role === 'S') ? new TouchBot(this, 'set', quality)
       : new SpikeBot(this, quality);
   }
 

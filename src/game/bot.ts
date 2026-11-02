@@ -50,7 +50,11 @@ export class SpikeBot {
     const now = g.simTime;
     const lt = ball.lastTouch;
     // a set from the setter, or (setter's attack on two) the coach's pass
-    const setForMe = ball.active && lt && lt.athlete !== me && (lt.kind === 'set' || (lt.kind === 'feed' && me.role === 'S'));
+    const team = (g.mode as any)?.home as { setFor: unknown } | undefined;
+    const setForMe =
+      ball.active && lt && lt.athlete !== me && lt.side === me.side &&
+      (lt.kind === 'set' || (lt.kind === 'feed' && me.role === 'S')) &&
+      (!team || team.setFor === me);
     if (!setForMe && this.phase !== 'air') {
       if (this.phase !== 'wait') this.release();
       this.phase = 'wait';
@@ -328,9 +332,11 @@ export class TouchBot {
     const lt = ball.lastTouch;
     this.mx = this.mz = 0;
     const key = this.kind === 'pass' ? 'KeyE' : 'Mouse2';
+    const team = (g.mode as any)?.home as { receiver: unknown; touches: number } | undefined;
     const incoming =
       ball.active && !ball.state.rest && lt && lt.athlete !== me &&
-      (this.kind === 'pass' ? lt.side !== me.side || lt.kind === 'feed' : lt.side === me.side);
+      (this.kind === 'pass' ? lt.side !== me.side || lt.kind === 'feed' : lt.side === me.side) &&
+      (!team || (this.kind === 'pass' ? team.receiver === me : team.touches === 1));
     if (!incoming) {
       if (this.pressed) g.input.up(key);
       this.pressed = false;

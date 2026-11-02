@@ -19,6 +19,11 @@ export class BlockerBrain implements Brain {
   private tJump = -1;
   private targetX = 0;
   private b: V3 = { x: 0, y: 0, z: 0 };
+  /** per-set read: reaction delay, misread and jump timing error */
+  private setRef: unknown = null;
+  private setT = 0;
+  private readErr = 0;
+  private jumpErr = 0;
   /** when false the brain only blocks (no base movement) */
   active = true;
 
@@ -47,24 +52,37 @@ export class BlockerBrain implements Brain {
         a.action.releaseT = now;
       }
     }
+    if (theirSet && lt !== this.setRef) {
+      this.setRef = lt;
+      this.setT = now;
+      const s = 1 - this.skill;
+      this.readErr = g.rng.gauss() * (0.15 + s * 0.7);
+      this.jumpErr = g.rng.gauss() * (0.02 + s * 0.09);
+    }
+    const reacting = theirSet && now - this.setT > 0.12 + (1 - this.skill) * 0.25;
+    if (theirSet && !this.jumped && !reacting) {
+      stop(a, face);
+      return;
+    }
     if (theirSet && !this.jumped) {
       const pred = ball.ensurePrediction(g.env, now);
       // the hitter meets the ball around 3.2 m on its way down
       const tc = pred.descendThrough(3.25, now);
       if (tc > 0) {
         pred.posAt(tc, this.b);
-        if (Math.abs(this.b.z) < 4.5) {
+        // only commit to attacks in (or near) my zone: no automatic triple blocks
+        const inZone = Math.abs(this.b.x - this.homeX) < this.lateralRange + 0.4;
+        if (Math.abs(this.b.z) < 4.5 && inZone) {
           // take away the line a little: shade towards the sideline the hitter is near
           const shade = Math.sign(this.b.x) * 0.25;
           const reach = this.lateralRange;
-          this.targetX = clamp(this.b.x + shade, this.homeX - reach, this.homeX + reach);
+          this.targetX = clamp(this.b.x + shade + this.readErr, this.homeX - reach, this.homeX + reach);
           moveTo(a, this.targetX, a.side * 0.45, { face, arrive: 0.3, sprintDist: 1.2 });
           // time the jump: hands peak ~0.12 s after the hitter's contact
           const H = a.jumpMax * a.stats.standingJumpFrac * 1.1;
           const vy = Math.sqrt(2 * BALL.gravity * H);
           const tUp = vy / BALL.gravity + 0.05;
-          const err = (1 - this.skill) * (g.rng.next() - 0.5) * 0.25;
-          this.tJump = tc + 0.12 - tUp - PLAYER.loadMin + err;
+          this.tJump = tc + 0.12 - tUp - PLAYER.loadMin + this.jumpErr;
           if (now >= this.tJump && a.canJump() && Math.abs(a.pos.x - this.targetX) < 0.8) {
             a.jumpPress();
             a.jumpRelease();

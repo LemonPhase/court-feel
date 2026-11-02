@@ -6,11 +6,14 @@ import { BlockDrill } from './blockDrill';
 import { ReceiveDrill } from './receiveDrill';
 import { SetterDrill } from './setterDrill';
 import { FreePlay } from './freePlay';
+import { MiniRally } from './miniRally';
 
 export function createMode(id: ModeId, g: Game, pos: PositionId): Mode {
   switch (id) {
     case 'free':
       return new FreePlay(g, pos);
+    case 'rally':
+      return new MiniRally(g, pos);
     case 'block':
       return new BlockDrill(g, pos);
     case 'receive':

@@ -280,7 +280,7 @@ export const AI = {
   reactionTime: 0.18,
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
-  blockerSkill: 0.7,
+  blockerSkill: 0.5,
   defenderSkill: 0.7,
   setterAccuracy: 0.15,
 };
