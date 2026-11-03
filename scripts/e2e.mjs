@@ -444,23 +444,51 @@ for (const k of ['geometries', 'textures', 'programs']) {
 
 // ---- robustness: what players actually do (share links, old saved settings, keyboard-only menus)
 {
+  // These probes check loading, settings and keys, not drawing, so rendering is held from the very first
+  // frame: a fresh page's first frame compiles every shader at once, which on a CI runner's software GPU
+  // blocks the page's main thread (and every evaluate) for more than 30 s.
+  const holdRendering = () => {
+    let game;
+    Object.defineProperty(window, '__court', {
+      configurable: true,
+      get: () => game,
+      set: (g) => {
+        game = g;
+        g.holdRender = true;
+      },
+    });
+  };
   const probe = async (label, url, init) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await ctx.addInitScript(holdRendering);
     if (init) await ctx.addInitScript(init);
     const p = await ctx.newPage();
     const errs = [];
     p.on('pageerror', (e) => errs.push(e.message));
-    await p.goto(`http://localhost:${PORT}/${url}`);
-    await p.waitForFunction(() => window.__court && window.__menu, null, { timeout: 30000 });
-    const st = await p.evaluate(() => ({
-      mode: window.__court.mode ? window.__court.modeId : null,
-      pos: window.__court.position,
-      inMenu: window.__court.inMenu,
-      fov: window.__court.settings.fov,
-      crash: !!document.querySelector('.crash'),
-    }));
-    check(errs.length === 0 && !st.crash, `${label}: loads without errors`, { errs, st });
-    return { p, ctx, st };
+    p.on('console', (m) => {
+      if (m.type() === 'error') errs.push('console: ' + m.text());
+    });
+    try {
+      await p.goto(`http://localhost:${PORT}/${url}`);
+      // ready, or on the crash screen (which never sets __menu)
+      await p.waitForFunction(() => (window.__court && window.__menu) || document.querySelector('.crash'), null, {
+        timeout: 60000,
+        polling: 250,
+      });
+      const st = await p.evaluate(() => ({
+        mode: window.__court?.mode ? window.__court.modeId : null,
+        pos: window.__court?.position,
+        inMenu: window.__court?.inMenu,
+        fov: window.__court?.settings.fov,
+        crash: !!document.querySelector('.crash'),
+      }));
+      check(errs.length === 0 && !st.crash, `${label}: loads without errors`, { errs, st });
+      return { p, ctx, st };
+    } catch (e) {
+      // record it and carry on, so the report still lists every other check
+      check(false, `${label}: the page comes up`, { error: String(e).split('\n')[0], errs });
+      return { p, ctx, st: {} };
+    }
   };
   let r = await probe('mistyped position in a link', '?mode=spike&pos=OHH');
   check(r.st.mode === 'spike' && r.st.pos === 'OH' && !r.st.inMenu, 'a mistyped position falls back to OH and starts the drill', r.st);
