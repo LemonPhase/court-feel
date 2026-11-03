@@ -35,8 +35,13 @@ export abstract class Mode {
   onContact(_ev: ContactEvent): void {}
   onOutcome(_o: Outcome): void {}
   abstract hint(): string;
-  /** R key: restart the current rep */
+  /** N key: restart / skip the current rep */
   restartRep(): void {}
+  /** no live play is going on (the ball is down or between reps): replays may be watched */
+  ballDead(): boolean {
+    const b = this.g.ball;
+    return !b.active || b.state.rest;
+  }
   passTarget?(a: Athlete): { x: number; y: number; z: number; apex: number };
   setOptions?(a: Athlete): import('../contact').SetOption[];
   canServe?(a: Athlete): boolean;

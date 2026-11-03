@@ -101,7 +101,7 @@ export class BlockDrill extends Mode {
   hint(): string {
     const me = this.g.me;
     if (me.state === 'air') return `hold ${kbd('RMB')} hands over the net`;
-    return `${kbd('A')}${kbd('D')} shuffle · ${kbd('RMB')} hands up · ${kbd('Space')} block jump (vs the quick: go up with their middle) · ${kbd('V')} camera · ${kbd('R')} reset`;
+    return `${kbd('A')}${kbd('D')} shuffle · ${kbd('RMB')} hands up · ${kbd('Space')} block jump (vs the quick: go up with their middle) · ${kbd('V')} camera · ${kbd('N')} reset`;
   }
 
   private updateScore(): void {

@@ -158,7 +158,7 @@ export class ReceiveDrill extends Mode {
   }
 
   hint(): string {
-    return `${kbd('WASD')} get behind the ball · ${kbd('E')} pass / dig (press early, hold) · ${kbd('V')} camera · ${kbd('R')} reset`;
+    return `${kbd('WASD')} get behind the ball · ${kbd('E')} pass / dig (press early, hold) · ${kbd('V')} camera · ${kbd('N')} reset`;
   }
 
   private updateScore(): void {

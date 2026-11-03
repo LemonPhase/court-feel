@@ -337,8 +337,8 @@ export class SpikeDrill extends Mode {
     if (me.state === 'load') return `release ${kbd('Space')} to jump`;
     const calls = this.plays ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call` : '';
     const block = ` · ${kbd('B')} block: ${BLOCK_NAMES[this.blockLevel]}`;
-    if (this.play?.inFront !== undefined) return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch${calls}${block} · ${kbd('V')} camera · ${kbd('R')} reset rep`;
-    return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump${calls}${block} · ${kbd('V')} camera · ${kbd('R')} reset rep`;
+    if (this.play?.inFront !== undefined) return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
+    return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
   }
 
   restartRep(): void {

@@ -22,6 +22,18 @@ interface Decal {
   t: number;
 }
 
+/** the last thing worth watching again (replayable with R while the ball is dead) */
+export interface Highlight {
+  contactT: number;
+  kind: string;
+  focus: THREE.Vector3;
+  /** where (and when) the ball hit the floor after this contact, once known */
+  impact: THREE.Vector3 | null;
+  impactT: number;
+  /** the "R to replay" cue was shown for this one */
+  cued: boolean;
+}
+
 /**
  * The juice: turns game events into sparks, trails, shockwaves, dust, crack
  * decals, hand flashes, hit-stop, camera shake, sound and the slow-motion
@@ -33,7 +45,9 @@ export class Effects {
   readonly dust: SpritePool;
   readonly glow: SpritePool;
   readonly trail = new Trail(30);
-  readonly replay = new Replay(4.5, 60);
+  readonly replay = new Replay(8, 60);
+  /** the last highlight (the user's good contacts); replayable with R while the ball is dead */
+  lastHighlight: Highlight | null = null;
   private rings: Ring[] = [];
   private decals: Decal[] = [];
   private decalNext = 0;
@@ -138,6 +152,11 @@ export class Effects {
           const data = { x: e.x, z: e.z, q: imp.q, perfect: imp.perfect ? 1 : 0, speed: imp.speed, user: imp.user ? 1 : 0 };
           this.playEvent({ t: g.simTime, kind: 'impact', data }, false);
           this.replay.addEvent(g.simTime, 'impact', data);
+          const h = this.lastHighlight;
+          if (imp.user && h && !h.impact && (h.kind === 'spike' || h.kind === 'serve')) {
+            h.impact = new THREE.Vector3(e.x, 0, e.z);
+            h.impactT = g.simTime;
+          }
           if (imp.perfect && imp.user && g.settings.replays && FX.replayEnabled && !g.inMenu) {
             this.replayAt = g.simTime + 0.55;
             this.replayTo = g.simTime + FX.replayPost;
@@ -181,6 +200,11 @@ export class Effects {
     const g = this.g;
     const user = e.athlete.isUser;
     const p = e.point;
+    // worth a replay: any of the user's attacks, serves and blocks, and their Perfect / Good touches
+    const good = e.grade === 'Perfect' || e.grade === 'Good';
+    if (user && e.grade !== 'Miss' && !g.inMenu && (good || e.kind === 'spike' || e.kind === 'serve' || e.kind === 'block')) {
+      this.lastHighlight = { contactT: g.simTime, kind: e.kind, focus: p.clone(), impact: null, impactT: -1, cued: false };
+    }
     // a new touch ends the previous ball's trail (attacks re-ignite their own) and
     // cancels the previous attack's floor-impact package (a blocked/dug Perfect spike
     // must not crack the floor wherever the ball later drops)
@@ -502,17 +526,61 @@ export class Effects {
     const g = this.g;
     if (this.replayAt > 0 && g.simTime >= this.replayAt && !this.replay.playing) {
       this.replayAt = -1;
-      if (this.replay.start(this.replayFrom, this.replayTo)) {
-        this.replaying = true;
-        this.setupCine();
-        document.body.classList.add('replaying');
-        return true;
-      }
+      // the automatic replay shows this highlight: no "R to replay" cue needed (R still works)
+      if (this.lastHighlight) this.lastHighlight.cued = true;
+      return this.begin(true);
     }
     return false;
   }
 
-  private setupCine(): void {
+  /** the ball is dead: no live play is lost by watching, so recording pauses and R is offered */
+  ballDead(): boolean {
+    const g = this.g;
+    if (g.mode) return g.mode.ballDead();
+    return !g.ball.active || g.ball.state.rest;
+  }
+
+  /** can R replay the last highlight right now? */
+  replayAvailable(): boolean {
+    const g = this.g;
+    const h = this.lastHighlight;
+    if (!h || this.replaying || this.replayAt > 0 || g.inMenu || g.paused) return false;
+    if (!this.ballDead()) return false;
+    // the contact itself must still be in the buffer
+    return h.contactT > this.replay.oldestT + 0.1 && this.replay.newestT > h.contactT + 0.3;
+  }
+
+  /** R: replay the last highlight (the contact, then the ball down to the floor if it got there) */
+  startReplay(): boolean {
+    if (!this.replayAvailable()) return false;
+    const h = this.lastHighlight!;
+    const r = this.replay;
+    r.contactT = h.contactT;
+    r.focus.copy(h.focus);
+    this.replayFrom = h.contactT - FX.replayPre;
+    if (h.impact) {
+      r.impact.copy(h.impact);
+      r.impactT = h.impactT;
+      this.replayTo = h.impactT + FX.replayPost;
+    } else {
+      r.impactT = h.contactT + 1.6;
+      this.replayTo = h.contactT + 1.6;
+    }
+    return this.begin(h.impact !== null);
+  }
+
+  private begin(hasImpact: boolean): boolean {
+    if (!this.replay.start(this.replayFrom, this.replayTo)) return false;
+    // "any key skips": only keys pressed from now on count. Movement keys are read as held and
+    // their press edges are never consumed, so a stale W or Shift must not end it at once
+    this.g.input.clearEdges();
+    this.replaying = true;
+    this.setupCine(hasImpact);
+    document.body.classList.add('replaying');
+    return true;
+  }
+
+  private setupCine(hasImpact: boolean): void {
     const r = this.replay;
     const C = r.focus.clone();
     const I = r.impact.clone();
@@ -522,12 +590,22 @@ export class Effects {
     this.cineA.set(C.x + sx * 5.0, 1.75, C.z + sz * 1.6);
     // frame the hitter's body and the contact point together
     this.cineLookA.set(C.x, C.y - 1.0, C.z);
-    // then a low view from between the net and the impact, looking at the floor where it lands
-    const ix = Math.abs(I.x) < 0.5 ? -sx : -Math.sign(I.x);
-    const iz = Math.sign(I.z) || -sz;
-    this.cineB.set(I.x + ix * 3.0, 1.15, I.z - iz * 2.4);
+    if (hasImpact) {
+      // then a low view from between the net and the impact, looking at the floor where it lands
+      const ix = Math.abs(I.x) < 0.5 ? -sx : -Math.sign(I.x);
+      const iz = Math.sign(I.z) || -sz;
+      this.cineB.set(I.x + ix * 3.0, 1.15, I.z - iz * 2.4);
+    } else this.cineB.copy(this.cineA); // no floor impact (a dig, a set, a block): one angle, track the ball
     this.trail.intensity = 0;
     this.trail.fade();
+  }
+
+  /** once per highlight, when the ball goes dead: tell the user it can be watched again */
+  cueReplay(): void {
+    const h = this.lastHighlight;
+    if (!h || h.cued || !this.replayAvailable()) return;
+    h.cued = true;
+    this.g.hud.message('Nice · R to replay', 2.4);
   }
 
   /** run during a replay instead of the simulation; false when it ended */
@@ -559,6 +637,7 @@ export class Effects {
     this.replay.setViews([...this.g.views.values()]);
     this.replayAt = -1;
     this.pendingImpact = null;
+    this.lastHighlight = null;
     if (this.replaying) this.endReplay();
   }
 }

@@ -58,6 +58,8 @@ function enterMenu(): void {
 
 game.input.onPointerLockChange = (locked) => {
   if (!locked && !game.inMenu && !game.input.dragLook) {
+    // Esc during a replay ends the replay (the pause menu still opens: the browser dropped the lock)
+    if (game.fx.replaying) game.fx.endReplay();
     game.paused = true;
     menu.showPause(true);
   }
@@ -66,6 +68,10 @@ window.addEventListener('keydown', (e) => {
   if (e.code !== 'Escape' || game.inMenu) return;
   // with pointer lock the browser consumes Esc and fires pointerlockchange instead
   if (game.input.dragLook || !game.input.pointerLocked) {
+    if (game.fx.replaying) {
+      game.fx.endReplay();
+      return;
+    }
     if (menu.pauseVisible) menu.showPause(false), (game.paused = false);
     else (game.paused = true), menu.showPause(true);
   }
