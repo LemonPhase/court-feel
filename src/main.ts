@@ -18,7 +18,7 @@ const reporter = new ErrorReporter({ build: BUILD_ID, endpoint: import.meta.env.
 window.__errors = reporter;
 let booted = false;
 const crashScreen = (r: ErrorReport) => {
-  const webgl = r.kind === 'startup' && /webgl|context/i.test(r.message);
+  const webgl = r.kind === 'startup' && /webgl/i.test(r.message);
   showCrashScreen(app, {
     title: r.kind === 'startup' ? "Court Feel couldn't start" : 'Something went wrong',
     body: webgl
@@ -40,8 +40,8 @@ window.addEventListener('unhandledrejection', (e) => {
 const settings = loadSettings();
 const game = new Game(app, settings);
 window.__court = game;
-// game keys stay with the browser while a menu is up (Tab, Space and the arrows work on its controls)
-game.input.captureKeys = () => !game.inMenu && !game.paused;
+// game keys stay with the browser while a menu or the crash screen is up (Tab, Space and the arrows work on its controls)
+game.input.captureKeys = () => !game.inMenu && !game.paused && !game.stopped;
 // reduced motion: a still menu camera (shake and replays default off in loadSettings, CSS animations in styles.css)
 try {
   const rm = matchMedia('(prefers-reduced-motion: reduce)');
