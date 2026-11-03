@@ -41,7 +41,7 @@ mouse (pointer lock). **Esc** pauses and opens settings.
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Replay the last highlight (your attacks, serves, blocks and Perfect / Good touches) in slow motion once the ball is dead. Any key skips it; the game carries on where it was. |
 | N | Reset / skip the current rep (Mini Rally: re-serve) |
-| 1 / 2 / 3 | Spike Drill: set call for the next ball (outside, middle, opposite — see below) |
+| 1 / 2 / 3 | Spike Drill and Mini Rally: set call for the next ball (outside, middle, opposite — see below) |
 | Esc | Pause / settings |
 | F3 | Debug overlay: FPS, physics step time, ball state, timing window, contact gizmos |
 | Free Play only | 1-5 feed type (set / free ball / float serve / hard attack / **serve practice**), F feed now, T auto-feed |
@@ -105,7 +105,12 @@ power and ball control, where drills start you, and what the AI asks of you.
    Your hitters attack against a live blocker.
 6. **Mini Rally** — 6 v 6 with you in your position. The AI receives, sets
    (often to you), attacks, blocks and digs. Win or lose the point. "Your ball!"
-   and a green landing marker tell you when the ball is yours.
+   and a green landing marker tell you when the ball is yours. As a hitter
+   (OH, MB, OPP) keys **1 / 2 / 3** call your set, the same calls as in the
+   Spike Drill: press before the setter touches the ball; the call sticks
+   until you change it (1 is your position's default). Fast calls (go, fast
+   back) need you running as the setter touches the ball; a quick goes to
+   where you jump.
 
 The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 

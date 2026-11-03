@@ -5,7 +5,7 @@ import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT } from '../../ai/team';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
-import { SETTER_TARGET } from '../plays';
+import { SET_PLAYS, SETTER_TARGET, type SetPlay } from '../plays';
 import { kbd, Mode } from './mode';
 
 type Phase = 'prepare' | 'serve' | 'live' | 'dead';
@@ -26,6 +26,9 @@ export class MiniRally extends Mode {
   private lastReceiverMsg: unknown = null;
   private reason = '';
   private userTouches = 0;
+  /** set calls for the user's position (keys 1-3), if it has any */
+  private plays: SetPlay[] | null = null;
+  private callIdx = 0;
 
   setup(): void {
     const g = this.g;
@@ -53,9 +56,25 @@ export class MiniRally extends Mode {
       this.away.add(slot, a, false);
     }
     g.hud.setTitle('Mini Rally · you are the ' + g.me.stats.name);
+    this.plays = g.autoUser ? null : SET_PLAYS[this.position] ?? null;
+    this.callIdx = 0;
     this.servingSide = -1;
     this.prepare(true);
-    g.hud.message('Play your position · win the point', 2.5);
+    g.hud.message(this.plays ? 'Play your position · win the point · 1-3 call your set' : 'Play your position · win the point', 2.5);
+  }
+
+  /** the set call for the next ball the setter gives you (0-based; 0 = your position's default) */
+  selectCall(i: number): void {
+    if (!this.plays || i < 0 || i >= this.plays.length) return;
+    this.callIdx = i;
+    const play = this.plays[i];
+    this.home.userPlay = play;
+    this.g.hud.message(`Calling ${i + 1}: ${play.name}`, 1.6);
+    this.updateScore();
+  }
+
+  private get play(): SetPlay | null {
+    return this.plays ? this.plays[this.callIdx] : null;
   }
 
   private prepare(first = false): void {
@@ -80,7 +99,13 @@ export class MiniRally extends Mode {
   }
 
   private updateScore(): void {
-    this.g.hud.setScore(`YOU ${this.scoreHome} : ${this.scoreAway} THEM · ${this.servingSide === 1 ? 'your serve' : 'their serve'}`);
+    const call = this.play ? ` · call ${this.callIdx + 1}: ${this.play.name}` : '';
+    this.g.hud.setScore(`YOU ${this.scoreHome} : ${this.scoreAway} THEM · ${this.servingSide === 1 ? 'your serve' : 'their serve'}${call}`);
+  }
+
+  frame(_dt: number): void {
+    if (!this.plays) return;
+    for (let i = 0; i < this.plays.length; i++) if (this.g.input.consumePress('Digit' + (i + 1))) this.selectCall(i);
   }
 
   passTarget(a: Athlete) {
@@ -117,8 +142,12 @@ export class MiniRally extends Mode {
     if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set') return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;
     if (me.role === 'S' && this.home.touches === 1) return `Your set · look at a hitter · ${kbd('RMB')}`;
     if (me.role === 'MB' && this.home.passToSetter(g)) return `QUICK · run in now · ${kbd('Space')} as the setter touches it · hold/release ${kbd('LMB')}`;
-    if (Math.abs(me.pos.z) < 1.4) return `${kbd('RMB')} hands + ${kbd('Space')} block · ${kbd('V')} camera`;
-    return `${kbd('WASD')} move · ${kbd('E')} pass · ${kbd('LMB')} attack · ${kbd('RMB')} block/set · ${kbd('V')} camera`;
+    const play = this.play;
+    const fast = play && play.inFront === undefined && play.lane.apexAbove < 1.0;
+    if (fast && this.home.touches === 1 && g.ball.lastTouch?.side === 1) return `${play.name.toUpperCase()} · start your approach as the setter touches it`;
+    const calls = this.plays ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call` : '';
+    if (Math.abs(me.pos.z) < 1.4) return `${kbd('RMB')} hands + ${kbd('Space')} block · ${kbd('V')} camera${calls}`;
+    return `${kbd('WASD')} move · ${kbd('E')} pass · ${kbd('LMB')} attack · ${kbd('RMB')} block/set · ${kbd('V')} camera${calls}`;
   }
 
   restartRep(): void {
