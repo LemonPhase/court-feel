@@ -39,7 +39,8 @@ mouse (pointer lock). **Esc** pauses and opens settings.
 | E | Bump / pass / dig (press early so the platform is ready; hold it) |
 | Q | Serve toss (Free Play, feed 5 = serve practice), then hold and release Left mouse to hit — standing = float serve, jump = topspin serve |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
-| R | Reset the current rep |
+| R | Replay the last highlight (your attacks, serves, blocks and Perfect / Good touches) in slow motion once the ball is dead. Any key skips it; the game carries on where it was. |
+| N | Reset / skip the current rep (Mini Rally: re-serve) |
 | 1 / 2 / 3 | Spike Drill: set call for the next ball (outside, middle, opposite — see below) |
 | Esc | Pause / settings |
 | F3 | Debug overlay: FPS, physics step time, ball state, timing window, contact gizmos |
@@ -108,6 +109,16 @@ power and ball control, where drills start you, and what the AI asks of you.
 
 The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 
+### Replays
+
+A Perfect spike or serve that hits the floor plays back by itself in slow
+motion from a broadcast camera (settings: "Perfect-spike replays"). Anything
+else you did well is kept too: after your attacks, serves, blocks and Perfect
+or Good passes, sets and digs the hint shows **R replay** as soon as the ball
+is dead ("Nice · R to replay"), and R plays the last few seconds around that
+contact. The simulation is frozen while it plays, so nothing is missed: any
+key skips, and the drill or rally continues exactly where it was.
+
 ## How the feel works
 
 * **Timing.** Every action starts on the frame you press it. A spike swing is
@@ -117,7 +128,7 @@ The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
   early to 70 ms late, **Good** from 70 ms early to 110 ms late, otherwise
   **Early / Late** — downgraded if you jumped too
   early/late (contact below 72% of your jump) or had to reach. Perfect = max
-  power, the fire trail, hit-stop and the replay. The harder the ball leaves
+  power, the fire trail, hit-stop and the automatic replay. The harder the ball leaves
   your hand, the bigger it gets: a longer freeze with the ball squashed on your
   hand and a camera punch, a shock ring, and a contact and floor slam that boom
   through the arena (the sound follows the ball speed continuously, so a soft

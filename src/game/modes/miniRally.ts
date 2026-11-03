@@ -125,6 +125,10 @@ export class MiniRally extends Mode {
     this.prepare();
   }
 
+  ballDead(): boolean {
+    return !this.g.ballLive || super.ballDead();
+  }
+
   step(dt: number): void {
     const g = this.g;
     this.t += dt;

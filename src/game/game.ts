@@ -20,7 +20,7 @@ import { aimTargetFromLook, ContactSystem, type ContactEvent, type IdealInfo } f
 import { Judge, type Outcome } from './judge';
 import { Hud } from '../ui/hud';
 import type { Brain } from '../ai/brain';
-import type { Mode, ModeId } from './modes/mode';
+import { kbd, type Mode, type ModeId } from './modes/mode';
 import { createMode } from './modes/registry';
 import { makeRingTexture } from '../world/textures';
 import { UserActions } from './userActions';
@@ -476,9 +476,23 @@ export class Game {
       return;
     }
     this.frameInput(dt);
+    if (this.fx.replaying) {
+      // R started a replay this frame: no live step underneath it
+      this.fx.replayStep(dt);
+      this.renderReplay(dt, draw);
+      return;
+    }
     this.advance(dt);
     this.mode?.frame(dt);
     this.render(dt, draw);
+  }
+
+  /** replay recording runs while the ball is live and for a second after (sim time) */
+  private recordUntil = 0;
+
+  /** can the last highlight be replayed right now (R)? */
+  replayAvailable(): boolean {
+    return this.fx.replayAvailable();
   }
 
   private renderReplay(dt: number, draw: boolean): void {
@@ -517,7 +531,8 @@ export class Game {
     const [dx, dy] = this.input.takeMouse();
     this.rig.look(dx, dy, this.settings.sensitivity, this.settings.invertY);
     if (this.input.consumePress('KeyV')) this.toggleCamera();
-    if (this.input.consumePress('KeyR')) this.mode?.restartRep();
+    if (this.input.consumePress('KeyN')) this.mode?.restartRep();
+    if (this.input.consumePress('KeyR')) this.fx.startReplay();
     this.user.frame(dt);
     this.bot?.after();
     this.stepReturn(dt);
@@ -608,6 +623,7 @@ export class Game {
     }
     this.mode?.step(dt);
     this.fx.checkReplay();
+    this.fx.cueReplay();
     // timing window cache for HUD / slow-mo / debug
     const info = this.me.state === 'air' || this.me.state === 'load' ? this.contact.ideal(this.me, this.simTime, 0.9, this.idealCache) : null;
     this.idealValid = !!info;
@@ -661,7 +677,10 @@ export class Game {
       v.update(animDt, tr);
     }
     this.ball.updateVisuals(realDt, this.simTime, this.env);
-    this.fx.replay.record(tr, this.ball.mesh, this.ball.mesh.visible);
+    // the buffer holds live play (plus a short tail for the ball settling) only: a dead ball
+    // does not push the last highlight out of it
+    if (!this.fx.ballDead()) this.recordUntil = tr + 1.0;
+    if (tr <= this.recordUntil) this.fx.replay.record(tr, this.ball.mesh, this.ball.mesh.visible);
     this.fx.update(animDt);
     this.rig.ballPos = this.ball.active ? this.ball.rpos : null;
     if (this.ball.active && this.debug.visible) this.gizmos.updatePath(this.ball.ensurePrediction(this.env, this.simTime), this.simTime);
@@ -696,7 +715,7 @@ export class Game {
     this.arena.update(realDt);
     this.updateAimReticle(realDt);
     this.hud.update(realDt);
-    if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint());
+    if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint() + (this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : ''));
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
     this.hud.setLoad(me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null);
     // spike wind-up: power ring, a tick at full charge, a swish on release

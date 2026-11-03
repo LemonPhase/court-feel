@@ -6,7 +6,8 @@ import type { AthleteView } from '../character/athleteView';
 /**
  * Fixed-size ring buffer of rendered frames (ball + every athlete's root and
  * bone rotations) and FX events, played back in slow motion from a
- * cinematic camera after a Perfect spike. No allocation while recording.
+ * cinematic camera after a Perfect spike, or on demand (R) for the last
+ * highlight. No allocation while recording.
  */
 const BONES = BONE_ORDER.length;
 const PER_ATHLETE = 4 + 3 + BONES * 4; // root xyz + yaw, hips position, bone quats
@@ -149,7 +150,8 @@ export class Replay {
     if (a < 0) return true;
     const ta = this.times[a];
     const tb = this.times[b];
-    const u = tb > ta ? (this.cursor - ta) / (tb - ta) : 0;
+    // recording pauses while the ball is dead: never interpolate across such a gap
+    const u = tb > ta && tb - ta < 0.25 ? (this.cursor - ta) / (tb - ta) : 0;
     const ba = a * 8;
     const bb = b * 8;
     ballMesh.position.set(
