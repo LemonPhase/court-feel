@@ -220,6 +220,81 @@ const perf = await page.evaluate(async () => {
 report.perf.frame = perf;
 console.log('perf', JSON.stringify(perf));
 
+// ---- touch controls: a phone-sized touch context drives the stick, JUMP and HIT with real touch events
+{
+  const tctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const tp = await tctx.newPage();
+  tp.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warning') errors.push(`[touch ${m.type()}] ${m.text()}`);
+  });
+  tp.on('pageerror', (e) => errors.push('[touch pageerror] ' + e.message));
+  const cdp = await tctx.newCDPSession(tp);
+  const pts = new Map();
+  const touch = async (type, id, x, y) => {
+    if (type === 'touchEnd') {
+      const p = pts.get(id);
+      pts.delete(id);
+      return cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [{ x: p.x, y: p.y, id }] });
+    }
+    pts.set(id, { x, y });
+    return cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [...pts.entries()].map(([id, p]) => ({ x: p.x, y: p.y, id })) });
+  };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  await tp.goto(`http://localhost:${PORT}/?mode=spike&pos=OH&touch=1`);
+  await tp.waitForFunction(() => window.__court && window.__touch?.enabled, null, { timeout: 30000 });
+  await wait(2500);
+  const tshot = async (name) => {
+    await tp.evaluate(() => {
+      window.__court.holdRender = true;
+      window.__court.renderNow(1 / 60);
+    });
+    await tp.screenshot({ path: path.join(out, name + '.png'), timeout: 90000 });
+    report.shots.push(name);
+    await tp.evaluate(() => (window.__court.holdRender = false));
+  };
+  await tshot('20_touch_layout');
+  const snap = () => tp.evaluate(() => {
+    const g = window.__court;
+    return { state: g.me.state, sprint: g.me.cmd.sprint, stick: g.input.stick.active, held: [...g.input.held], action: g.me.action?.kind ?? null, yaw: g.rig.yaw };
+  });
+  const btn = (sel) => tp.evaluate((s) => {
+    const r = document.querySelector(s).getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, sel);
+  // the software renderer runs the sim slower than real time: wait for each state rather than a fixed time
+  const untilSnap = async (pred, ms = 4000) => {
+    const t0 = Date.now();
+    let s = await snap();
+    while (!pred(s) && Date.now() - t0 < ms) {
+      await wait(50);
+      s = await snap();
+    }
+    return s;
+  };
+  const t = { ok: true, steps: {} };
+  await touch('touchStart', 1, 160, 300);
+  await touch('touchMove', 1, 160, 300 - 90);
+  t.steps.run = await untilSnap((s) => s.sprint && s.stick);
+  const j = await btn('.t-jump');
+  await touch('touchStart', 2, j.x, j.y);
+  t.steps.load = await untilSnap((s) => s.state === 'load');
+  await touch('touchEnd', 2);
+  t.steps.air = await untilSnap((s) => s.state === 'air');
+  await touch('touchStart', 3, 560, 140);
+  await touch('touchMove', 3, 640, 150);
+  t.steps.windup = await untilSnap((s) => s.action === 'windup' && s.yaw !== 0);
+  await tshot('21_touch_windup');
+  await touch('touchEnd', 3);
+  t.steps.swing = await untilSnap((s) => s.action === 'swing');
+  await touch('touchEnd', 1);
+  const s = t.steps;
+  t.ok = s.run.sprint && s.run.stick && s.load.state === 'load' && s.load.held.includes('Space') && s.air.state === 'air' && !s.air.held.includes('Space')
+    && s.windup.action === 'windup' && s.windup.yaw !== 0 && s.swing.action === 'swing' && !s.swing.held.includes('Mouse0');
+  report.touch = t;
+  console.log('touch', t.ok ? 'ok' : 'FAILED', JSON.stringify(s));
+  await tctx.close();
+}
+
 // ---- soak: memory and GPU resources must not grow
 const soak = await page.evaluate(async (secs) => {
   const g = window.__court;

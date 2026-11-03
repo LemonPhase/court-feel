@@ -40,6 +40,8 @@ export class Hud {
   private bannerTimer = 0;
   private msgTimer = 0;
   showHints = true;
+  /** touch controls: key names in hints are shown as button names (null = keyboard) */
+  keyLabels: Record<string, string> | null = null;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud', parent);
@@ -81,7 +83,41 @@ export class Hud {
   }
 
   setHint(t: string): void {
-    this.hint.innerHTML = this.showHints ? t : '';
+    if (!this.showHints) t = '';
+    else if (this.keyLabels) t = this.translateKeys(t);
+    if (t !== this.lastHint) {
+      this.lastHint = t;
+      this.hint.innerHTML = t;
+    }
+  }
+
+  private lastHint = '';
+
+  /** plain-text drill messages: key names become button names */
+  private static readonly TEXT_KEYS: [RegExp, string][] = [
+    [/Shift \+ W/g, 'the stick out'],
+    [/\bSpace\b/g, 'JUMP'],
+    [/Left mouse/g, 'HIT'],
+    [/\bLMB\b/g, 'HIT'],
+    [/\bRMB\b/g, 'BLOCK'],
+    [/\bpress E\b/g, 'hold PASS'],
+    [/\bQ\b/g, 'TOSS'],
+    [/\bF feed\b/g, 'FEED feed'],
+    [/\bT auto\b/g, 'AUTO auto'],
+    [/with the mouse/g, 'by dragging'],
+  ];
+
+  static translateText(t: string): string {
+    for (const [re, to] of Hud.TEXT_KEYS) t = t.replace(re, to);
+    return t;
+  }
+
+  private translateKeys(t: string): string {
+    const m = this.keyLabels!;
+    // combined keys first (approach = push the stick out), then single keys
+    t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
+    t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
+    return t.replace(/with the mouse/g, 'by dragging');
   }
 
   setCam(fp: boolean): void {
@@ -110,6 +146,7 @@ export class Hud {
   }
 
   message(text: string, dur = 1.5): void {
+    if (this.keyLabels) text = Hud.translateText(text);
     this.msg.textContent = text;
     this.msg.classList.add('show');
     this.msgTimer = dur;

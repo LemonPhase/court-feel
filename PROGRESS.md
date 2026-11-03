@@ -323,6 +323,32 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - `main` holds the current playable build (all playtest rounds merged). If resuming: pick from
   "Ideas for later" or the next round of playtest notes.
 
+## Touch controls (phones / tablets)
+- The game was unplayable on a phone: no pointer lock, so no look, and taps turned into emulated
+  mouse clicks. Now `src/core/touchPad.ts` (pure model, unit tested) turns touches into the same
+  Input codes and look deltas the keys and mouse produce, so every contact / timing / buffer rule is
+  untouched. `src/ui/touchControls.ts` is the overlay: floating joystick (left), aim by dragging
+  (right), hold buttons JUMP / HIT / BLOCK-or-SET / PASS (+ TOSS in Free Play), pause / camera /
+  reset, and the drill's set calls or feed types as chips. HUD hints and messages name the buttons.
+- Design, in one line: the left thumb is the feet, the right thumb is the arm and the eyes.
+  - Stick deflection is analog speed; pushing it to the ring is the approach (Shift), with hysteresis.
+  - Every held button also aims once the thumb travels past a small dead zone, so you wind up
+    and aim with one thumb like LMB + mouse.
+  - While loading or in the air the whole right half of the screen is HIT (the thumb that just
+    released JUMP is already there), and rolling the thumb from JUMP onto HIT without lifting is
+    "take off, wind up" in one motion.
+  - BLOCK = hands up + load a jump (release to take off, hands stay up until landing); when the ball
+    is dropping onto you from your side the same button reads SET and sets without a jump.
+- Tunables in `TOUCH` (config). Settings: Touch controls Auto / On / Off, Touch aim sensitivity.
+  `?touch=1` forces the layer on a desktop (used by the e2e touch section and the phone script).
+- Verified with Playwright phone emulation (844x390, DPR 2, real multi-touch through CDP): run,
+  load, take off, air wind-up with an aim drag, swing, block latch, camera toggle, pause / resume,
+  fullscreen request, no console errors. Not yet tried on real hardware: iOS Safari quirks
+  (no fullscreen, haptics), real thumb ergonomics and the right look sensitivity need a phone.
+- Ideas for later: gyro aim (turn the phone to look, with the iOS permission prompt), a left-side
+  JUMP option for players who prefer the two-thumb split, button size / layout scale setting,
+  a short on-screen tutorial on the first touch session.
+
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,

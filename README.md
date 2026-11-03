@@ -47,6 +47,29 @@ mouse (pointer lock). **Esc** pauses and opens settings.
 | F3 | Debug overlay: FPS, physics step time, ball state, timing window, contact gizmos |
 | Free Play only | 1-5 feed type (set / free ball / float serve / hard attack / **serve practice**), F feed now, T auto-feed |
 
+### Touch (phone / tablet)
+
+On a touch screen the game switches to on-screen controls (Settings → Touch
+controls: Auto / On / Off; `?touch=1` forces them on a desktop for testing).
+Every touch goes through the same input path as the keys, so the timing
+windows, the hold-to-load jump and the hold-to-charge swing are identical.
+Hold the phone sideways.
+
+| Touch | Action |
+|---|---|
+| Left thumb | A joystick appears where you touch. Deflection = speed; push it out to the ring (it turns gold, **RUN**) to approach / sprint. |
+| Right thumb, drag anywhere | Look / aim, exactly like the mouse (Settings → Touch aim sensitivity). |
+| **JUMP** | Hold to load, release to take off (auto at 0.3 s). Roll the thumb from JUMP onto HIT without lifting: you take off and the wind-up starts. |
+| **HIT** | Hold to wind up (the ring around your thumb fills), release to swing, tap = tip. Drag while holding to aim. While you are loading or in the air, **the whole right half of the screen is HIT**, so the thumb does not have to find the button after the jump. |
+| **BLOCK** | Hands up and load a jump; release to take off. The hands stay up until you land. When the ball is dropping onto you from your side the button reads **SET** and sets instead (no jump). |
+| **PASS** | Hold: platform ready. |
+| **TOSS** | Serve toss (Free Play). |
+| Top right | Pause, camera toggle, reset rep, and REPLAY when a highlight is available. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill) or feed types (Free Play). |
+
+Haptics (Android) tick at full charge and on a graded contact. Tunables are in
+`TOUCH` in `src/config.ts` (stick radius, run threshold, look scale, the
+"right half is HIT in the air" and "roll from JUMP to HIT" behaviours).
+
 ### Aiming
 
 Direction is your look direction. Depth is your pitch: look **lower** for a
@@ -169,6 +192,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | Section | What it controls |
 |---|---|
 | `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
+| `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
 | `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning |
@@ -212,7 +236,7 @@ impact FOV punch and camera kick (0 turns them off).
 
 ```
 src/config.ts          all tunables
-src/core/              input (with buffering), settings, math, events
+src/core/              input (with buffering), touch pad model, settings, math, events
 src/physics/           ball physics, predictor, trajectory solvers (pure, tested)
 src/character/         procedural rig, animator (poses + IK), kits
 src/game/              game loop, athlete kinematics, contact/timing system, judge, modes, bots
@@ -220,7 +244,7 @@ src/ai/                setter, hitter, blocker, server, team coordinator
 src/fx/                particles, trails, effects director, replay, post-processing
 src/audio/             Web Audio synthesis
 src/world/             arena and procedural textures
-src/ui/                HUD, menu/settings, debug overlay
+src/ui/                HUD, menu/settings, touch controls overlay, debug overlay
 tests/                 unit tests
 scripts/               e2e and screenshot tooling
 ```
