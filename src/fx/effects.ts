@@ -297,7 +297,13 @@ export class Effects {
         const v = g.views.get(e.athlete);
         this.blockFx(p, stuff, v, user && g.rig.mode === 'fp', false);
         // the replay plays it back on the replayed blocker's hands
-        this.replay.addEvent(g.simTime, 'block', { x: p.x, y: p.y, z: p.z, stuff: stuff ? 1 : 0, view: v ? this.replay.views.indexOf(v) : -1 });
+        this.replay.addEvent(g.simTime, 'block', {
+          x: p.x,
+          y: p.y,
+          z: p.z,
+          stuff: stuff ? 1 : 0,
+          view: v ? this.replay.views.indexOf(v) : -1,
+        });
         if (user || this.near(p, 6)) {
           g.rig.addTrauma(FX.shakeBlock * (stuff ? 1 : 0.5) * (user ? 1 : 0.4));
           if (user && stuff) g.hitStop = FX.hitStopBlock;
