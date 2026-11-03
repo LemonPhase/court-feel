@@ -113,10 +113,15 @@ The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 * **Timing.** Every action starts on the frame you press it. A spike swing is
   scheduled onto the predicted best contact moment (the ball meeting your
   ideal contact point along your jump), and can stretch 45–170 ms to make it.
-  The grade is how far your click was from ideal: **Perfect** ≤ 30 ms,
-  **Good** ≤ 70 ms, otherwise **Early / Late** — downgraded if you jumped too
+  The grade is how far your release was from ideal: **Perfect** from 30 ms
+  early to 70 ms late, **Good** from 70 ms early to 110 ms late, otherwise
+  **Early / Late** — downgraded if you jumped too
   early/late (contact below 72% of your jump) or had to reach. Perfect = max
-  power, the fire trail, hit-stop and the replay. Passes and sets are graded
+  power, the fire trail, hit-stop and the replay. The harder the ball leaves
+  your hand, the bigger it gets: a longer freeze with the ball squashed on your
+  hand and a camera punch, a shock ring, and a contact and floor slam that boom
+  through the arena (the sound follows the ball speed continuously, so a soft
+  shot stays soft). Passes and sets are graded
   on how early your platform/hands were ready; blocks on how high you were
   when the ball arrived.
 * **Buffering.** Presses that can't happen yet (e.g. jump while landing) are
@@ -143,16 +148,17 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
-| `FX` | Hit-stop lengths, shake amounts, spark count, crack life, replay timing, bloom |
+| `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints) are in
-the pause menu and persist in `localStorage`.
+the pause menu and persist in `localStorage`. Camera shake also scales the
+impact FOV punch and camera kick (0 turns them off).
 
 ## Testing
 
-* `npm test` — 51 Vitest tests: set apex, spike landing point, topspin dip,
+* `npm test` — 55 Vitest tests: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
   acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the
@@ -160,7 +166,9 @@ the pause menu and persist in `localStorage`.
   the top of the jump), the spike timing grades driven through the real
   contact system (press, hold, release), hold-to-charge power, the set calls
   (pins inside the antennae, shoot / back quick geometry, a back quick meeting
-  the hitter), middles hitting zone 1 / 5, and hit-sound power.
+  the hitter), middles hitting zone 1 / 5, hit-sound power, the impact
+  camera punch and kick, and the spike animation (hand on the ball at contact,
+  no re-cocking in the air after the hit).
 * `npm run e2e` — starts Vite, loads the game in headless Chromium, runs every
   drill with an autopilot that plays through the real input path (it plans
   its approach by forward-simulating the athlete), screenshots first- and
