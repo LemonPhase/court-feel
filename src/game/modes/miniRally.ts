@@ -162,7 +162,10 @@ export class MiniRally extends Mode {
             return;
           }
         }
-        if (this.t > 25 || (g.ball.state.rest && this.t > 1)) this.endPoint(g.ball.pos.z > 0 ? -1 : 1);
+        if (this.t > 25 || (g.ball.state.rest && this.t > 1)) {
+          this.reason = g.ball.state.rest ? 'BALL DOWN' : 'LONG RALLY';
+          this.endPoint(g.ball.pos.z > 0 ? -1 : 1);
+        }
         break;
       }
       case 'dead':

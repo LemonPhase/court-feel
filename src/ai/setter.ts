@@ -52,6 +52,8 @@ export class SetterBrain implements Brain {
     const mine = ball.active && ball.lastTouch?.athlete !== a && this.shouldPlay(g);
     if (!mine) {
       if (a.action?.kind === 'set' && a.action.resolved && g.simTime - a.action.contactT > 0.4) a.endAction();
+      // hands that went up for a ball that never came: drop them, they must not block the next play
+      else if (a.action?.kind === 'set' && !a.action.resolved && g.simTime - a.action.t0 > 0.8) a.endAction();
       moveTo(a, this.base.x, this.base.z, { face: this.faceYaw });
       return;
     }

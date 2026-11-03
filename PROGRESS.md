@@ -131,6 +131,14 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   - 400 s all-AI soak: 31 points, 5.8 touches/point (max 12), 14 digs, 9 blocks, 5 tips, 16-16.
     With autopilots in the user's seat: libero passes, setter sets, middle 8/8 Perfect spikes.
   - AI attackers read the net (hit deeper/softer from low or deep contacts); users get honest physics.
+  - Rally continuity pass: AI blockers lower their hands as soon as they land (a block action used
+    to linger for seconds and pin the player to the blocker brain, so tips and deflections dropped
+    behind them and front-row hitters never transitioned to attack); a ball off a team's own block
+    is assigned a receiver (preferably not the blocker); receivers account for airborne / landing
+    players, turn and run instead of backpedalling, sprint when a shuffle would be late, dig balls
+    already under platform height where they land, and re-pick when the ball strays off the tape; a
+    second ball the setter cannot run down is bumped by the closest player (decided once per ball);
+    a set the hitter never went for is kept in play; stale unresolved set actions are dropped.
 
 - **M8** Effects and audio (everything in "Juice").
   - `src/fx/particles.ts`: GPU velocity-aligned streak sparks (instanced, additive HDR) and soft
