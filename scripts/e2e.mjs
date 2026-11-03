@@ -261,27 +261,31 @@ console.log('perf', JSON.stringify(perf));
     const r = document.querySelector(s).getBoundingClientRect();
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }, sel);
+  // the software renderer runs the sim slower than real time: wait for each state rather than a fixed time
+  const untilSnap = async (pred, ms = 4000) => {
+    const t0 = Date.now();
+    let s = await snap();
+    while (!pred(s) && Date.now() - t0 < ms) {
+      await wait(50);
+      s = await snap();
+    }
+    return s;
+  };
   const t = { ok: true, steps: {} };
   await touch('touchStart', 1, 160, 300);
   await touch('touchMove', 1, 160, 300 - 90);
-  await wait(500);
-  t.steps.run = await snap();
+  t.steps.run = await untilSnap((s) => s.sprint && s.stick);
   const j = await btn('.t-jump');
   await touch('touchStart', 2, j.x, j.y);
-  await wait(150);
-  t.steps.load = await snap();
+  t.steps.load = await untilSnap((s) => s.state === 'load');
   await touch('touchEnd', 2);
-  await wait(120);
-  t.steps.air = await snap();
+  t.steps.air = await untilSnap((s) => s.state === 'air');
   await touch('touchStart', 3, 560, 140);
-  await wait(250);
   await touch('touchMove', 3, 640, 150);
-  await wait(60);
-  t.steps.windup = await snap();
+  t.steps.windup = await untilSnap((s) => s.action === 'windup' && s.yaw !== 0);
   await tshot('21_touch_windup');
   await touch('touchEnd', 3);
-  await wait(100);
-  t.steps.swing = await snap();
+  t.steps.swing = await untilSnap((s) => s.action === 'swing');
   await touch('touchEnd', 1);
   const s = t.steps;
   t.ok = s.run.sprint && s.run.stick && s.load.state === 'load' && s.load.held.includes('Space') && s.air.state === 'air' && !s.air.held.includes('Space')
