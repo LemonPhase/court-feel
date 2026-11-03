@@ -134,7 +134,7 @@ export class AthleteView {
   readonly headPos = v3();
   readonly eyePos = v3();
 
-  constructor(public athlete: Athlete, kit: Kit) {
+  constructor(public athlete: Athlete, readonly kit: Kit) {
     this.H = athlete.height;
     this.rig = buildRig(this.H, kit);
     this.root = this.rig.root;

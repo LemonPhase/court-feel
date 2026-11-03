@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { BALL, COURT, PLAYER, POSITIONS, type PositionId, type PositionStats } from '../config';
+import { BALL, COURT, PLAYER, type PositionId, type PositionStats } from '../config';
 import { standingReach } from '../character/rig';
+import { bodyStats, type CustomBody } from './body';
 import { angleLerp, clamp, clamp01, damp, dirFromYaw, lerp, rightFromYaw, wrapAngle } from '../core/mathx';
 
 export type AState = 'ground' | 'load' | 'air' | 'land';
@@ -118,9 +119,10 @@ export class Athlete {
   number = 0;
   time = 0;
 
-  constructor(role: PositionId, side: 1 | -1, opts: { height?: number } = {}) {
+  /** `body`: a custom height / vert / spike power for this position (the user's settings) */
+  constructor(role: PositionId, side: 1 | -1, opts: { height?: number; body?: CustomBody } = {}) {
     this.role = role;
-    this.stats = POSITIONS[role];
+    this.stats = bodyStats(role, opts.body);
     this.side = side;
     this.team = side === 1 ? 0 : 1;
     this.height = opts.height ?? this.stats.height;
@@ -130,12 +132,25 @@ export class Athlete {
     this.prevYaw = this.ryaw = this.yaw;
   }
 
-  setRole(role: PositionId): void {
+  setRole(role: PositionId, body?: CustomBody): void {
     this.role = role;
-    this.stats = POSITIONS[role];
+    this.setBody(body);
+  }
+
+  /** apply a custom body (or the position's defaults): height, standing reach, jump and power */
+  setBody(body?: CustomBody): void {
+    this.stats = bodyStats(this.role, body);
     this.height = this.stats.height;
     this.standReach = standingReach(this.height);
     this.jumpMax = this.stats.jump;
+  }
+
+  /** take another athlete's body as is (forward-simulation copies must jump and reach like the real one) */
+  copyBody(from: Athlete): void {
+    this.stats = from.stats;
+    this.height = from.height;
+    this.standReach = from.standReach;
+    this.jumpMax = from.jumpMax;
   }
 
   /** teleport (no interpolation streak) */

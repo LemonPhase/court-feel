@@ -1,4 +1,5 @@
-import { CAMERA, POSITIONS, type PositionId, type Settings } from '../config';
+import { BODY, CAMERA, POSITIONS, type BodyOverride, type PositionId, type Settings } from '../config';
+import { isCustomBody, resolveBody, setBodyValue, spikeReach, topSpikeKmh } from '../game/body';
 import { MODE_INFO, type ModeId } from '../game/modes/mode';
 
 type Opt = { value: string; label: string };
@@ -11,6 +12,18 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', html = ''): 
 }
 
 const STAT_MAX = { jump: 0.95, speed: 5.8, power: 1.1, control: 1 };
+
+const INCH = 0.0254;
+/** 1.95 -> 6′5″ */
+const feetInches = (m: number) => {
+  const i = Math.round(m / INCH);
+  return `${Math.floor(i / 12)}′${i % 12}″`;
+};
+const BODY_FMT: Record<keyof BodyOverride, (v: number) => string> = {
+  height: (v) => `${v.toFixed(2)} m · ${feetInches(v)}`,
+  jump: (v) => `${Math.round(v * 100)} cm · ${Math.round(v / INCH)}″`,
+  power: (v) => `${Math.round(topSpikeKmh(v))} km/h`,
+};
 
 export interface MenuCallbacks {
   play(mode: ModeId, pos: PositionId): void;
@@ -29,6 +42,8 @@ export class Menu {
   pos: PositionId = 'OH';
   private modeCards = new Map<ModeId, HTMLElement>();
   private posCards = new Map<PositionId, HTMLElement>();
+  /** which position the "Your athlete" settings edit (follows the selected position when the settings open) */
+  private bodyTab: PositionId = 'OH';
 
   constructor(parent: HTMLElement, private settings: Settings, private cb: MenuCallbacks) {
     try {
@@ -48,19 +63,12 @@ export class Menu {
     left.append(h('div', 'menu-h', '1 · Choose your position'));
     const posRow = h('div', 'pos-row');
     for (const id of Object.keys(POSITIONS) as PositionId[]) {
-      const p = POSITIONS[id];
       const c = h('button', 'pos-card');
-      const bar = (label: string, v: number, max: number) =>
-        `<div class="stat"><span>${label}</span><i style="width:${Math.round((v / max) * 100)}%"></i></div>`;
-      c.innerHTML = `<div class="pos-short">${p.short}</div><div class="pos-name">${p.name}</div>
-        <div class="pos-blurb">${p.blurb}</div>
-        ${bar('Jump', p.jump, STAT_MAX.jump)}${bar('Speed', p.approachSpeed, STAT_MAX.speed)}
-        ${bar('Power', p.power, STAT_MAX.power)}${bar('Control', p.ballControl, STAT_MAX.control)}
-        <div class="pos-h">${p.height.toFixed(2)} m</div>`;
       c.onclick = () => this.selectPos(id);
       posRow.append(c);
       this.posCards.set(id, c);
     }
+    this.refreshPosCards();
     left.append(posRow);
     left.append(h('div', 'menu-h', '2 · Choose a drill'));
     const modeGrid = h('div', 'mode-grid');
@@ -155,6 +163,22 @@ export class Menu {
 
   private settingsOpen = false;
 
+  /** position cards show your custom height / vert / power where you set one */
+  private refreshPosCards(): void {
+    for (const [id, c] of this.posCards) {
+      const p = POSITIONS[id];
+      const custom = this.settings.bodies[id];
+      const b = resolveBody(id, custom);
+      const bar = (label: string, v: number, max: number) =>
+        `<div class="stat"><span>${label}</span><i style="width:${Math.min(100, Math.round((v / max) * 100))}%"></i></div>`;
+      c.innerHTML = `<div class="pos-short">${p.short}</div><div class="pos-name">${p.name}</div>
+        <div class="pos-blurb">${p.blurb}</div>
+        ${bar('Jump', b.jump, STAT_MAX.jump)}${bar('Speed', p.approachSpeed, STAT_MAX.speed)}
+        ${bar('Power', b.power, STAT_MAX.power)}${bar('Control', p.ballControl, STAT_MAX.control)}
+        <div class="pos-h">${b.height.toFixed(2)} m${isCustomBody(id, custom) ? ' · <b>custom</b>' : ''}</div>`;
+    }
+  }
+
   private go(): void {
     try {
       localStorage.setItem('courtfeel.menu', JSON.stringify({ mode: this.mode, pos: this.pos }));
@@ -188,6 +212,7 @@ export class Menu {
   }
 
   openSettings(): void {
+    this.bodyTab = this.pos;
     this.buildSettings();
     this.settingsPanel.style.display = 'flex';
     this.settingsOpen = true;
@@ -280,12 +305,89 @@ export class Menu {
     slider('Camera shake', 'shake', 0, 1.5, 0.05, (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`));
     slider('Volume', 'volume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`);
     toggle('Key hints', 'showHints');
-    box.append(grid);
+    const cols = h('div', 'settings-cols');
+    cols.append(grid, this.buildBodySettings(changed));
+    box.append(cols);
     const close = h('button', 'play-btn', 'DONE');
     close.onclick = () => this.closeSettings();
     box.append(close);
     p.append(box);
     p.style.display = this.settingsOpen ? 'flex' : 'none';
+  }
+
+  /** "Your athlete": height, vertical jump and spike power for each position you play (only your player, never the AI) */
+  private buildBodySettings(changed: () => void): HTMLElement {
+    const s = this.settings;
+    const wrap = h('div', 'body-set');
+    const draw = () => {
+      wrap.innerHTML = '';
+      const id = this.bodyTab;
+      const p = POSITIONS[id];
+      wrap.append(
+        h('div', 'set-h', 'Your athlete'),
+        h('div', 'set-note', 'Height, vert and spike power for each position you play. Only your player changes; it applies right away.'),
+      );
+      const tabs = h('div', 'body-tabs');
+      for (const pid of Object.keys(POSITIONS) as PositionId[]) {
+        const t = h('button', 'chip body-tab', POSITIONS[pid].short);
+        t.title = POSITIONS[pid].name;
+        t.classList.toggle('on', pid === id);
+        t.classList.toggle('custom', isCustomBody(pid, s.bodies[pid]));
+        t.onclick = (e) => {
+          e.preventDefault();
+          this.bodyTab = pid;
+          draw();
+        };
+        tabs.append(t);
+      }
+      wrap.append(tabs, h('div', 'body-pos', p.name));
+      const sum = h('div', 'body-sum');
+      const reset = h('button', 'ghost-btn body-reset', `Reset ${p.short} to defaults`);
+      const sync = () => {
+        const b = resolveBody(id, s.bodies[id]);
+        const custom = isCustomBody(id, s.bodies[id]);
+        sum.innerHTML = `Spike reach <b>${spikeReach(b).toFixed(2)} m</b><br><span>${p.short} default: ${p.height.toFixed(2)} m · ${Math.round(p.jump * 100)} cm · ${Math.round(topSpikeKmh(p.power))} km/h</span>`;
+        reset.disabled = !custom;
+        tabs.children[(Object.keys(POSITIONS) as PositionId[]).indexOf(id)]?.classList.toggle('custom', custom);
+      };
+      const slider = (label: string, key: keyof BodyOverride) => {
+        const lim = BODY[key];
+        const v0 = resolveBody(id, s.bodies[id])[key];
+        const row = h('label', 'set-row');
+        const val = h('span', 'set-val', BODY_FMT[key](v0));
+        const inp = h('input') as HTMLInputElement;
+        inp.type = 'range';
+        inp.min = String(lim.min);
+        inp.max = String(lim.max);
+        inp.step = String(lim.step);
+        inp.value = String(v0);
+        inp.dataset.body = key;
+        inp.oninput = () => {
+          const v = parseFloat(inp.value);
+          setBodyValue(s.bodies, id, key, v);
+          val.textContent = BODY_FMT[key](v);
+          sync();
+          this.refreshPosCards();
+          changed();
+        };
+        row.append(h('span', 'set-l', label), inp, val);
+        wrap.append(row);
+      };
+      slider('Height', 'height');
+      slider('Vertical jump', 'jump');
+      slider('Spike power', 'power');
+      reset.onclick = (e) => {
+        e.preventDefault();
+        delete s.bodies[id];
+        this.refreshPosCards();
+        changed();
+        draw();
+      };
+      wrap.append(sum, reset);
+      sync();
+    };
+    draw();
+    return wrap;
   }
 }
 

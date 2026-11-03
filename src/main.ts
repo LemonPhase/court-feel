@@ -131,6 +131,7 @@ if (q.get('mode')) {
   const pos = (q.get('pos') || 'OH') as PositionId;
   if (q.get('cam')) settings.firstPerson = q.get('cam') === 'fp';
   menu.showStart(false);
+  menu.selectPos(pos);
   lastPlay = { mode, pos };
   game.startMode(mode, pos);
   game.hud.setVisible(true);
