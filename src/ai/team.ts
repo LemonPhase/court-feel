@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, COURT, TIMING, type PositionId } from '../config';
+import { AI, BALL, COURT, PLAYER, TIMING, type PositionId } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
@@ -82,9 +82,15 @@ export class TeamPlayer implements Brain {
       this.hitter.step(dt, g);
       return;
     }
-    if (a.action?.kind === 'block' || (a.state === 'air' && this.job === 'block')) {
+    // in the air on a block there is nothing else to do; back on the floor a block that is
+    // over must not keep the player at the net when the ball is dropping behind them
+    if (a.state === 'air' && (a.action?.kind === 'block' || this.job === 'block')) {
       this.blocker.step(dt, g);
       return;
+    }
+    if (a.action?.kind === 'block' && this.job !== 'block' && a.state !== 'load' && a.action.held && a.stateT > 0.1) {
+      a.action.held = false;
+      a.action.releaseT = g.simTime;
     }
     switch (this.job) {
       case 'serve':
@@ -133,20 +139,39 @@ export class TeamPlayer implements Brain {
     }
     const pred = ball.ensurePrediction(g.env, now);
     const h = a.height * 0.34 + 0.05;
-    const tArr = pred.descendThrough(h, now);
-    if (tArr < 0) return;
-    pred.posAt(tArr, this.b);
+    let tArr = pred.descendThrough(h, now);
+    if (tArr > 0) pred.posAt(tArr, this.b);
+    else if (pred.landT > now) {
+      // already under platform height (a dribble off the tape, a low deflection): dig it where it lands
+      tArr = pred.landT;
+      this.b.x = pred.land.x;
+      this.b.z = pred.land.z;
+    } else {
+      stop(a, netYaw(a.side));
+      return;
+    }
     const face = netYaw(a.side);
     const fx = -Math.sin(face);
     const fz = -Math.cos(face);
     const sx = this.b.x - fx * 0.45;
     const sz = this.b.z - fz * 0.45;
-    const d = moveTo(a, sx, sz, { face, arrive: 0.35, sprintDist: 1.2 });
     const sp = ball.speed();
     const fast = clamp((sp - 12) / 10, 0, 1);
     const lead = TIMING.passLead + (TIMING.digLead - TIMING.passLead) * fast;
+    // far from the spot: turn and run (no backpedalling after a tip), face the net again on arrival;
+    // sprint whenever a shuffle would not get there with the platform ready in time
+    const dist = Math.hypot(sx - a.pos.x, sz - a.pos.z);
+    const left = tArr - lead - now;
+    const needSpeed = left > 0.05 ? dist / left : 1e9;
+    const d = moveTo(a, sx, sz, { face: dist < 1.1 ? face : undefined, arrive: 0.35, sprintDist: 1e9 });
+    a.cmd.sprint = dist > 0.9 && needSpeed > a.stats.shuffleSpeed * 0.75;
     if (this.pressT < 0) this.err = g.rng.gauss() * (0.03 + (1 - this.skill) * 0.12) - (d > 0.8 ? 0.1 : 0);
-    if (!a.action && now >= tArr - lead + this.err && a.state === 'ground') {
+    // anything that is not actually in progress (a block that is over, a set that never
+    // got its ball, a finished swing) gives way to the pass
+    const act = a.action;
+    const busy = act && ((act.kind === 'pass' && !act.resolved) || act.kind === 'windup' || act.kind === 'toss'
+      || (act.kind === 'swing' && !act.resolved) || (act.kind === 'block' && act.held));
+    if (!busy && now >= tArr - lead + this.err && (a.state === 'ground' || a.state === 'land')) {
       a.startAction('pass', now);
       this.pressT = now;
     }
@@ -167,6 +192,8 @@ export class TeamAI {
   /** who should take the incoming first ball (sticky per incoming ball) */
   receiver: Athlete | null = null;
   private receiverFor: unknown = null;
+  /** where the ball was expected when the receiver was picked (re-pick if it strays, e.g. off the tape) */
+  private receiverAt: Spot = { x: 0, z: 0 };
   private freeFor: unknown = null;
   private freeAthlete: Athlete | null = null;
   userSlot: Slot | null = null;
@@ -305,29 +332,40 @@ export class TeamAI {
     }
   }
 
-  /** a team-mate (or the user) best placed to take a ball dropping at p */
-  private pickReceiver(p: V3, tArr: number, serve: boolean): Athlete | null {
-    const now = this.g.simTime;
+  /** how long until `a` can have a platform under a ball dropping at p (feet, landing and a run) */
+  reachTime(a: Athlete, p: V3): number {
+    const d = Math.hypot(a.pos.x - p.x, a.pos.z - (p.z - this.side * 0.4));
+    // a long way is run, not shuffled
+    const v = d > 1.5 ? a.stats.approachSpeed * 0.8 : a.stats.shuffleSpeed * 0.9;
+    let t = d / v + AI.reactionTime;
+    // a blocker still up at the net has to come down first
+    if (a.state === 'air') {
+      const vy = a.vel.y;
+      t += (vy + Math.sqrt(Math.max(0, vy * vy + 2 * BALL.gravity * a.pos.y))) / BALL.gravity + PLAYER.landRecover;
+    } else if (a.state === 'land') t += Math.max(0, PLAYER.landRecover - a.stateT);
+    else if (a.state === 'load') t += 0.7;
+    return t;
+  }
+
+  /**
+   * A team-mate (or the user) best placed to take a ball dropping at p: the one who
+   * gets there first, preferring anyone who can actually make it. Someone is always
+   * sent (a desperate dig beats watching it drop) unless `exclude` was the only option.
+   */
+  private pickReceiver(p: V3, serve: boolean, exclude: Athlete | null = null): Athlete | null {
     let best: Athlete | null = null;
     let bestT = 1e9;
     for (const [slot, a] of this.players) {
+      if (a === exclude) continue;
       if (serve && (slot === 'S' || slot === 'MB' || slot === 'OPP')) continue;
-      if (!serve && slot === 'S' && this.touches === 0) {
-        // the setter digs only if nobody else can
-      }
-      const d = Math.hypot(a.pos.x - p.x, a.pos.z - (p.z - this.side * 0.4));
-      const speed = a.stats.shuffleSpeed * 0.9;
-      let t = d / speed + AI.reactionTime;
-      if (slot === 'S') t += 0.4;
+      let t = this.reachTime(a, p);
+      if (slot === 'S') t += 0.4; // the setter digs only if nobody else can
       if (slot === 'L') t -= 0.15;
       if (a.isUser) t -= 0.25; // the user's own zone: give it to them
       if (t < bestT) {
         bestT = t;
         best = a;
       }
-    }
-    if (best && bestT > tArr - now + 0.35 && !best.isUser) {
-      // unreachable: still send the closest one (a desperate dig)
     }
     return best;
   }
@@ -361,40 +399,72 @@ export class TeamAI {
       }
       const theirBall = lt && lt.side !== this.side && lt.kind !== 'block';
       const ourBall = lt && lt.side === this.side && lt.kind !== 'block';
+      const ourBlock = lt && lt.side === this.side && lt.kind === 'block';
+      const inBounds = Math.abs(p.x) < COURT.halfWidth + 0.3 && Math.abs(p.z) < COURT.halfLength + 0.3;
+      // the receiver sticks to one ball, unless the ball is no longer going where they were sent
+      const strayed = comingToUs && tDown > 0 && Math.hypot(p.x - this.receiverAt.x, p.z - this.receiverAt.z) > 1.5;
+      const receive = (serve: boolean, exclude: Athlete | null) => {
+        if (this.receiver && this.receiverFor === lt && !strayed) {
+          setJob(this.receiver, 'receive');
+        } else if (comingToUs && tDown > 0 && inBounds) {
+          const r = this.pickReceiver(p, serve, exclude);
+          this.receiver = r;
+          this.receiverFor = lt;
+          this.receiverAt = { x: p.x, z: p.z };
+          if (r) setJob(r, 'receive');
+        }
+      };
       if (theirBall || (lt?.kind === 'block' && lt.side !== this.side)) {
         // the other team touched it last: defend, receive if it is coming
         form = lt?.kind === 'serve' ? 'receive' : 'defense';
-        if (this.receiver && this.receiverFor === lt) {
-          setJob(this.receiver, 'receive');
-        } else if (comingToUs && tDown > 0) {
-          const inBounds = Math.abs(p.x) < COURT.halfWidth + 0.3 && Math.abs(p.z) < COURT.halfLength + 0.3;
-          const serve = lt?.kind === 'serve';
-          if (inBounds) {
-            const r = this.pickReceiver(p, tDown, serve);
-            this.receiver = r;
-            this.receiverFor = lt;
-            if (r) setJob(r, 'receive');
-          }
-        }
+        receive(lt?.kind === 'serve', null);
         // blockers read their set
         if (lt?.kind === 'set' && !onOurSide) {
           for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
         }
+      } else if (ourBlock) {
+        // our block touched it and it is dropping back on our side: a block is not a touch,
+        // so somebody (preferably not the blocker) picks it up and we run our offence
+        form = 'defense';
+        receive(false, lt?.athlete ?? null);
       } else if (ourBall) {
         form = 'offense';
         if (this.touches === 1) {
           // second ball: the setter (or the libero if the setter played the first)
           let setter = this.players.get('S');
           if (setter && lt?.athlete === setter) setter = this.players.get('L');
-          if (setter && !setter.isUser) setJob(setter, 'set');
+          if (setter && !setter.isUser) {
+            // a pass the setter cannot run down (dug from the back row): whoever is closest
+            // bumps the second ball. Decided once per ball, so the two never leave it to each other.
+            if (this.freeFor !== lt) {
+              this.freeFor = lt;
+              this.freeAthlete = null;
+              if (comingToUs && tDown > 0) {
+                const tHands = pred.descendThrough(setterTouchY(setter), now);
+                const tAt = tHands > 0 ? tHands : tDown;
+                if (tHands > 0) pred.posAt(tHands, this.qp);
+                else Object.assign(this.qp, p);
+                // the setter releases at once and runs: only a hopeless one gives it up
+                const d = Math.hypot(setter.pos.x - this.qp.x, setter.pos.z - this.qp.z);
+                const tRun = d / setter.stats.approachSpeed + 0.15 + (setter.state === 'air' ? 0.5 : 0);
+                if (tRun > tAt - now + 0.05) this.freeAthlete = this.pickReceiver(p, false, lt?.athlete ?? null);
+              }
+            }
+            const r = this.freeAthlete;
+            if (r && r !== setter) setJob(r, 'free');
+            else setJob(setter, 'set');
+          }
         } else if (this.touches >= 2) {
           // third ball: the set hitter attacks; if nobody can, someone bumps it over
           const h = this.setFor;
           const hb = h ? this.brains.get(h) : null;
-          if (lt?.kind !== 'set' || (h && !h.isUser && hb && !hb.hitter)) {
+          // a set our hitter never went for (still up from a block, caught at the net): keep it in play
+          const stranded = lt?.kind === 'set' && hb?.hitter && hb.hitter.phase === 'ready' && !hb.hitter.plan
+            && comingToUs && tDown > 0 && tDown - now < 0.9;
+          if (lt?.kind !== 'set' || (h && !h.isUser && hb && !hb.hitter) || stranded) {
             if (this.freeFor !== lt) {
               this.freeFor = lt;
-              this.freeAthlete = comingToUs && tDown > 0 ? this.pickReceiver(p, tDown, false) : null;
+              this.freeAthlete = comingToUs && tDown > 0 ? this.pickReceiver(p, false, lt?.athlete ?? null) : null;
             }
             const r = this.freeAthlete;
             if (r && lt?.athlete !== r) setJob(r, 'free');

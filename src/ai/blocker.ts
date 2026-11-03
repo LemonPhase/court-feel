@@ -47,7 +47,9 @@ export class BlockerBrain implements Brain {
     // block action housekeeping
     if (a.action?.kind === 'block') {
       g.contact.tryBlock(a, a.action);
-      if (a.state === 'ground' && a.stateT > 0.15 && this.jumped) {
+      // hands come down once the feet are back on the floor, whatever happened to the set
+      // (the ball is usually hit while we are still up, so `jumped` cannot be the gate)
+      if (a.action.held && a.state !== 'air' && a.state !== 'load' && a.stateT > 0.15) {
         a.action.held = false;
         a.action.releaseT = now;
       }
