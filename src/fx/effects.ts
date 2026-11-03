@@ -571,6 +571,9 @@ export class Effects {
 
   private begin(hasImpact: boolean): boolean {
     if (!this.replay.start(this.replayFrom, this.replayTo)) return false;
+    // "any key skips": only keys pressed from now on count. Movement keys are read as held and
+    // their press edges are never consumed, so a stale W or Shift must not end it at once
+    this.g.input.clearEdges();
     this.replaying = true;
     this.setupCine(hasImpact);
     document.body.classList.add('replaying');
