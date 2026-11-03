@@ -73,7 +73,7 @@ export class Judge {
         if (e.kind === 'floor') {
           const inside = Math.abs(e.x) <= COURT.halfWidth && Math.abs(e.z) <= COURT.halfLength;
           const side: 1 | -1 = e.z >= 0 ? 1 : -1;
-          if (inside) res = { kind: 'in', side, x: e.x, z: e.z, winner: (-side) as 1 | -1, netTouch: this.netTouch };
+          if (inside) res = { kind: 'in', side, x: e.x, z: e.z, winner: -side as 1 | -1, netTouch: this.netTouch };
           else res = this.make('out', e.x, e.z, lastSide);
           break;
         }
@@ -87,7 +87,7 @@ export class Judge {
   }
 
   private make(kind: OutcomeKind, x: number, z: number, faultSide: 1 | -1): Outcome {
-    return { kind, side: z >= 0 ? 1 : -1, x, z, winner: (-faultSide) as 1 | -1, netTouch: this.netTouch };
+    return { kind, side: z >= 0 ? 1 : -1, x, z, winner: -faultSide as 1 | -1, netTouch: this.netTouch };
   }
 }
 

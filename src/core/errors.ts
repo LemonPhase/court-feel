@@ -116,7 +116,15 @@ export class ErrorReporter {
     const ctx = Object.entries(r.context)
       .map(([k, v]) => `${k}=${v}`)
       .join(' ');
-    return [`Court Feel ${r.build}`, `${r.at} · ${r.kind}${r.where ? ` in ${r.where}` : ''}`, r.message, ctx && `state: ${ctx}`, `page: ${r.page}`, `browser: ${r.userAgent}`, r.stack]
+    return [
+      `Court Feel ${r.build}`,
+      `${r.at} · ${r.kind}${r.where ? ` in ${r.where}` : ''}`,
+      r.message,
+      ctx && `state: ${ctx}`,
+      `page: ${r.page}`,
+      `browser: ${r.userAgent}`,
+      r.stack,
+    ]
       .filter(Boolean)
       .join('\n');
   }

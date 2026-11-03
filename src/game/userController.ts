@@ -28,7 +28,10 @@ export class UserController {
   /** suppress gameplay input (menus, replays) */
   locked = false;
 
-  constructor(private input: Input, private rig: CameraRig) {}
+  constructor(
+    private input: Input,
+    private rig: CameraRig,
+  ) {}
 
   private static readonly binds: Record<UserAction, string[]> = {
     jump: ['Space'],

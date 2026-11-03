@@ -167,16 +167,31 @@ export function makeBallTexture(): THREE.CanvasTexture {
       const nx = -Math.cos(phi) * Math.sin(theta);
       const ny = Math.cos(theta);
       const nz = Math.sin(phi) * Math.sin(theta);
-      const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+      const ax = Math.abs(nx),
+        ay = Math.abs(ny),
+        az = Math.abs(nz);
       let face: number, m: number, perp: number, second: number;
-      if (ax >= ay && ax >= az) { face = 0; m = ax; perp = ny; second = Math.max(ay, az); }
-      else if (ay >= az) { face = 1; m = ay; perp = nz; second = Math.max(ax, az); }
-      else { face = 2; m = az; perp = nx; second = Math.max(ax, ay); }
+      if (ax >= ay && ax >= az) {
+        face = 0;
+        m = ax;
+        perp = ny;
+        second = Math.max(ay, az);
+      } else if (ay >= az) {
+        face = 1;
+        m = ay;
+        perp = nz;
+        second = Math.max(ax, az);
+      } else {
+        face = 2;
+        m = az;
+        perp = nx;
+        second = Math.max(ax, ay);
+      }
       const b = perp / m; // -1..1 across the face
       const band = b < -1 / 3 ? 0 : b > 1 / 3 ? 2 : 1;
       let col: number[];
       if (band === 1) col = face === 1 ? blue : yellow;
-      else col = face === 1 ? white : (face === 0 ? blue : white);
+      else col = face === 1 ? white : face === 0 ? blue : white;
       if (face === 2 && band !== 1) col = blue;
       if (face === 0 && band !== 1) col = white;
       const seamW = 0.03;
@@ -185,7 +200,10 @@ export function makeBallTexture(): THREE.CanvasTexture {
       const i = (y * w + x) * 4;
       const sc = nearBand || nearFace ? 0.25 : 1;
       const base = sc < 1 ? seam : col;
-      d[i] = base[0]; d[i + 1] = base[1]; d[i + 2] = base[2]; d[i + 3] = 255;
+      d[i] = base[0];
+      d[i + 1] = base[1];
+      d[i + 2] = base[2];
+      d[i + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -296,7 +314,20 @@ export function makeCrowdAtlas(): { tex: THREE.CanvasTexture; cols: number; rows
   const ch = 96;
   const [c, ctx] = canvas(cols * cw, rows * ch);
   const rng = new Rng(99);
-  const shirts = ['#d8342c', '#f2f2f2', '#1f5fbf', '#f2b632', '#2a2a2e', '#2b9a5a', '#e86a1f', '#7a3fb0', '#ffffff', '#c41e3a', '#0d2f6e', '#ffd34d'];
+  const shirts = [
+    '#d8342c',
+    '#f2f2f2',
+    '#1f5fbf',
+    '#f2b632',
+    '#2a2a2e',
+    '#2b9a5a',
+    '#e86a1f',
+    '#7a3fb0',
+    '#ffffff',
+    '#c41e3a',
+    '#0d2f6e',
+    '#ffd34d',
+  ];
   const skins = ['#f1c6a0', '#d9a77b', '#b47d55', '#8a5a3a', '#5f3b24', '#e7b892'];
   const hairs = ['#1b1209', '#3a2416', '#6b4a2a', '#c9a35b', '#111111', '#7d2e12', '#9a9a9a'];
   for (let r = 0; r < rows; r++) {

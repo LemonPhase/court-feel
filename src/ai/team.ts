@@ -22,16 +22,28 @@ type Spot = { x: number; z: number };
 /** formations for the home side (+z); mirrored for the away side */
 const FORM: Record<'receive' | 'defense' | 'offense', Record<Slot, Spot>> = {
   receive: {
-    S: { x: 2.3, z: 1.7 }, OH1: { x: -2.5, z: 6.0 }, MB: { x: 0.4, z: 2.2 },
-    OPP: { x: 3.4, z: 3.0 }, OH2: { x: 0.0, z: 6.5 }, L: { x: 2.5, z: 6.2 },
+    S: { x: 2.3, z: 1.7 },
+    OH1: { x: -2.5, z: 6.0 },
+    MB: { x: 0.4, z: 2.2 },
+    OPP: { x: 3.4, z: 3.0 },
+    OH2: { x: 0.0, z: 6.5 },
+    L: { x: 2.5, z: 6.2 },
   },
   defense: {
-    S: { x: 2.8, z: 6.2 }, OH1: { x: -3.0, z: 0.7 }, MB: { x: 0.0, z: 0.7 },
-    OPP: { x: 3.0, z: 0.7 }, OH2: { x: -2.9, z: 6.2 }, L: { x: 0.0, z: 7.3 },
+    S: { x: 2.8, z: 6.2 },
+    OH1: { x: -3.0, z: 0.7 },
+    MB: { x: 0.0, z: 0.7 },
+    OPP: { x: 3.0, z: 0.7 },
+    OH2: { x: -2.9, z: 6.2 },
+    L: { x: 0.0, z: 7.3 },
   },
   offense: {
-    S: { x: SETTER_SPOT.x, z: SETTER_SPOT.z }, OH1: { x: -4.85, z: 3.7 }, MB: { x: 0.35, z: 2.8 },
-    OPP: { x: 4.7, z: 3.4 }, OH2: { x: -0.4, z: 6.4 }, L: { x: 1.2, z: 6.0 },
+    S: { x: SETTER_SPOT.x, z: SETTER_SPOT.z },
+    OH1: { x: -4.85, z: 3.7 },
+    MB: { x: 0.35, z: 2.8 },
+    OPP: { x: 4.7, z: 3.4 },
+    OH2: { x: -0.4, z: 6.4 },
+    L: { x: 1.2, z: 6.0 },
   },
 };
 
@@ -67,7 +79,11 @@ export class TeamPlayer implements Brain {
   private b: V3 = { x: 0, y: 0, z: 0 };
   skill = AI.defenderSkill;
 
-  constructor(public athlete: Athlete, public slot: Slot, public team: TeamAI) {
+  constructor(
+    public athlete: Athlete,
+    public slot: Slot,
+    public team: TeamAI,
+  ) {
     const s = athlete.side;
     const setterFace = s === 1 ? Math.PI / 2 : -Math.PI / 2;
     this.setter = new SetterBrain(athlete, { x: SETTER_SPOT.x * s, z: SETTER_SPOT.z * s }, setterFace);
@@ -187,8 +203,13 @@ export class TeamPlayer implements Brain {
     // anything that is not actually in progress (a block that is over, a set that never
     // got its ball, a finished swing) gives way to the pass
     const act = a.action;
-    const busy = act && ((act.kind === 'pass' && !act.resolved) || act.kind === 'windup' || act.kind === 'toss'
-      || (act.kind === 'swing' && !act.resolved) || (act.kind === 'block' && act.held));
+    const busy =
+      act &&
+      ((act.kind === 'pass' && !act.resolved) ||
+        act.kind === 'windup' ||
+        act.kind === 'toss' ||
+        (act.kind === 'swing' && !act.resolved) ||
+        (act.kind === 'block' && act.held));
     if (!busy && now >= tArr - lead + this.err && (a.state === 'ground' || a.state === 'land')) {
       a.startAction('pass', now);
       this.pressT = now;
@@ -226,7 +247,10 @@ export class TeamAI {
   /** the setter has just called a read (the Mini Rally shows and voices it) */
   onRead: ((r: SetterRead) => void) | null = null;
 
-  constructor(public side: 1 | -1, private g: Game) {}
+  constructor(
+    public side: 1 | -1,
+    private g: Game,
+  ) {}
 
   add(slot: Slot, a: Athlete, isUser: boolean): void {
     this.players.set(slot, a);
@@ -260,7 +284,7 @@ export class TeamAI {
   }
 
   get user(): Athlete | null {
-    return this.userSlot ? this.players.get(this.userSlot) ?? null : null;
+    return this.userSlot ? (this.players.get(this.userSlot) ?? null) : null;
   }
 
   /** set call for a specific hitter in a lane (the middle gets a quick timed to their jump) */
@@ -538,8 +562,14 @@ export class TeamAI {
           const h = this.setFor;
           const hb = h ? this.brains.get(h) : null;
           // a set our hitter never went for (still up from a block, caught at the net): keep it in play
-          const stranded = lt?.kind === 'set' && hb?.hitter && hb.hitter.phase === 'ready' && !hb.hitter.plan
-            && comingToUs && tDown > 0 && tDown - now < 0.9;
+          const stranded =
+            lt?.kind === 'set' &&
+            hb?.hitter &&
+            hb.hitter.phase === 'ready' &&
+            !hb.hitter.plan &&
+            comingToUs &&
+            tDown > 0 &&
+            tDown - now < 0.9;
           if (this.touches >= 3) {
             // out of touches: nobody plays it (a fourth touch is a fault either way)
           } else if (lt?.kind !== 'set' || (h && !h.isUser && hb && !hb.hitter) || stranded) {

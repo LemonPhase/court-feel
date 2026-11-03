@@ -78,7 +78,11 @@ export class TouchControls {
   private lastCharge = -1;
   private visible = false;
 
-  constructor(parent: HTMLElement, private g: Game, private cb: { pause(): void }) {
+  constructor(
+    parent: HTMLElement,
+    private g: Game,
+    private cb: { pause(): void },
+  ) {
     this.root = el('div', 'touch', parent);
     this.root.style.display = 'none';
     // resting stick hint (the live stick floats under the thumb)
@@ -98,7 +102,11 @@ export class TouchControls {
     const top = el('div', 't-top', this.root);
     this.pauseBtn = el('div', 't-tap t-pause', top, '<span>❚❚</span>');
     this.pauseBtn.dataset.tap = 'pause';
-    for (const [id, label] of [['replay', 'REPLAY'], ['cam', 'CAM'], ['reset', 'RESET']] as [PadButton, string][]) {
+    for (const [id, label] of [
+      ['replay', 'REPLAY'],
+      ['cam', 'CAM'],
+      ['reset', 'RESET'],
+    ] as [PadButton, string][]) {
       const e = el('div', 't-tap', top, label);
       e.dataset.btn = id;
       this.buttons.set(id, e);
@@ -174,7 +182,9 @@ export class TouchControls {
       const cy = r.top + r.height / 2;
       const d = Math.hypot(x - cx, y - cy);
       // round buttons with a little slop; tap buttons are rectangles
-      const inside = e.classList.contains('t-tap') ? x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4 : d <= r.width / 2 + 8;
+      const inside = e.classList.contains('t-tap')
+        ? x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4
+        : d <= r.width / 2 + 8;
       if (inside && d < bestD) {
         best = id;
         bestD = d;

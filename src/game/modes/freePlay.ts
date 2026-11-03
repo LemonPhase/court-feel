@@ -9,7 +9,11 @@ import { kbd, Mode, ZoneMarker } from './mode';
 type Feed = 'set' | 'free' | 'serve' | 'attack' | 'practice';
 const FEEDS: Feed[] = ['set', 'free', 'serve', 'attack', 'practice'];
 const FEED_LABEL: Record<Feed, string> = {
-  set: 'Set to you', free: 'Free ball', serve: 'Float serve', attack: 'Hard attack', practice: 'Serve practice (Q toss, LMB hit)',
+  set: 'Set to you',
+  free: 'Free ball',
+  serve: 'Float serve',
+  attack: 'Hard attack',
+  practice: 'Serve practice (Q toss, LMB hit)',
 };
 /** serve-practice target zones on the far court */
 const SERVE_ZONES = [
@@ -41,10 +45,16 @@ function makeMachine(): { group: THREE.Group; barrel: THREE.Group; lamp: THREE.M
   tube.position.z = -0.25;
   barrel.add(tube);
   group.add(barrel);
-  const hopper = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.12, 0.3, 14, 1, true), new THREE.MeshStandardMaterial({ color: 0x9fb4d8, transparent: true, opacity: 0.45, side: THREE.DoubleSide }));
+  const hopper = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.12, 0.3, 14, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x9fb4d8, transparent: true, opacity: 0.45, side: THREE.DoubleSide }),
+  );
   hopper.position.set(0, 1.35, 0.1);
   group.add(hopper);
-  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.2, 0.6) }));
+  const lamp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05, 10, 8),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(0.4, 2.2, 0.6) }),
+  );
   lamp.position.set(0, 1.25, -0.12);
   group.add(lamp);
   group.traverse((o) => ((o as THREE.Mesh).castShadow = true));
@@ -122,7 +132,8 @@ export class FreePlay extends Mode {
   }
 
   hint(): string {
-    if (this.feed === 'practice') return `${kbd('Q')} toss · hold/release ${kbd('LMB')} serve (aim with the mouse, jump for a jump serve) · ${kbd('1')}-${kbd('5')} feed type`;
+    if (this.feed === 'practice')
+      return `${kbd('Q')} toss · hold/release ${kbd('LMB')} serve (aim with the mouse, jump for a jump serve) · ${kbd('1')}-${kbd('5')} feed type`;
     return `${kbd('1')}-${kbd('5')} feed type · ${kbd('F')} feed · ${kbd('T')} auto · ${kbd('Q')} serve toss · hold/release ${kbd('LMB')} hit · ${kbd('E')} pass · ${kbd('RMB')} block/set`;
   }
 
@@ -160,7 +171,11 @@ export class FreePlay extends Mode {
     const b = g.ball;
     const idle = !b.active || b.state.rest;
     // the lamp shows when the machine is about to fire
-    (this.machine.lamp.material as THREE.MeshBasicMaterial).color.setRGB(idle && this.wait < 0.6 ? 2.5 : 0.3, idle && this.wait < 0.6 ? 2.2 : 1.6, 0.4);
+    (this.machine.lamp.material as THREE.MeshBasicMaterial).color.setRGB(
+      idle && this.wait < 0.6 ? 2.5 : 0.3,
+      idle && this.wait < 0.6 ? 2.2 : 1.6,
+      0.4,
+    );
     if (!idle) return;
     const act = g.me.action?.kind;
     if (act === 'toss' || (act === 'windup' && g.contact.serving === g.me)) return; // the user is serving

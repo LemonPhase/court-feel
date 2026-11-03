@@ -44,7 +44,15 @@ await new Promise((res, rej) => {
   });
 });
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info', '--js-flags=--expose-gc'] });
+const browser = await chromium.launch({
+  args: [
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--ignore-gpu-blocklist',
+    '--enable-precise-memory-info',
+    '--js-flags=--expose-gc',
+  ],
+});
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('console', (m) => {
@@ -103,7 +111,14 @@ await page.evaluate(() => {
     window.log = [];
     window.offs?.forEach((f) => f());
     window.offs = [
-      g.events.on('contact', (e) => window.log.push({ who: e.athlete.isUser ? 'me' : e.athlete.role + (e.athlete.side === 1 ? 'H' : 'A'), kind: e.kind, grade: e.grade, kmh: Math.round(e.speed * 3.6) })),
+      g.events.on('contact', (e) =>
+        window.log.push({
+          who: e.athlete.isUser ? 'me' : e.athlete.role + (e.athlete.side === 1 ? 'H' : 'A'),
+          kind: e.kind,
+          grade: e.grade,
+          kmh: Math.round(e.speed * 3.6),
+        }),
+      ),
       g.events.on('outcome', (o) => window.log.push({ outcome: o.kind, side: o.side })),
     ];
   };
@@ -112,22 +127,24 @@ await page.evaluate(() => {
 // ---- spike drill: TP and FP perfect spikes, impact, replay
 for (const fp of [false, true]) {
   const tag = fp ? 'fp' : 'tp';
-  await page.evaluate((fp) => {
-    window.start('spike', 'OH', fp);
-    window.hit = null;
-    window.impact = null;
-    const g = window.__court;
-    g.events.on('contact', (e) => {
-      if (e.athlete === g.me && !window.hit) window.hit = e.grade;
-    });
-    g.events.on('ballEvent', (e) => {
-      if (e.kind === 'floor' && window.hit && !window.impact) window.impact = true;
-    });
-    window.until(() => window.hit !== null, 1200);
-    if (fp) g.rig.pitch = 0.55;
-    g.play(2 / 60);
-    return window.hit;
-  }, fp).then((grade) => check(grade === 'Perfect', `spike drill (${tag}): the perfect bot's spike is Perfect`, grade));
+  await page
+    .evaluate((fp) => {
+      window.start('spike', 'OH', fp);
+      window.hit = null;
+      window.impact = null;
+      const g = window.__court;
+      g.events.on('contact', (e) => {
+        if (e.athlete === g.me && !window.hit) window.hit = e.grade;
+      });
+      g.events.on('ballEvent', (e) => {
+        if (e.kind === 'floor' && window.hit && !window.impact) window.impact = true;
+      });
+      window.until(() => window.hit !== null, 1200);
+      if (fp) g.rig.pitch = 0.55;
+      g.play(2 / 60);
+      return window.hit;
+    }, fp)
+    .then((grade) => check(grade === 'Perfect', `spike drill (${tag}): the perfect bot's spike is Perfect`, grade));
   await shot(`10_spike_contact_${tag}`);
   await page.evaluate(() => window.__court.play(0.1));
   await shot(`11_spike_flight_${tag}`);
@@ -154,43 +171,64 @@ for (const fp of [false, true]) {
 
 // ---- every drill with its bot (and the rally both all-AI and with the user)
 const runs = [
-  ['spike', 'OH'], ['spike', 'OPP'], ['spike', 'MB'], ['spike', 'S'], ['spike', 'L'],
+  ['spike', 'OH'],
+  ['spike', 'OPP'],
+  ['spike', 'MB'],
+  ['spike', 'S'],
+  ['spike', 'L'],
   // spike drill set calls (keys 2 and 3): go / inside 3, shoot / back quick, fast back / back 2
-  ['spike', 'OH', 1], ['spike', 'OH', 2], ['spike', 'MB', 1], ['spike', 'MB', 2], ['spike', 'OPP', 1], ['spike', 'OPP', 2],
-  ['block', 'MB'], ['receive', 'L'], ['setter', 'S'], ['free', 'OH'], ['rally', 'MB'], ['rally', 'L'],
+  ['spike', 'OH', 1],
+  ['spike', 'OH', 2],
+  ['spike', 'MB', 1],
+  ['spike', 'MB', 2],
+  ['spike', 'OPP', 1],
+  ['spike', 'OPP', 2],
+  ['block', 'MB'],
+  ['receive', 'L'],
+  ['setter', 'S'],
+  ['free', 'OH'],
+  ['rally', 'MB'],
+  ['rally', 'L'],
 ];
 for (const [mode, pos, call = 0] of runs) {
-  const r = await page.evaluate(([mode, pos, call]) => {
-    window.start(mode, pos, false, 'perfect', call);
-    const g = window.__court;
-    for (let i = 0; i < 60 * 30; i++) g.play(1 / 60);
-    const mine = window.log.filter((l) => l.who === 'me');
-    const grades = {};
-    for (const m of mine) grades[m.kind + ':' + m.grade] = (grades[m.kind + ':' + m.grade] || 0) + 1;
-    return {
-      score: g.mode.score,
-      reps: g.mode.reps,
-      home: g.mode.scoreHome,
-      away: g.mode.scoreAway,
-      // the set call in effect (spike drill): proves selectCall reached the drill
-      play: g.mode.play?.name ?? null,
-      myContacts: grades,
-      outcomes: window.log.filter((l) => l.outcome).length,
-      events: window.log.length,
-    };
-  }, [mode, pos, call]);
+  const r = await page.evaluate(
+    ([mode, pos, call]) => {
+      window.start(mode, pos, false, 'perfect', call);
+      const g = window.__court;
+      for (let i = 0; i < 60 * 30; i++) g.play(1 / 60);
+      const mine = window.log.filter((l) => l.who === 'me');
+      const grades = {};
+      for (const m of mine) grades[m.kind + ':' + m.grade] = (grades[m.kind + ':' + m.grade] || 0) + 1;
+      return {
+        score: g.mode.score,
+        reps: g.mode.reps,
+        home: g.mode.scoreHome,
+        away: g.mode.scoreAway,
+        // the set call in effect (spike drill): proves selectCall reached the drill
+        play: g.mode.play?.name ?? null,
+        myContacts: grades,
+        outcomes: window.log.filter((l) => l.outcome).length,
+        events: window.log.length,
+      };
+    },
+    [mode, pos, call],
+  );
   const key = call ? `${mode}_${pos}_call${call + 1}` : `${mode}_${pos}`;
   report.modes[key] = r;
   console.log(mode, pos + (call ? ` call${call + 1}` : ''), JSON.stringify(r));
   // what each drill's bot has to touch; the perfect bot should mostly grade Perfect
   const kind = { spike: 'spike', free: 'spike', block: 'block', receive: 'pass', setter: 'set' }[mode];
-  const count = (k, grade) => Object.entries(r.myContacts).filter(([g]) => g.startsWith(k + ':') && (!grade || g.endsWith(':' + grade))).reduce((n, [, c]) => n + c, 0);
+  const count = (k, grade) =>
+    Object.entries(r.myContacts)
+      .filter(([g]) => g.startsWith(k + ':') && (!grade || g.endsWith(':' + grade)))
+      .reduce((n, [, c]) => n + c, 0);
   if (kind) {
     const all = count(kind);
     check(all >= 1, `${key}: the bot makes ${kind} contacts`, r.myContacts);
     check(count(kind, 'Perfect') * 2 >= all, `${key}: at least half of the bot's ${kind} contacts are Perfect`, r.myContacts);
   }
-  if (mode === 'spike' || mode === 'block' || mode === 'receive' || mode === 'setter') check(r.reps >= 1, `${key}: at least one rep completes`, r);
+  if (mode === 'spike' || mode === 'block' || mode === 'receive' || mode === 'setter')
+    check(r.reps >= 1, `${key}: at least one rep completes`, r);
   if (mode === 'rally') {
     check(r.outcomes >= 1, `${key}: the rally produces points`, r);
     check(Object.keys(r.myContacts).length >= 1, `${key}: the user's athlete plays the ball`, r);
@@ -297,14 +335,23 @@ console.log('perf', JSON.stringify(perf));
     await tp.evaluate(() => (window.__court.holdRender = false));
   };
   await tshot('20_touch_layout');
-  const snap = () => tp.evaluate(() => {
-    const g = window.__court;
-    return { state: g.me.state, sprint: g.me.cmd.sprint, stick: g.input.stick.active, held: [...g.input.held], action: g.me.action?.kind ?? null, yaw: g.rig.yaw };
-  });
-  const btn = (sel) => tp.evaluate((s) => {
-    const r = document.querySelector(s).getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }, sel);
+  const snap = () =>
+    tp.evaluate(() => {
+      const g = window.__court;
+      return {
+        state: g.me.state,
+        sprint: g.me.cmd.sprint,
+        stick: g.input.stick.active,
+        held: [...g.input.held],
+        action: g.me.action?.kind ?? null,
+        yaw: g.rig.yaw,
+      };
+    });
+  const btn = (sel) =>
+    tp.evaluate((s) => {
+      const r = document.querySelector(s).getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, sel);
   // the software renderer runs the sim slower than real time: wait for each state rather than a fixed time
   const untilSnap = async (pred, ms = 4000) => {
     const t0 = Date.now();
@@ -332,8 +379,17 @@ console.log('perf', JSON.stringify(perf));
   t.steps.swing = await untilSnap((s) => s.action === 'swing');
   await touch('touchEnd', 1);
   const s = t.steps;
-  t.ok = s.run.sprint && s.run.stick && s.load.state === 'load' && s.load.held.includes('Space') && s.air.state === 'air' && !s.air.held.includes('Space')
-    && s.windup.action === 'windup' && s.windup.yaw !== 0 && s.swing.action === 'swing' && !s.swing.held.includes('Mouse0');
+  t.ok =
+    s.run.sprint &&
+    s.run.stick &&
+    s.load.state === 'load' &&
+    s.load.held.includes('Space') &&
+    s.air.state === 'air' &&
+    !s.air.held.includes('Space') &&
+    s.windup.action === 'windup' &&
+    s.windup.yaw !== 0 &&
+    s.swing.action === 'swing' &&
+    !s.swing.held.includes('Mouse0');
   report.touch = t;
   console.log('touch', t.ok ? 'ok' : 'FAILED', JSON.stringify(s));
   check(t.ok, 'touch controls drive run, load, jump, wind-up and swing', s);
@@ -344,7 +400,12 @@ console.log('perf', JSON.stringify(perf));
 const soak = await page.evaluate(async (secs) => {
   const g = window.__court;
   const mem = () => (performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0);
-  const sample = () => ({ heapMB: +mem().toFixed(1), geometries: g.renderer.info.memory.geometries, textures: g.renderer.info.memory.textures, programs: g.renderer.info.programs?.length ?? 0 });
+  const sample = () => ({
+    heapMB: +mem().toFixed(1),
+    geometries: g.renderer.info.memory.geometries,
+    textures: g.renderer.info.memory.textures,
+    programs: g.renderer.info.programs?.length ?? 0,
+  });
   const modes = ['rally', 'spike', 'block', 'receive', 'setter', 'free'];
   // warm up: every mode once (first-use shaders and pools), then measure from the rally
   for (const m of modes) {
@@ -391,7 +452,13 @@ for (const k of ['geometries', 'textures', 'programs']) {
     p.on('pageerror', (e) => errs.push(e.message));
     await p.goto(`http://localhost:${PORT}/${url}`);
     await p.waitForFunction(() => window.__court && window.__menu, null, { timeout: 30000 });
-    const st = await p.evaluate(() => ({ mode: window.__court.mode ? window.__court.modeId : null, pos: window.__court.position, inMenu: window.__court.inMenu, fov: window.__court.settings.fov, crash: !!document.querySelector('.crash') }));
+    const st = await p.evaluate(() => ({
+      mode: window.__court.mode ? window.__court.modeId : null,
+      pos: window.__court.position,
+      inMenu: window.__court.inMenu,
+      fov: window.__court.settings.fov,
+      crash: !!document.querySelector('.crash'),
+    }));
     check(errs.length === 0 && !st.crash, `${label}: loads without errors`, { errs, st });
     return { p, ctx, st };
   };
@@ -401,7 +468,9 @@ for (const k of ['geometries', 'textures', 'programs']) {
   r = await probe('unknown mode in a link', '?mode=spikey');
   check(r.st.inMenu, 'an unknown mode opens the menu', r.st);
   await r.ctx.close();
-  r = await probe('corrupted saved settings', '', () => localStorage.setItem('courtfeel.settings.v1', JSON.stringify({ fov: 'wide', volume: null })));
+  r = await probe('corrupted saved settings', '', () =>
+    localStorage.setItem('courtfeel.settings.v1', JSON.stringify({ fov: 'wide', volume: null })),
+  );
   check(typeof r.st.fov === 'number', 'a stored setting of the wrong type falls back to its default', r.st);
   await r.ctx.close();
   // keyboard: game keys are left to the browser in the menu, captured in play

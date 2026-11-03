@@ -9,7 +9,9 @@ function commit(): string {
   const sha = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA;
   if (sha) return sha.slice(0, 7);
   try {
-    return execSync('git rev-parse --short=7 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    return execSync('git rev-parse --short=7 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
   } catch {
     return 'dev';
   }

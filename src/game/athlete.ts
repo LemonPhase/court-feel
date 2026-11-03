@@ -422,9 +422,25 @@ export class Athlete {
   startAction(kind: ActionKind, t: number): Action {
     if (this.action) this.lastAction = this.action;
     const act: Action = {
-      kind, t0: t, held: true, releaseT: -1, contactT: -1, contactPoint: new THREE.Vector3(),
-      resolved: false, grade: null, tip: false, miss: false, hand: 'R', aim: new THREE.Vector3(0, 0, -1), err: 0, note: '',
-      minD: 1e9, charge: 0, idealT: -1, idealD: 1e9, idealFor: null,
+      kind,
+      t0: t,
+      held: true,
+      releaseT: -1,
+      contactT: -1,
+      contactPoint: new THREE.Vector3(),
+      resolved: false,
+      grade: null,
+      tip: false,
+      miss: false,
+      hand: 'R',
+      aim: new THREE.Vector3(0, 0, -1),
+      err: 0,
+      note: '',
+      minD: 1e9,
+      charge: 0,
+      idealT: -1,
+      idealD: 1e9,
+      idealFor: null,
     };
     this.action = act;
     return act;
@@ -442,11 +458,7 @@ export class Athlete {
     const r = rightFromYaw(this.yaw, _r);
     const H = this.height;
     // ball centre in front of the hitting shoulder, a palm below full reach
-    return out.set(
-      p.x + r.x * 0.09 * H + f.x * 0.1 * H,
-      p.y + this.standReach - 0.16,
-      p.z + r.z * 0.09 * H + f.z * 0.1 * H,
-    );
+    return out.set(p.x + r.x * 0.09 * H + f.x * 0.1 * H, p.y + this.standReach - 0.16, p.z + r.z * 0.09 * H + f.z * 0.1 * H);
   }
 
   /** right / hitting-hand side vector */

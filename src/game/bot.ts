@@ -57,7 +57,10 @@ export class SpikeBot {
   private mz = 0;
   private sprint = false;
 
-  constructor(private g: Game, private quality: BotQuality = 'perfect') {}
+  constructor(
+    private g: Game,
+    private quality: BotQuality = 'perfect',
+  ) {}
 
   private release(): void {
     const inp = this.g.input;
@@ -79,20 +82,28 @@ export class SpikeBot {
     const team = drill?.home;
     // a middle goes on the pass (the drill's toss, or a team-mate's pass to our setter)
     const quickCue =
-      me.role === 'MB' && ball.active && lt && lt.athlete !== me && lt.side === me.side &&
+      me.role === 'MB' &&
+      ball.active &&
+      lt &&
+      lt.athlete !== me &&
+      lt.side === me.side &&
       (lt.kind === 'feed' || (!!team && (lt.kind === 'pass' || lt.kind === 'dig') && !!team.passToSetter(g)));
     // the spike drill plans fast sets (quicks, go balls) from the pass: follow that plan
     const drillEarly = !!drill?.earlyPlan && lt?.kind === 'feed' && drill.earlyFor === lt;
     const setForMe =
       quickCue ||
       drillEarly ||
-      (ball.active && lt && lt.athlete !== me && lt.side === me.side &&
+      (ball.active &&
+        lt &&
+        lt.athlete !== me &&
+        lt.side === me.side &&
         (lt.kind === 'set' || (lt.kind === 'feed' && me.role === 'S')) &&
         (!team || team.setFor === me));
     // a run started before the set (a quick) is seen through to the landing: the "pass to the
     // setter" read can drop out in the last frames before the touch, and resetting there would
     // let go of the plant and the wind-up mid-run
-    const committed = this.committed && (this.phase === 'approach' || this.phase === 'load' || (this.phase === 'air' && me.state !== 'ground'));
+    const committed =
+      this.committed && (this.phase === 'approach' || this.phase === 'load' || (this.phase === 'air' && me.state !== 'ground'));
     if (!setForMe && !committed && (this.phase !== 'air' || me.state === 'ground')) {
       if (this.phase !== 'wait') this.release();
       this.phase = 'wait';
@@ -351,7 +362,10 @@ export class BlockBot {
   private offset = 0;
   results: string[] = [];
 
-  constructor(private g: Game, private quality: BotQuality = 'perfect') {}
+  constructor(
+    private g: Game,
+    private quality: BotQuality = 'perfect',
+  ) {}
 
   step(_dt: number): void {
     const g = this.g;
@@ -428,7 +442,11 @@ export class TouchBot {
   /** setter: which option to aim at (cycles) */
   private pick = 0;
 
-  constructor(private g: Game, private kind: 'pass' | 'set', private quality: BotQuality = 'perfect') {}
+  constructor(
+    private g: Game,
+    private kind: 'pass' | 'set',
+    private quality: BotQuality = 'perfect',
+  ) {}
 
   step(_dt: number): void {
     const g = this.g;
@@ -440,7 +458,10 @@ export class TouchBot {
     const key = this.kind === 'pass' ? 'KeyE' : 'Mouse2';
     const team = drillView(g)?.home;
     const incoming =
-      ball.active && !ball.state.rest && lt && lt.athlete !== me &&
+      ball.active &&
+      !ball.state.rest &&
+      lt &&
+      lt.athlete !== me &&
       (this.kind === 'pass' ? lt.side !== me.side || lt.kind === 'feed' : lt.side === me.side) &&
       (!team || (this.kind === 'pass' ? team.receiver === me : team.touches === 1));
     if (!incoming) {

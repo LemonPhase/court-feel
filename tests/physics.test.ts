@@ -164,7 +164,7 @@ describe('net and antennae', () => {
     expect(b.p.z).toBeGreaterThan(0);
   });
 
-  it('the women\'s net height changes what clears', () => {
+  it("the women's net height changes what clears", () => {
     const p = { x: 0, y: 2.82, z: 3 };
     const v = { x: 0, y: 0, z: -10 };
     const cross = netClearance(p, v, { x: 0, y: 0, z: 0 })!;
