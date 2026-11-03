@@ -30,6 +30,10 @@ export class BlockerBrain implements Brain {
   private fooled = false;
   /** when false the brain only blocks (no base movement) */
   active = true;
+  /** also read a `feed` from the other side as the ball to block (drills where the user attacks a coach's toss) */
+  readFeed = false;
+  /** close this far inside (towards the court centre) of the attack point: a second blocker next to the pin blocker */
+  closeInside = 0;
 
   /**
    * @param lateralRange how far from home this blocker will go along the net
@@ -51,7 +55,7 @@ export class BlockerBrain implements Brain {
     const face = netYaw(a.side);
     const ball = g.ball;
     const lt = ball.lastTouch;
-    const theirSet = ball.active && lt && lt.side !== a.side && lt.kind === 'set';
+    const theirSet = ball.active && lt && lt.side !== a.side && (lt.kind === 'set' || (this.readFeed && lt.kind === 'feed'));
     // block action housekeeping
     if (a.action?.kind === 'block') {
       g.contact.tryBlock(a, a.action);
@@ -108,9 +112,11 @@ export class BlockerBrain implements Brain {
             // run rarely seals the seam perfectly
             want = this.b.x - Math.sign(this.b.x) * 1.1 + this.readErr;
           } else {
-            // take away the line a little: shade towards the sideline the hitter is near
+            // take away the line a little: shade towards the sideline the hitter is near;
+            // a drill's second blocker closes a fixed distance inside instead
             const shade = Math.sign(this.b.x) * 0.25;
-            want = this.b.x + shade + this.readErr;
+            const inside = -Math.sign(this.b.x || 1) * this.closeInside;
+            want = this.b.x + shade + inside + this.readErr;
           }
           this.targetX = clamp(want, this.homeX - reach, this.homeX + reach);
           moveTo(a, this.targetX, a.side * 0.45, { face, arrive: 0.3, sprintDist: 1.2 });

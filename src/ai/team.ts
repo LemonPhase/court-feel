@@ -4,7 +4,7 @@ import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
-import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, setterTouchY } from '../game/plays';
+import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, setterTouchY, type SetPlay } from '../game/plays';
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 import { HitterBrain } from './hitter';
@@ -200,6 +200,8 @@ export class TeamAI {
   private lastTouchRef: unknown = null;
   /** set selection bias towards the user (when the user is a front-row hitter) */
   userSetBias = 0.6;
+  /** the set the user has called for themselves (keys 1-3); null = the default for their position */
+  userPlay: SetPlay | null = null;
   serving = false;
 
   constructor(public side: 1 | -1, private g: Game) {}
@@ -250,7 +252,9 @@ export class TeamAI {
   private quickFor(h: Athlete) {
     const g = this.g;
     const releaseAt = h.isUser ? undefined : this.brains.get(h)?.hitter?.releaseAt;
-    return quickSetFor(h, g.simTime, g.ball.pos, releaseAt);
+    // the user's call picks where along the net the quick goes (1, shoot, back quick)
+    const inFront = h.isUser ? this.userPlay?.inFront : undefined;
+    return quickSetFor(h, g.simTime, g.ball.pos, releaseAt, inFront);
   }
 
   /**
@@ -307,10 +311,14 @@ export class TeamAI {
       }
     }
     if (pick.lane === 'MB' && quick) return quick;
-    const lane = laneFor(pick.lane, s);
+    // the user's call (a go, a 3 ball, a fast back...) instead of the lane's default tempo
+    const call = pick.a === user && this.userPlay && this.userPlay.inFront === undefined ? this.userPlay.lane : null;
+    const lane = call ?? laneFor(pick.lane, s);
     const y = attackHeight(pick.a);
+    // off a bad pass the setter can only put up a high ball
     const apexBoost = passQuality > 1.6 ? 0.4 : 0;
-    return { target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove + apexBoost, hitter: pick.a };
+    const apexAbove = passQuality > 1.6 && call ? Math.max(call.apexAbove, laneFor(pick.lane, s).apexAbove) : lane.apexAbove;
+    return { target: { x: lane.x, y, z: lane.z }, apex: y + apexAbove + apexBoost, hitter: pick.a };
   }
 
   onSet(hitter: Athlete | null): void {

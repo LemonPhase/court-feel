@@ -40,7 +40,8 @@ mouse (pointer lock). **Esc** pauses and opens settings.
 | Q | Serve toss (Free Play, feed 5 = serve practice), then hold and release Left mouse to hit — standing = float serve, jump = topspin serve |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Reset the current rep |
-| 1 / 2 / 3 | Spike Drill: set call for the next ball (outside, middle, opposite — see below) |
+| 1 / 2 / 3 | Spike Drill and Mini Rally: set call for the next ball (outside, middle, opposite — see below) |
+| B | Spike Drill: opposing block off / single / double, with its shadow drawn on their floor (see below) |
 | Esc | Pause / settings |
 | F3 | Debug overlay: FPS, physics step time, ball state, timing window, contact gizmos |
 | Free Play only | 1-5 feed type (set / free ball / float serve / hard attack / **serve practice**), F feed now, T auto-feed |
@@ -89,6 +90,16 @@ power and ball control, where drills start you, and what the AI asks of you.
    For fast sets the GO cue comes off the pass, because the run has to start
    before the setter touches the ball. Target zones follow your position: line
    and cross are mirrored for the opposite, and the middle aims at zone 1 or 5.
+
+   Press **B** to practise hitting around a block: **single** puts an opposing
+   blocker in front of your lane, **double** adds their middle closing next to
+   them. They read the set and jump like the AI blockers in the rally. The
+   **block shadow** is drawn in red on their floor: everything a straight ball
+   from your contact point would hit into the hands, updated live as the block
+   forms, so you can see the line, the cross and the seam opening up, and how
+   deep a ball has to go to clear the top. A stuffed ball scores **BLOCKED**
+   (0, streak lost); a ball off their hands that goes out or over scores
+   **TOOLED** (timing points + 50); a kill past the block scores as usual.
 3. **Block Drill** — the opponent setter sets one of three hitters. Every rep
    starts at the net in front of their middle; read the set, shuffle, hands up,
    time the jump. The hitter your position blocks in a match (outside: their
@@ -104,7 +115,12 @@ power and ball control, where drills start you, and what the AI asks of you.
    Your hitters attack against a live blocker.
 6. **Mini Rally** — 6 v 6 with you in your position. The AI receives, sets
    (often to you), attacks, blocks and digs. Win or lose the point. "Your ball!"
-   and a green landing marker tell you when the ball is yours.
+   and a green landing marker tell you when the ball is yours. As a hitter
+   (OH, MB, OPP) keys **1 / 2 / 3** call your set, the same calls as in the
+   Spike Drill: press before the setter touches the ball; the call sticks
+   until you change it (1 is your position's default). Fast calls (go, fast
+   back) need you running as the setter touches the ball; a quick goes to
+   where you jump.
 
 The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 
