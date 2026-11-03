@@ -1,6 +1,7 @@
-import { BODY, CAMERA, POSITIONS, type BodyOverride, type PositionId, type Settings } from '../config';
+import { BODY, isPositionId, POSITIONS, SETTING_RANGES, type BodyOverride, type BooleanSettingKey, type NumericSettingKey, type PositionId, type Settings } from '../config';
 import { isCustomBody, resolveBody, setBodyValue, spikeReach, topSpikeKmh } from '../game/body';
-import { MODE_INFO, type ModeId } from '../game/modes/mode';
+import { isModeId, MODE_INFO, type ModeId } from '../game/modes/mode';
+import { BUILD_LABEL } from '../core/build';
 
 type Opt = { value: string; label: string };
 
@@ -25,6 +26,23 @@ const BODY_FMT: Record<keyof BodyOverride, (v: number) => string> = {
   power: (v) => `${Math.round(topSpikeKmh(v))} km/h`,
 };
 
+/** a selectable card or chip: the highlight and, for assistive tech, the pressed state */
+function setOn(e: HTMLElement, on: boolean): void {
+  e.classList.toggle('on', on);
+  e.setAttribute('aria-pressed', String(on));
+}
+
+function isTextEntry(t: EventTarget | null): boolean {
+  return t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') && (t as HTMLInputElement).type !== 'range';
+}
+
+/** the build label ("v0.1.0 · abc1234"): players can name it in a bug report */
+function buildTag(): HTMLElement {
+  const e = h('div', 'build');
+  e.textContent = BUILD_LABEL;
+  return e;
+}
+
 export interface MenuCallbacks {
   play(mode: ModeId, pos: PositionId): void;
   resume(): void;
@@ -48,8 +66,8 @@ export class Menu {
   constructor(parent: HTMLElement, private settings: Settings, private cb: MenuCallbacks) {
     try {
       const saved = JSON.parse(localStorage.getItem('courtfeel.menu') || '{}');
-      if (saved.mode && saved.mode in MODE_INFO) this.mode = saved.mode;
-      if (saved.pos && saved.pos in POSITIONS) this.pos = saved.pos;
+      if (isModeId(saved?.mode)) this.mode = saved.mode;
+      if (isPositionId(saved?.pos)) this.pos = saved.pos;
     } catch {
       /* ignore */
     }
@@ -62,6 +80,8 @@ export class Menu {
     );
     left.append(h('div', 'menu-h', '1 · Choose your position'));
     const posRow = h('div', 'pos-row');
+    posRow.setAttribute('role', 'group');
+    posRow.setAttribute('aria-label', 'Position');
     for (const id of Object.keys(POSITIONS) as PositionId[]) {
       const c = h('button', 'pos-card');
       c.onclick = () => this.selectPos(id);
@@ -72,6 +92,8 @@ export class Menu {
     left.append(posRow);
     left.append(h('div', 'menu-h', '2 · Choose a drill'));
     const modeGrid = h('div', 'mode-grid');
+    modeGrid.setAttribute('role', 'group');
+    modeGrid.setAttribute('aria-label', 'Drill');
     (Object.keys(MODE_INFO) as ModeId[]).forEach((id, i) => {
       const m = MODE_INFO[id];
       const c = h('button', 'mode-card', `<div class="mode-n">${i + 1}</div><div class="mode-t">${m.title}</div><div class="mode-b">${m.blurb}</div>`);
@@ -86,8 +108,8 @@ export class Menu {
     const fpBtn = h('button', 'chip', 'First person');
     const tpBtn = h('button', 'chip', 'Third person');
     const syncCam = () => {
-      fpBtn.classList.toggle('on', this.settings.firstPerson);
-      tpBtn.classList.toggle('on', !this.settings.firstPerson);
+      setOn(fpBtn, this.settings.firstPerson);
+      setOn(tpBtn, !this.settings.firstPerson);
     };
     fpBtn.onclick = () => {
       this.settings.firstPerson = true;
@@ -105,7 +127,7 @@ export class Menu {
     play.id = 'play';
     play.onclick = () => this.go();
     const setBtn = h('button', 'ghost-btn', 'Settings');
-    setBtn.onclick = () => this.openSettings();
+    setBtn.onclick = () => this.openSettings(setBtn);
     bottom.append(camSel, setBtn, play);
     left.append(bottom);
     left.append(
@@ -123,27 +145,33 @@ export class Menu {
          in the air the whole right half is HIT · <b>BLOCK</b> hold: hands up and jump (sets when the ball drops onto you) · <b>PASS</b> hold`,
       ),
     );
+    left.append(buildTag());
     this.start.append(left);
     parent.append(this.start);
 
     // ------------------------------------------------------------ pause
     this.pause = h('div', 'pause');
+    this.pause.setAttribute('role', 'dialog');
+    this.pause.setAttribute('aria-label', 'Paused');
     const box = h('div', 'pause-box');
     box.append(h('div', 'pause-t', 'Paused'));
     const resume = h('button', 'play-btn', 'RESUME');
+    this.resumeBtn = resume;
     resume.onclick = () => this.cb.resume();
     const restart = h('button', 'ghost-btn', 'Restart drill');
     restart.onclick = () => this.cb.restart();
     const quit = h('button', 'ghost-btn', 'Quit to menu');
     quit.onclick = () => this.cb.quit();
     const sett = h('button', 'ghost-btn', 'Settings');
-    sett.onclick = () => this.openSettings();
-    box.append(resume, sett, restart, quit);
+    sett.onclick = () => this.openSettings(sett);
+    box.append(resume, sett, restart, quit, buildTag());
     this.pause.append(box);
     parent.append(this.pause);
 
     // ------------------------------------------------------------ settings
     this.settingsPanel = h('div', 'settings');
+    this.settingsPanel.setAttribute('role', 'dialog');
+    this.settingsPanel.setAttribute('aria-label', 'Settings');
     parent.append(this.settingsPanel);
     this.buildSettings();
 
@@ -155,13 +183,28 @@ export class Menu {
       if (this.start.style.display !== 'none' && !this.settingsOpen) {
         const n = parseInt(e.key, 10);
         const ids = Object.keys(MODE_INFO) as ModeId[];
-        if (n >= 1 && n <= ids.length) this.selectMode(ids[n - 1]);
-        if (e.key === 'Enter') this.go();
+        if (n >= 1 && n <= ids.length && !isTextEntry(e.target)) this.selectMode(ids[n - 1]);
+        if (e.key === 'Enter') {
+          // Enter plays from anywhere on the start screen, including a focused position or drill card
+          // (Space or a click selects a card). Other focused controls handle Enter themselves.
+          const control = (e.target as HTMLElement | null)?.closest?.('button, input, textarea, select');
+          if (control && !control.matches('.pos-card, .mode-card')) return;
+          e.preventDefault();
+          this.go();
+        }
+      }
+      if (e.key === 'Escape' && this.settingsOpen) {
+        // Esc closes the settings only (main's Esc handler would also leave the pause menu)
+        this.closeSettings();
+        e.stopImmediatePropagation();
       }
     });
   }
 
   private settingsOpen = false;
+  private resumeBtn: HTMLButtonElement | null = null;
+  /** the button that opened the settings: focus returns there when they close */
+  private settingsOpener: HTMLElement | null = null;
 
   /** position cards show your custom height / vert / power where you set one */
   private refreshPosCards(): void {
@@ -190,12 +233,12 @@ export class Menu {
 
   selectPos(id: PositionId): void {
     this.pos = id;
-    for (const [k, c] of this.posCards) c.classList.toggle('on', k === id);
+    for (const [k, c] of this.posCards) setOn(c, k === id);
   }
 
   selectMode(id: ModeId): void {
     this.mode = id;
-    for (const [k, c] of this.modeCards) c.classList.toggle('on', k === id);
+    for (const [k, c] of this.modeCards) setOn(c, k === id);
   }
 
   showStart(v: boolean): void {
@@ -203,8 +246,10 @@ export class Menu {
   }
 
   showPause(v: boolean): void {
+    const was = this.pauseVisible;
     this.pause.style.display = v ? 'flex' : 'none';
     if (!v) this.closeSettings();
+    else if (!was) this.resumeBtn?.focus();
   }
 
   get pauseVisible(): boolean {
@@ -215,16 +260,23 @@ export class Menu {
     return this.settingsOpen;
   }
 
-  openSettings(): void {
+  openSettings(opener?: HTMLElement): void {
+    this.settingsOpener = opener ?? null;
     this.bodyTab = this.pos;
     this.buildSettings();
     this.settingsPanel.style.display = 'flex';
     this.settingsOpen = true;
+    this.settingsPanel.querySelector<HTMLElement>('input, button')?.focus();
   }
 
   closeSettings(): void {
+    if (!this.settingsOpen) return;
     this.settingsPanel.style.display = 'none';
     this.settingsOpen = false;
+    // back to the button that opened them, if it is still on screen
+    const o = this.settingsOpener;
+    this.settingsOpener = null;
+    if (o?.isConnected && o.offsetParent !== null) o.focus();
   }
 
   private buildSettings(): void {
@@ -235,9 +287,10 @@ export class Menu {
     box.append(h('div', 'pause-t', 'Settings'));
     const grid = h('div', 'set-grid');
     const changed = () => this.cb.settingsChanged();
-    const slider = (label: string, key: keyof Settings, min: number, max: number, step: number, fmt: (v: number) => string) => {
+    const slider = (label: string, key: NumericSettingKey, fmt: (v: number) => string) => {
+      const { min, max, step } = SETTING_RANGES[key];
       const row = h('label', 'set-row');
-      const val = h('span', 'set-val', fmt(s[key] as number));
+      const val = h('span', 'set-val', fmt(s[key]));
       const inp = h('input') as HTMLInputElement;
       inp.type = 'range';
       inp.min = String(min);
@@ -245,24 +298,28 @@ export class Menu {
       inp.step = String(step);
       inp.value = String(s[key]);
       inp.oninput = () => {
-        (s as any)[key] = parseFloat(inp.value);
-        val.textContent = fmt(s[key] as number);
+        const v = parseFloat(inp.value);
+        if (!Number.isFinite(v)) return;
+        s[key] = v;
+        val.textContent = fmt(v);
         changed();
       };
       row.append(h('span', 'set-l', label), inp, val);
       grid.append(row);
     };
-    const toggle = (label: string, key: keyof Settings, opts?: Opt[]) => {
+    const toggle = (label: string, key: BooleanSettingKey, opts?: Opt[]) => {
       const row = h('label', 'set-row');
       const btn = h('button', 'chip');
       const sync = () => {
-        const v = s[key] as boolean;
+        const v = s[key];
         btn.textContent = opts ? (v ? opts[1].label : opts[0].label) : v ? 'On' : 'Off';
         btn.classList.toggle('on', v);
+        // an On/Off switch exposes its state; a two-way choice (net height) says it in its label
+        if (!opts) btn.setAttribute('aria-pressed', String(v));
       };
       btn.onclick = (e) => {
         e.preventDefault();
-        (s as any)[key] = !s[key];
+        s[key] = !s[key];
         sync();
         changed();
       };
@@ -270,18 +327,18 @@ export class Menu {
       row.append(h('span', 'set-l', label), btn);
       grid.append(row);
     };
-    const choice = <T extends string>(label: string, key: keyof Settings, opts: { value: T; label: string }[]) => {
+    const choice = (label: string, key: 'touchControls', opts: { value: Settings['touchControls']; label: string }[]) => {
       const row = h('label', 'set-row');
       const btn = h('button', 'chip');
       const sync = () => {
-        const v = s[key] as string;
+        const v = s[key];
         btn.textContent = opts.find((o) => o.value === v)?.label ?? v;
         btn.classList.toggle('on', v !== opts[0].value);
       };
       btn.onclick = (e) => {
         e.preventDefault();
         const i = opts.findIndex((o) => o.value === s[key]);
-        (s as any)[key] = opts[(i + 1) % opts.length].value;
+        s[key] = opts[(i + 1) % opts.length].value;
         sync();
         changed();
       };
@@ -289,25 +346,25 @@ export class Menu {
       row.append(h('span', 'set-l', label), btn);
       grid.append(row);
     };
-    slider('Mouse sensitivity', 'sensitivity', 0.2, 3, 0.05, (v) => v.toFixed(2));
+    slider('Mouse sensitivity', 'sensitivity', (v) => v.toFixed(2));
     choice('Touch controls', 'touchControls', [
       { value: 'auto', label: 'Auto (touch screens)' },
       { value: 'on', label: 'On' },
       { value: 'off', label: 'Off' },
     ]);
-    slider('Touch aim sensitivity', 'touchSensitivity', 0.3, 3, 0.05, (v) => v.toFixed(2));
-    slider('Field of view', 'fov', 55, 100, 1, (v) => `${v.toFixed(0)}°`);
+    slider('Touch aim sensitivity', 'touchSensitivity', (v) => v.toFixed(2));
+    slider('Field of view', 'fov', (v) => `${v.toFixed(0)}°`);
     toggle('Invert Y', 'invertY');
     toggle('Net height', 'womenNet', [
       { value: 'm', label: "Men's 2.43 m" },
       { value: 'w', label: "Women's 2.24 m" },
     ]);
-    slider('Aim assist', 'aimAssist', 0, 1, 0.05, (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`));
+    slider('Aim assist', 'aimAssist', (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`));
     toggle('Slow-mo assist', 'slowmoAssist');
     toggle('Landing marker', 'landingMarker');
     toggle('Perfect-spike replays', 'replays');
-    slider('Camera shake', 'shake', 0, 1.5, 0.05, (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`));
-    slider('Volume', 'volume', 0, 1, 0.05, (v) => `${Math.round(v * 100)}%`);
+    slider('Camera shake', 'shake', (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`));
+    slider('Volume', 'volume', (v) => `${Math.round(v * 100)}%`);
     toggle('Key hints', 'showHints');
     const cols = h('div', 'settings-cols');
     cols.append(grid, this.buildBodySettings(changed));
@@ -395,4 +452,3 @@ export class Menu {
   }
 }
 
-export const DEFAULT_FOV = CAMERA.fov;

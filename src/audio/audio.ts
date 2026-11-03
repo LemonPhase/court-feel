@@ -41,18 +41,45 @@ export class AudioEngine {
   private lastStep = 0;
   muted = false;
 
+  /** audio could not be set up: play silently instead of retrying on every key press */
+  private unavailable = false;
+  /** suspended because the tab was hidden (resumed when it is visible again) */
+  private hiddenSuspended = false;
+
   /** must be called from a user gesture */
   unlock(): void {
+    if (this.unavailable) return;
     if (this.ctx) {
-      if (this.ctx.state === 'suspended' && 'resume' in this.ctx) void (this.ctx as AudioContext).resume();
+      if (this.ctx.state === 'suspended' && 'resume' in this.ctx && !this.hiddenSuspended) (this.ctx as AudioContext).resume().catch(() => {});
       return;
     }
+    let ctx: AudioContext | null = null;
     try {
-      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!Ctx) return;
-      this.attach(new Ctx());
+      const Ctx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) {
+        this.unavailable = true;
+        return;
+      }
+      ctx = new Ctx();
+      this.attach(ctx);
     } catch {
       this.ctx = null;
+      this.unavailable = true;
+      ctx?.close().catch(() => {});
+    }
+  }
+
+  /** a hidden tab stops the audio thread (the crowd bed loops forever); it resumes when the tab is visible again */
+  setHidden(hidden: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || this.offline || !('suspend' in ctx)) return;
+    const live = ctx as AudioContext;
+    if (hidden && live.state === 'running') {
+      this.hiddenSuspended = true;
+      live.suspend().catch(() => {});
+    } else if (!hidden && this.hiddenSuspended) {
+      this.hiddenSuspended = false;
+      live.resume().catch(() => {});
     }
   }
 

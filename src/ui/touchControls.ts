@@ -157,7 +157,7 @@ export class TouchControls {
 
   private buzz(pattern: number | number[]): void {
     try {
-      (navigator as any).vibrate?.(pattern);
+      navigator.vibrate?.(pattern);
     } catch {
       /* no haptics */
     }
@@ -206,7 +206,7 @@ export class TouchControls {
   private onMove(e: PointerEvent): void {
     if (!this.enabled) return;
     // coalesced events keep a fast thumb drag smooth
-    const evs: PointerEvent[] = (e as any).getCoalescedEvents?.() ?? [];
+    const evs: PointerEvent[] = e.getCoalescedEvents?.() ?? [];
     if (evs.length) for (const c of evs) this.pad.move(e.pointerId, c.clientX, c.clientY);
     else this.pad.move(e.pointerId, e.clientX, e.clientY);
   }

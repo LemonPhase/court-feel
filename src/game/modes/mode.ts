@@ -17,6 +17,9 @@ export const MODE_INFO: Record<ModeId, { title: string; blurb: string }> = {
   rally: { title: 'Mini Rally', blurb: 'Six-a-side rallies in your chosen position. Win the point.' },
 };
 
+/** a mode id from outside the type system (URL, storage): own keys of MODE_INFO only */
+export const isModeId = (v: unknown): v is ModeId => typeof v === 'string' && Object.hasOwn(MODE_INFO, v);
+
 /** A drill. Modes own their extra athletes and floor markers and clean them up. */
 export abstract class Mode {
   abstract readonly id: ModeId;

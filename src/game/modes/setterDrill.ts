@@ -124,7 +124,7 @@ export class SetterDrill extends Mode {
     const yaw = g.rig.yaw;
     for (const o of opts) {
       const oy = yawFromDir(o.target.x - me.pos.x, o.target.z - me.pos.z);
-      let d = Math.abs(((oy - yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      const d = Math.abs(((oy - yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
       if (d < bestD) {
         bestD = d;
         best = (o.hitter?.role as Lane) ?? 'OH';

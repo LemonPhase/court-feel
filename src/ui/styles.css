@@ -304,3 +304,24 @@ body.touchmode .controls.tc { display: block; }
   .set-row .chip { grid-column: auto; }
   .body-set .set-row { grid-template-columns: 1fr; }
 }
+
+/* build label in the start and pause menus */
+.build { margin-top: 12px; font-size: 11px; letter-spacing: 0.04em; opacity: 0.45; user-select: text; }
+
+/* crash screen: the game stopped or could not start */
+.crash { position: absolute; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(5,6,10,0.94); }
+.crash-box { width: min(560px, 100%); display: flex; flex-direction: column; gap: 14px; }
+.crash-box h1 { margin: 0; font-size: 26px; font-weight: 900; font-style: italic; color: var(--gold); }
+.crash-box p { margin: 0; line-height: 1.45; opacity: 0.9; }
+.crash-details { width: 100%; height: 140px; resize: vertical; box-sizing: border-box; padding: 10px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.05); color: #cfd3dc; font: 12px/1.4 ui-monospace, monospace; }
+.crash-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* keyboard focus: visible on every control (mouse clicks don't show it) */
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+/* reduced motion: no looping or sliding UI animation (shake and replays default off in the settings) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

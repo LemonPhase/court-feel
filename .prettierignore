@@ -1,0 +1,10 @@
+dist/
+coverage/
+scripts/out/
+shots/
+.claude/
+package-lock.json
+# Hand-formatted on purpose: the stylesheet keeps one rule per line and the docs keep their
+# tables and line breaks. Format them explicitly if that ever changes.
+*.css
+*.md
