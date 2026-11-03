@@ -349,6 +349,26 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   JUMP option for players who prefer the two-thumb split, button size / layout scale setting,
   a short on-screen tutorial on the first touch session.
 
+## Custom body (settings: height, vert, spike power)
+- Settings → **Your athlete**: per position (OH / OPP / MB / S / L tabs, the tab opens on the
+  position you picked or are playing) sliders for height (1.60-2.20 m), vertical = approach jump
+  (40-110 cm) and spike power (x0.60-1.30, shown as the top speed of a Perfect full-power spike,
+  65-140 km/h), the resulting spike reach, the position's defaults and a reset. Stored in
+  `settings.bodies` (only customised positions; sanitised and clamped on load). Only the user's
+  athlete uses it: AI players keep the position defaults. Speed, ball control and the standing-jump
+  fraction stay the position's.
+- `src/game/body.ts` resolves a body (`bodyStats`, clamped to `BODY` in config); `Athlete` takes
+  `{ body }` and has `setBody` / `copyBody`. Changes apply live, also mid-drill: stats at once, and a
+  new height rebuilds the user's model (same kit, same view slot) on the next frame and restarts
+  the replay buffer (it recorded the old model).
+- The forward-simulation copies (autopilot planner, `simulateApproach`, `predictJump`) now copy
+  the whole body, not only the jump: with a custom height the quick set was solved for the default
+  body's hand and missed a taller middle's hand by ~10 cm (test).
+- Position cards on the start screen show the custom height / jump / power bars, tagged "custom".
+- Tests: 79 (custom vert = the approach jump you get, standing jump keeps its fraction; height moves
+  the reach and contact point; power scales the same Perfect swing's speed; a quick meets a taller,
+  higher-jumping middle's hand; clamping, sanitising stored values, dropping a default entry).
+
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,

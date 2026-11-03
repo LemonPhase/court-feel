@@ -125,6 +125,22 @@ export const POSITIONS: Record<PositionId, PositionStats> = {
   },
 };
 
+/** the user's own body, customisable per position in the settings: height, vertical (approach) jump and spike power */
+export interface BodyOverride {
+  height: number;
+  jump: number;
+  power: number;
+}
+
+/** slider ranges for the custom body (values outside are clamped, also when loaded from storage) */
+export const BODY = {
+  height: { min: 1.6, max: 2.2, step: 0.01 },
+  /** approach jump above standing reach (the position's standing jump keeps its fraction of it) */
+  jump: { min: 0.4, max: 1.1, step: 0.01 },
+  /** spike power multiplier: 1 = a Perfect full-power spike leaves the hand at CONTACT.spikePerfect */
+  power: { min: 0.6, max: 1.3, step: 0.01 },
+};
+
 export const PLAYER = {
   /** ground movement */
   decel: 20,
@@ -344,6 +360,8 @@ export interface Settings {
   touchControls: 'auto' | 'on' | 'off';
   /** touch aim sensitivity multiplier */
   touchSensitivity: number;
+  /** your custom body per position (absent = the position's defaults); only your athlete uses it, never the AI */
+  bodies: Partial<Record<PositionId, BodyOverride>>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -361,4 +379,5 @@ export const DEFAULT_SETTINGS: Settings = {
   showHints: true,
   touchControls: 'auto',
   touchSensitivity: 1.0,
+  bodies: {},
 };
