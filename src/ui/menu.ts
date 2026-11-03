@@ -187,6 +187,10 @@ export class Menu {
     return this.pause.style.display !== 'none';
   }
 
+  get settingsVisible(): boolean {
+    return this.settingsOpen;
+  }
+
   openSettings(): void {
     this.buildSettings();
     this.settingsPanel.style.display = 'flex';
