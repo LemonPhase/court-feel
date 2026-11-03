@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, COURT } from '../config';
+import { AI, CONTACT, COURT } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
@@ -173,16 +173,31 @@ export class HitterBrain implements Brain {
           { x: lineX, z: opp * 7.6, w: 1, name: 'line' },
           { x: crossX, z: opp * 6.8, w: 1.2, name: 'cross' },
           { x: crossX * 0.9, z: opp * 3.6, w: 0.5, name: 'sharp' },
+          // a steep cut inside the block: risky, the shot when the block has closed
+          { x: crossX * 0.92, z: opp * 2.8, w: 0.22, name: 'cut' },
           { x: hitX * 0.15, z: opp * 6.5, w: 0.6, name: 'seam' },
         ];
     // avoid the block: penalise shots whose direction passes over a blocker's hands
-    for (const b of this.blockers()) {
-      if (Math.abs(b.pos.z) > 1.4) continue;
+    const up = this.blockers().filter((b) => Math.abs(b.pos.z) < 1.4).sort((p, q) => p.pos.x - q.pos.x);
+    for (const b of up) {
       for (const o of options) {
         // where does the line from the hitter to the target cross the net?
         const f = Math.abs(a.pos.z) / (Math.abs(a.pos.z) + Math.abs(o.z));
         const cx = hitX + (o.x - hitX) * f;
         if (Math.abs(cx - b.pos.x) < 0.9) o.w *= 0.15;
+      }
+    }
+    // a double block that did not close: hit through the seam
+    if (!this.lane.quick) {
+      for (let i = 0; i + 1 < up.length; i++) {
+        const gap = up[i + 1].pos.x - up[i].pos.x - 2 * CONTACT.blockHalfWidth;
+        const gx = (up[i].pos.x + up[i + 1].pos.x) / 2;
+        if (gap < 0.3 || Math.abs(gx - hitX) > 2.5) continue;
+        // extend the line from the contact through the seam to a deep spot on their court
+        const dz = Math.abs(a.pos.z);
+        const k = (dz + 6.5) / Math.max(0.3, dz);
+        const tx = hitX + (gx - hitX) * k;
+        if (Math.abs(tx) < hw - 0.3) options.push({ x: tx, z: opp * 6.5, w: 1.1, name: 'seam' });
       }
     }
     const total = options.reduce((s, o) => s + o.w, 0);
