@@ -390,6 +390,23 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   Chrome's cooldown refusal keeps lock mode, a grant clears the fallback, unadjustedMovement retry,
   event-only browsers).
 
+## Replay with the opposing block (Spike Drill, B)
+- Report: "replay in spike drills with blocks is not really working". Reproduced in the browser
+  (bot spike into a double block, then R): the replay had 3 of the 5 athletes. The two blockers
+  stood frozen where they were when R was pressed (feet on the floor, the middle 3 m from where it
+  closed), the ball bounced off empty air, the touch was silent, and the red shadow stayed as drawn live.
+- Root cause: the replay takes its athlete list once at mode start (`setViews`); the blockers are
+  spawned later, on the first B press, so they were never recorded or posed.
+- Fix: `Game.addAthlete` registers every new view with the replay (`Replay.addView`), keeping the
+  buffer. Each slot remembers its first recorded frame, and a replay hides an athlete for the part of
+  the recording from before it was there (B pressed after the spike, then R): no stale or empty slot
+  data is ever posed. Blocks are replay events now (slowed sound, hand flashes on the replayed hands,
+  spray, the trail ending on the hands), and the spike drill redraws the block shadow on each replay
+  frame from the replayed blockers and the replayed contact point (`Mode.replayFrame`).
+- Tests: `tests/replay.test.ts` (an athlete added mid-recording is replayed where it was, hidden before
+  it existed, and shown again when the replay ends, is skipped or the buffer is reset). Browser check:
+  replayed blocker positions within 0.08 m of the live ones over the whole replay (was 3.9 m).
+
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,

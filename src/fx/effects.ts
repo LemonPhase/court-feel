@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FX } from '../config';
 import { clamp01, lerp, smooth01 } from '../core/mathx';
 import type { Game } from '../game/game';
+import type { AthleteView } from '../character/athleteView';
 import type { ContactEvent } from '../game/contact';
 import { AudioEngine } from '../audio/audio';
 import { makeBlobTexture, makeCrackTexture, makeRingTexture } from '../world/textures';
@@ -249,17 +250,9 @@ export class Effects {
       case 'block': {
         const stuff = e.quality >= 0.7;
         const v = g.views.get(e.athlete);
-        this.audio.block(stuff);
-        if (v) {
-          // your own hands in first person are right at the lens: a small, cooler flash
-          const fpSelf = user && g.rig.mode === 'fp';
-          const size = fpSelf ? 0.12 : stuff ? 0.75 : 0.45;
-          const col = fpSelf ? new THREE.Color(0.9, 1.2, 1.6) : new THREE.Color(2.2, 3.2, 4.2);
-          this.flash(v.palmL, size, col);
-          this.flash(v.palmR, size, col);
-        }
-        this.burst(p, stuff ? 26 : 10, new THREE.Color(2.5, 3.2, 4.5), 5, stuff ? (user && g.rig.mode === 'fp' ? 0.5 : 1) : 0.6);
-        if (stuff) this.trail.ignite(0, 0.7, g.ball.rpos);
+        this.blockFx(p, stuff, v, user && g.rig.mode === 'fp', false);
+        // the replay plays it back on the replayed blocker's hands
+        this.replay.addEvent(g.simTime, 'block', { x: p.x, y: p.y, z: p.z, stuff: stuff ? 1 : 0, view: v ? this.replay.views.indexOf(v) : -1 });
         if (user || this.near(p, 6)) {
           g.rig.addTrauma(FX.shakeBlock * (stuff ? 1 : 0.5) * (user ? 1 : 0.4));
           if (user && stuff) g.hitStop = FX.hitStopBlock;
@@ -281,6 +274,23 @@ export class Effects {
         if (e.perfect && user) this.glowAt(p, 0.14, new THREE.Color(1.0, 0.95, 0.7));
         break;
     }
+  }
+
+  /** a block's sound, hand flashes and spray, live or from the replay (the shake and the crowd are live only) */
+  private blockFx(at: THREE.Vector3, stuff: boolean, v: AthleteView | undefined, fpSelf: boolean, fromReplay: boolean): void {
+    this.audio.block(stuff, fromReplay ? 0.55 : 1);
+    if (v) {
+      // your own hands in first person are right at the lens: a small, cooler flash
+      const size = fpSelf ? 0.12 : stuff ? 0.75 : 0.45;
+      const col = fpSelf ? new THREE.Color(0.9, 1.2, 1.6) : new THREE.Color(2.2, 3.2, 4.2);
+      this.flash(v.palmL, size, col);
+      this.flash(v.palmR, size, col);
+    }
+    this.burst(at, stuff ? 26 : 10, new THREE.Color(2.5, 3.2, 4.5), 5, stuff ? (fpSelf ? 0.5 : 1) : 0.6);
+    // the attack's trail ends on the hands; a stuff lights one of its own
+    this.trail.intensity = 0;
+    this.trail.fade();
+    if (stuff) this.trail.ignite(0, 0.7, fromReplay ? at : this.g.ball.rpos);
   }
 
   /** visual events, live or from the replay */
@@ -339,6 +349,9 @@ export class Effects {
           g.hitStop = Math.max(g.hitStop, FX.hitStopImpact * pw * FX.intensity);
         }
       }
+    } else if (e.kind === 'block' && fromReplay) {
+      // (live blocks run blockFx from onContact, with the live view)
+      this.blockFx(new THREE.Vector3(d.x, d.y, d.z), d.stuff > 0.5, this.replay.views[d.view], false, true);
     }
   }
 
@@ -571,6 +584,7 @@ export class Effects {
 
   private begin(hasImpact: boolean): boolean {
     if (!this.replay.start(this.replayFrom, this.replayTo)) return false;
+    this.replay.contact.copy(this.replay.focus);
     // "any key skips": only keys pressed from now on count. Movement keys are read as held and
     // their press edges are never consumed, so a stale W or Shift must not end it at once
     this.g.input.clearEdges();
