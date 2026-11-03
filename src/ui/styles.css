@@ -153,6 +153,29 @@ body.replaying .hud { opacity: 0.25; }
 @keyframes goCue { 0% { opacity: 0; transform: translateX(-50%) scale(1.6); } 20% { opacity: 1; transform: translateX(-50%) scale(1); }
   100% { opacity: 0; transform: translateX(-50%) scale(1); } }
 
+/* a team-mate's call (the setter's read of the pass): a speech bubble over their head */
+.callout { position: absolute; left: 50%; top: 26%; transform: translate(-50%, -100%); opacity: 0; transition: opacity 0.25s;
+  --c: var(--cyan); }
+.callout.show { opacity: 1; }
+.callout.c-out { --c: var(--orange); }
+.callout-bubble { position: relative; margin-bottom: 11px; padding: 3px 14px 6px; border-radius: 12px; text-align: center; white-space: nowrap;
+  background: rgba(8,10,16,0.74); border: 2px solid var(--c); box-shadow: 0 0 16px color-mix(in srgb, var(--c) 45%, transparent);
+  transform-origin: 50% 100%; }
+.callout-bubble::after { content: ''; position: absolute; left: 50%; bottom: -10px; margin-left: -8px;
+  border: 8px solid transparent; border-bottom: 0; border-top: 10px solid var(--c); }
+.callout.edge .callout-bubble::after { display: none; }
+.callout.edge-l .callout-who::before { content: '\25C0  '; color: var(--c); }
+.callout.edge-r .callout-who::after { content: '  \25B6'; color: var(--c); }
+.callout-who { font-size: 10px; font-weight: 800; letter-spacing: 0.28em; opacity: 0.75; }
+.callout-word { font-size: 30px; font-weight: 900; font-style: italic; letter-spacing: 0.05em; line-height: 1.05; color: var(--c); }
+.c-in .callout-word { font-size: 22px; }
+.callout-sub { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.9; }
+.callout.pop .callout-bubble { animation: calloutPop 0.38s cubic-bezier(.2,1.6,.35,1); }
+@keyframes calloutPop { 0% { transform: scale(0.3); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+body.touchmode .callout-word { font-size: 22px; }
+body.touchmode .c-in .callout-word { font-size: 17px; }
+body.touchmode .callout-sub { font-size: 9px; }
+
 /* ------------------------------------------------------------------ touch controls */
 .touch { position: absolute; inset: 0; z-index: 15; touch-action: none; user-select: none; -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent; font-family: inherit;

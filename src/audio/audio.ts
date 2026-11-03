@@ -1,6 +1,20 @@
 import { AUDIO } from '../config';
 
 /**
+ * Called words (AudioEngine.shout): pitch contour f0 (start, peak, end Hz), formant
+ * centres (Hz) of the vowel it starts on and the one it ends on, voiced length and a
+ * breathy "h" lead-in (s).
+ */
+const SHOUTS = {
+  high: { f0: [215, 250, 170], from: [780, 1180, 2550], to: [320, 2250, 2950], dur: 0.34, breath: 0.06, gain: 0.4 },
+  go: { f0: [200, 215, 165], from: [500, 900, 2450], to: [360, 760, 2350], dur: 0.2, breath: 0, gain: 0.24 },
+  help: { f0: [210, 235, 175], from: [580, 1750, 2500], to: [400, 1000, 2400], dur: 0.28, breath: 0.05, gain: 0.34 },
+} as const;
+/** formant sharpness and level (F1 carries the vowel's weight, F2/F3 make it intelligible) */
+const FORMANT_Q = [5, 8, 11];
+const FORMANT_GAIN = [2.2, 1.6, 0.9];
+
+/**
  * Everything you hear is synthesised with the Web Audio API (no samples):
  * contacts, floor, net, antenna, sneaker squeaks, footsteps, whistle and a
  * crowd bed with cheers. A generated impulse response gives the arena reverb.
@@ -459,6 +473,54 @@ export class AudioEngine {
       o.stop(t + 0.55);
       lfo.stop(t + 0.55);
     }
+  }
+
+  /**
+   * A shout across the gym: the setter calling the pass. A buzzy voice source through
+   * three formant filters that glide from one vowel to the next, with a breathy onset.
+   * 'high' is the warning (a loud "high!", the vowel sliding from "ah" to "ee"), 'go'
+   * a short confirmation ("go!"), 'help' the setter giving the second ball away.
+   * `near` 0..1 is how close the caller is to the camera.
+   */
+  shout(word: 'high' | 'go' | 'help', near = 0.7): void {
+    if (!this.ok) return;
+    const ctx = this.ctx!;
+    const W = SHOUTS[word];
+    const t = ctx.currentTime + 0.005;
+    const v = W.gain * (0.55 + 0.45 * Math.max(0, Math.min(1, near)));
+    const on = t + W.breath;
+    const end = on + W.dur;
+    // the voice: a sawtooth with a shout's pitch contour (up into the vowel, falling off it)
+    const src = ctx.createOscillator();
+    src.type = 'sawtooth';
+    src.frequency.setValueAtTime(W.f0[0], on);
+    src.frequency.linearRampToValueAtTime(W.f0[1], on + W.dur * 0.3);
+    src.frequency.linearRampToValueAtTime(W.f0[2], end);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, on);
+    env.gain.exponentialRampToValueAtTime(1, on + 0.03);
+    env.gain.setValueAtTime(1, on + W.dur * 0.65);
+    env.gain.exponentialRampToValueAtTime(0.0001, end);
+    src.connect(env);
+    const out = ctx.createGain();
+    out.gain.value = v;
+    for (let i = 0; i < 3; i++) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = FORMANT_Q[i];
+      bp.frequency.setValueAtTime(W.from[i], on);
+      bp.frequency.setValueAtTime(W.from[i], on + W.dur * 0.25);
+      bp.frequency.exponentialRampToValueAtTime(W.to[i], on + W.dur * 0.8);
+      const g = ctx.createGain();
+      g.gain.value = FORMANT_GAIN[i];
+      env.connect(bp).connect(g).connect(out);
+    }
+    // a voice from across the court: plenty of room on it
+    this.route(out, undefined, 0.55, 0);
+    src.start(on);
+    src.stop(end + 0.05);
+    // the "h": breath through the first vowel's mouth shape, just before the voice
+    if (W.breath > 0) this.noiseBurst(t, W.breath + 0.05, W.from[1], 1.4, 0.35 * v, 'bandpass', 0.4, undefined, 0, 0.02);
   }
 
   /** a soft chime when you nail a Perfect */

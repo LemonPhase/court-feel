@@ -146,6 +146,19 @@ power and ball control, where drills start you, and what the AI asks of you.
    back) need you running as the setter touches the ball; a quick goes to
    where you jump.
 
+   **The setter calls the pass.** About 0.2 s after every pass or dig your
+   setter reads where they will take it and calls it, in a bubble over their
+   head (an arrow at the screen edge when they are behind you) and out loud,
+   about a second before they touch the ball:
+
+   | Call | Means |
+   |---|---|
+   | **HIGH!** (orange) | Out of system: the pass is too far off the net. Everything goes up high: no quick, and a called go / 3 / fast back / back 2 becomes a high ball. Wait for it. |
+   | **GO!**, **1!**, **FAST!**... (cyan) | In system, and your call needs the good pass (a quick or a fast set): it is on, start your approach. |
+   | **HELP!** (orange) | The setter cannot get there; someone else plays the second ball, no set. |
+
+   The call is the decision, not a guess: the set always follows it.
+
 The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 
 ### Replays
@@ -200,7 +213,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`) and how far off the net is out of system (`outOfSystem`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints) are in
@@ -209,12 +222,13 @@ impact FOV punch and camera kick (0 turns them off).
 
 ## Testing
 
-* `npm test` — 55 Vitest tests: set apex, spike landing point, topspin dip,
+* `npm test` — 75 Vitest tests: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
   acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the
   middle leaves the floor on the setter's touch and the set meets the hand at
-  the top of the jump), the spike timing grades driven through the real
+  the top of the jump), the setter's call on the pass (in / out of system,
+  made once, early, and the set follows it), the spike timing grades driven through the real
   contact system (press, hold, release), hold-to-charge power, the set calls
   (pins inside the antennae, shoot / back quick geometry, a back quick meeting
   the hitter), middles hitting zone 1 / 5, hit-sound power, the impact

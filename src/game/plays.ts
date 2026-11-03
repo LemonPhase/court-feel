@@ -108,31 +108,41 @@ export function quickSetFor(hitter: Athlete, now: number, from: V3, releaseAt?: 
  */
 export interface SetPlay {
   name: string;
+  /** the call as shouted on court (the Mini Rally setter calls it back when it is on) */
+  short: string;
   lane: AttackLane;
   inFront?: number;
 }
 
+/**
+ * A call that only runs off a good pass: a quick, or anything faster than a high ball
+ * (you are already running when the setter touches it). Out of system it goes up high.
+ */
+export function needsGoodPass(play: SetPlay): boolean {
+  return play.inFront !== undefined || play.lane.apexAbove < 1.0;
+}
+
 export const SET_PLAYS: Partial<Record<PositionId, SetPlay[]>> = {
   OH: [
-    { name: 'High ball', lane: LANES.OH },
+    { name: 'High ball', short: 'High', lane: LANES.OH },
     // second tempo: a flat fast set to the pin, you are already running when it leaves the hands
-    { name: 'Go (fast to the pin)', lane: { ...LANES.OH, x: -4.0, z: 0.85, apexAbove: 0.45, sx: -4.85, sz: 3.5, label: 'Outside go' } },
+    { name: 'Go (fast to the pin)', short: 'Go', lane: { ...LANES.OH, x: -4.0, z: 0.85, apexAbove: 0.45, sx: -4.85, sz: 3.5, label: 'Outside go' } },
     // run in from outside and hit between the middle and the pin
-    { name: '3 ball (inside)', lane: { ...LANES.OH, x: -2.1, z: 0.8, apexAbove: 0.75, sx: -4.6, sz: 3.7, label: 'Inside 3 ball' } },
+    { name: '3 ball (inside)', short: '3', lane: { ...LANES.OH, x: -2.1, z: 0.8, apexAbove: 0.75, sx: -4.6, sz: 3.7, label: 'Inside 3 ball' } },
   ],
   MB: [
-    { name: '1 (quick in front)', lane: LANES.MB, inFront: QUICK.inFront },
+    { name: '1 (quick in front)', short: '1', lane: LANES.MB, inFront: QUICK.inFront },
     // shoot ("31"): the middle runs out towards the outside and the setter fires it flat to them
-    { name: 'Shoot (31)', lane: { ...LANES.MB, x: -1.4, sx: 0.0, sz: 2.9, label: 'Middle shoot (31)' }, inFront: 2.4 },
+    { name: 'Shoot (31)', short: 'Shoot', lane: { ...LANES.MB, x: -1.4, sx: 0.0, sz: 2.9, label: 'Middle shoot (31)' }, inFront: 2.4 },
     // back quick: up behind the setter's back
-    { name: 'Back quick', lane: { ...LANES.MB, x: 2.3, sx: 1.0, sz: 2.9, label: 'Middle back quick' }, inFront: -1.2 },
+    { name: 'Back quick', short: 'Back 1', lane: { ...LANES.MB, x: 2.3, sx: 1.0, sz: 2.9, label: 'Middle back quick' }, inFront: -1.2 },
   ],
   OPP: [
-    { name: 'Back set (pin)', lane: LANES.OPP },
+    { name: 'Back set (pin)', short: 'Back', lane: LANES.OPP },
     // fast back set: low and flat to the right pin
-    { name: 'Fast back', lane: { ...LANES.OPP, x: 3.95, z: 0.85, apexAbove: 0.45, sx: 4.7, sz: 3.3, label: 'Opposite fast back' } },
+    { name: 'Fast back', short: 'Fast', lane: { ...LANES.OPP, x: 3.95, z: 0.85, apexAbove: 0.45, sx: 4.7, sz: 3.3, label: 'Opposite fast back' } },
     // close behind the setter
-    { name: 'Back 2 (behind the setter)', lane: { ...LANES.OPP, x: 2.45, z: 0.8, apexAbove: 0.6, sx: 3.7, sz: 3.2, label: 'Opposite back 2' } },
+    { name: 'Back 2 (behind the setter)', short: 'Back 2', lane: { ...LANES.OPP, x: 2.45, z: 0.8, apexAbove: 0.6, sx: 3.7, sz: 3.2, label: 'Opposite back 2' } },
   ],
 };
 

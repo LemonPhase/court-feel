@@ -298,6 +298,34 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   - Tests: 55 (camera punch holds while frozen and settles, the kick's size, shake 0 disables both;
     the spike animation: hand on the ball at contact, no re-cocking in the air after the hit).
 
+- **Playtest round 6: the setter calls the pass.** Note: calling a quick / go in the Mini Rally,
+  you sometimes got a high ball instead, with no way to tell in time (a dig looks in system until
+  it isn't). Cause: `TeamAI.callSet` judged "out of system" only at the instant of the set, from
+  where the setter stood, and silently swapped a fast call for a high ball.
+  - The setter now reads every pass `AI.setterRead` (0.2 s) after it is played: where they will
+    take it (the ball's predicted point at their touch height) against `AI.outOfSystem` (1.6 m from
+    their spot). The read is the decision (`TeamAI.read`), and `callSet` follows it: in system your
+    call stands; out of system everything goes up high and the quick is off entirely (before, an AI
+    middle kept a 5% quick and a user middle who jumped still got one); `help` when the setter
+    cannot get there and someone else bumps it. Re-read only if the ball is knocked off its path
+    (tape / net), and only ever downgraded.
+  - Shown to hitters (OH, MB, OPP): a speech bubble over the setter's head (`Hud.call`, projected
+    every frame; pinned to the screen edge with an arrow when they are off screen, above the thumb
+    buttons on touch screens): **HIGH!** out of system, the call confirmed (**GO!**, **1!**...) in
+    system when it needs the good pass, **HELP!**. The key hint says the same. Voiced by a
+    formant-synthesised shout (`AudioEngine.shout`: a sawtooth through three bandpass formants
+    gliding "ah" -> "ee" for "high"); levels next to the whistle (peak 0.15, RMS 0.055): high
+    0.27 / 0.044, go 0.17 / 0.034, help 0.20 / 0.040. Dry formant peaks: high 700 / 1175 Hz ->
+    400 / 2100-2300 Hz.
+  - Found on the way: a perfect pass is not "coming to us" by the floor test (left untouched it would
+    drop at the net), so the read must not be gated on it.
+  - Measured over 4-minute rallies (OH and OPP calling the fast set, MB): every home set followed a
+    read made on its pass; the call came 1.1-1.4 s before the setter's touch; called fast sets in
+    system arrived 0.42-0.46 m above the contact height (as called); no quick out of system.
+  - Tests: 75 (a stand-in Game drives the real team coordinator: a pass to the target is called in
+    system once, 0.2 s after the pass; a pass 2.6 m off the net is called high; a called go is fast in
+    system and a high ball out of system; the setter running down a bad pass keeps the high call).
+
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
@@ -384,5 +412,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Hit sounds are layers started a few ms apart (crack, then pop, then boom) so their peaks don't
   stack: loudness comes from density and the room (saturated low-mids, slap-back, reverb), not from
   a higher peak. Everything scales with the ball speed, never with a heavy/light switch.
+- The Mini Rally setter's out-of-system call is made early on the pass and binds the set (never a
+  silent swap at the touch): a hitter can only adjust a fast approach if they know ~1 s ahead.
 - Contact feedback for a Perfect is a freeze frame you can read (squashed ball, sparks, then a
   ring and the trail), not a flash: no full-screen flashes of any kind.

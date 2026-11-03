@@ -190,6 +190,10 @@ export class Effects {
       if (g.modeId === 'rally') setTimeout(() => this.audio.whistle(), 250);
     });
     ev.on('crowd', ({ amount, cheer }) => this.audio.crowd(amount, cheer));
+    ev.on('setterCall', ({ athlete, call }) => {
+      const d = athlete.pos.distanceTo(g.rig.camera.position);
+      this.audio.shout(call === 'in' ? 'go' : call === 'out' ? 'high' : 'help', clamp01(1.2 - d / 12));
+    });
   }
 
   private near(p: THREE.Vector3, r = 12): boolean {
