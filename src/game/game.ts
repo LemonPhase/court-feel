@@ -673,6 +673,7 @@ export class Game {
     f.sprint = me.sprint;
     f.height = me.height;
     f.side = me.side;
+    this.rig.frozen = this.hitStop > 0;
     this.rig.update(realDt, this.inMenu ? null : f);
     // fade our own body when the TP camera is very close, and anyone standing in the camera's way
     const camPos = this.rig.camera.position;
