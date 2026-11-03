@@ -63,7 +63,7 @@ export class TeamPlayer implements Brain {
       this.hitter.blockers = () => team.opponents?.frontRow() ?? [];
       if (slot === 'MB') this.hitter.passToSetter = (g) => team.passToSetter(g);
     }
-    this.blocker = new BlockerBrain(athlete, FORM.defense[slot].x * s, slot === 'MB' ? 2.8 : 1.3);
+    this.blocker = new BlockerBrain(athlete, FORM.defense[slot].x * s, slot === 'MB' ? 3.4 : 1.3, slot === 'MB');
     this.server = new ServerBrain(athlete);
   }
 
@@ -323,7 +323,11 @@ export class TeamAI {
     const lt = this.g.ball.lastTouch;
     if (!lt || lt === this.lastTouchRef) return;
     this.lastTouchRef = lt;
-    if (lt.kind === 'block') return; // blocks do not count
+    if (lt.kind === 'block') {
+      // our own block does not count; the other team's block starts us on a fresh three
+      if (lt.side !== this.side) this.touches = 0;
+      return;
+    }
     if (lt.side === this.side && lt.kind !== 'feed') this.touches++;
     else if (lt.side !== this.side) this.touches = 0;
     if (lt.kind === 'set' && lt.side === this.side) {
@@ -461,7 +465,9 @@ export class TeamAI {
           // a set our hitter never went for (still up from a block, caught at the net): keep it in play
           const stranded = lt?.kind === 'set' && hb?.hitter && hb.hitter.phase === 'ready' && !hb.hitter.plan
             && comingToUs && tDown > 0 && tDown - now < 0.9;
-          if (lt?.kind !== 'set' || (h && !h.isUser && hb && !hb.hitter) || stranded) {
+          if (this.touches >= 3) {
+            // out of touches: nobody plays it (a fourth touch is a fault either way)
+          } else if (lt?.kind !== 'set' || (h && !h.isUser && hb && !hb.hitter) || stranded) {
             if (this.freeFor !== lt) {
               this.freeFor = lt;
               this.freeAthlete = comingToUs && tDown > 0 ? this.pickReceiver(p, false, lt?.athlete ?? null) : null;
