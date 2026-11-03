@@ -3,3 +3,6 @@
 
 # Format the codebase with Prettier (no code changes)
 2e21816fb26013b84b961a2bab3d8fff8f5bbf55
+
+# Format the replay block event merged from main (#16)
+973d6bd3aefa2552d54d303b230ed57f7c107496
