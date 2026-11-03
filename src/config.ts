@@ -393,3 +393,24 @@ export const DEFAULT_SETTINGS: Settings = {
   touchSensitivity: 1.0,
   bodies: {},
 };
+
+export type NumericSettingKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
+export type BooleanSettingKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
+
+/**
+ * Ranges of the numeric settings. The settings panel builds its sliders from these and the
+ * loader clamps stored values to them, so the two can never disagree.
+ */
+export const SETTING_RANGES: Record<NumericSettingKey, { min: number; max: number; step: number }> = {
+  sensitivity: { min: 0.2, max: 3, step: 0.05 },
+  touchSensitivity: { min: 0.3, max: 3, step: 0.05 },
+  fov: { min: 55, max: 100, step: 1 },
+  aimAssist: { min: 0, max: 1, step: 0.05 },
+  shake: { min: 0, max: 1.5, step: 0.05 },
+  volume: { min: 0, max: 1, step: 0.05 },
+};
+
+export const TOUCH_CONTROL_MODES: readonly Settings['touchControls'][] = ['auto', 'on', 'off'];
+
+/** a position id from outside the type system (URL, storage): own keys of POSITIONS only */
+export const isPositionId = (v: unknown): v is PositionId => typeof v === 'string' && Object.hasOwn(POSITIONS, v);

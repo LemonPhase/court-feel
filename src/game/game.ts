@@ -26,8 +26,11 @@ import { createMode } from './modes/registry';
 import { makeRingTexture } from '../world/textures';
 import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
-import { BlockBot, SpikeBot, TouchBot, type BotQuality } from './bot';
+import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
+
+/** consecutive frames that throw before the game stops and shows the crash screen */
+const MAX_FAILED_FRAMES = 10;
 
 export type GameEvents = {
   toggleCam: { fp: boolean };
@@ -55,7 +58,8 @@ export class Game {
   readonly post: Post;
   readonly input: Input;
   readonly user: UserController;
-  readonly events = new Emitter<GameEvents>();
+  /** a listener that throws is reported, the others still run and the step carries on */
+  readonly events = new Emitter<GameEvents>((err, type) => this.reportError(err, `'${String(type)}' event handler`, false));
   readonly debug: DebugOverlay;
   readonly hud: Hud;
   athletes: Athlete[] = [];
@@ -102,6 +106,15 @@ export class Game {
   ballLive = false;
   /** test hook: the user's athlete is driven by the team AI */
   autoUser = false;
+  /**
+   * Errors caught by the game: a frame or an event handler that threw. `fatal` means the
+   * game has stopped (frames kept throwing). Without a handler they go to the console.
+   */
+  onError: ((err: unknown, where: string, fatal: boolean) => void) | null = null;
+  /** the render loop has stopped after repeated errors */
+  stopped = false;
+  /** consecutive frames that threw */
+  private failedFrames = 0;
   private aimReticle: THREE.Mesh;
   private idealCache: IdealInfo = { t: 0, d: 0, ball: new THREE.Vector3(), point: new THREE.Vector3() };
   private idealValid = false;
@@ -414,10 +427,26 @@ export class Game {
   start(): void {
     this.last = performance.now();
     const loop = (now: number) => {
+      if (this.stopped) return;
       requestAnimationFrame(loop);
-      this.frame(now);
+      try {
+        this.frame(now);
+        this.failedFrames = 0;
+      } catch (err) {
+        // a one-off error is reported and play goes on; a run of failing frames means the
+        // game is stuck in a broken state: stop and say so instead of freezing silently
+        this.failedFrames++;
+        const fatal = this.failedFrames >= MAX_FAILED_FRAMES;
+        if (fatal) this.stopped = true;
+        this.reportError(err, 'frame', fatal);
+      }
     };
     requestAnimationFrame(loop);
+  }
+
+  private reportError(err: unknown, where: string, fatal: boolean): void {
+    if (this.onError) this.onError(err, where, fatal);
+    else console.error(`[court-feel] error in ${where}`, err);
   }
 
   /**
@@ -590,7 +619,7 @@ export class Game {
   }
 
   enableBot(q: string): void {
-    const quality = (['perfect', 'good', 'sloppy', 'tip'].includes(q) ? q : 'perfect') as BotQuality;
+    const quality: BotQuality = isBotQuality(q) ? q : 'perfect';
     const role = this.me.role;
     this.bot =
       this.modeId === 'block' ? new BlockBot(this, quality)

@@ -616,7 +616,7 @@ export class ContactSystem {
     const incoming = Math.hypot(bv.x, bv.y, bv.z);
     const rank = GRADE_RANK[grade];
     const out = { x: 0, y: 0, z: 0 };
-    let kind: 'stuff' | 'soft' | 'tool' = 'soft';
+    let kind: 'stuff' | 'soft' | 'tool';
     const roll = h.rand();
     // AI blockers convert fewer of their good blocks into stuffs than the user
     const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;

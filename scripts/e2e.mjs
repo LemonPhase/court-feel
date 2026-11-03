@@ -1,8 +1,15 @@
-// End-to-end check: `npm run e2e` (needs Playwright + Chromium available).
+// End-to-end check: `npm run e2e` (Playwright is a dev dependency; `npx playwright install chromium` once).
 // Starts a Vite dev server, drives every drill with the autopilot bots through
-// the real input path, takes FP/TP screenshots of key moments, records
-// console errors, and reports frame time, draw calls and memory growth.
-// Output: scripts/out/*.png and scripts/out/report.json
+// the real input path, takes FP/TP screenshots of key moments, and checks:
+//   - no console errors or warnings, no page errors
+//   - every drill's bot makes its contacts, mostly Perfect; rallies produce points
+//   - spike-drill set calls take effect (each call sets its own play)
+//   - the Perfect-spike replay starts; touch controls drive the athlete
+//   - bad quick-start links and corrupted saved settings still load; menus are keyboard-usable
+//   - GPU resources (geometries, textures, shader programs) do not grow over a soak
+// Frame time, draw calls and heap are reported, not asserted (software rendering here).
+// The simulation is stepped manually at a fixed dt, so results do not depend on machine speed.
+// Exit code 1 on any failed check. Output: scripts/out/*.png and scripts/out/report.json
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -52,7 +59,13 @@ await page.waitForTimeout(6000);
 await page.evaluate(() => {
   window.__court.holdRender = true;
 });
-const report = { modes: {}, shots: [], perf: {}, errors };
+const failures = [];
+/** record a failed expectation (the run continues so one report shows every failure) */
+const check = (ok, what, detail) => {
+  if (!ok) failures.push(detail === undefined ? what : `${what}: ${JSON.stringify(detail)}`);
+  return ok;
+};
+const report = { modes: {}, shots: [], perf: {}, errors, failures };
 
 const shot = async (name) => {
   await page.evaluate(() => window.__court.renderNow(1 / 60));
@@ -113,7 +126,8 @@ for (const fp of [false, true]) {
     window.until(() => window.hit !== null, 1200);
     if (fp) g.rig.pitch = 0.55;
     g.play(2 / 60);
-  }, fp);
+    return window.hit;
+  }, fp).then((grade) => check(grade === 'Perfect', `spike drill (${tag}): the perfect bot's spike is Perfect`, grade));
   await shot(`10_spike_contact_${tag}`);
   await page.evaluate(() => window.__court.play(0.1));
   await shot(`11_spike_flight_${tag}`);
@@ -123,11 +137,13 @@ for (const fp of [false, true]) {
   });
   await shot(`12_spike_impact_${tag}`);
   if (!fp) {
-    await page.evaluate(() => {
+    const replayAt = await page.evaluate(() => {
       const g = window.__court;
-      window.until(() => g.fx.replaying, 200);
+      const at = window.until(() => g.fx.replaying, 200);
       g.play(1.1);
+      return at;
     });
+    check(replayAt >= 0, 'a Perfect spike that lands starts the automatic replay');
     await shot('13_replay_hitter');
     await page.evaluate(() => window.__court.play(1.25));
     await shot('14_replay_contact');
@@ -151,11 +167,39 @@ for (const [mode, pos, call = 0] of runs) {
     const mine = window.log.filter((l) => l.who === 'me');
     const grades = {};
     for (const m of mine) grades[m.kind + ':' + m.grade] = (grades[m.kind + ':' + m.grade] || 0) + 1;
-    return { score: g.mode.score, reps: g.mode.reps, home: g.mode.scoreHome, away: g.mode.scoreAway, myContacts: grades, events: window.log.length };
+    return {
+      score: g.mode.score,
+      reps: g.mode.reps,
+      home: g.mode.scoreHome,
+      away: g.mode.scoreAway,
+      // the set call in effect (spike drill): proves selectCall reached the drill
+      play: g.mode.play?.name ?? null,
+      myContacts: grades,
+      outcomes: window.log.filter((l) => l.outcome).length,
+      events: window.log.length,
+    };
   }, [mode, pos, call]);
   const key = call ? `${mode}_${pos}_call${call + 1}` : `${mode}_${pos}`;
   report.modes[key] = r;
   console.log(mode, pos + (call ? ` call${call + 1}` : ''), JSON.stringify(r));
+  // what each drill's bot has to touch; the perfect bot should mostly grade Perfect
+  const kind = { spike: 'spike', free: 'spike', block: 'block', receive: 'pass', setter: 'set' }[mode];
+  const count = (k, grade) => Object.entries(r.myContacts).filter(([g]) => g.startsWith(k + ':') && (!grade || g.endsWith(':' + grade))).reduce((n, [, c]) => n + c, 0);
+  if (kind) {
+    const all = count(kind);
+    check(all >= 1, `${key}: the bot makes ${kind} contacts`, r.myContacts);
+    check(count(kind, 'Perfect') * 2 >= all, `${key}: at least half of the bot's ${kind} contacts are Perfect`, r.myContacts);
+  }
+  if (mode === 'spike' || mode === 'block' || mode === 'receive' || mode === 'setter') check(r.reps >= 1, `${key}: at least one rep completes`, r);
+  if (mode === 'rally') {
+    check(r.outcomes >= 1, `${key}: the rally produces points`, r);
+    check(Object.keys(r.myContacts).length >= 1, `${key}: the user's athlete plays the ball`, r);
+  }
+}
+// the three set calls of a position set three different plays
+for (const pos of ['OH', 'MB', 'OPP']) {
+  const plays = [report.modes[`spike_${pos}`], report.modes[`spike_${pos}_call2`], report.modes[`spike_${pos}_call3`]].map((m) => m?.play);
+  check(new Set(plays).size === 3 && plays.every(Boolean), `spike drill ${pos}: calls 1 / 2 / 3 set different plays`, plays);
 }
 
 // ---- block FP + rally screenshots
@@ -292,6 +336,7 @@ console.log('perf', JSON.stringify(perf));
     && s.windup.action === 'windup' && s.windup.yaw !== 0 && s.swing.action === 'swing' && !s.swing.held.includes('Mouse0');
   report.touch = t;
   console.log('touch', t.ok ? 'ok' : 'FAILED', JSON.stringify(s));
+  check(t.ok, 'touch controls drive run, load, jump, wind-up and swing', s);
   await tctx.close();
 }
 
@@ -332,9 +377,57 @@ const soak = await page.evaluate(async (secs) => {
 }, soakSeconds);
 report.perf.soak = soak;
 console.log('soak', JSON.stringify(soak));
+for (const k of ['geometries', 'textures', 'programs']) {
+  check(soak.after[k] <= soak.before[k], `soak: ${k} do not grow across mode switches`, { before: soak.before[k], after: soak.after[k] });
+}
+
+// ---- robustness: what players actually do (share links, old saved settings, keyboard-only menus)
+{
+  const probe = async (label, url, init) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    if (init) await ctx.addInitScript(init);
+    const p = await ctx.newPage();
+    const errs = [];
+    p.on('pageerror', (e) => errs.push(e.message));
+    await p.goto(`http://localhost:${PORT}/${url}`);
+    await p.waitForFunction(() => window.__court && window.__menu, null, { timeout: 30000 });
+    const st = await p.evaluate(() => ({ mode: window.__court.mode ? window.__court.modeId : null, pos: window.__court.position, inMenu: window.__court.inMenu, fov: window.__court.settings.fov, crash: !!document.querySelector('.crash') }));
+    check(errs.length === 0 && !st.crash, `${label}: loads without errors`, { errs, st });
+    return { p, ctx, st };
+  };
+  let r = await probe('mistyped position in a link', '?mode=spike&pos=OHH');
+  check(r.st.mode === 'spike' && r.st.pos === 'OH' && !r.st.inMenu, 'a mistyped position falls back to OH and starts the drill', r.st);
+  await r.ctx.close();
+  r = await probe('unknown mode in a link', '?mode=spikey');
+  check(r.st.inMenu, 'an unknown mode opens the menu', r.st);
+  await r.ctx.close();
+  r = await probe('corrupted saved settings', '', () => localStorage.setItem('courtfeel.settings.v1', JSON.stringify({ fov: 'wide', volume: null })));
+  check(typeof r.st.fov === 'number', 'a stored setting of the wrong type falls back to its default', r.st);
+  await r.ctx.close();
+  // keyboard: game keys are left to the browser in the menu, captured in play
+  r = await probe('keyboard', '');
+  const keys = await r.p.evaluate(() => {
+    const send = (code) => {
+      const e = new KeyboardEvent('keydown', { code, key: code, bubbles: true, cancelable: true });
+      window.dispatchEvent(e);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code, key: code, bubbles: true }));
+      return e.defaultPrevented;
+    };
+    const inMenu = { tab: send('Tab'), space: send('Space') };
+    const g = window.__court;
+    g.startMode('spike', 'OH');
+    window.__menu.showStart(false);
+    const inGame = { tab: send('Tab'), space: send('Space') };
+    return { inMenu, inGame };
+  });
+  check(!keys.inMenu.tab && !keys.inMenu.space, 'menus: Tab and Space keep their browser meaning', keys);
+  check(keys.inGame.tab && keys.inGame.space, 'in play: Tab and Space are captured by the game', keys);
+  await r.ctx.close();
+}
 
 fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
 console.log(errors.length ? 'CONSOLE ERRORS:\n' + errors.join('\n') : 'no console errors');
+console.log(failures.length ? `FAILED CHECKS (${failures.length}):\n  ` + failures.join('\n  ') : 'all checks passed');
 await browser.close();
 stopServer();
-process.exit(errors.length ? 1 : 0);
+process.exit(errors.length || failures.length ? 1 : 0);

@@ -222,8 +222,8 @@ export class TouchPad {
 
   private setStick(p: PadPointer, x: number, y: number): void {
     const R = TOUCH.stickRadius;
-    let dx = x - p.x0;
-    let dy = y - p.y0;
+    const dx = x - p.x0;
+    const dy = y - p.y0;
     const len = Math.hypot(dx, dy);
     const raw = Math.min(1, len / R);
     const nx = len > 1e-6 ? dx / len : 0;

@@ -263,7 +263,7 @@ export class AthleteView {
     let chestX = -0.06;
     let chestY = 0;
     let hipsY = 0;
-    let hipsX = 0;
+    const hipsX = 0;
     let chestZ = 0;
     let bodyRate = 10;
 
@@ -555,7 +555,7 @@ export class AthleteView {
           const ph = (this.gaitPhase + (s > 0 ? 0 : 0.5)) % 1;
           let along: number;
           let lift = 0;
-          let pitch = 0;
+          let pitch: number;
           if (ph < duty) {
             const u = ph / duty;
             along = (0.5 - u) * duty * C;
