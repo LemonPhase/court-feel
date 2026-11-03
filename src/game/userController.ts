@@ -61,6 +61,11 @@ export class UserController {
     if (this.input.isDown('KeyS') || this.input.isDown('ArrowDown')) f -= 1;
     if (this.input.isDown('KeyD') || this.input.isDown('ArrowRight')) s += 1;
     if (this.input.isDown('KeyA') || this.input.isDown('ArrowLeft')) s -= 1;
+    const stick = this.input.stick;
+    if (stick.active) {
+      f += stick.y;
+      s += stick.x;
+    }
     const yaw = this.rig.yaw;
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
@@ -75,7 +80,7 @@ export class UserController {
     }
     a.cmd.moveX = mx;
     a.cmd.moveZ = mz;
-    a.cmd.sprint = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight');
+    a.cmd.sprint = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight') || (stick.active && stick.sprint);
     a.cmd.faceYaw = yaw;
 
     // ---- edges

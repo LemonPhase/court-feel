@@ -89,6 +89,8 @@ export class Game {
   private frameMs = 0;
   /** test hook: when set, the RAF loop does not advance the simulation */
   manual = false;
+  /** called once per render frame after the HUD (the touch overlay draws itself here) */
+  onFrame: (() => void) | null = null;
   /** test hook: stop the RAF loop from rendering (screenshots render on demand) */
   holdRender = false;
   /** in the menu: attract camera, no user control */
@@ -235,7 +237,8 @@ export class Game {
     const me = this.me;
     r.t += dt;
     const d = Math.hypot(me.pos.x - r.x, me.pos.z - r.z);
-    const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.input.isDown(k));
+    const keys =
+      ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.input.isDown(k)) || this.input.stick.active;
     if (keys) r.userDriven = true;
     if (d < 0.1 || (r.userDriven && d < 0.9)) {
       this.ret = null;
@@ -716,6 +719,7 @@ export class Game {
     this.arena.update(realDt);
     this.updateAimReticle(realDt);
     this.hud.update(realDt);
+    this.onFrame?.();
     if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint() + (this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : ''));
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
     this.hud.setLoad(me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null);

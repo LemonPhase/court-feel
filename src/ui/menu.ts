@@ -103,9 +103,16 @@ export class Menu {
     left.append(
       h(
         'div',
-        'controls',
+        'controls kb',
         `<b>WASD</b> move · <b>Shift</b> approach · <b>Space</b> plant & jump (hold to load) · <b>LMB</b> hold to wind up, release to spike (longer hold = harder · tap = tip) ·
          <b>RMB</b> block / set · <b>E</b> pass · <b>Q</b> serve toss · <b>V</b> camera · <b>R</b> reset rep · <b>Esc</b> pause · <b>F3</b> debug`,
+      ),
+      h(
+        'div',
+        'controls tc',
+        `<b>Left thumb</b> joystick: push it out to the ring to run the approach · <b>Right thumb</b> drag anywhere to aim ·
+         <b>JUMP</b> hold to load, release to take off · <b>HIT</b> hold to wind up (longer = harder), release to swing, tap = tip — drag while holding to aim;
+         in the air the whole right half is HIT · <b>BLOCK</b> hold: hands up and jump (sets when the ball drops onto you) · <b>PASS</b> hold`,
       ),
     );
     this.start.append(left);
@@ -234,7 +241,32 @@ export class Menu {
       row.append(h('span', 'set-l', label), btn);
       grid.append(row);
     };
+    const choice = <T extends string>(label: string, key: keyof Settings, opts: { value: T; label: string }[]) => {
+      const row = h('label', 'set-row');
+      const btn = h('button', 'chip');
+      const sync = () => {
+        const v = s[key] as string;
+        btn.textContent = opts.find((o) => o.value === v)?.label ?? v;
+        btn.classList.toggle('on', v !== opts[0].value);
+      };
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const i = opts.findIndex((o) => o.value === s[key]);
+        (s as any)[key] = opts[(i + 1) % opts.length].value;
+        sync();
+        changed();
+      };
+      sync();
+      row.append(h('span', 'set-l', label), btn);
+      grid.append(row);
+    };
     slider('Mouse sensitivity', 'sensitivity', 0.2, 3, 0.05, (v) => v.toFixed(2));
+    choice('Touch controls', 'touchControls', [
+      { value: 'auto', label: 'Auto (touch screens)' },
+      { value: 'on', label: 'On' },
+      { value: 'off', label: 'Off' },
+    ]);
+    slider('Touch aim sensitivity', 'touchSensitivity', 0.3, 3, 0.05, (v) => v.toFixed(2));
     slider('Field of view', 'fov', 55, 100, 1, (v) => `${v.toFixed(0)}°`);
     toggle('Invert Y', 'invertY');
     toggle('Net height', 'womenNet', [

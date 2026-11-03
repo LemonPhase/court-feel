@@ -5,6 +5,14 @@
  */
 export type ButtonCode = string; // KeyboardEvent.code or 'Mouse0' / 'Mouse2'
 
+/** analog movement axis fed by the touch joystick (x right, y forward, camera relative) */
+export interface Stick {
+  active: boolean;
+  x: number;
+  y: number;
+  sprint: boolean;
+}
+
 export class Input {
   readonly held = new Set<ButtonCode>();
   private pressed = new Set<ButtonCode>();
@@ -18,6 +26,11 @@ export class Input {
   dragLook = false;
   private dragging = false;
   enabled = true;
+  /** touch controls drive look and buttons (no pointer lock, mouse events emulated from touches are ignored) */
+  touch = false;
+  /** virtual joystick (touch) */
+  readonly stick: Stick = { active: false, x: 0, y: 0, sprint: false };
+  private lastTouchAt = -1e9;
   onPointerLockChange: ((locked: boolean) => void) | null = null;
   /** keys that should never reach the browser default handler */
   private static readonly swallow = new Set([
@@ -35,14 +48,18 @@ export class Input {
     window.addEventListener('blur', () => this.releaseAll());
     el.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      if (!this.enabled) return;
+      if (!this.enabled || this.emulatedMouse()) return;
       this.down('Mouse' + e.button);
       if (this.dragLook) this.dragging = true;
     });
     window.addEventListener('mouseup', (e) => {
+      if (this.emulatedMouse()) return;
       this.up('Mouse' + e.button);
       this.dragging = false;
     });
+    // browsers synthesise mouse events after a tap: remember when the last touch happened
+    window.addEventListener('touchstart', () => (this.lastTouchAt = performance.now()), { passive: true, capture: true });
+    window.addEventListener('touchend', () => (this.lastTouchAt = performance.now()), { passive: true, capture: true });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
       if (!this.enabled) return;
@@ -57,7 +74,13 @@ export class Input {
     });
   }
 
+  /** a mouse event that is really a tap (touch screens emulate the mouse after touchend) */
+  private emulatedMouse(): boolean {
+    return performance.now() - this.lastTouchAt < 1000;
+  }
+
   requestLock(): void {
+    if (this.touch) return;
     try {
       const p = (this.el as any).requestPointerLock?.({ unadjustedMovement: true });
       if (p && typeof p.catch === 'function') {

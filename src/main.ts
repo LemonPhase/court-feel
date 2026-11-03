@@ -4,6 +4,7 @@ import { Game } from './game/game';
 import { Menu } from './ui/menu';
 import type { ModeId } from './game/modes/mode';
 import type { PositionId } from './config';
+import { TouchControls, wantsTouch } from './ui/touchControls';
 
 const app = document.getElementById('app')!;
 const settings = loadSettings();
@@ -21,6 +22,7 @@ const menu = new Menu(app, settings, {
     game.paused = false;
     game.hud.setVisible(true);
     game.input.requestLock();
+    if (touch.enabled) goFullscreen();
   },
   resume() {
     menu.showPause(false);
@@ -42,9 +44,48 @@ const menu = new Menu(app, settings, {
   settingsChanged() {
     saveSettings(settings);
     game.applySettings();
+    touch.setEnabled(wantsTouch(settings.touchControls));
   },
 });
 (window as any).__menu = menu;
+
+// touch controls (phones / tablets): on-screen stick and hold buttons through the same input path
+const touch = new TouchControls(app, game, {
+  pause() {
+    if (game.inMenu) return;
+    game.paused = true;
+    menu.showPause(true);
+  },
+});
+(window as any).__touch = touch;
+touch.setEnabled(wantsTouch(settings.touchControls));
+// a hybrid device in auto mode: the first touch turns the controls on
+window.addEventListener(
+  'touchstart',
+  () => {
+    if (settings.touchControls === 'auto' && !touch.enabled) touch.setEnabled(true);
+  },
+  { passive: true, capture: true },
+);
+game.onFrame = () => touch.update();
+
+/** phones: fullscreen and landscape when the browser allows it (must come from a tap) */
+function goFullscreen(): void {
+  try {
+    const d = document.documentElement as any;
+    const p = d.requestFullscreen?.({ navigationUI: 'hide' }) ?? d.webkitRequestFullscreen?.();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch {
+    /* not allowed here */
+  }
+  try {
+    const o = (screen as any).orientation;
+    const p = o?.lock?.('landscape');
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch {
+    /* not supported */
+  }
+}
 
 function enterMenu(): void {
   game.inMenu = true;
