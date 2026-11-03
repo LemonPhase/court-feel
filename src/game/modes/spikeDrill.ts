@@ -9,6 +9,17 @@ import { outcomeLabel, type Outcome } from '../judge';
 import { attackHeight, laneFor, quickSetFor, quickSpot, SET_PLAYS, SETTER_SPOT, SETTER_TARGET, setterTouchY, type AttackLane, type SetPlay } from '../plays';
 import { kbd, makeFloorRing, Mode, ZoneMarker } from './mode';
 import { planApproach, planQuick, planToPoint, type ApproachPlan } from '../../ai/approach';
+import { BlockerBrain } from '../../ai/blocker';
+import { blockShadowOnCourt, HANDS_WIDTH, type HandSpan } from '../blockShadow';
+
+/** block practice: nobody, one blocker fronting your lane, or that blocker plus a middle closing */
+export type BlockLevel = 0 | 1 | 2;
+const BLOCK_NAMES = ['off', 'single', 'double'] as const;
+/** how far above the net top the blockers' hands are taken to reach (the shadow's wall height) */
+const HANDS_ABOVE_NET = 0.35;
+/** the shadow is at most two polygons (one per blocker, or one closed wall) of up to this many corners */
+const SHADOW_POLYS = 2;
+const SHADOW_CORNERS = 8;
 
 interface Zone {
   name: string;
@@ -68,6 +79,15 @@ export class SpikeDrill extends Mode {
   /** an approach planned before the set (quick / tempo balls) for the autopilot */
   earlyPlan: ApproachPlan | null = null;
   earlyFor: unknown = null;
+  /** opposing block (key B): off / single / double */
+  blockLevel: BlockLevel = 0;
+  private blockers: { a: Athlete; brain: BlockerBrain }[] = [];
+  /** the block's shadow on their floor: where a straight ball from your contact cannot go */
+  private shadow!: THREE.Mesh;
+  private shadowEdge!: THREE.LineSegments;
+  private shadowPos = new Float32Array(SHADOW_POLYS * SHADOW_CORNERS * 3);
+  private shadowIdx = new Uint16Array(SHADOW_POLYS * (SHADOW_CORNERS - 2) * 3);
+  private shadowEdgePos = new Float32Array(SHADOW_POLYS * SHADOW_CORNERS * 2 * 3);
 
   private get play(): SetPlay | null {
     return this.plays ? this.plays[this.callIdx] : null;
@@ -78,18 +98,169 @@ export class SpikeDrill extends Mode {
     return this.play?.lane ?? laneFor(this.position, 1);
   }
 
+  private setTitle(): void {
+    const block = this.blockLevel ? ` · block: ${BLOCK_NAMES[this.blockLevel]}` : '';
+    this.g.hud.setTitle('Spike Drill · ' + this.lane.label + block);
+  }
+
+  /** B: cycle the opposing block off → single → double */
+  cycleBlock(): void {
+    this.setBlock(((this.blockLevel + 1) % 3) as BlockLevel);
+  }
+
+  setBlock(level: BlockLevel): void {
+    this.blockLevel = level;
+    this.ensureBlockers();
+    this.placeBlockers();
+    this.setTitle();
+    this.updateScore();
+    const what = level === 0 ? 'Block off' : level === 1 ? 'Block: single · hit around it' : 'Block: double · line or cross, or over the top';
+    this.g.hud.message(what, 1.8);
+  }
+
+  /** spawn the two opposing blockers the first time the block is turned on */
+  private ensureBlockers(): void {
+    if (this.blockers.length || this.blockLevel === 0) return;
+    const g = this.g;
+    const specs: { role: PositionId; range: number; closeInside: number; seed: number }[] = [
+      // a pin blocker fronting your lane, and a middle running to close next to them
+      { role: 'OPP', range: 1.5, closeInside: 0, seed: 47 },
+      { role: 'MB', range: 4.6, closeInside: 0.95, seed: 48 },
+    ];
+    for (const sp of specs) {
+      const a = new Athlete(sp.role, -1);
+      a.place(0, -0.5, Math.PI);
+      g.addAthlete(a, sp.seed);
+      this.spawned.push(a);
+      const brain = new BlockerBrain(a, 0, sp.range);
+      brain.closeInside = sp.closeInside;
+      // the setter position attacks the coach's toss straight away: that is the ball to read
+      brain.readFeed = this.position === 'S';
+      g.setBrain(a, brain);
+      this.blockers.push({ a, brain });
+    }
+  }
+
+  /** each rep: the active blockers back at home facing you, the rest parked in the free zone */
+  private placeBlockers(): void {
+    const laneX = this.play?.inFront !== undefined ? quickSpot(SETTER_TARGET.x, 1, this.play.inFront).x : this.lane.x;
+    this.blockers.forEach((b, i) => {
+      const active = i < this.blockLevel;
+      b.brain.enabled = active;
+      b.brain.reset();
+      b.a.endAction();
+      if (active) {
+        b.brain.homeX = i === 0 ? laneX : 0;
+        b.a.place(b.brain.homeX, -0.5, Math.PI);
+      } else b.a.place(i === 0 ? -6.3 : 6.3, -2.5, Math.PI);
+    });
+  }
+
+  /** the blockers who are in play */
+  private activeBlockers(): Athlete[] {
+    return this.blockers.slice(0, this.blockLevel).map((b) => b.a);
+  }
+
+  private buildShadow(): void {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.shadowPos, 3));
+    geo.setIndex(new THREE.BufferAttribute(this.shadowIdx, 1));
+    geo.setDrawRange(0, 0);
+    // the court floor is pulled towards the camera with a polygon offset: pull the overlay further, or
+    // it loses the depth test at grazing angles (the far court seen from behind the hitter)
+    const offset = { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 };
+    this.shadow = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide, ...offset }));
+    this.shadow.renderOrder = 2;
+    this.shadow.visible = false;
+    this.add(this.shadow);
+    const egeo = new THREE.BufferGeometry();
+    egeo.setAttribute('position', new THREE.BufferAttribute(this.shadowEdgePos, 3));
+    egeo.setDrawRange(0, 0);
+    this.shadowEdge = new THREE.LineSegments(egeo, new THREE.LineBasicMaterial({ color: 0xff7a68, transparent: true, opacity: 0.85, ...offset }));
+    this.shadowEdge.renderOrder = 3;
+    this.shadowEdge.visible = false;
+    this.add(this.shadowEdge);
+  }
+
+  /** where your contact will be (the set when it is up, otherwise the lane) */
+  private contactPoint(out: { x: number; y: number; z: number }): void {
+    const g = this.g;
+    const me = g.me;
+    const play = this.play;
+    const quick = play?.inFront !== undefined;
+    const spot = quick ? quickSpot(SETTER_TARGET.x, 1, play!.inFront) : this.lane;
+    out.x = spot.x;
+    out.y = attackHeight(me);
+    out.z = spot.z;
+    const lt = g.ball.lastTouch;
+    const setUp = g.ball.active && lt && (lt.kind === 'set' || (this.position === 'S' && lt.kind === 'feed'));
+    if (setUp) {
+      const pred = g.ball.ensurePrediction(g.env, g.simTime);
+      const tc = pred.descendThrough(out.y, g.simTime);
+      if (tc > 0) pred.posAt(tc, out);
+    }
+  }
+
+  /** redraw the block shadow from where the blockers are right now */
+  private updateShadow(): void {
+    const show = this.blockLevel > 0 && this.phase !== 'intro';
+    this.shadow.visible = show;
+    this.shadowEdge.visible = show;
+    if (!show) return;
+    this.contactPoint(this.tmp);
+    const spans: HandSpan[] = this.activeBlockers().map((a) => ({ x0: a.pos.x - HANDS_WIDTH / 2, x1: a.pos.x + HANDS_WIDTH / 2 }));
+    const polys = blockShadowOnCourt(this.tmp, spans, this.g.env.netTop + HANDS_ABOVE_NET, COURT.halfWidth, COURT.halfLength);
+    const P = this.shadowPos;
+    const I = this.shadowIdx;
+    const E = this.shadowEdgePos;
+    const y = 0.013;
+    let nv = 0;
+    let ni = 0;
+    let ne = 0;
+    for (const poly of polys.slice(0, SHADOW_POLYS)) {
+      const n = Math.min(poly.length, SHADOW_CORNERS);
+      const base = nv;
+      for (let k = 0; k < n; k++) {
+        P[nv * 3] = poly[k][0];
+        P[nv * 3 + 1] = y;
+        P[nv * 3 + 2] = poly[k][1];
+        nv++;
+        // edge k -> k+1
+        const nx = poly[(k + 1) % n];
+        E.set([poly[k][0], y, poly[k][1], nx[0], y, nx[1]], ne * 3);
+        ne += 2;
+      }
+      // triangle fan
+      for (let k = 1; k < n - 1; k++) {
+        I[ni++] = base;
+        I[ni++] = base + k;
+        I[ni++] = base + k + 1;
+      }
+    }
+    const geo = this.shadow.geometry;
+    (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    geo.index!.needsUpdate = true;
+    geo.setDrawRange(0, ni);
+    geo.computeBoundingSphere();
+    const egeo = this.shadowEdge.geometry;
+    (egeo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    egeo.setDrawRange(0, ne);
+    egeo.computeBoundingSphere();
+  }
+
   /** choose the set call for the next ball (0-based) */
   selectCall(i: number): void {
     if (!this.plays || i < 0 || i >= this.plays.length) return;
     this.callIdx = i;
     const g = this.g;
-    g.hud.setTitle('Spike Drill · ' + this.lane.label);
+    this.setTitle();
     g.hud.message(`Next set: ${i + 1} · ${this.plays[i].name}`, 1.6);
     this.updateScore();
     // not tossed yet: head to the new approach start
     if ((this.phase === 'intro' || this.phase === 'feed') && !this.tossed) {
       const l = this.lane;
       if (Math.hypot(g.me.pos.x - l.sx, g.me.pos.z - l.sz) > 0.6) g.returnUser(l.sx, l.sz, 0);
+      this.placeBlockers();
     }
   }
 
@@ -129,8 +300,9 @@ export class SpikeDrill extends Mode {
     this.add(this.zoneMarker.group);
     this.approachRing = makeFloorRing(0x6fe3ff, 0.9);
     this.add(this.approachRing);
+    this.buildShadow();
     this.pickZone();
-    g.hud.setTitle('Spike Drill · ' + lane.label);
+    this.setTitle();
     this.updateScore();
     this.phase = 'intro';
     this.t = 0;
@@ -155,7 +327,8 @@ export class SpikeDrill extends Mode {
 
   private updateScore(): void {
     const call = this.play ? ` · set ${this.callIdx + 1}: ${this.play.name}` : '';
-    this.g.hud.setScore(`${this.score} pts · rep ${this.reps}${call} · target: ${this.zone.name}`);
+    const block = this.blockLevel ? ` · block: ${BLOCK_NAMES[this.blockLevel]}` : '';
+    this.g.hud.setScore(`${this.score} pts · rep ${this.reps}${call}${block} · target: ${this.zone.name}`);
   }
 
   hint(): string {
@@ -163,8 +336,9 @@ export class SpikeDrill extends Mode {
     if (me.state === 'air' || me.action?.kind === 'windup') return `hold ${kbd('LMB')} = wind up (longer = harder) · release = hit · tap = tip &nbsp; aim with the mouse`;
     if (me.state === 'load') return `release ${kbd('Space')} to jump`;
     const calls = this.plays ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call` : '';
-    if (this.play?.inFront !== undefined) return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch${calls} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
-    return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump${calls} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
+    const block = ` · ${kbd('B')} block: ${BLOCK_NAMES[this.blockLevel]}`;
+    if (this.play?.inFront !== undefined) return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
+    return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
   }
 
   restartRep(): void {
@@ -253,6 +427,7 @@ export class SpikeDrill extends Mode {
     const mat = this.approachRing.material as THREE.MeshBasicMaterial;
     mat.opacity = g.settings.landingMarker ? 0.45 + this.ringPulse * 0.55 : 0;
     this.approachRing.scale.setScalar(1 + this.ringPulse * 0.6);
+    this.updateShadow();
   }
 
   frame(dt: number): void {
@@ -260,6 +435,7 @@ export class SpikeDrill extends Mode {
     if (this.plays) {
       for (let i = 0; i < this.plays.length; i++) if (this.g.input.consumePress('Digit' + (i + 1))) this.selectCall(i);
     }
+    if (this.g.input.consumePress('KeyB')) this.cycleBlock();
   }
 
   private feedBall(): void {
@@ -312,7 +488,18 @@ export class SpikeDrill extends Mode {
     let pts = 0;
     let label = 'NO ATTACK';
     let good = false;
-    if (ev && ev.grade !== 'Miss') {
+    // the opposing block touched your ball: stuffed back onto our floor, or tooled off their hands
+    const lt = g.ball.lastTouch;
+    const blockTouch = this.blockLevel > 0 && lt?.kind === 'block' && lt.side === -1;
+    let tooled = false;
+    if (ev && ev.grade !== 'Miss' && blockTouch) {
+      if (o && o.kind === 'in' && o.side === 1) label = 'BLOCKED';
+      else {
+        tooled = true;
+        pts += (ev.grade === 'Perfect' ? 100 : ev.grade === 'Good' ? 60 : 30) + 50;
+        label = 'TOOLED';
+      }
+    } else if (ev && ev.grade !== 'Miss') {
       const gradePts = ev.grade === 'Perfect' ? 100 : ev.grade === 'Good' ? 60 : 30;
       pts += gradePts;
       const kmh = ev.speed * 3.6;
@@ -334,8 +521,8 @@ export class SpikeDrill extends Mode {
       label = 'WHIFF';
     }
     this.score += pts;
-    this.bumpStreak(good);
-    g.hud.showBanner(pts > 0 ? `${label}  +${pts}` : label, good ? 'good' : o && o.kind === 'in' && o.side === -1 ? 'neutral' : 'bad');
+    if (!tooled) this.bumpStreak(good);
+    g.hud.showBanner(pts > 0 ? `${label}  +${pts}` : label, good ? 'good' : tooled || (o && o.kind === 'in' && o.side === -1) ? 'neutral' : 'bad');
     g.crowd(good ? (ev?.perfect ? 1 : 0.6) : 0.1, good);
     this.updateScore();
   }
@@ -347,6 +534,7 @@ export class SpikeDrill extends Mode {
     const me = g.me;
     g.ball.hide();
     if (this.setter) this.setter.place(SETTER_SPOT.x, SETTER_SPOT.z, Math.PI / 2);
+    this.placeBlockers();
     this.pickZone();
     this.updateScore();
     // jog back to the approach start; the next toss waits for you

@@ -168,7 +168,7 @@ export class MiniRally extends Mode {
       this.lastReceiverMsg = g.ball.lastTouch;
       g.hud.message('Your ball!', 0.9);
     }
-    g.ball.markerColor.setRGB(...((this.home.receiver === g.me ? [0.35, 1.0, 0.45] : [0.85, 0.7, 0.22]) as [number, number, number]));
+    g.ball.markerColor.setRGB(...((this.home.receiver === g.me ? [0.35, 1.0, 0.45] : [0.3, 0.85, 1.0]) as [number, number, number]));
     switch (this.phase) {
       case 'prepare':
         if (this.t > 1.6) {
