@@ -194,7 +194,12 @@ export const CONTACT = {
   spikeReachStretch: 0.62,
   passRadius: 0.55,
   setRadius: 0.48,
-  blockHalfWidth: 0.38,
+  /**
+   * half-width of the block's hands along the net (ball centre within this + ball radius).
+   * Matches the pose: wrists ~0.15 m off the midline plus a palm, so the gap between the
+   * arms is under one ball wide and the ball goes round, not through, a block that misreads.
+   */
+  blockHalfWidth: 0.22,
   blockHeight: 0.55,
   /** speeds (m/s) */
   spikePerfect: 30,
