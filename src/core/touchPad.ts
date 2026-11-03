@@ -19,7 +19,8 @@ import type { Stick } from './input';
  *                 does not have to find it after the jump), and rolling the
  *                 thumb from JUMP onto HIT without lifting takes off and winds up.
  */
-export type PadButton = 'jump' | 'hit' | 'block' | 'pass' | 'toss' | 'cam' | 'reset' | 'replay' | 'vsblock' | 'feed' | 'auto' | 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
+export type PadButton =
+  'jump' | 'hit' | 'block' | 'pass' | 'toss' | 'cam' | 'reset' | 'replay' | 'vsblock' | 'feed' | 'auto' | 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
 
 /** the slice of Input the pad drives (Input implements it) */
 export interface PadInput {
@@ -94,7 +95,10 @@ export class TouchPad {
   /** stick geometry for drawing: origin and knob (CSS px) */
   readonly stickView = { active: false, ox: 0, oy: 0, kx: 0, ky: 0, deflect: 0 };
 
-  constructor(private readonly input: PadInput, private readonly ctx: PadContext) {}
+  constructor(
+    private readonly input: PadInput,
+    private readonly ctx: PadContext,
+  ) {}
 
   get stickPointer(): PadPointer | null {
     for (const p of this.pointers.values()) if (p.kind === 'stick') return p;

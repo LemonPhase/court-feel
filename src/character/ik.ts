@@ -47,8 +47,12 @@ const _elbow = new THREE.Vector3();
  * towards. Returns the distance by which the target was out of reach.
  */
 export function twoBoneIK(
-  upper: THREE.Bone, lower: THREE.Bone, endOffset: THREE.Vector3,
-  target: THREE.Vector3, pole: THREE.Vector3, weight = 1,
+  upper: THREE.Bone,
+  lower: THREE.Bone,
+  endOffset: THREE.Vector3,
+  target: THREE.Vector3,
+  pole: THREE.Vector3,
+  weight = 1,
 ): number {
   const a = lower.position.length();
   const b = endOffset.length();

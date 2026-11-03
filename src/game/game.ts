@@ -121,7 +121,10 @@ export class Game {
   /** last timing info for the debug overlay */
   private lastPress: { at: number; ideal: number } | null = null;
 
-  constructor(private container: HTMLElement, public settings: Settings) {
+  constructor(
+    private container: HTMLElement,
+    public settings: Settings,
+  ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
@@ -152,8 +155,12 @@ export class Game {
     this.aimReticle = new THREE.Mesh(
       new THREE.PlaneGeometry(0.9, 0.9),
       new THREE.MeshBasicMaterial({
-        map: makeRingTexture(0.22), color: new THREE.Color(0.95, 0.35, 0.25), transparent: true, opacity: 0,
-        depthWrite: false, blending: THREE.AdditiveBlending,
+        map: makeRingTexture(0.22),
+        color: new THREE.Color(0.95, 0.35, 0.25),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
       }),
     );
     this.aimReticle.rotation.x = -Math.PI / 2;
@@ -259,7 +266,8 @@ export class Game {
     r.t += dt;
     const d = Math.hypot(me.pos.x - r.x, me.pos.z - r.z);
     const keys =
-      ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.input.isDown(k)) || this.input.stick.active;
+      ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.input.isDown(k)) ||
+      this.input.stick.active;
     if (keys) r.userDriven = true;
     if (d < 0.1 || (r.userDriven && d < 0.9)) {
       this.ret = null;
@@ -402,7 +410,8 @@ export class Game {
     if (ev.athlete.isUser) {
       if (ev.grade) {
         const kmh = ev.speed * 3.6;
-        const pw = ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
+        const pw =
+          ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
         const sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
         this.hud.showGrade(ev.grade, sub);
       }
@@ -622,10 +631,13 @@ export class Game {
     const quality: BotQuality = isBotQuality(q) ? q : 'perfect';
     const role = this.me.role;
     this.bot =
-      this.modeId === 'block' ? new BlockBot(this, quality)
-      : this.modeId === 'receive' || (this.modeId === 'rally' && role === 'L') ? new TouchBot(this, 'pass', quality)
-      : this.modeId === 'setter' || (this.modeId === 'rally' && role === 'S') ? new TouchBot(this, 'set', quality)
-      : new SpikeBot(this, quality);
+      this.modeId === 'block'
+        ? new BlockBot(this, quality)
+        : this.modeId === 'receive' || (this.modeId === 'rally' && role === 'L')
+          ? new TouchBot(this, 'pass', quality)
+          : this.modeId === 'setter' || (this.modeId === 'rally' && role === 'S')
+            ? new TouchBot(this, 'set', quality)
+            : new SpikeBot(this, quality);
   }
 
   /** start-screen background: the bot runs the spike drill under an orbiting camera */
@@ -645,7 +657,8 @@ export class Game {
     let slowTarget = 1;
     if (this.settings.slowmoAssist && this.me.state === 'air' && this.idealValid) {
       const until = this.idealCache.t - this.simTime;
-      if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4) slowTarget = ASSIST.slowmoScale;
+      if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4)
+        slowTarget = ASSIST.slowmoScale;
     }
     this.slowmo = lerp(this.slowmo, slowTarget, damp(12, realDt));
     let simDt = realDt * this.timeScale * this.slowmo;
@@ -705,7 +718,8 @@ export class Game {
     this.fx.checkReplay();
     this.fx.cueReplay();
     // timing window cache for HUD / slow-mo / debug
-    const info = this.me.state === 'air' || this.me.state === 'load' ? this.contact.ideal(this.me, this.simTime, 0.9, this.idealCache) : null;
+    const info =
+      this.me.state === 'air' || this.me.state === 'load' ? this.contact.ideal(this.me, this.simTime, 0.9, this.idealCache) : null;
     this.idealValid = !!info;
   }
 
@@ -800,7 +814,9 @@ export class Game {
     this.onFrame?.();
     if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint() + (this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : ''));
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
-    this.hud.setLoad(me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null);
+    this.hud.setLoad(
+      me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null,
+    );
     // spike wind-up: power ring, a tick at full charge, a swish on release
     const wind = me.action?.kind === 'windup' ? me.action : null;
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;

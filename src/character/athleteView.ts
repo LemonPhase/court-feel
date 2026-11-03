@@ -134,11 +134,20 @@ export class AthleteView {
   readonly headPos = v3();
   readonly eyePos = v3();
 
-  constructor(public athlete: Athlete, readonly kit: Kit) {
+  constructor(
+    public athlete: Athlete,
+    readonly kit: Kit,
+  ) {
     this.H = athlete.height;
     this.rig = buildRig(this.H, kit);
     this.root = this.rig.root;
-    const mkArm = (): ArmState => ({ w: v3(...(ARM_KEYS.ready.w as unknown as [number, number, number])).multiplyScalar(this.H), pole: v3(0.8, -0.3, -0.6), palm: v3(0, 0, 1), rate: 12, flex: 0 });
+    const mkArm = (): ArmState => ({
+      w: v3(...(ARM_KEYS.ready.w as unknown as [number, number, number])).multiplyScalar(this.H),
+      pole: v3(0.8, -0.3, -0.6),
+      palm: v3(0, 0, 1),
+      rate: 12,
+      flex: 0,
+    });
     this.arms = [mkArm(), mkArm()];
     const mkFoot = (): FootState => ({ plant: v3(), stepping: false, from: v3(), to: v3(), t: 0, dur: 0.16, cur: v3(), pitch: 0 });
     this.feet = [mkFoot(), mkFoot()];
@@ -267,7 +276,7 @@ export class AthleteView {
     let chestZ = 0;
     let bodyRate = 10;
 
-    const gTarget = (st === 'ground' || st === 'land') ? smoothstep(0.35, 1.3, speed) : 0;
+    const gTarget = st === 'ground' || st === 'land' ? smoothstep(0.35, 1.3, speed) : 0;
     this.gaitW = lerp(this.gaitW, gTarget, damp(10, dt));
     const g = this.gaitW;
     const sprint = a.sprint;
@@ -402,7 +411,22 @@ export class AthleteView {
     B.chest.rotation.set(bd.spineX * 0.45 + bd.chestX, bd.chestY * 0.6, bd.chestZ * 0.5);
     B.neck.rotation.set(0, 0, 0);
     B.head.rotation.set(0, 0, 0);
-    for (const n of ['clavL', 'clavR', 'upperArmL', 'upperArmR', 'lowerArmL', 'lowerArmR', 'handL', 'handR', 'thighL', 'thighR', 'shinL', 'shinR', 'footL', 'footR'] as BoneName[]) {
+    for (const n of [
+      'clavL',
+      'clavR',
+      'upperArmL',
+      'upperArmR',
+      'lowerArmL',
+      'lowerArmR',
+      'handL',
+      'handR',
+      'thighL',
+      'thighR',
+      'shinL',
+      'shinR',
+      'footL',
+      'footR',
+    ] as BoneName[]) {
       B[n].quaternion.identity();
     }
     B.head.scale.setScalar(this.hideHead ? 0.001 : 1);
@@ -707,7 +731,10 @@ export class AthleteView {
           const cp = swing.contactPoint;
           // wrist target at contact: hand behind the ball along the hit direction
           _c.copy(swing.aim).normalize();
-          const contactW = _d.copy(cp).addScaledVector(_c, -(0.105 + 0.01)).addScaledVector(_up, -0.03 * H);
+          const contactW = _d
+            .copy(cp)
+            .addScaledVector(_c, -(0.105 + 0.01))
+            .addScaledVector(_up, -0.03 * H);
           if (swingS >= 0) {
             this.cockAt(swing.charge, _a, _b);
             this.key('over', _e1, _e2);
@@ -724,7 +751,10 @@ export class AthleteView {
               this.key('lag', _h1, _h2);
               const e = swingS * swingS * (0.3 + 0.7 * swingS);
               bezier3(_a, _h1, _e1, contactLocal, e, w);
-              pole.copy(_b).lerp(_h2, smooth01(swingS * 2)).lerp(_e2, smooth01((swingS - 0.45) / 0.55));
+              pole
+                .copy(_b)
+                .lerp(_h2, smooth01(swingS * 2))
+                .lerp(_e2, smooth01((swingS - 0.45) / 0.55));
               flex = lerp(-0.45, 0.2, smooth01((swingS - 0.55) / 0.45));
             }
             if (swingS > 0.55) {
@@ -751,7 +781,8 @@ export class AthleteView {
             pole.set(1, 0.1, -0.6).lerp(_b, e);
             palmFwd = 1 - e;
             // the wrist snaps over the top of the ball, then relaxes
-            if (!swing.tip) flex = (0.2 + 0.85 * easeOutCubic(swingF * 3.5)) * (1 - 0.55 * smooth01((swingF - 0.35) / 0.65)) * (0.6 + 0.4 * ch);
+            if (!swing.tip)
+              flex = (0.2 + 0.85 * easeOutCubic(swingF * 3.5)) * (1 - 0.55 * smooth01((swingF - 0.35) / 0.65)) * (0.6 + 0.4 * ch);
           }
         } else {
           // the off arm pulls down first: it leads the turn of the chest

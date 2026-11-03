@@ -97,7 +97,12 @@ export class SetterDrill extends Mode {
       }
       const lane = laneFor(pos, a.side);
       const y = attackHeight(h.a);
-      out.push({ target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove, hitter: h.a, label: pos === 'OH' ? 'Outside' : 'Back set' });
+      out.push({
+        target: { x: lane.x, y, z: lane.z },
+        apex: y + lane.apexAbove,
+        hitter: h.a,
+        label: pos === 'OH' ? 'Outside' : 'Back set',
+      });
     }
     return out;
   }
@@ -230,7 +235,8 @@ export class SetterDrill extends Mode {
     }
     this.blocker.place(0, -0.5, Math.PI);
     const me = g.me;
-    if (Math.hypot(me.pos.x - SETTER_SPOT.x, me.pos.z - SETTER_SPOT.z - 0.3) > 1.0 || me.state !== 'ground') g.returnUser(SETTER_SPOT.x, SETTER_SPOT.z + 0.3, Math.PI / 2);
+    if (Math.hypot(me.pos.x - SETTER_SPOT.x, me.pos.z - SETTER_SPOT.z - 0.3) > 1.0 || me.state !== 'ground')
+      g.returnUser(SETTER_SPOT.x, SETTER_SPOT.z + 0.3, Math.PI / 2);
     this.toPhase('feed');
   }
 

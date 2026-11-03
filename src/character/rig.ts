@@ -8,18 +8,46 @@ import * as THREE from 'three';
  */
 
 export type BoneName =
-  | 'hips' | 'spine' | 'chest' | 'neck' | 'head'
-  | 'clavL' | 'upperArmL' | 'lowerArmL' | 'handL'
-  | 'clavR' | 'upperArmR' | 'lowerArmR' | 'handR'
-  | 'thighL' | 'shinL' | 'footL'
-  | 'thighR' | 'shinR' | 'footR';
+  | 'hips'
+  | 'spine'
+  | 'chest'
+  | 'neck'
+  | 'head'
+  | 'clavL'
+  | 'upperArmL'
+  | 'lowerArmL'
+  | 'handL'
+  | 'clavR'
+  | 'upperArmR'
+  | 'lowerArmR'
+  | 'handR'
+  | 'thighL'
+  | 'shinL'
+  | 'footL'
+  | 'thighR'
+  | 'shinR'
+  | 'footR';
 
 export const BONE_ORDER: BoneName[] = [
-  'hips', 'spine', 'chest', 'neck', 'head',
-  'clavL', 'upperArmL', 'lowerArmL', 'handL',
-  'clavR', 'upperArmR', 'lowerArmR', 'handR',
-  'thighL', 'shinL', 'footL',
-  'thighR', 'shinR', 'footR',
+  'hips',
+  'spine',
+  'chest',
+  'neck',
+  'head',
+  'clavL',
+  'upperArmL',
+  'lowerArmL',
+  'handL',
+  'clavR',
+  'upperArmR',
+  'lowerArmR',
+  'handR',
+  'thighL',
+  'shinL',
+  'footL',
+  'thighR',
+  'shinR',
+  'footR',
 ];
 
 export interface Kit {
@@ -168,8 +196,13 @@ function loft(b: MeshBuilder, rings: Ring[], seg: number, side: THREE.Vector3, c
       const th = (k / seg) * Math.PI * 2;
       const cs = Math.cos(th);
       const sn = Math.sin(th);
-      p.copy(r.c).addScaledVector(u, cs * r.rx).addScaledVector(v, sn * r.rz + (r.oz ?? 0) * Math.max(0, sn));
-      n.copy(u).multiplyScalar(cs / r.rx).addScaledVector(v, sn / r.rz).normalize();
+      p.copy(r.c)
+        .addScaledVector(u, cs * r.rx)
+        .addScaledVector(v, sn * r.rz + (r.oz ?? 0) * Math.max(0, sn));
+      n.copy(u)
+        .multiplyScalar(cs / r.rx)
+        .addScaledVector(v, sn / r.rz)
+        .normalize();
       b.vert(p, n, r.color, r.w);
     }
   }
@@ -199,8 +232,15 @@ function loft(b: MeshBuilder, rings: Ring[], seg: number, side: THREE.Vector3, c
 }
 
 function ellipsoid(
-  b: MeshBuilder, center: THREE.Vector3, rx: number, ry: number, rz: number,
-  colorFn: (n: THREE.Vector3, p: THREE.Vector3) => THREE.Color, w: [number, number][], ws = 18, hs = 12,
+  b: MeshBuilder,
+  center: THREE.Vector3,
+  rx: number,
+  ry: number,
+  rz: number,
+  colorFn: (n: THREE.Vector3, p: THREE.Vector3) => THREE.Color,
+  w: [number, number][],
+  ws = 18,
+  hs = 12,
   rotate?: THREE.Quaternion,
 ) {
   const base = b.count;
@@ -285,24 +325,91 @@ export function buildRig(H: number, kit: Kit): Rig {
     const knee = wp(`shin${L}` as BoneName);
     const ankle = wp(`foot${L}` as BoneName);
     const at = (a: THREE.Vector3, bb: THREE.Vector3, t: number) => a.clone().lerp(bb, t);
-    const hipW: [number, number][] = [[T, 0.75], [idx('hips'), 0.25]];
+    const hipW: [number, number][] = [
+      [T, 0.75],
+      [idx('hips'), 0.25],
+    ];
     const rings: Ring[] = [
-      { c: at(hip, knee, -0.12).add(new THREE.Vector3(-s * 0.006 * H, 0, 0)), rx: 0.05 * H, rz: 0.052 * H, color: shorts, w: [[idx('hips'), 0.7], [T, 0.3]] },
+      {
+        c: at(hip, knee, -0.12).add(new THREE.Vector3(-s * 0.006 * H, 0, 0)),
+        rx: 0.05 * H,
+        rz: 0.052 * H,
+        color: shorts,
+        w: [
+          [idx('hips'), 0.7],
+          [T, 0.3],
+        ],
+      },
       { c: at(hip, knee, 0.05), rx: 0.046 * H, rz: 0.048 * H, color: shorts, w: hipW },
       { c: at(hip, knee, 0.42), rx: 0.04 * H, rz: 0.042 * H, color: shorts, w: [[T, 1]] },
       { c: at(hip, knee, 0.42), rx: 0.04 * H, rz: 0.042 * H, color: skin, w: [[T, 1]] },
       { c: at(hip, knee, 0.72), rx: 0.034 * H, rz: 0.035 * H, color: skin, w: [[T, 1]] },
-      { c: at(hip, knee, 0.84), rx: 0.032 * H, rz: 0.033 * H, color: skin, w: [[T, 0.85], [S, 0.15]] },
+      {
+        c: at(hip, knee, 0.84),
+        rx: 0.032 * H,
+        rz: 0.033 * H,
+        color: skin,
+        w: [
+          [T, 0.85],
+          [S, 0.15],
+        ],
+      },
       // knee pad band
-      { c: at(hip, knee, 0.84), rx: 0.035 * H, rz: 0.037 * H, color: pads, w: [[T, 0.85], [S, 0.15]] },
-      { c: at(hip, knee, 1.0), rx: 0.036 * H, rz: 0.04 * H, color: pads, w: [[T, 0.5], [S, 0.5]], oz: -0.004 * H },
-      { c: at(knee, ankle, 0.12), rx: 0.034 * H, rz: 0.036 * H, color: pads, w: [[S, 0.85], [T, 0.15]] },
-      { c: at(knee, ankle, 0.12), rx: 0.03 * H, rz: 0.031 * H, color: skin, w: [[S, 0.85], [T, 0.15]] },
+      {
+        c: at(hip, knee, 0.84),
+        rx: 0.035 * H,
+        rz: 0.037 * H,
+        color: pads,
+        w: [
+          [T, 0.85],
+          [S, 0.15],
+        ],
+      },
+      {
+        c: at(hip, knee, 1.0),
+        rx: 0.036 * H,
+        rz: 0.04 * H,
+        color: pads,
+        w: [
+          [T, 0.5],
+          [S, 0.5],
+        ],
+        oz: -0.004 * H,
+      },
+      {
+        c: at(knee, ankle, 0.12),
+        rx: 0.034 * H,
+        rz: 0.036 * H,
+        color: pads,
+        w: [
+          [S, 0.85],
+          [T, 0.15],
+        ],
+      },
+      {
+        c: at(knee, ankle, 0.12),
+        rx: 0.03 * H,
+        rz: 0.031 * H,
+        color: skin,
+        w: [
+          [S, 0.85],
+          [T, 0.15],
+        ],
+      },
       { c: at(knee, ankle, 0.3), rx: 0.03 * H, rz: 0.033 * H, color: skin, w: [[S, 1]], oz: 0.006 * H },
       { c: at(knee, ankle, 0.55), rx: 0.025 * H, rz: 0.026 * H, color: skin, w: [[S, 1]] },
       { c: at(knee, ankle, 0.55), rx: 0.0255 * H, rz: 0.0265 * H, color: socks, w: [[S, 1]] },
       { c: at(knee, ankle, 0.85), rx: 0.019 * H, rz: 0.02 * H, color: socks, w: [[S, 1]] },
-      { c: at(knee, ankle, 1.02), rx: 0.019 * H, rz: 0.021 * H, color: socks, w: [[S, 0.4], [F, 0.6]] },
+      {
+        c: at(knee, ankle, 1.02),
+        rx: 0.019 * H,
+        rz: 0.021 * H,
+        color: socks,
+        w: [
+          [S, 0.4],
+          [F, 0.6],
+        ],
+      },
     ];
     loft(b, rings, 14, X, false, true);
     // shoe: rounded box from heel to toe
@@ -321,17 +428,89 @@ export function buildRig(H: number, kit: Kit): Rig {
       // [y, rx, rz, color, weights, zOffset]
       [y0, 0.074 * H, 0.058 * H, shorts, [[Hi, 1]]],
       [hy - 0.01 * H, 0.083 * H, 0.062 * H, shorts, [[Hi, 1]]],
-      [hy + 0.03 * H, 0.079 * H, 0.058 * H, shorts, [[Hi, 0.75], [Sp, 0.25]]],
-      [hy + 0.03 * H, 0.079 * H, 0.058 * H, trim, [[Hi, 0.75], [Sp, 0.25]]],
-      [hy + 0.042 * H, 0.078 * H, 0.057 * H, trim, [[Hi, 0.6], [Sp, 0.4]]],
-      [hy + 0.042 * H, 0.078 * H, 0.057 * H, jersey, [[Hi, 0.6], [Sp, 0.4]]],
-      [hy + 0.09 * H, 0.074 * H, 0.054 * H, jersey, [[Sp, 0.9], [Ch, 0.1]]],
-      [hy + 0.14 * H, 0.08 * H, 0.059 * H, jersey, [[Sp, 0.5], [Ch, 0.5]]],
+      [
+        hy + 0.03 * H,
+        0.079 * H,
+        0.058 * H,
+        shorts,
+        [
+          [Hi, 0.75],
+          [Sp, 0.25],
+        ],
+      ],
+      [
+        hy + 0.03 * H,
+        0.079 * H,
+        0.058 * H,
+        trim,
+        [
+          [Hi, 0.75],
+          [Sp, 0.25],
+        ],
+      ],
+      [
+        hy + 0.042 * H,
+        0.078 * H,
+        0.057 * H,
+        trim,
+        [
+          [Hi, 0.6],
+          [Sp, 0.4],
+        ],
+      ],
+      [
+        hy + 0.042 * H,
+        0.078 * H,
+        0.057 * H,
+        jersey,
+        [
+          [Hi, 0.6],
+          [Sp, 0.4],
+        ],
+      ],
+      [
+        hy + 0.09 * H,
+        0.074 * H,
+        0.054 * H,
+        jersey,
+        [
+          [Sp, 0.9],
+          [Ch, 0.1],
+        ],
+      ],
+      [
+        hy + 0.14 * H,
+        0.08 * H,
+        0.059 * H,
+        jersey,
+        [
+          [Sp, 0.5],
+          [Ch, 0.5],
+        ],
+      ],
       [hy + 0.19 * H, 0.09 * H, 0.066 * H, jersey, [[Ch, 1]]],
       [hy + 0.235 * H, 0.1 * H, 0.066 * H, jersey, [[Ch, 1]]],
       [hy + 0.262 * H, 0.098 * H, 0.06 * H, jersey, [[Ch, 1]]],
-      [hy + 0.278 * H, 0.075 * H, 0.046 * H, jersey, [[Ch, 0.9], [idx('neck'), 0.1]]],
-      [hy + 0.287 * H, 0.032 * H, 0.03 * H, trim, [[Ch, 0.5], [idx('neck'), 0.5]]],
+      [
+        hy + 0.278 * H,
+        0.075 * H,
+        0.046 * H,
+        jersey,
+        [
+          [Ch, 0.9],
+          [idx('neck'), 0.1],
+        ],
+      ],
+      [
+        hy + 0.287 * H,
+        0.032 * H,
+        0.03 * H,
+        trim,
+        [
+          [Ch, 0.5],
+          [idx('neck'), 0.5],
+        ],
+      ],
     ];
     const rings: Ring[] = rows.map(([y, rx, rz, color, w, oz]) => ({ c: new THREE.Vector3(0, y, 0.004 * H), rx, rz, color, w, oz }));
     loft(b, rings, 20, X, true, true);
@@ -347,26 +526,94 @@ export function buildRig(H: number, kit: Kit): Rig {
     const el = wp(`lowerArm${L}` as BoneName);
     const wr = wp(`hand${L}` as BoneName);
     const at = (a: THREE.Vector3, bb: THREE.Vector3, t: number) => a.clone().lerp(bb, t);
-    ellipsoid(b, sh.clone().add(new THREE.Vector3(-s * 0.004 * H, -0.006 * H, 0)), 0.036 * H, 0.034 * H, 0.036 * H, () => jersey,
-      [[U, 0.55], [Cl, 0.3], [idx('chest'), 0.15]], 14, 10);
+    ellipsoid(
+      b,
+      sh.clone().add(new THREE.Vector3(-s * 0.004 * H, -0.006 * H, 0)),
+      0.036 * H,
+      0.034 * H,
+      0.036 * H,
+      () => jersey,
+      [
+        [U, 0.55],
+        [Cl, 0.3],
+        [idx('chest'), 0.15],
+      ],
+      14,
+      10,
+    );
     const rings: Ring[] = [
-      { c: at(sh, el, 0.02), rx: 0.03 * H, rz: 0.031 * H, color: jersey, w: [[U, 0.8], [Cl, 0.2]] },
+      {
+        c: at(sh, el, 0.02),
+        rx: 0.03 * H,
+        rz: 0.031 * H,
+        color: jersey,
+        w: [
+          [U, 0.8],
+          [Cl, 0.2],
+        ],
+      },
       { c: at(sh, el, 0.38), rx: 0.027 * H, rz: 0.028 * H, color: jersey, w: [[U, 1]] },
       { c: at(sh, el, 0.38), rx: 0.0255 * H, rz: 0.027 * H, color: skin, w: [[U, 1]] },
       { c: at(sh, el, 0.62), rx: 0.023 * H, rz: 0.025 * H, color: skin, w: [[U, 1]] },
-      { c: at(sh, el, 0.9), rx: 0.019 * H, rz: 0.02 * H, color: skin, w: [[U, 0.8], [Lo, 0.2]] },
-      { c: at(sh, el, 1.0), rx: 0.0185 * H, rz: 0.0195 * H, color: skin, w: [[U, 0.5], [Lo, 0.5]] },
-      { c: at(el, wr, 0.12), rx: 0.0195 * H, rz: 0.02 * H, color: skin, w: [[Lo, 0.85], [U, 0.15]] },
+      {
+        c: at(sh, el, 0.9),
+        rx: 0.019 * H,
+        rz: 0.02 * H,
+        color: skin,
+        w: [
+          [U, 0.8],
+          [Lo, 0.2],
+        ],
+      },
+      {
+        c: at(sh, el, 1.0),
+        rx: 0.0185 * H,
+        rz: 0.0195 * H,
+        color: skin,
+        w: [
+          [U, 0.5],
+          [Lo, 0.5],
+        ],
+      },
+      {
+        c: at(el, wr, 0.12),
+        rx: 0.0195 * H,
+        rz: 0.02 * H,
+        color: skin,
+        w: [
+          [Lo, 0.85],
+          [U, 0.15],
+        ],
+      },
       { c: at(el, wr, 0.35), rx: 0.02 * H, rz: 0.019 * H, color: skin, w: [[Lo, 1]] },
       { c: at(el, wr, 0.8), rx: 0.0155 * H, rz: 0.013 * H, color: skin, w: [[Lo, 1]] },
-      { c: at(el, wr, 1.0), rx: 0.0145 * H, rz: 0.012 * H, color: skin, w: [[Lo, 0.5], [Ha, 0.5]] },
+      {
+        c: at(el, wr, 1.0),
+        rx: 0.0145 * H,
+        rz: 0.012 * H,
+        color: skin,
+        w: [
+          [Lo, 0.5],
+          [Ha, 0.5],
+        ],
+      },
     ];
     loft(b, rings, 12, X, false, false);
     // mitten hand (palm faces the thigh at rest)
     const hc = wr.clone().add(new THREE.Vector3(0, -d.hand * 0.42, 0));
     ellipsoid(b, hc, 0.012 * H, d.hand * 0.5, 0.026 * H, () => skin, [[Ha, 1]], 12, 8);
     // thumb
-    ellipsoid(b, wr.clone().add(new THREE.Vector3(-s * 0.004 * H, -d.hand * 0.32, -0.02 * H)), 0.007 * H, 0.02 * H, 0.008 * H, () => skin, [[Ha, 1]], 8, 6);
+    ellipsoid(
+      b,
+      wr.clone().add(new THREE.Vector3(-s * 0.004 * H, -d.hand * 0.32, -0.02 * H)),
+      0.007 * H,
+      0.02 * H,
+      0.008 * H,
+      () => skin,
+      [[Ha, 1]],
+      8,
+      6,
+    );
   }
   // ---------------- neck and head
   {
@@ -375,29 +622,98 @@ export function buildRig(H: number, kit: Kit): Rig {
     const nb = wp('neck');
     const hd = wp('head');
     const rings: Ring[] = [
-      { c: nb.clone().add(new THREE.Vector3(0, -0.012 * H, 0)), rx: 0.031 * H, rz: 0.031 * H, color: skin, w: [[N, 0.6], [idx('chest'), 0.4]] },
+      {
+        c: nb.clone().add(new THREE.Vector3(0, -0.012 * H, 0)),
+        rx: 0.031 * H,
+        rz: 0.031 * H,
+        color: skin,
+        w: [
+          [N, 0.6],
+          [idx('chest'), 0.4],
+        ],
+      },
       { c: nb.clone().lerp(hd, 0.5), rx: 0.027 * H, rz: 0.028 * H, color: skin, w: [[N, 1]] },
-      { c: hd.clone().add(new THREE.Vector3(0, 0.012 * H, 0)), rx: 0.027 * H, rz: 0.028 * H, color: skin, w: [[N, 0.4], [Hd, 0.6]] },
+      {
+        c: hd.clone().add(new THREE.Vector3(0, 0.012 * H, 0)),
+        rx: 0.027 * H,
+        rz: 0.028 * H,
+        color: skin,
+        w: [
+          [N, 0.4],
+          [Hd, 0.6],
+        ],
+      },
     ];
     loft(b, rings, 12, X, false, false);
     const headC = hd.clone().add(new THREE.Vector3(0, 0.046 * H, -0.006 * H));
     const hr = kit.hairStyle;
-    ellipsoid(b, headC, 0.044 * H, 0.062 * H, 0.054 * H, (n) => {
-      // hair cap: top and back of the head
-      const hairLine = hr === 1 ? 0.55 : 0.25;
-      if (n.y > hairLine - n.z * 0.55 && !(n.z < -0.55 && n.y < 0.62)) return hair;
-      return skin;
-    }, [[Hd, 1]], 20, 14);
-    if (hr === 2) ellipsoid(b, headC.clone().add(new THREE.Vector3(0, 0.035 * H, 0.05 * H)), 0.022 * H, 0.022 * H, 0.022 * H, () => hair, [[Hd, 1]], 10, 8);
+    ellipsoid(
+      b,
+      headC,
+      0.044 * H,
+      0.062 * H,
+      0.054 * H,
+      (n) => {
+        // hair cap: top and back of the head
+        const hairLine = hr === 1 ? 0.55 : 0.25;
+        if (n.y > hairLine - n.z * 0.55 && !(n.z < -0.55 && n.y < 0.62)) return hair;
+        return skin;
+      },
+      [[Hd, 1]],
+      20,
+      14,
+    );
+    if (hr === 2)
+      ellipsoid(
+        b,
+        headC.clone().add(new THREE.Vector3(0, 0.035 * H, 0.05 * H)),
+        0.022 * H,
+        0.022 * H,
+        0.022 * H,
+        () => hair,
+        [[Hd, 1]],
+        10,
+        8,
+      );
     // eyes + brows give the head a readable facing
     for (const ex of [-1, 1]) {
-      ellipsoid(b, headC.clone().add(new THREE.Vector3(ex * 0.017 * H, 0.008 * H, -0.05 * H)), 0.0055 * H, 0.004 * H, 0.003 * H, () => C(0x1a1410), [[Hd, 1]], 6, 4);
+      ellipsoid(
+        b,
+        headC.clone().add(new THREE.Vector3(ex * 0.017 * H, 0.008 * H, -0.05 * H)),
+        0.0055 * H,
+        0.004 * H,
+        0.003 * H,
+        () => C(0x1a1410),
+        [[Hd, 1]],
+        6,
+        4,
+      );
     }
     // nose
-    ellipsoid(b, headC.clone().add(new THREE.Vector3(0, -0.006 * H, -0.054 * H)), 0.006 * H, 0.011 * H, 0.008 * H, () => skin, [[Hd, 1]], 6, 4);
+    ellipsoid(
+      b,
+      headC.clone().add(new THREE.Vector3(0, -0.006 * H, -0.054 * H)),
+      0.006 * H,
+      0.011 * H,
+      0.008 * H,
+      () => skin,
+      [[Hd, 1]],
+      6,
+      4,
+    );
     // ears
     for (const ex of [-1, 1]) {
-      ellipsoid(b, headC.clone().add(new THREE.Vector3(ex * 0.046 * H, 0.0, 0.004 * H)), 0.006 * H, 0.014 * H, 0.01 * H, () => skin, [[Hd, 1]], 6, 4);
+      ellipsoid(
+        b,
+        headC.clone().add(new THREE.Vector3(ex * 0.046 * H, 0.0, 0.004 * H)),
+        0.006 * H,
+        0.014 * H,
+        0.01 * H,
+        () => skin,
+        [[Hd, 1]],
+        6,
+        4,
+      );
     }
   }
 

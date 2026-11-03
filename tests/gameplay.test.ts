@@ -191,7 +191,10 @@ function makeHost(ball: FakeBall, events: ContactEvent[]) {
  * `offset` seconds from the ideal moment; returns the graded contact.
  */
 function spikeWithOffset(
-  offset: number, hold = 0.45, onStep?: (a: Athlete, t: number, events: ContactEvent[]) => boolean, body?: Partial<BodyOverride>,
+  offset: number,
+  hold = 0.45,
+  onStep?: (a: Athlete, t: number, events: ContactEvent[]) => boolean,
+  body?: Partial<BodyOverride>,
 ) {
   const ball = new FakeBall();
   const events: ContactEvent[] = [];
@@ -457,7 +460,7 @@ describe('spike drill set calls', () => {
     expect(quickSpot(-sx, -1, back.inFront).x).toBeLessThan(-sx - 0.9);
   });
 
-  it('a back quick set over the setter\'s head still meets the hitter at the top of the jump', () => {
+  it("a back quick set over the setter's head still meets the hitter at the top of the jump", () => {
     const a = new Athlete('MB', 1);
     a.place(2.1, 1.0, 0);
     a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };

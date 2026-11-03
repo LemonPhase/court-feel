@@ -56,9 +56,14 @@ export class BallEntity {
     this.mesh = new THREE.Mesh(
       new THREE.SphereGeometry(R, 32, 20),
       new THREE.MeshStandardMaterial({
-        map: tex, roughness: 0.42, metalness: 0, envMapIntensity: 0.9,
+        map: tex,
+        roughness: 0.42,
+        metalness: 0,
+        envMapIntensity: 0.9,
         // a touch of self-illumination keeps the ball readable from below against the ceiling
-        emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.22,
+        emissive: 0xffffff,
+        emissiveMap: tex,
+        emissiveIntensity: 0.22,
       }),
     );
     this.mesh.castShadow = true;
@@ -133,11 +138,23 @@ export class BallEntity {
   }
 
   /** place the ball and give it a velocity (and spin) */
-  launch(p: { x: number; y: number; z: number }, v: { x: number; y: number; z: number }, w = { x: 0, y: 0, z: 0 }, knuckle = 0, t = 0): void {
+  launch(
+    p: { x: number; y: number; z: number },
+    v: { x: number; y: number; z: number },
+    w = { x: 0, y: 0, z: 0 },
+    knuckle = 0,
+    t = 0,
+  ): void {
     const s = this.state;
-    s.p.x = p.x; s.p.y = p.y; s.p.z = p.z;
-    s.v.x = v.x; s.v.y = v.y; s.v.z = v.z;
-    s.w.x = w.x; s.w.y = w.y; s.w.z = w.z;
+    s.p.x = p.x;
+    s.p.y = p.y;
+    s.p.z = p.z;
+    s.v.x = v.x;
+    s.v.y = v.y;
+    s.v.z = v.z;
+    s.w.x = w.x;
+    s.w.y = w.y;
+    s.w.z = w.z;
     s.knuckle = knuckle;
     s.kt = 0;
     s.rest = false;
@@ -151,8 +168,12 @@ export class BallEntity {
   /** change velocity in place (contact), keeping interpolation continuous */
   hit(v: { x: number; y: number; z: number }, w: { x: number; y: number; z: number }, knuckle = 0, t = 0): void {
     const s = this.state;
-    s.v.x = v.x; s.v.y = v.y; s.v.z = v.z;
-    s.w.x = w.x; s.w.y = w.y; s.w.z = w.z;
+    s.v.x = v.x;
+    s.v.y = v.y;
+    s.v.z = v.z;
+    s.w.x = w.x;
+    s.w.y = w.y;
+    s.w.z = w.z;
     s.knuckle = knuckle;
     s.kt = 0;
     s.rest = false;

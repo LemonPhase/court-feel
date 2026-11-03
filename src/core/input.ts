@@ -48,7 +48,15 @@ export class Input {
   captureKeys: () => boolean = () => true;
   /** game keys whose browser default is suppressed while gameplay captures the keyboard */
   private static readonly swallow = new Set([
-    'Space', 'Tab', 'F3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight',
+    'Space',
+    'Tab',
+    'F3',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'ShiftLeft',
+    'ShiftRight',
   ]);
 
   constructor(private readonly el: HTMLElement) {

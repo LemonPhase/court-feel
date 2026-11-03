@@ -101,6 +101,19 @@ function lerpPt(a: [number, number], b: [number, number], u: number): [number, n
 /** the shadow quads clipped to the opponent court (x within ±halfWidth, z from the net to the end line) */
 export function blockShadowOnCourt(contact: V3, spans: HandSpan[], handsTop: number, halfWidth: number, halfLength: number): FloorPoly[] {
   return blockShadow(contact, spans, handsTop, halfLength + 0.5)
-    .map((q) => clipPoly([[q.nearX0, 0], [q.nearX1, 0], [q.farX1, q.farZ], [q.farX0, q.farZ]], -halfWidth, halfWidth, -halfLength, 0))
+    .map((q) =>
+      clipPoly(
+        [
+          [q.nearX0, 0],
+          [q.nearX1, 0],
+          [q.farX1, q.farZ],
+          [q.farX0, q.farZ],
+        ],
+        -halfWidth,
+        halfWidth,
+        -halfLength,
+        0,
+      ),
+    )
     .filter((p) => p.length >= 3);
 }

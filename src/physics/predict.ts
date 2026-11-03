@@ -23,7 +23,10 @@ export class BallPredictor {
   /** version of the ball state this prediction was built from */
   version = -1;
 
-  constructor(readonly dt: number, readonly horizon: number) {
+  constructor(
+    readonly dt: number,
+    readonly horizon: number,
+  ) {
     const n = Math.ceil(horizon / dt) + 1;
     this.pos = new Float32Array(n * 3);
     this.vel = new Float32Array(n * 3);

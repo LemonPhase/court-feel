@@ -30,7 +30,10 @@ export abstract class Mode {
   bestStreak = 0;
   reps = 0;
 
-  constructor(protected g: Game, protected position: PositionId) {}
+  constructor(
+    protected g: Game,
+    protected position: PositionId,
+  ) {}
 
   abstract setup(): void;
   abstract step(dt: number): void;

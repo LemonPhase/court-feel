@@ -1,4 +1,11 @@
-import { DEFAULT_SETTINGS, SETTING_RANGES, TOUCH_CONTROL_MODES, type BooleanSettingKey, type NumericSettingKey, type Settings } from '../config';
+import {
+  DEFAULT_SETTINGS,
+  SETTING_RANGES,
+  TOUCH_CONTROL_MODES,
+  type BooleanSettingKey,
+  type NumericSettingKey,
+  type Settings,
+} from '../config';
 import { sanitizeBodies } from '../game/body';
 import { clamp } from './mathx';
 

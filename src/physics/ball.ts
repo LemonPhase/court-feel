@@ -62,9 +62,15 @@ export function makeBall(): BallState {
 }
 
 export function copyBall(src: BallState, dst: BallState): BallState {
-  dst.p.x = src.p.x; dst.p.y = src.p.y; dst.p.z = src.p.z;
-  dst.v.x = src.v.x; dst.v.y = src.v.y; dst.v.z = src.v.z;
-  dst.w.x = src.w.x; dst.w.y = src.w.y; dst.w.z = src.w.z;
+  dst.p.x = src.p.x;
+  dst.p.y = src.p.y;
+  dst.p.z = src.p.z;
+  dst.v.x = src.v.x;
+  dst.v.y = src.v.y;
+  dst.v.z = src.v.z;
+  dst.w.x = src.w.x;
+  dst.w.y = src.w.y;
+  dst.w.z = src.w.z;
   dst.knuckle = src.knuckle;
   dst.kt = src.kt;
   dst.rest = src.rest;
@@ -251,8 +257,15 @@ function collideNet(s: BallState, prevZ: number, env: BallEnv, events?: Collisio
 }
 
 function collideVerticalCylinder(
-  s: BallState, cx: number, cz: number, rad: number, y0: number, y1: number, e: number,
-  kind: CollisionKind, events?: CollisionEvent[],
+  s: BallState,
+  cx: number,
+  cz: number,
+  rad: number,
+  y0: number,
+  y1: number,
+  e: number,
+  kind: CollisionKind,
+  events?: CollisionEvent[],
 ): boolean {
   const { p, v } = s;
   if (p.y < y0 - R || p.y > y1 + R) return false;
@@ -271,7 +284,11 @@ function collideVerticalCylinder(
     nx = ex / (dist || 1);
     ny = dy / (dist || 1);
     nz = ez / (dist || 1);
-    if (dist < 1e-6) { nx = 0; ny = 1; nz = 0; }
+    if (dist < 1e-6) {
+      nx = 0;
+      ny = 1;
+      nz = 0;
+    }
     p.x += nx * (minD - dist);
     p.y += ny * (minD - dist);
     p.z += nz * (minD - dist);

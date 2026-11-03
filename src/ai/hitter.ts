@@ -38,7 +38,10 @@ export class HitterBrain implements Brain {
   enabled = true;
   lastShot = '';
 
-  constructor(public athlete: Athlete, public lane: AttackLane) {}
+  constructor(
+    public athlete: Athlete,
+    public lane: AttackLane,
+  ) {}
 
   reset(): void {
     this.phase = 'ready';
@@ -178,7 +181,9 @@ export class HitterBrain implements Brain {
           { x: hitX * 0.15, z: opp * 6.5, w: 0.6, name: 'seam' },
         ];
     // avoid the block: penalise shots whose direction passes over a blocker's hands
-    const up = this.blockers().filter((b) => Math.abs(b.pos.z) < 1.4).sort((p, q) => p.pos.x - q.pos.x);
+    const up = this.blockers()
+      .filter((b) => Math.abs(b.pos.z) < 1.4)
+      .sort((p, q) => p.pos.x - q.pos.x);
     for (const b of up) {
       for (const o of options) {
         // where does the line from the hitter to the target cross the net?

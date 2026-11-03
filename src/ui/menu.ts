@@ -1,4 +1,14 @@
-import { BODY, isPositionId, POSITIONS, SETTING_RANGES, type BodyOverride, type BooleanSettingKey, type NumericSettingKey, type PositionId, type Settings } from '../config';
+import {
+  BODY,
+  isPositionId,
+  POSITIONS,
+  SETTING_RANGES,
+  type BodyOverride,
+  type BooleanSettingKey,
+  type NumericSettingKey,
+  type PositionId,
+  type Settings,
+} from '../config';
 import { isCustomBody, resolveBody, setBodyValue, spikeReach, topSpikeKmh } from '../game/body';
 import { isModeId, MODE_INFO, type ModeId } from '../game/modes/mode';
 import { BUILD_LABEL } from '../core/build';
@@ -63,7 +73,11 @@ export class Menu {
   /** which position the "Your athlete" settings edit (follows the selected position when the settings open) */
   private bodyTab: PositionId = 'OH';
 
-  constructor(parent: HTMLElement, private settings: Settings, private cb: MenuCallbacks) {
+  constructor(
+    parent: HTMLElement,
+    private settings: Settings,
+    private cb: MenuCallbacks,
+  ) {
     try {
       const saved = JSON.parse(localStorage.getItem('courtfeel.menu') || '{}');
       if (isModeId(saved?.mode)) this.mode = saved.mode;
@@ -74,10 +88,7 @@ export class Menu {
     // ------------------------------------------------------------ start screen
     this.start = h('div', 'menu');
     const left = h('div', 'menu-left');
-    left.append(
-      h('div', 'logo', '<span>COURT</span><b>FEEL</b>'),
-      h('div', 'tagline', 'Approach. Plant. Explode. Feel every contact.'),
-    );
+    left.append(h('div', 'logo', '<span>COURT</span><b>FEEL</b>'), h('div', 'tagline', 'Approach. Plant. Explode. Feel every contact.'));
     left.append(h('div', 'menu-h', '1 · Choose your position'));
     const posRow = h('div', 'pos-row');
     posRow.setAttribute('role', 'group');
@@ -96,7 +107,11 @@ export class Menu {
     modeGrid.setAttribute('aria-label', 'Drill');
     (Object.keys(MODE_INFO) as ModeId[]).forEach((id, i) => {
       const m = MODE_INFO[id];
-      const c = h('button', 'mode-card', `<div class="mode-n">${i + 1}</div><div class="mode-t">${m.title}</div><div class="mode-b">${m.blurb}</div>`);
+      const c = h(
+        'button',
+        'mode-card',
+        `<div class="mode-n">${i + 1}</div><div class="mode-t">${m.title}</div><div class="mode-b">${m.blurb}</div>`,
+      );
       c.onclick = () => this.selectMode(id);
       c.ondblclick = () => this.go();
       modeGrid.append(c);
@@ -451,4 +466,3 @@ export class Menu {
     return wrap;
   }
 }
-

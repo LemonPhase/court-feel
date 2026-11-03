@@ -6,7 +6,18 @@ import { SetterBrain } from '../../ai/setter';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import { outcomeLabel, type Outcome } from '../judge';
-import { attackHeight, laneFor, quickSetFor, quickSpot, SET_PLAYS, SETTER_SPOT, SETTER_TARGET, setterTouchY, type AttackLane, type SetPlay } from '../plays';
+import {
+  attackHeight,
+  laneFor,
+  quickSetFor,
+  quickSpot,
+  SET_PLAYS,
+  SETTER_SPOT,
+  SETTER_TARGET,
+  setterTouchY,
+  type AttackLane,
+  type SetPlay,
+} from '../plays';
 import { kbd, makeFloorRing, Mode, ZoneMarker } from './mode';
 import { planApproach, planQuick, planToPoint, type ApproachPlan } from '../../ai/approach';
 import { BlockerBrain } from '../../ai/blocker';
@@ -114,7 +125,8 @@ export class SpikeDrill extends Mode {
     this.placeBlockers();
     this.setTitle();
     this.updateScore();
-    const what = level === 0 ? 'Block off' : level === 1 ? 'Block: single · hit around it' : 'Block: double · line or cross, or over the top';
+    const what =
+      level === 0 ? 'Block off' : level === 1 ? 'Block: single · hit around it' : 'Block: double · line or cross, or over the top';
     this.g.hud.message(what, 1.8);
   }
 
@@ -169,14 +181,27 @@ export class SpikeDrill extends Mode {
     // the court floor is pulled towards the camera with a polygon offset: pull the overlay further, or
     // it loses the depth test at grazing angles (the far court seen from behind the hitter)
     const offset = { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 };
-    this.shadow = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide, ...offset }));
+    this.shadow = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({
+        color: 0xff4a3a,
+        transparent: true,
+        opacity: 0.3,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        ...offset,
+      }),
+    );
     this.shadow.renderOrder = 2;
     this.shadow.visible = false;
     this.add(this.shadow);
     const egeo = new THREE.BufferGeometry();
     egeo.setAttribute('position', new THREE.BufferAttribute(this.shadowEdgePos, 3));
     egeo.setDrawRange(0, 0);
-    this.shadowEdge = new THREE.LineSegments(egeo, new THREE.LineBasicMaterial({ color: 0xff7a68, transparent: true, opacity: 0.85, ...offset }));
+    this.shadowEdge = new THREE.LineSegments(
+      egeo,
+      new THREE.LineBasicMaterial({ color: 0xff7a68, transparent: true, opacity: 0.85, ...offset }),
+    );
     this.shadowEdge.renderOrder = 3;
     this.shadowEdge.visible = false;
     this.add(this.shadowEdge);
@@ -349,11 +374,13 @@ export class SpikeDrill extends Mode {
 
   hint(): string {
     const me = this.g.me;
-    if (me.state === 'air' || me.action?.kind === 'windup') return `hold ${kbd('LMB')} = wind up (longer = harder) · release = hit · tap = tip &nbsp; aim with the mouse`;
+    if (me.state === 'air' || me.action?.kind === 'windup')
+      return `hold ${kbd('LMB')} = wind up (longer = harder) · release = hit · tap = tip &nbsp; aim with the mouse`;
     if (me.state === 'load') return `release ${kbd('Space')} to jump`;
     const calls = this.plays ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call` : '';
     const block = ` · ${kbd('B')} block: ${BLOCK_NAMES[this.blockLevel]}`;
-    if (this.play?.inFront !== undefined) return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
+    if (this.play?.inFront !== undefined)
+      return `${kbd('Shift')}+${kbd('W')} run on the pass · ${kbd('Space')} jump with the setter's touch${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
     return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
   }
 
@@ -538,7 +565,10 @@ export class SpikeDrill extends Mode {
     }
     this.score += pts;
     if (!tooled) this.bumpStreak(good);
-    g.hud.showBanner(pts > 0 ? `${label}  +${pts}` : label, good ? 'good' : tooled || (o && o.kind === 'in' && o.side === -1) ? 'neutral' : 'bad');
+    g.hud.showBanner(
+      pts > 0 ? `${label}  +${pts}` : label,
+      good ? 'good' : tooled || (o && o.kind === 'in' && o.side === -1) ? 'neutral' : 'bad',
+    );
     g.crowd(good ? (ev?.perfect ? 1 : 0.6) : 0.1, good);
     this.updateScore();
   }

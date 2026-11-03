@@ -254,8 +254,16 @@ export class ContactSystem {
       act.note = dc > stretch ? (act.err < 0 ? 'Swung early' : 'Swung late') : '';
       act.contactPoint.copy(this._p);
       h.emitContact({
-        athlete: a, kind: 'spike', grade: 'Miss', note: act.note, speed: 0, point: this._p.clone(),
-        quality: 0, perfect: false, tip: false, target: new THREE.Vector3(),
+        athlete: a,
+        kind: 'spike',
+        grade: 'Miss',
+        note: act.note,
+        speed: 0,
+        point: this._p.clone(),
+        quality: 0,
+        perfect: false,
+        tip: false,
+        target: new THREE.Vector3(),
       });
       return;
     }
@@ -325,7 +333,8 @@ export class ContactSystem {
       ball.hit(out, w, 0, h.simTime);
     } else if (serve && a.state !== 'air') {
       // standing float serve: no spin, knuckles
-      speed = CONTACT.serveFloatSpeed * (rank === 3 ? 1.08 : rank === 2 ? 1 : 0.88) * lerp(0.9, 1.05, pos.power - 0.75) * lerp(0.85, 1, power);
+      speed =
+        CONTACT.serveFloatSpeed * (rank === 3 ? 1.08 : rank === 2 ? 1 : 0.88) * lerp(0.9, 1.05, pos.power - 0.75) * lerp(0.85, 1, power);
       const land = { x: 0, y: 0, z: 0 };
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
@@ -342,7 +351,9 @@ export class ContactSystem {
       const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
       const gradeK = serve ? (rank === 3 ? 1.1 : rank === 2 ? 1 : 0.8) : 1;
       speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1) * power;
-      const spin = (serve ? CONTACT.serveJumpSpin : rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk) * lerp(0.75, 1, power);
+      const spin =
+        (serve ? CONTACT.serveJumpSpin : rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk) *
+        lerp(0.75, 1, power);
       const land = { x: 0, y: 0, z: 0 };
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, spin, out, w, land);
@@ -363,8 +374,17 @@ export class ContactSystem {
     // FX intensity follows timing and power; the full Perfect package needs a real wind-up
     const quality = (rank === 3 ? 1 : rank === 2 ? 0.6 : 0.3) * lerp(0.55, 1, charge);
     h.emitContact({
-      athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', grade, note, speed, point: new THREE.Vector3(bp.x, bp.y, bp.z),
-      quality: tip ? 0.2 : quality, perfect: grade === 'Perfect' && !tip && charge >= 0.5, tip, target, power: tip ? 0 : charge,
+      athlete: a,
+      kind: serve ? 'serve' : tip ? 'tip' : 'spike',
+      grade,
+      note,
+      speed,
+      point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      quality: tip ? 0.2 : quality,
+      perfect: grade === 'Perfect' && !tip && charge >= 0.5,
+      tip,
+      target,
+      power: tip ? 0 : charge,
     });
   }
 
@@ -466,8 +486,15 @@ export class ContactSystem {
     act.note = note;
     act.contactPoint.set(bp.x, bp.y, bp.z);
     h.emitContact({
-      athlete: a, kind: dig ? 'dig' : 'pass', grade, note, speed: Math.hypot(out.x, out.y, out.z),
-      point: new THREE.Vector3(bp.x, bp.y, bp.z), quality: GRADE_RANK[grade] / 3, perfect: grade === 'Perfect', tip: false,
+      athlete: a,
+      kind: dig ? 'dig' : 'pass',
+      grade,
+      note,
+      speed: Math.hypot(out.x, out.y, out.z),
+      point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      quality: GRADE_RANK[grade] / 3,
+      perfect: grade === 'Perfect',
+      tip: false,
       target: new THREE.Vector3(target.x, target.y, target.z),
     });
     return true;
@@ -549,7 +576,8 @@ export class ContactSystem {
     };
     const out = { x: 0, y: 0, z: 0 };
     const from = { x: bp.x, y: bp.y, z: bp.z };
-    if (best.time) solveFixedTime(from, tgt, Math.max(0.15, best.time * (rank === 3 ? 1 : 1 + (h.rand() - 0.5) * 0.3)), { x: 0, y: 0, z: 0 }, out);
+    if (best.time)
+      solveFixedTime(from, tgt, Math.max(0.15, best.time * (rank === 3 ? 1 : 1 + (h.rand() - 0.5) * 0.3)), { x: 0, y: 0, z: 0 }, out);
     else solveApex(from, tgt, best.apex + (rank === 3 ? 0 : (h.rand() - 0.5) * 0.6), { x: 0, y: 0, z: 0 }, out);
     ball.hit(out, { x: 0, y: 0, z: 0 }, 0, t);
     ball.lastTouch = { athlete: a, kind: 'set', t, side: a.side };
@@ -561,8 +589,15 @@ export class ContactSystem {
     act.contactPoint.set(bp.x, bp.y, bp.z);
     this.lastSet = best;
     h.emitContact({
-      athlete: a, kind: 'set', grade, note: note || best.label, speed: Math.hypot(out.x, out.y, out.z),
-      point: new THREE.Vector3(bp.x, bp.y, bp.z), quality: rank / 3, perfect: rank === 3, tip: false,
+      athlete: a,
+      kind: 'set',
+      grade,
+      note: note || best.label,
+      speed: Math.hypot(out.x, out.y, out.z),
+      point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      quality: rank / 3,
+      perfect: rank === 3,
+      tip: false,
       target: new THREE.Vector3(tgt.x, tgt.y, tgt.z),
     });
     return true;
@@ -654,9 +689,16 @@ export class ContactSystem {
     act.note = kind === 'stuff' ? 'Stuff!' : kind === 'soft' ? 'Soft block' : 'Tooled';
     act.contactPoint.set(bp.x, bp.y, bp.z);
     h.emitContact({
-      athlete: a, kind: 'block', grade, note: note || act.note, speed: Math.hypot(out.x, out.y, out.z),
-      point: new THREE.Vector3(bp.x, bp.y, bp.z), quality: kind === 'stuff' ? (rank === 3 ? 1 : 0.7) : 0.3,
-      perfect: kind === 'stuff' && rank === 3, tip: false, target: new THREE.Vector3(),
+      athlete: a,
+      kind: 'block',
+      grade,
+      note: note || act.note,
+      speed: Math.hypot(out.x, out.y, out.z),
+      point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      quality: kind === 'stuff' ? (rank === 3 ? 1 : 0.7) : 0.3,
+      perfect: kind === 'stuff' && rank === 3,
+      tip: false,
+      target: new THREE.Vector3(),
     });
     return true;
   }
@@ -706,7 +748,13 @@ export const AIM_DEPTH: [number, number] = [1.0, 9.6];
  * gives how deep into the opponent's court (works from the net or the end line).
  */
 export function aimTargetFromLook(
-  fromX: number, fromZ: number, yaw: number, pitch: number, fp: boolean, side: 1 | -1, out: THREE.Vector3,
+  fromX: number,
+  fromZ: number,
+  yaw: number,
+  pitch: number,
+  fp: boolean,
+  side: 1 | -1,
+  out: THREE.Vector3,
 ): THREE.Vector3 {
   const [lo, hi] = aimPitchRange(fp);
   const t = clamp01((pitch - lo) / (hi - lo));
