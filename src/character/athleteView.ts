@@ -419,7 +419,12 @@ export class AthleteView {
     // ================================================== head look
     this.updateHead(dt);
 
-    // FX anchors
+    this.updateFxAnchors();
+  }
+
+  /** FX anchors (palms, head) from the current pose; the replay calls it after posing a frame */
+  updateFxAnchors(): void {
+    const B = this.rig.bones;
     B.handR.getWorldPosition(this.palmR);
     B.handL.getWorldPosition(this.palmL);
     B.head.getWorldPosition(this.headPos);

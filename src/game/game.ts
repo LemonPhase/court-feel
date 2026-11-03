@@ -186,6 +186,8 @@ export class Game {
     const v = new AthleteView(a, kit);
     this.views.set(a, v);
     this.scene.add(v.root);
+    // spawned mid-drill (the spike drill's block): the replay records it too, from now on
+    this.fx?.replay.addView(v);
     a.onLand = (ath, impact) => this.events.emit('land', { athlete: ath, impact });
     a.onTakeoff = (ath) => this.events.emit('takeoff', { athlete: ath });
     v.onFootstep = (ath, speed) => this.events.emit('step', { athlete: ath, speed });
@@ -535,6 +537,7 @@ export class Game {
   }
 
   private renderReplay(dt: number, draw: boolean): void {
+    this.mode?.replayFrame();
     this.rig.update(dt, null);
     this.fx.update(dt * this.fx.replay.speed);
     this.arena.update(dt);

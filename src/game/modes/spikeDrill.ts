@@ -204,12 +204,28 @@ export class SpikeDrill extends Mode {
   /** redraw the block shadow from where the blockers are right now */
   private updateShadow(): void {
     const show = this.blockLevel > 0 && this.phase !== 'intro';
+    if (show) this.contactPoint(this.tmp);
+    this.drawShadow(show, this.tmp, show ? this.activeBlockers().map((a) => a.pos.x) : []);
+  }
+
+  /** during a replay: the shadow of the replayed block (where it is in the replay) from the replayed contact */
+  replayFrame(): void {
+    const xs: number[] = [];
+    for (const a of this.activeBlockers()) {
+      const v = this.g.views.get(a);
+      // a blocker the replay hides was not there yet at this point of it
+      if (v && v.root.visible) xs.push(v.root.position.x);
+    }
+    this.drawShadow(this.blockLevel > 0, this.g.fx.replay.contact, xs);
+  }
+
+  /** the shadow on their floor of hands at these x along the net, for a ball hit from `contact` */
+  private drawShadow(show: boolean, contact: { x: number; y: number; z: number }, handsX: number[]): void {
     this.shadow.visible = show;
     this.shadowEdge.visible = show;
     if (!show) return;
-    this.contactPoint(this.tmp);
-    const spans: HandSpan[] = this.activeBlockers().map((a) => ({ x0: a.pos.x - HANDS_WIDTH / 2, x1: a.pos.x + HANDS_WIDTH / 2 }));
-    const polys = blockShadowOnCourt(this.tmp, spans, this.g.env.netTop + HANDS_ABOVE_NET, COURT.halfWidth, COURT.halfLength);
+    const spans: HandSpan[] = handsX.map((x) => ({ x0: x - HANDS_WIDTH / 2, x1: x + HANDS_WIDTH / 2 }));
+    const polys = blockShadowOnCourt(contact, spans, this.g.env.netTop + HANDS_ABOVE_NET, COURT.halfWidth, COURT.halfLength);
     const P = this.shadowPos;
     const I = this.shadowIdx;
     const E = this.shadowEdgePos;

@@ -32,6 +32,8 @@ export abstract class Mode {
   abstract setup(): void;
   abstract step(dt: number): void;
   frame(_dt: number): void {}
+  /** each frame of a replay (the simulation is frozen, the replay poses the scene): redraw overlays from it */
+  replayFrame(): void {}
   onContact(_ev: ContactEvent): void {}
   onOutcome(_o: Outcome): void {}
   abstract hint(): string;

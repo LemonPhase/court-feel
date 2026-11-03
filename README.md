@@ -182,7 +182,9 @@ else you did well is kept too: after your attacks, serves, blocks and Perfect
 or Good passes, sets and digs the hint shows **R replay** as soon as the ball
 is dead ("Nice · R to replay"), and R plays the last few seconds around that
 contact. The simulation is frozen while it plays, so nothing is missed: any
-key skips, and the drill or rally continues exactly where it was.
+key skips, and the drill or rally continues exactly where it was. With the
+Spike Drill's block on (B), the replay shows it too: the blockers' read and
+jump, the touch on their hands and the block shadow from your contact point.
 
 ## How the feel works
 
