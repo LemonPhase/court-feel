@@ -24,6 +24,9 @@ const _v2 = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _ray = new THREE.Ray();
 const _hit = new THREE.Vector3();
+/** spring stiffness (rad/s) of the FOV punch and of the camera kick */
+const FOV_W = 17;
+const KICK_W = 24;
 
 /**
  * First / third person camera with shared yaw+pitch so the aim direction is
@@ -43,6 +46,15 @@ export class CameraRig {
   private trauma = 0;
   private shakeTime = 0;
   shakeScale = 1;
+  /** FOV punch (degrees, springs back to 0) and a directional kick (pitch rad, height m) */
+  private fovKick = 0;
+  private fovKickV = 0;
+  private kickPitch = 0;
+  private kickPitchV = 0;
+  private kickY = 0;
+  private kickYV = 0;
+  /** set by the game during a hit-stop: the FOV punch holds on the freeze frame */
+  frozen = false;
   /** TP camera keeps the ball in frame */
   ballPos: THREE.Vector3 | null = null;
   blockers: THREE.Box3[] = [];
@@ -87,6 +99,42 @@ export class CameraRig {
     this.trauma = Math.min(1, this.trauma + t);
   }
 
+  /** snap the FOV by `deg` (negative = punch in); it holds while frozen, then springs back */
+  punchFov(deg: number): void {
+    this.fovKick = deg * this.shakeScale;
+    this.fovKickV = 0;
+  }
+
+  /** a jolt that springs back: `pitch` (rad, negative = nod down) and `y` (m) peak offsets */
+  kick(pitch: number, y: number): void {
+    // peak displacement of the spring below (damping 0.5) is ~0.55 * v0 / w
+    this.kickPitchV += (pitch * this.shakeScale * KICK_W) / 0.55;
+    this.kickYV += (y * this.shakeScale * KICK_W) / 0.55;
+  }
+
+  private springs(dt: number): void {
+    let left = Math.min(dt, 0.1);
+    while (left > 1e-6) {
+      const h = Math.min(left, 1 / 240);
+      left -= h;
+      // semi-implicit Euler, under-damped (a small overshoot reads as a snap, not a drift)
+      if (!this.frozen) {
+        this.fovKickV += (-FOV_W * FOV_W * this.fovKick - 2 * 0.42 * FOV_W * this.fovKickV) * h;
+        this.fovKick += this.fovKickV * h;
+      }
+      this.kickPitchV += (-KICK_W * KICK_W * this.kickPitch - 2 * 0.5 * KICK_W * this.kickPitchV) * h;
+      this.kickPitch += this.kickPitchV * h;
+      this.kickYV += (-KICK_W * KICK_W * this.kickY - 2 * 0.5 * KICK_W * this.kickYV) * h;
+      this.kickY += this.kickYV * h;
+    }
+  }
+
+  private applyKick(): void {
+    if (Math.abs(this.kickPitch) < 1e-5 && Math.abs(this.kickY) < 1e-5) return;
+    this.camera.rotation.x += this.kickPitch;
+    this.camera.position.y += this.kickY;
+  }
+
   /** world-space forward of the aim (camera) direction */
   aimDir(out = new THREE.Vector3()): THREE.Vector3 {
     _e.set(this.pitch, this.yaw, 0, 'YXZ');
@@ -97,6 +145,7 @@ export class CameraRig {
     const cam = this.camera;
     this.shakeTime += dt;
     this.trauma = Math.max(0, this.trauma - dt * CAMERA.shakeDecay * 0.5);
+    this.springs(dt);
 
     if (this.mode === 'menu') {
       this.menuTime += dt;
@@ -126,8 +175,9 @@ export class CameraRig {
       const minZ = CAMERA.fpNear + CAMERA.fpNetGap;
       if (Math.abs(cam.position.x) < COURT.postX + 0.5 && cam.position.z * t.side < minZ) cam.position.z = t.side * minZ;
       cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
-      this.setFov(this.baseFov + this.fovBoost, dt, false);
+      this.setFov(this.baseFov + this.fovBoost + this.fovKick, dt, false);
       this.applyShake(CAMERA.fpShakeScale);
+      this.applyKick();
       this.tpCamToPivot = 0;
       return;
     }
@@ -181,8 +231,9 @@ export class CameraRig {
     cam.position.z = clamp(cam.position.z, -COURT.arenaHalfZ + 1, COURT.arenaHalfZ - 1);
     cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
     this.tpCamToPivot = cam.position.distanceTo(this.pivot);
-    this.setFov(this.baseFov + this.fovBoost * 0.6, dt, false);
+    this.setFov(this.baseFov + this.fovBoost * 0.6 + this.fovKick, dt, false);
     this.applyShake(1);
+    this.applyKick();
   }
 
   private setFov(f: number, dt: number, smooth: boolean): void {

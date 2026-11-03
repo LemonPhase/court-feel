@@ -48,6 +48,10 @@ export class Effects {
   private letterbox: HTMLDivElement;
   private replayTag: HTMLDivElement;
   private flashes: { m: THREE.Sprite; t: number; follow: THREE.Vector3 | null }[] = [];
+  /** shock rings in the air around a Perfect spike's path */
+  private airRings: Ring[] = [];
+  /** ball squash on contact / floor slam */
+  private sq = { amount: 0, t: 0, q: new THREE.Quaternion() };
 
   constructor(private g: Game, parent: HTMLElement) {
     const scene = g.scene;
@@ -71,6 +75,17 @@ export class Effects {
       m.renderOrder = 4;
       scene.add(m);
       this.rings.push({ mesh: m, t: 1, dur: 0.4, size: 3, strength: 0 });
+    }
+    const airTex = makeRingTexture(0.07);
+    for (let i = 0; i < 2; i++) {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({ map: airTex, color: new THREE.Color(3.2, 2.6, 1.7), transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+      );
+      m.visible = false;
+      m.renderOrder = 7;
+      scene.add(m);
+      this.airRings.push({ mesh: m, t: 1, dur: 0.2, size: 1, strength: 0 });
     }
     // crack decals
     for (let i = 0; i < 4; i++) {
@@ -120,7 +135,7 @@ export class Effects {
         const imp = this.pendingImpact;
         if (imp && e.impact > 6) {
           this.pendingImpact = null;
-          const data = { x: e.x, z: e.z, q: imp.q, perfect: imp.perfect ? 1 : 0, speed: imp.speed };
+          const data = { x: e.x, z: e.z, q: imp.q, perfect: imp.perfect ? 1 : 0, speed: imp.speed, user: imp.user ? 1 : 0 };
           this.playEvent({ t: g.simTime, kind: 'impact', data }, false);
           this.replay.addEvent(g.simTime, 'impact', data);
           if (imp.perfect && imp.user && g.settings.replays && FX.replayEnabled && !g.inMenu) {
@@ -129,11 +144,11 @@ export class Effects {
             this.replay.impact.set(e.x, 0, e.z);
             this.replay.impactT = g.simTime;
           }
-        } else this.audio.floor(e.impact, false);
+        } else this.audio.floor(e.impact);
         if (e.impact > 4) this.puff(e.x, 0.05, e.z, 4, 0.18, 0.5);
       } else if (e.kind === 'net' || e.kind === 'tape') this.audio.net(e.impact);
       else if (e.kind === 'antenna') this.audio.antenna();
-      else if (e.kind === 'board' || e.kind === 'post') this.audio.floor(e.impact * 0.6, false);
+      else if (e.kind === 'board' || e.kind === 'post') this.audio.floor(e.impact * 0.6);
     });
     ev.on('land', ({ athlete, impact }) => {
       if (!this.near(athlete.pos)) return;
@@ -186,8 +201,12 @@ export class Effects {
         this.pendingImpact = { q, perfect: e.perfect, user, speed: e.speed };
         if (user || this.near(p, 8)) {
           if (e.perfect && user) {
-            g.hitStop = FX.hitStopPerfect * FX.intensity;
+            // the harder it was hit, the longer the freeze and the bigger the punch
+            const pw = AudioEngine.powerFromSpeed(e.speed);
+            g.hitStop = (FX.hitStopPerfect + FX.hitStopPower * pw) * FX.intensity;
             g.rig.addTrauma(FX.shakePerfect * FX.intensity);
+            g.rig.punchFov(-FX.fovPunch * (0.5 + 0.5 * pw) * (g.rig.mode === 'fp' ? FX.fpPunchScale : 1) * FX.intensity);
+            g.rig.kick(-FX.kickContact * pw * FX.intensity, 0);
             this.audio.perfectChime();
             if (!this.replay.playing) {
               this.replay.contactT = g.simTime;
@@ -252,23 +271,49 @@ export class Effects {
       // the sound follows how hard the ball was actually hit (and how close it is)
       const speed = Math.hypot(d.vx, d.vy, d.vz);
       const near = fromReplay ? 1 : Math.max(0, Math.min(1, 1.35 - at.distanceTo(g.rig.camera.position) / 16));
-      this.audio.spike(AudioEngine.powerFromSpeed(speed), perfect, rate, near);
+      const pw = AudioEngine.powerFromSpeed(speed);
+      this.audio.spike(pw, perfect, rate, near);
+      const dir = new THREE.Vector3(d.vx, d.vy, d.vz);
       const col = perfect ? new THREE.Color(6, 3.8, 1.4) : q > 0.5 ? new THREE.Color(3.2, 3.0, 2.6) : new THREE.Color(1.6, 1.6, 1.6);
-      const n = Math.round(FX.sparkCount * FX.intensity * (perfect ? 1 : q > 0.5 ? 0.35 : 0.12));
-      this.burst(at, n, col, perfect ? 11 : 6, perfect ? 1.3 : 0.8, new THREE.Vector3(d.vx, d.vy, d.vz));
+      const n = Math.round(FX.sparkCount * FX.intensity * (perfect ? 1 + 0.3 * pw : q > 0.5 ? 0.35 : 0.12));
+      this.burst(at, n, col, perfect ? 11 + 3 * pw : 6, perfect ? 1.3 : 0.8, dir);
       this.glowAt(at, perfect ? 0.32 : 0.18, perfect ? new THREE.Color(2.4, 1.6, 0.7) : new THREE.Color(1.1, 1.1, 1.1));
       this.trail.ignite(perfect ? 1 : 0, perfect ? 1 : q > 0.5 ? 0.75 : 0.45, fromReplay ? at : g.ball.rpos);
+      // the ball squashes on the hand: held through the hit-stop, then it wobbles back into shape
+      this.squash(dir, FX.squashContact * pw * (perfect ? 1 : 0.5) * FX.intensity);
+      if (perfect) {
+        // a shock ring around the ball's new path, bursting out when the freeze ends. Sized and
+        // dimmed by distance: in first person the contact is right in front of the lens
+        const dist = at.distanceTo(g.rig.camera.position);
+        const far = clamp01((dist - 1.0) / 2.5);
+        this.airRing(at, dir, Math.min(0.95, dist * 0.6) * (0.6 + 0.4 * pw), lerp(0.3, 0.6, far) * (0.5 + 0.5 * pw));
+      }
     } else if (e.kind === 'impact') {
       const q = d.q;
       const perfect = d.perfect > 0.5;
       const rate = fromReplay ? 0.55 : 1;
-      this.audio.floor(d.speed * (0.8 + q), perfect || d.speed > 24, rate);
+      // how hard it comes down follows the attack's speed, continuously (a full-power spike = 1)
+      const pw = AudioEngine.powerFromSpeed(d.speed);
+      this.audio.floor(d.speed * (0.8 + q), pw, rate);
       this.shockwave(d.x, d.z, perfect ? 3.6 : 1.4 + q * 1.4, perfect ? 1 : 0.35 + q * 0.4, perfect);
       this.dustRing(d.x, d.z, perfect ? 34 : Math.round(10 + q * 14), perfect ? 1 : 0.6);
       if (perfect || d.speed > 26) this.crack(d.x, d.z, perfect ? 1.0 : 0.6);
+      this.squash(_up, FX.squashImpact * pw * (perfect ? 1 : 0.6) * FX.intensity);
+      if (perfect) {
+        // a fast bright inner ring, a flash on the boards and wood chips kicked up
+        this.shockwave(d.x, d.z, 1.5 + 0.5 * pw, 1, true, 0.2);
+        this.glowAt(new THREE.Vector3(d.x, 0.15, d.z), 0.4 + 0.3 * pw, new THREE.Color(3.2, 2.3, 1.1), 0.2);
+        this.burst(new THREE.Vector3(d.x, 0.06, d.z), Math.round(18 + 16 * pw), new THREE.Color(3.2, 2.2, 1.1), 5, 0.8, new THREE.Vector3(0, 7, 0));
+      }
       if (!fromReplay) {
         g.crowd(perfect ? 1.3 : 0.4 + q * 0.4, true);
-        if (perfect && this.near(new THREE.Vector3(d.x, 0, d.z), 14)) g.rig.addTrauma(0.35);
+        const dist = g.rig.camera.position.distanceTo(_v.set(d.x, 0, d.z));
+        if (perfect && dist < 16) g.rig.addTrauma(0.35);
+        if (perfect && d.user > 0.5) {
+          // your own kill lands: the arena jolts and the moment holds for a beat
+          g.rig.kick(0, -FX.kickImpact * pw * clamp01(1.5 - dist / 18) * FX.intensity);
+          g.hitStop = Math.max(g.hitStop, FX.hitStopImpact * pw * FX.intensity);
+        }
       }
     }
   }
@@ -296,8 +341,55 @@ export class Effects {
     }
   }
 
-  private glowAt(at: THREE.Vector3, size: number, col: THREE.Color): void {
-    this.glow.emit(at.x, at.y, at.z, 0, 0, 0, 0.16, size, 0.8, col.r, col.g, col.b);
+  private glowAt(at: THREE.Vector3, size: number, col: THREE.Color, life = 0.16): void {
+    this.glow.emit(at.x, at.y, at.z, 0, 0, 0, life, size, 0.8, col.r, col.g, col.b);
+  }
+
+  /** a shock ring in the air, square to the ball's new direction, expanding fast */
+  private airRing(at: THREE.Vector3, dir: THREE.Vector3, size: number, strength: number): void {
+    if (dir.lengthSq() < 1e-6) return;
+    const r = this.airRings.find((q) => q.t >= 1) ?? this.airRings[0];
+    r.t = 0;
+    r.dur = 0.2;
+    r.size = size;
+    r.strength = strength;
+    r.mesh.position.copy(at);
+    r.mesh.lookAt(_v.copy(at).add(dir));
+    r.mesh.scale.setScalar(0.05);
+    r.mesh.visible = true;
+  }
+
+  /** squash the ball along `dir` by `amount` (fraction); it holds while time is frozen, then wobbles back */
+  private squash(dir: THREE.Vector3, amount: number): void {
+    if (amount <= 0.01 || dir.lengthSq() < 1e-6) return;
+    this.sq.amount = amount;
+    this.sq.t = 0;
+    this.sq.q.setFromUnitVectors(_z, _v.copy(dir).normalize());
+  }
+
+  private applySquash(dt: number): void {
+    const sq = this.sq;
+    const mesh = this.g.ball.mesh;
+    if (sq.amount <= 0) return;
+    sq.t += dt;
+    // a damped wobble: compressed, overshoots long, settles (~0.2 s)
+    const a = sq.amount * Math.exp(-sq.t / 0.05) * Math.cos(sq.t * 2 * Math.PI * 13);
+    if (sq.t > 0.25) {
+      sq.amount = 0;
+      mesh.matrixAutoUpdate = true;
+      return;
+    }
+    // M = T * Rd * S * Rd^-1 * Rspin: scale along the squash axis, the spin rotation inside it
+    const side = 1 / Math.sqrt(Math.max(0.3, 1 - a)); // keep the volume roughly constant
+    _m1.makeRotationFromQuaternion(mesh.quaternion);
+    _m2.makeRotationFromQuaternion(sq.q).transpose();
+    _m1.premultiply(_m2);
+    _m1.premultiply(_m2.makeScale(side, side, 1 - a));
+    _m1.premultiply(_m2.makeRotationFromQuaternion(sq.q));
+    _m1.setPosition(mesh.position);
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.copy(_m1);
+    mesh.matrixWorldNeedsUpdate = true;
   }
 
   private puff(x: number, y: number, z: number, n: number, size: number, alpha: number): void {
@@ -320,10 +412,10 @@ export class Effects {
     }
   }
 
-  private shockwave(x: number, z: number, size: number, strength: number, perfect: boolean): void {
+  private shockwave(x: number, z: number, size: number, strength: number, perfect: boolean, dur = perfect ? 0.45 : 0.32): void {
     const r = this.rings.find((q) => q.t >= 1) ?? this.rings[0];
     r.t = 0;
-    r.dur = perfect ? 0.45 : 0.32;
+    r.dur = dur;
     r.size = size;
     r.strength = strength;
     r.mesh.position.set(x, 0.02, z);
@@ -386,6 +478,15 @@ export class Effects {
       (d.mesh.material as THREE.MeshBasicMaterial).opacity = d.t < 0.06 ? d.t / 0.06 : 1 - smooth01((d.t - life * 0.6) / (life * 0.4));
       if (d.t > life) d.mesh.visible = false;
     }
+    for (const r of this.airRings) {
+      if (r.t >= 1) continue;
+      r.t += dt / r.dur;
+      const e = Math.min(1, r.t);
+      r.mesh.scale.setScalar(lerp(0.05, r.size, 1 - Math.pow(1 - e, 3)));
+      (r.mesh.material as THREE.MeshBasicMaterial).opacity = Math.pow(1 - e, 1.4) * r.strength;
+      if (r.t >= 1) r.mesh.visible = false;
+    }
+    this.applySquash(dt);
     for (const f of this.flashes) {
       if (f.t >= 1) continue;
       f.t += dt / 0.22;
@@ -461,3 +562,9 @@ export class Effects {
     if (this.replaying) this.endReplay();
   }
 }
+
+const _v = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _z = new THREE.Vector3(0, 0, 1);
+const _m1 = new THREE.Matrix4();
+const _m2 = new THREE.Matrix4();

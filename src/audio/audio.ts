@@ -17,6 +17,8 @@ export class AudioEngine {
   private reverbSend!: GainNode;
   /** low booms go through a gentle saturator: harmonics make them read on small speakers */
   private boomBus!: GainNode;
+  /** early reflections (slap-back) for the big hits */
+  private echoSend!: GainNode;
   private noise!: AudioBuffer;
   private pink!: AudioBuffer;
   private crowdBed: { gain: GainNode; filter: BiquadFilterNode } | null = null;
@@ -76,19 +78,42 @@ export class AudioEngine {
       this.reverbSend = ctx.createGain();
       this.reverbSend.gain.value = 0.3;
       this.reverbSend.connect(this.reverb).connect(limiter);
+      // Low end of the big hits: a smooth tanh saturator (the curve spans the bus's whole input range,
+      // so nothing hard-clips) adds harmonics that laptop speakers can play; a lowpass after it keeps
+      // the harmonics warm instead of buzzy.
       this.boomBus = ctx.createGain();
-      this.boomBus.gain.value = 1.6;
+      this.boomBus.gain.value = 0.85;
       const sat = ctx.createWaveShaper();
-      const sc = new Float32Array(1024);
+      const sc = new Float32Array(2048);
       for (let i = 0; i < sc.length; i++) {
         const x = (i / (sc.length - 1)) * 2 - 1;
-        sc[i] = Math.tanh(x * 1.8) / Math.tanh(1.8);
+        sc[i] = Math.tanh(x * 3.4) / Math.tanh(3.4);
       }
       sat.curve = sc;
       sat.oversample = '4x';
+      const warm = ctx.createBiquadFilter();
+      warm.type = 'lowpass';
+      warm.frequency.value = 1100;
+      warm.Q.value = 0.5;
       const boomOut = ctx.createGain();
-      boomOut.gain.value = 0.55;
-      this.boomBus.connect(sat).connect(boomOut).connect(this.sfx);
+      boomOut.gain.value = 0.7;
+      this.boomBus.connect(sat).connect(warm).connect(boomOut).connect(this.sfx);
+      // Arena slap-back: a few darkening early reflections off the stands and the far wall, spread
+      // left/right. Only hard hits send into it.
+      this.echoSend = ctx.createGain();
+      for (const [delay, cutoff, gain, pan] of [[0.083, 2600, 0.46, -0.55], [0.151, 1700, 0.32, 0.6], [0.236, 1000, 0.2, -0.2]]) {
+        const d = ctx.createDelay(0.5);
+        d.delayTime.value = delay;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = cutoff;
+        lp.Q.value = 0.4;
+        const g = ctx.createGain();
+        g.gain.value = gain;
+        const p = ctx.createStereoPanner();
+        p.pan.value = pan;
+        this.echoSend.connect(d).connect(lp).connect(g).connect(p).connect(this.sfx);
+      }
       this.noise = this.makeNoise(2, false);
       this.pink = this.makeNoise(4, true);
       this.startCrowd();
@@ -147,7 +172,8 @@ export class AudioEngine {
   }
 
   // ------------------------------------------------------------ primitives
-  private noiseBurst(t: number, dur: number, f: number, q: number, gain: number, type: BiquadFilterType = 'bandpass', rev = 0.3, dest?: AudioNode): void {
+  /** `echo` > 0 also feeds the arena slap-back */
+  private noiseBurst(t: number, dur: number, f: number, q: number, gain: number, type: BiquadFilterType = 'bandpass', rev = 0.3, dest?: AudioNode, echo = 0, attack = 0.002): void {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
@@ -158,20 +184,15 @@ export class AudioEngine {
     flt.Q.value = q;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(gain, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(gain, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(flt).connect(g);
-    g.connect(dest ?? this.sfx);
-    if (rev > 0) {
-      const s = ctx.createGain();
-      s.gain.value = rev;
-      g.connect(s).connect(this.reverbSend);
-    }
+    this.route(g, dest, rev, echo);
     src.start(t, Math.random() * 1.5);
     src.stop(t + dur + 0.05);
   }
 
-  private tone(t: number, f0: number, f1: number, dur: number, gain: number, type: OscillatorType = 'sine', rev = 0.2, attack = 0.002, dest?: AudioNode): void {
+  private tone(t: number, f0: number, f1: number, dur: number, gain: number, type: OscillatorType = 'sine', rev = 0.2, attack = 0.002, dest?: AudioNode, echo = 0): void {
     const ctx = this.ctx!;
     const o = ctx.createOscillator();
     o.type = type;
@@ -181,14 +202,45 @@ export class AudioEngine {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(gain, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(dest ?? this.sfx);
+    o.connect(g);
+    this.route(g, dest, rev, echo);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  /** noise through a band that glides from f0 to f1 (a ball ripping away, a whoosh) */
+  private sweep(t: number, dur: number, f0: number, f1: number, q: number, gain: number, rev = 0.2, attack = 0.01): void {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const flt = ctx.createBiquadFilter();
+    flt.type = 'bandpass';
+    flt.Q.value = q;
+    flt.frequency.setValueAtTime(f0, t);
+    flt.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(flt).connect(g);
+    this.route(g, undefined, rev, 0);
+    src.start(t, Math.random() * 1.5);
+    src.stop(t + dur + 0.05);
+  }
+
+  private route(g: GainNode, dest: AudioNode | undefined, rev: number, echo: number): void {
+    const ctx = this.ctx!;
+    g.connect(dest ?? this.sfx);
     if (rev > 0) {
       const s = ctx.createGain();
       s.gain.value = rev;
       g.connect(s).connect(this.reverbSend);
     }
-    o.start(t);
-    o.stop(t + dur + 0.05);
+    if (echo > 0) {
+      const s = ctx.createGain();
+      s.gain.value = echo;
+      g.connect(s).connect(this.echoSend);
+    }
   }
 
   private get ok(): boolean {
@@ -197,28 +249,43 @@ export class AudioEngine {
 
   // ------------------------------------------------------------ sounds
   /**
-   * Spike / serve contact. `power` 0..1 follows the ball speed: a soft swing
-   * is a hand slap and a thump; a hard one adds the leather crack and a deep
-   * boom that hangs in the arena. `near` 0..1 is how close it is to the camera.
+   * Spike / serve contact. `power` 0..1 follows the ball speed and everything
+   * scales with it continuously: a soft swing is a hand slap and a thump; a
+   * hard one adds a sharp leather crack, a mid "pop" that small speakers can
+   * play, a deep pitch-dropping boom, the ball ripping away and an arena
+   * slap-back. Layers are staggered by a few ms so their peaks do not stack.
+   * `near` 0..1 is how close it is to the camera.
    */
   spike(power: number, perfect: boolean, rate = 1, near = 1): void {
     if (!this.ok) return;
     const t = this.ctx!.currentTime;
     const p = Math.max(0, Math.min(1, power));
     const v = 0.5 + 0.5 * Math.max(0, Math.min(1, near));
-    const boom = p <= 0.3 ? 0 : Math.pow((p - 0.3) / 0.7, 1.3);
+    const boom = p <= 0.25 ? 0 : Math.pow((p - 0.25) / 0.75, 1.25);
+    // transient: the leather snapping under the hand, very short and bright
+    this.noiseBurst(t, (0.005 + 0.008 * p) / rate, 3600 * rate, 0.7, (0.14 + 0.56 * p * p) * v, 'highpass', 0.12 + 0.25 * p, undefined, 0.5 * boom, 0.0008);
     // hand on the ball: brighter and fuller the harder it is
-    this.noiseBurst(t, (0.045 + 0.03 * p) / rate, (1800 + 900 * p) * rate, 0.85, (0.55 + 0.3 * p) * v, 'bandpass', 0.22 + 0.3 * p);
-    // the crack of the leather snapping (real swings only)
-    if (p > 0.35) this.noiseBurst(t, (0.008 + 0.012 * p) / rate, 5200 * rate, 1.1, 0.3 * p * p * v, 'bandpass', 0.18);
+    this.noiseBurst(t, (0.045 + 0.04 * p) / rate, (1700 + 900 * p) * rate, 0.85, (0.5 + 0.42 * p) * v, 'bandpass', 0.22 + 0.7 * p, undefined, 0.7 * boom);
+    // leather "pop": a fast-dropping mid punch, the part of the boom laptop speakers can play
+    this.tone(t + 0.002, (340 - 70 * p) * rate, (150 - 30 * p) * rate, (0.045 + 0.08 * p) / rate, (0.22 + 0.6 * p) * v, 'triangle', 0.2 + 0.35 * p, 0.0015, this.boomBus);
     // ball body thump, dropping lower with power
-    this.tone(t, (220 - 50 * p) * rate, 72 * rate, (0.09 + 0.06 * p) / rate, (0.5 + 0.2 * p) * v, 'sine', 0.18 + 0.2 * p);
+    this.tone(t, (220 - 50 * p) * rate, 72 * rate, (0.09 + 0.07 * p) / rate, (0.45 + 0.2 * p) * v, 'sine', 0.18 + 0.25 * p);
     if (boom > 0) {
-      // the boom: a deep pitch drop that lives in the room, plus an upper harmonic for laptop speakers
-      this.tone(t, 115 * rate, 36 * rate, (0.22 + 0.4 * boom) / rate, 0.75 * boom * v, 'sine', 0.3 + 0.45 * boom, 0.003, this.boomBus);
-      this.tone(t, 200 * rate, 68 * rate, (0.14 + 0.16 * boom) / rate, 0.3 * boom * v, 'triangle', 0.25, 0.003, this.boomBus);
-      // a little air pushed out of the ball
-      this.noiseBurst(t + 0.004, (0.06 + 0.08 * boom) / rate, 420 * rate, 0.7, 0.16 * boom * v, 'lowpass', 0.4 * boom);
+      // the boom: a deep pitch drop that hangs in the room (a few ms late so it does not stack on the crack)
+      this.tone(t + 0.006, 120 * rate, 33 * rate, (0.26 + 0.5 * boom) / rate, 0.95 * boom * v, 'sine', 0.4 + 1.0 * boom, 0.004, this.boomBus);
+      // its upper body
+      this.tone(t + 0.003, 230 * rate, 72 * rate, (0.16 + 0.22 * boom) / rate, 0.42 * boom * v, 'triangle', 0.3 + 0.2 * boom, 0.003, this.boomBus);
+      // the "whump": a band of low-mid air around the hit that gives it weight
+      this.noiseBurst(t + 0.003, (0.08 + 0.14 * boom) / rate, 240 * rate, 0.9, 0.55 * boom * v, 'bandpass', 1.1 * boom, undefined, 0.4 * boom, 0.004);
+      // air pushed out of the ball
+      this.noiseBurst(t + 0.004, (0.07 + 0.12 * boom) / rate, 380 * rate, 0.7, 0.22 * boom * v, 'lowpass', 0.5 * boom);
+      // the arena answers: a dark slap of the hit off the stands
+      this.noiseBurst(t, (0.03 + 0.04 * boom) / rate, 1200 * rate, 0.6, 0.7 * boom * v, 'bandpass', 0, this.echoSend);
+    }
+    // a really fast ball rips away: a short falling whoosh after the contact
+    if (p > 0.5) {
+      const r = (p - 0.5) / 0.5;
+      this.sweep(t + 0.012, (0.2 + 0.1 * r) / rate, 3400 * rate, 800 * rate, 1.4, 0.12 * r * v, 0.25, 0.012);
     }
     if (perfect) this.tone(t + 0.005, 1400 * rate, 1200 * rate, 0.25 / rate, 0.04, 'triangle', 0.6);
   }
@@ -235,11 +302,12 @@ export class AudioEngine {
     this.tone(t, 1250, 1650, 0.07, 0.045, 'triangle', 0.15, 0.004);
   }
 
-  /** arm swing whoosh on release, louder with power */
+  /** arm swing whoosh on release, louder with power; a big swing also swells upward into the contact */
   swish(power: number): void {
     if (!this.ok) return;
     const t = this.ctx!.currentTime;
     this.noiseBurst(t, 0.09, 900 + power * 700, 1.4, 0.05 + power * 0.07, 'bandpass', 0.1);
+    if (power > 0.6) this.sweep(t, 0.085, 450, 1900, 1.2, (0.075 * (power - 0.6)) / 0.4, 0.1, 0.06);
   }
 
   tip(rate = 1): void {
@@ -270,15 +338,37 @@ export class AudioEngine {
     if (stuff) this.tone(t, 70 * rate, 35 * rate, 0.45 / rate, 0.6, 'sine', 0.6);
   }
 
-  floor(impact: number, heavy: boolean, rate = 1): void {
+  /**
+   * Ball on the floor. `impact` (m/s into the floor) drives an ordinary bounce;
+   * `slam` 0..1 is how hard an attack came down (from the spike speed) and
+   * adds, continuously, the leather slap on hardwood, the floor's knock, a low
+   * thud and a room boom with slap-back off the stands.
+   */
+  floor(impact: number, slam = 0, rate = 1): void {
     if (!this.ok) return;
     const t = this.ctx!.currentTime;
     const k = Math.min(1, impact / 18);
-    this.noiseBurst(t, (0.06 + k * 0.05) / rate, 500 * rate, 0.7, 0.25 + k * 0.6, 'lowpass', 0.45);
-    this.tone(t, (110 + k * 40) * rate, 55 * rate, (0.08 + k * 0.1) / rate, 0.2 + k * 0.6, 'sine', 0.4);
-    if (heavy) {
-      this.tone(t, 60 * rate, 28 * rate, 0.7 / rate, 0.65, 'sine', 0.8);
-      this.noiseBurst(t, 0.35 / rate, 180 * rate, 0.5, 0.4, 'lowpass', 0.8);
+    const s = Math.max(0, Math.min(1, slam));
+    if (s <= 0) {
+      this.noiseBurst(t, (0.06 + k * 0.05) / rate, 500 * rate, 0.7, 0.25 + k * 0.6, 'lowpass', 0.45);
+      this.tone(t, (110 + k * 40) * rate, 55 * rate, (0.08 + k * 0.1) / rate, 0.2 + k * 0.6, 'sine', 0.4);
+      return;
+    }
+    // leather slapping the hardwood: the bright smack that carries across a gym
+    this.noiseBurst(t, (0.028 + 0.04 * s) / rate, (1350 + 650 * s) * rate, 0.9, 0.32 + 0.62 * s, 'bandpass', 0.35 + 0.85 * s, undefined, 0.8 * s);
+    this.noiseBurst(t, (0.004 + 0.007 * s) / rate, 3300 * rate, 0.7, 0.1 + 0.48 * s * s, 'highpass', 0.2, undefined, 0.3 * s, 0.0008);
+    // the floor's knock: two short panel modes
+    this.tone(t + 0.001, 250 * rate, 185 * rate, (0.05 + 0.09 * s) / rate, 0.2 + 0.45 * s, 'sine', 0.3, 0.0012, this.boomBus);
+    this.tone(t + 0.001, 410 * rate, 340 * rate, (0.035 + 0.035 * s) / rate, 0.08 + 0.14 * s, 'sine', 0.25, 0.0012);
+    // low thud of the ball's body
+    this.tone(t + 0.003, (130 + 30 * s) * rate, 50 * rate, (0.1 + 0.18 * s) / rate, 0.38 + 0.55 * s, 'sine', 0.4 + 0.35 * s, 0.003, this.boomBus);
+    // the whump of air under the ball
+    this.noiseBurst(t + 0.002, (0.06 + 0.14 * s) / rate, 190 * rate, 0.9, 0.2 + 0.4 * s, 'bandpass', 1.1 * s, undefined, 0.4 * s, 0.003);
+    if (s > 0.3) {
+      // a room boom that hangs in the arena
+      const b = Math.pow((s - 0.3) / 0.7, 1.2);
+      this.tone(t + 0.009, 68 * rate, 28 * rate, (0.45 + 0.6 * b) / rate, 0.9 * b, 'sine', 0.8 + 0.8 * b, 0.006, this.boomBus);
+      this.noiseBurst(t + 0.005, (0.22 + 0.35 * b) / rate, 210 * rate, 0.5, 0.38 * b, 'lowpass', 0.9 + 0.9 * b, undefined, 0.5 * b);
     }
   }
 

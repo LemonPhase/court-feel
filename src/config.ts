@@ -259,7 +259,20 @@ export const CAMERA = {
 
 export const FX = {
   hitStopPerfect: 0.07,
+  /** extra hit-stop for a Perfect at full power (scaled by the ball speed) */
+  hitStopPower: 0.035,
+  /** a short freeze when a Perfect spike slams the floor */
+  hitStopImpact: 0.035,
   hitStopBlock: 0.05,
+  /** FOV punch-in (degrees) on a Perfect full-power contact; first person uses fpPunchScale of it */
+  fovPunch: 4.5,
+  fpPunchScale: 0.55,
+  /** camera nod (rad) along the spike on contact, and drop (m) when it slams the floor */
+  kickContact: 0.022,
+  kickImpact: 0.05,
+  /** ball squash (fraction of its diameter) at a Perfect full-power contact / floor slam */
+  squashContact: 0.26,
+  squashImpact: 0.22,
   shakePerfect: 0.75,
   shakeGood: 0.35,
   shakeBlock: 0.6,

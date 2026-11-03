@@ -9,7 +9,7 @@ Serve Receive/Dig, Setter, 6v6 Mini Rally), five positions, instant FP/TP switch
 deterministic ball simulation, procedurally built and animated athletes with IK, graded timing
 (Perfect / Good / Early / Late) with buffering and adjustable assist, a full juice package
 (hit-stop, shake, streak sparks, fire trails, shockwave, dust, floor cracks, hand flashes,
-slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (51
+slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (55
 unit tests + a Playwright e2e that plays every drill through the real input path).
 
 ### Acceptance criteria
@@ -18,15 +18,16 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - [x] **FP/TP toggle instant, mid-rally, no glitches** — shared yaw/pitch; FP view-model re-poses on
   the toggle frame even during hit-stop; TP pivot snaps; net/post occlusion test, occluders fade.
   Verified with a toggle sequence mid-rally (screenshots).
-- [x] **Perfect spike triggers the full effects package in both cameras** — 70 ms hit-stop, shake,
-  spark burst, fire trail, chime, shockwave + dust ring + crack decal + heavy boom on impact,
-  crowd surge, slow-mo replay. Screenshots: `scripts/out/10-15_*` (TP, FP, replay).
+- [x] **Perfect spike triggers the full effects package in both cameras** — 70-105 ms hit-stop
+  (longer the harder it was hit), FOV punch, shake, ball squash, spark burst, shock ring, fire
+  trail, chime, shockwave + dust ring + crack decal + floor slam on impact, crowd surge, slow-mo
+  replay. Screenshots: `scripts/out/10-15_*` (TP, FP, replay).
 - [x] **Believable animation** — approach (run, step-step-plant, arms back), takeoff double-arm
   swing, bow-and-arrow, whip with hand IK onto the ball, follow-through, land absorb, block, pass,
   dig, set, serve toss; planted feet; head look-at. Side-view screenshot sheets checked.
 - [x] **Realistic ball physics** — set apex, spike landing, topspin dip, net/tape/antenna, women's
   net, floor bounce, determinism and predictor tests; arcs and spike speeds (25-30 m/s) at 1:1 scale.
-- [x] **60 fps target, no console errors, all tests pass** — 51/51 tests; e2e: no console errors;
+- [x] **60 fps target, no console errors, all tests pass** — 55/55 tests; e2e: no console errors;
   CPU frame median ~4.6 ms (p95 ~12 ms, from set-time AI planning) with 86 draw calls / 107k
   triangles; adaptive quality governor (MSAA → render scale → shadow size) protects weaker GPUs.
   No memory growth: 0 geometry/texture growth across repeated mode switches, JS heap flat over a
@@ -240,6 +241,55 @@ unit tests + a Playwright e2e that plays every drill through the real input path
     read can drop out just before the touch, and resetting there let go of the plant and the
     wind-up). 4-minute rally as middle: 12/12 Perfect quicks.
 
+- **Juice pass: a Perfect, full-power spike should feel (and sound) like one.** Playtest note: the
+  hand contact and the floor impact were still not "boom" enough.
+  - *Hit sound* (`AudioEngine.spike`), all continuous in the ball speed: a sub-10 ms leather crack,
+    the hand slap, a fast-dropping 340 -> 120 Hz "pop" (the part of the boom laptop speakers can
+    play), the body thump, and above ~25% power a 120 -> 33 Hz boom, a 240 Hz "whump" band, air
+    pushed out of the ball, a falling whoosh as a fast ball rips away and an arena slap-back.
+    Layers start a few ms apart so their peaks don't stack. A full swing's release whoosh now
+    swells upward into the contact.
+  - *Floor slam* (`AudioEngine.floor(impact, slam)`): `slam` 0..1 comes from the attack's speed
+    (it was a heavy/not-heavy flag, so 26 and 30 m/s spikes sounded the same): leather slap on the
+    hardwood + crack, two short floor "knock" modes, a low thud, a whump of air, and above ~30% a
+    room boom with rumble. Ordinary bounces are unchanged.
+  - *Mix*: the boom bus saturator now spans its whole input range (tanh, drive 3.4, then a
+    1.1 kHz lowpass); before, its input went past +-1 and was hard-clipped into a square-ish buzz.
+    New early-reflection bus (83 / 151 / 236 ms taps, darkening, panned) that only hard hits feed.
+    Bigger reverb sends on the boom layers. Limiter / crowd routing untouched.
+  - *Offline measurements* (`OfflineAudioContext`, master 0.8, crowd muted for the per-sound
+    numbers; before -> after). Full-power spike: peak 0.66 -> 0.67, RMS(0-300 ms) 0.161 -> 0.251
+    (+3.8 dB), 100-300 Hz punch 0.238 -> 0.374 (+3.9 dB), sub < 90 Hz 0.090 -> 0.133 (+3.4 dB),
+    1-5 kHz crack 0.035 -> 0.048 (+2.6 dB), arena tail (0.4-1.2 s) 0.005 -> 0.016 (+9.8 dB). Soft
+    swing (power 0): RMS 0.028 -> 0.032 (a soft hit stays soft). Floor slam of a 30 m/s spike:
+    peak 0.64 -> 0.58, RMS 0.127 -> 0.297 (+7.4 dB), sub +8.3 dB, punch +4.6 dB, slap (1-5 kHz)
+    0.010 -> 0.039 (+12.1 dB), tail +10 dB; 19 / 26 / 30 m/s slams now 0.088 / 0.213 / 0.297 RMS
+    (were 0.067 / 0.127 / 0.127). Whole Perfect sequence with the crowd (contact + chime + slam):
+    peak 0.74 -> 0.70, 0 clipped samples (|x| >= 0.99), crowd bed RMS 0.0055 before and 0.0044
+    after the hit, identical to a crowd-only render, and render(hit + crowd) - render(crowd) -
+    render(hit) = 5e-8 RMS (a linear mix: nothing ducks or pumps). Replay (rate 0.55): peak
+    0.72 -> 0.74, 0 clipped.
+  - *Animation* (`athleteView.ts`): the wind-up draws a deeper bow with the charge (chest turned
+    further, back arched, heels pulled up and back); the swing is a kinetic chain (hips open first,
+    chest follows, then the arm); the arm whips through a "lag" pose (elbow drives up and forward
+    while the hand still hangs behind the head) on a cubic path with a late ease; the wrist is
+    cocked back in the wind-up and snaps over the ball through contact; the off arm pulls down
+    first; a full-power follow-through finishes by the opposite hip with the body folded
+    (jackknife: spine flexes, knees snap up in front) and is held until landing. Fixed: after the
+    follow-through the hitting arm used to go back up to the cocked pose while still in the air
+    (new test).
+  - *FX / camera*: Perfect hit-stop 70 ms + up to 35 ms at full power (105 ms at 108 km/h); FOV
+    punch-in (4.5 deg TP, 55% of it in FP) that holds on the freeze frame and springs back with a
+    small overshoot; a camera nod along the spike; the ball squashes ~26% along the hit direction
+    (held through the freeze, then wobbles back) and ~22% on the floor slam; a thin shock ring in
+    the air square to the ball's new path; ~30% more, faster sparks. Floor slam of your own
+    Perfect: a fast inner ring, a short flash on the boards, wood chips, a vertical camera jolt and
+    a 35 ms freeze. All sized/dimmed by camera distance; the punch and kick follow the camera
+    shake setting (0 turns them off). Tried and dropped: an extra HDR flash on the hand (it
+    bloomed into a white disc that hid the squashed ball, and in FP into a screen-wide haze).
+  - Tests: 55 (camera punch holds while frozen and settles, the kick's size, shake 0 disables both;
+    the spike animation: hand on the ball at contact, no re-cocking in the air after the hit).
+
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
@@ -297,3 +347,8 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Ball drag Cd 0.26 (not 0.47): volleyballs at spike Reynolds numbers are past the drag crisis.
 - Solvers integrate aerodynamics only; the live sim decides if the net gets in the way (honest physics).
 - TP framing only dollies the camera, never rotates it, so the aim never moves without the mouse.
+- Hit sounds are layers started a few ms apart (crack, then pop, then boom) so their peaks don't
+  stack: loudness comes from density and the room (saturated low-mids, slap-back, reverb), not from
+  a higher peak. Everything scales with the ball speed, never with a heavy/light switch.
+- Contact feedback for a Perfect is a freeze frame you can read (squashed ball, sparks, then a
+  ring and the trail), not a flash: no full-screen flashes of any kind.
