@@ -302,7 +302,8 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
   well within a 16.7 ms budget, and the quality governor degrades gracefully if the GPU is slow.
-- Pointer lock can be refused in some embedded browsers; the game falls back to drag-to-look.
+- Pointer lock can be refused in some embedded browsers; if it never works, the game falls back to
+  drag-to-look (see "Pause and pointer lock" below for refusals after it has worked).
 - Athletes don't physically collide with each other (AI spacing keeps it rare).
 - No rotation in the Mini Rally: positions are fixed slots (a sandbox, not a match).
 
@@ -368,6 +369,26 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Tests: 79 (custom vert = the approach jump you get, standing jump keeps its fraction; height moves
   the reach and contact point; power scales the same Perfect swing's speed; a quick meets a taller,
   higher-jumping middle's hand; clamping, sanitising stored values, dropping a default entry).
+
+## Pause and pointer lock
+- Playtest report: "Esc has to be pressed twice to pause, the first one only frees the mouse; and
+  sometimes the mouse is free and doesn't steer." Reproduced in headful Chromium with real OS key
+  presses (XTest under Xvfb; CDP key events skip the browser's Esc handling, so they can't show it).
+- Root cause: any refused `requestPointerLock` switched on the drag-look fallback for good. Chrome
+  refuses a re-lock for ~1.25 s after the user's Esc ("Pointer lock cannot be acquired immediately
+  after the user has exited the lock"), so a quick Resume after Esc left the game unpaused with a
+  free mouse that didn't steer, and clicking the court didn't recapture it. A later lock still
+  worked, but with the flag on, losing it didn't pause: the first Esc only freed the mouse, and
+  the second (now a page keydown) paused.
+- Fix (`src/core/input.ts`, `src/main.ts`): drag-look only when the lock is refused before it has
+  ever worked; a granted lock clears it. A refusal after that keeps the game paused with the menu
+  up and retries once Chrome's window has passed (the Resume click still counts as the gesture),
+  so a quick Resume just takes a moment. Esc on the pause menu resumes through the lock request
+  instead of unpausing with a free mouse; key repeats and the releasing press itself are ignored.
+  Firefox / Safari (no promise from `requestPointerLock`) report refusals via `pointerlockerror`.
+- Tests: `tests/pointerLock.test.ts` (scripted browser: fallback only before the first grant,
+  Chrome's cooldown refusal keeps lock mode, a grant clears the fallback, unadjustedMovement retry,
+  event-only browsers).
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)

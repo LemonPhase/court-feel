@@ -211,6 +211,10 @@ export class Menu {
     return this.pause.style.display !== 'none';
   }
 
+  get settingsVisible(): boolean {
+    return this.settingsOpen;
+  }
+
   openSettings(): void {
     this.bodyTab = this.pos;
     this.buildSettings();

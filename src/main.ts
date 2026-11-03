@@ -13,6 +13,13 @@ const game = new Game(app, settings);
 
 let lastPlay: { mode: ModeId; pos: PositionId } = { mode: 'spike', pos: 'OH' };
 
+function resume(): void {
+  menu.showPause(false);
+  game.paused = false;
+  game.input.clearEdges();
+  game.input.requestLock();
+}
+
 const menu = new Menu(app, settings, {
   play(mode, pos) {
     game.fx.audio.unlock();
@@ -24,12 +31,7 @@ const menu = new Menu(app, settings, {
     game.input.requestLock();
     if (touch.enabled) goFullscreen();
   },
-  resume() {
-    menu.showPause(false);
-    game.paused = false;
-    game.input.clearEdges();
-    game.input.requestLock();
-  },
+  resume,
   restart() {
     menu.showPause(false);
     game.startMode(lastPlay.mode, lastPlay.pos);
@@ -105,17 +107,36 @@ game.input.onPointerLockChange = (locked) => {
     menu.showPause(true);
   }
 };
-window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Escape' || game.inMenu) return;
-  // with pointer lock the browser consumes Esc and fires pointerlockchange instead
-  if (game.input.dragLook || !game.input.pointerLocked) {
-    if (game.fx.replaying) {
-      game.fx.endReplay();
-      return;
-    }
-    if (menu.pauseVisible) menu.showPause(false), (game.paused = false);
-    else (game.paused = true), menu.showPause(true);
+/** Chrome refuses pointer lock for ~1.25 s after the user's Esc released it (measured from the release) */
+const LOCK_COOLDOWN_MS = 1350;
+let lockRetry = 0;
+game.input.onLockRefused = (fallback) => {
+  // no pointer lock here at all: drag-look took over, play on
+  if (fallback || game.inMenu) return;
+  // never leave the game running with a free mouse that doesn't look around: stay paused
+  game.paused = true;
+  menu.showPause(true);
+  // Resume clicked right after Esc: retry once the browser allows it (that click still counts as the gesture)
+  const wait = game.input.lockLostAt + LOCK_COOLDOWN_MS - performance.now();
+  if (wait > 0 && !lockRetry) {
+    lockRetry = window.setTimeout(() => {
+      lockRetry = 0;
+      if (!game.inMenu && menu.pauseVisible && !menu.settingsVisible) resume();
+    }, wait);
   }
+};
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape' || e.repeat || game.inMenu) return;
+  // with pointer lock the browser consumes Esc and fires pointerlockchange instead (or delivers it too:
+  // that same press must not resume)
+  if (game.input.pointerLocked || performance.now() - game.input.lockLostAt < 250) return;
+  if (game.fx.replaying) {
+    game.fx.endReplay();
+    return;
+  }
+  // resume through the lock request: unpausing alone left the mouse free and not steering
+  if (menu.pauseVisible) resume();
+  else (game.paused = true), menu.showPause(true);
 });
 window.addEventListener('pointerdown', () => game.fx.audio.unlock(), { once: false });
 window.addEventListener('keydown', () => game.fx.audio.unlock());
