@@ -420,8 +420,17 @@ export class Game {
     requestAnimationFrame(loop);
   }
 
-  /** test hook: render one frame right now */
+  /**
+   * test hook: render one frame right now. During a replay it only draws, like `tick` does:
+   * the live `render()` would re-pose every athlete and the ball from the live simulation
+   * under the cinematic camera instead of showing the frame the replay posed
+   */
   renderNow(dt = 1 / 60): void {
+    if (this.fx.replaying) {
+      this.renderer.info.reset();
+      this.post.render(dt);
+      return;
+    }
     this.render(dt);
   }
 
@@ -495,7 +504,7 @@ export class Game {
     if (realDt <= 0) return;
     // quality changes resize the canvas, which clears it: do it before drawing this frame
     this.governQuality(realDt);
-    if (this.manual) this.render(realDt);
+    if (this.manual) this.renderNow(realDt);
     else this.tick(realDt, true);
     this.frameMs = performance.now() - t0;
     this.fpsAcc += realDt;
