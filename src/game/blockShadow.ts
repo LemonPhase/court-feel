@@ -1,3 +1,4 @@
+import { BALL, CONTACT } from '../config';
 import type { V3 } from '../physics/ball';
 
 /** a blocker's hands along the net: x span [x0, x1] */
@@ -18,8 +19,8 @@ export interface ShadowQuad {
 /** a floor polygon as [x, z] points (counter-clockwise seen from above is not required) */
 export type FloorPoly = [number, number][];
 
-/** width of one blocker's hands along the net */
-export const HANDS_WIDTH = 1.0;
+/** width of one blocker's hands along the net: the contact volume a ball centre can be blocked in */
+export const HANDS_WIDTH = 2 * (CONTACT.blockHalfWidth + BALL.radius);
 
 /** merge spans that touch or overlap (a closed double block is one wall) */
 export function mergeSpans(spans: HandSpan[], gap = 0.15): HandSpan[] {
