@@ -26,6 +26,10 @@ export class BlockerBrain implements Brain {
   private jumpErr = 0;
   /** when false the brain only blocks (no base movement) */
   active = true;
+  /** also read a `feed` from the other side as the ball to block (drills where the user attacks a coach's toss) */
+  readFeed = false;
+  /** close this far inside (towards the court centre) of the attack point: a second blocker next to the pin blocker */
+  closeInside = 0;
 
   constructor(public athlete: Athlete, homeX: number, public lateralRange = 2.2) {
     this.homeX = homeX;
@@ -43,7 +47,7 @@ export class BlockerBrain implements Brain {
     const face = netYaw(a.side);
     const ball = g.ball;
     const lt = ball.lastTouch;
-    const theirSet = ball.active && lt && lt.side !== a.side && lt.kind === 'set';
+    const theirSet = ball.active && lt && lt.side !== a.side && (lt.kind === 'set' || (this.readFeed && lt.kind === 'feed'));
     // block action housekeeping
     if (a.action?.kind === 'block') {
       g.contact.tryBlock(a, a.action);
@@ -78,7 +82,8 @@ export class BlockerBrain implements Brain {
           // take away the line a little: shade towards the sideline the hitter is near
           const shade = Math.sign(this.b.x) * 0.25;
           const reach = this.lateralRange;
-          this.targetX = clamp(this.b.x + shade + this.readErr, this.homeX - reach, this.homeX + reach);
+          const inside = -Math.sign(this.b.x || 1) * this.closeInside;
+          this.targetX = clamp(this.b.x + shade + inside + this.readErr, this.homeX - reach, this.homeX + reach);
           moveTo(a, this.targetX, a.side * 0.45, { face, arrive: 0.3, sprintDist: 1.2 });
           // time the jump: hands peak ~0.12 s after the hitter's contact
           const H = a.jumpMax * a.stats.standingJumpFrac * 1.1;
