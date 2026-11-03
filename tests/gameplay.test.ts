@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { CAMERA, CONTACT, COURT, PLAYER, POSITIONS, SIM, TIMING, type PositionId } from '../src/config';
+import { BODY, CAMERA, CONTACT, COURT, PLAYER, POSITIONS, SIM, TIMING, type BodyOverride, type PositionId } from '../src/config';
 import { CameraRig } from '../src/camera/cameraRig';
 import { Athlete } from '../src/game/athlete';
 import { aimPitchRange, aimTargetFromLook, AIM_DEPTH, ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
@@ -14,12 +14,13 @@ import { HitterBrain } from '../src/ai/hitter';
 import { AthleteView } from '../src/character/athleteView';
 import { makeKit } from '../src/character/kits';
 import { AudioEngine } from '../src/audio/audio';
+import { bodyStats, isCustomBody, resolveBody, sanitizeBodies, setBodyValue, spikeReach, topSpikeKmh, type Bodies } from '../src/game/body';
 
 const DT = 1 / SIM.hz;
 
 /** run an athlete's full approach jump and return peak height and hang time */
-function jump(role: PositionId, approach: boolean, load: number) {
-  const a = new Athlete(role, 1);
+function jump(role: PositionId, approach: boolean, load: number, body?: Partial<BodyOverride>) {
+  const a = new Athlete(role, 1, { body });
   a.place(0, 8.8, 0);
   let t = 0;
   if (approach) {
@@ -189,12 +190,14 @@ function makeHost(ball: FakeBall, events: ContactEvent[]) {
  * Put a hitter in the air under a set, wind up for `hold` seconds and release
  * `offset` seconds from the ideal moment; returns the graded contact.
  */
-function spikeWithOffset(offset: number, hold = 0.45, onStep?: (a: Athlete, t: number, events: ContactEvent[]) => boolean) {
+function spikeWithOffset(
+  offset: number, hold = 0.45, onStep?: (a: Athlete, t: number, events: ContactEvent[]) => boolean, body?: Partial<BodyOverride>,
+) {
   const ball = new FakeBall();
   const events: ContactEvent[] = [];
   const host = makeHost(ball, events);
   const cs = new ContactSystem(host);
-  const a = new Athlete('OH', 1);
+  const a = new Athlete('OH', 1, { body });
   a.place(-3.4, 1.4, 0);
   // jump straight up with a full load
   a.jumpPress();
@@ -622,5 +625,109 @@ describe('spike animation', () => {
     expect(r.contactY).toBeGreaterThan(r.headY + 0.3);
     // after the swing the hitting hand never comes back up above the shoulders while still in the air
     expect(r.highestAfter).toBeLessThan(-0.25);
+  });
+});
+
+describe('custom body (settings: height, vert, spike power)', () => {
+  it('a custom vert is the approach jump you get, and the standing jump keeps its fraction of it', () => {
+    for (const vert of [0.6, 1.0]) {
+      const full = jump('OH', true, PLAYER.loadMax, { jump: vert });
+      expect(Math.abs(full.peak - vert)).toBeLessThan(0.03);
+      const def = jump('OH', false, 0);
+      const tap = jump('OH', false, 0, { jump: vert });
+      expect(tap.peak / def.peak).toBeCloseTo(vert / POSITIONS.OH.jump, 1);
+    }
+  });
+
+  it('a taller athlete reaches higher: standing reach, contact point and spike reach grow with the height', () => {
+    const def = new Athlete('S', 1);
+    const tall = new Athlete('S', 1, { body: { height: 2.1 } });
+    expect(tall.height).toBe(2.1);
+    expect(tall.standReach - def.standReach).toBeGreaterThan(0.2 * 1.2);
+    const pd = def.idealContact(new THREE.Vector3());
+    const pt = tall.idealContact(new THREE.Vector3());
+    expect(pt.y - pd.y).toBeCloseTo(tall.standReach - def.standReach, 5);
+    // jump and power stay the setter's
+    expect(tall.jumpMax).toBe(POSITIONS.S.jump);
+    expect(tall.stats.power).toBe(POSITIONS.S.power);
+    expect(spikeReach(resolveBody('S', { height: 2.1 }))).toBeCloseTo(tall.standReach + POSITIONS.S.jump, 5);
+  });
+
+  it('spike power scales the ball speed of the same Perfect swing', () => {
+    const base = spikeWithOffset(0);
+    const strong = spikeWithOffset(0, 0.45, undefined, { power: 1.25 });
+    const soft = spikeWithOffset(0, 0.45, undefined, { power: 0.7 });
+    for (const e of [base, strong, soft]) expect(e.grade).toBe('Perfect');
+    expect(strong.speed / base.speed).toBeCloseTo(1.25, 1);
+    expect(soft.speed / base.speed).toBeCloseTo(0.7, 1);
+    // the settings readout: a 1.0 arm tops out at the Perfect spike speed
+    expect(topSpikeKmh(1)).toBeCloseTo(CONTACT.spikePerfect * 3.6, 5);
+    expect(base.speed * 3.6).toBeLessThanOrEqual(topSpikeKmh(POSITIONS.OH.power) + 0.5);
+  });
+
+  it('a quick to a taller, higher-jumping middle still meets the hand at the top of the jump', () => {
+    // the planner forward-simulates a copy of the hitter: it has to have the same body
+    const a = new Athlete('MB', 1, { body: { height: 2.15, jump: 1.0 } });
+    a.place(0.2, 1.0, 0);
+    a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };
+    let t = 0;
+    a.jumpPress();
+    for (let i = 0; i < SIM.hz * PLAYER.loadMax; i++) a.step(DT, (t += DT));
+    a.jumpRelease();
+    while (a.state !== 'air') a.step(DT, (t += DT));
+    const q = quickSetFor(a, t, { x: 1.05, y: 2.5, z: 0.85 });
+    expect(q.onTime).toBe(true);
+    const t1 = t + q.time;
+    while (t < t1 - 1e-9) a.step(DT, (t += DT));
+    const p = a.idealContact(new THREE.Vector3());
+    expect(Math.hypot(p.x - q.target.x, p.y - q.target.y, p.z - q.target.z)).toBeLessThan(0.04);
+  });
+
+  it('values are clamped to the slider ranges, junk falls back to the position defaults', () => {
+    const b = resolveBody('L', { height: 3, jump: -1, power: Number.NaN });
+    expect(b).toEqual({ height: BODY.height.max, jump: BODY.jump.min, power: POSITIONS.L.power });
+    expect(bodyStats('L', null)).toBe(POSITIONS.L);
+    expect(bodyStats('L', { height: POSITIONS.L.height })).toBe(POSITIONS.L);
+    const st = bodyStats('L', { power: 1.1 });
+    expect(st.power).toBe(1.1);
+    expect(st.ballControl).toBe(POSITIONS.L.ballControl);
+  });
+
+  it('stored bodies are sanitised: unknown positions, defaults and garbage are dropped', () => {
+    expect(sanitizeBodies(null)).toEqual({});
+    expect(sanitizeBodies('x')).toEqual({});
+    const out = sanitizeBodies({
+      OH: { height: 2.0 },
+      MB: { ...POSITIONS.MB },
+      XX: { height: 2.0 },
+      S: 5,
+      OPP: { jump: 9 },
+    });
+    expect(Object.keys(out).sort()).toEqual(['OH', 'OPP']);
+    expect(out.OH).toEqual({ height: 2.0, jump: POSITIONS.OH.jump, power: POSITIONS.OH.power });
+    expect(out.OPP!.jump).toBe(BODY.jump.max);
+  });
+
+  it('a slider back on the default value drops the custom entry', () => {
+    const bodies: Bodies = {};
+    setBodyValue(bodies, 'OPP', 'height', 2.1);
+    expect(isCustomBody('OPP', bodies.OPP)).toBe(true);
+    expect(bodies.OPP).toEqual({ height: 2.1, jump: POSITIONS.OPP.jump, power: POSITIONS.OPP.power });
+    setBodyValue(bodies, 'OPP', 'height', POSITIONS.OPP.height);
+    expect(bodies.OPP).toBeUndefined();
+  });
+
+  it('setBody applies a new body in place and copyBody hands it to a planner copy', () => {
+    const a = new Athlete('OPP', 1);
+    a.setBody({ height: 1.8, jump: 0.7, power: 1.2 });
+    expect(a.height).toBe(1.8);
+    expect(a.jumpMax).toBe(0.7);
+    expect(a.stats.power).toBe(1.2);
+    expect(a.standReach).toBeLessThan(new Athlete('OPP', 1).standReach);
+    const sim = new Athlete('OPP', 1);
+    sim.copyBody(a);
+    expect([sim.height, sim.standReach, sim.jumpMax, sim.stats.power]).toEqual([a.height, a.standReach, a.jumpMax, a.stats.power]);
+    a.setBody(undefined);
+    expect(a.stats).toBe(POSITIONS.OPP);
   });
 });

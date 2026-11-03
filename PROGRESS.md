@@ -322,7 +322,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   - Measured over 4-minute rallies (OH and OPP calling the fast set, MB): every home set followed a
     read made on its pass; the call came 1.1-1.4 s before the setter's touch; called fast sets in
     system arrived 0.42-0.46 m above the contact height (as called); no quick out of system.
-  - Tests: 75 (a stand-in Game drives the real team coordinator: a pass to the target is called in
+  - Tests: +4, 89 in all (a stand-in Game drives the real team coordinator: a pass to the target is called in
     system once, 0.2 s after the pass; a pass 2.6 m off the net is called high; a called go is fast in
     system and a high ball out of system; the setter running down a bad pass keeps the high call).
 
@@ -330,7 +330,8 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
   well within a 16.7 ms budget, and the quality governor degrades gracefully if the GPU is slow.
-- Pointer lock can be refused in some embedded browsers; the game falls back to drag-to-look.
+- Pointer lock can be refused in some embedded browsers; if it never works, the game falls back to
+  drag-to-look (see "Pause and pointer lock" below for refusals after it has worked).
 - Athletes don't physically collide with each other (AI spacing keeps it rare).
 - No rotation in the Mini Rally: positions are fixed slots (a sandbox, not a match).
 
@@ -376,6 +377,46 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Ideas for later: gyro aim (turn the phone to look, with the iOS permission prompt), a left-side
   JUMP option for players who prefer the two-thumb split, button size / layout scale setting,
   a short on-screen tutorial on the first touch session.
+
+## Custom body (settings: height, vert, spike power)
+- Settings → **Your athlete**: per position (OH / OPP / MB / S / L tabs, the tab opens on the
+  position you picked or are playing) sliders for height (1.60-2.20 m), vertical = approach jump
+  (40-110 cm) and spike power (x0.60-1.30, shown as the top speed of a Perfect full-power spike,
+  65-140 km/h), the resulting spike reach, the position's defaults and a reset. Stored in
+  `settings.bodies` (only customised positions; sanitised and clamped on load). Only the user's
+  athlete uses it: AI players keep the position defaults. Speed, ball control and the standing-jump
+  fraction stay the position's.
+- `src/game/body.ts` resolves a body (`bodyStats`, clamped to `BODY` in config); `Athlete` takes
+  `{ body }` and has `setBody` / `copyBody`. Changes apply live, also mid-drill: stats at once, and a
+  new height rebuilds the user's model (same kit, same view slot) on the next frame and restarts
+  the replay buffer (it recorded the old model).
+- The forward-simulation copies (autopilot planner, `simulateApproach`, `predictJump`) now copy
+  the whole body, not only the jump: with a custom height the quick set was solved for the default
+  body's hand and missed a taller middle's hand by ~10 cm (test).
+- Position cards on the start screen show the custom height / jump / power bars, tagged "custom".
+- Tests: 79 (custom vert = the approach jump you get, standing jump keeps its fraction; height moves
+  the reach and contact point; power scales the same Perfect swing's speed; a quick meets a taller,
+  higher-jumping middle's hand; clamping, sanitising stored values, dropping a default entry).
+
+## Pause and pointer lock
+- Playtest report: "Esc has to be pressed twice to pause, the first one only frees the mouse; and
+  sometimes the mouse is free and doesn't steer." Reproduced in headful Chromium with real OS key
+  presses (XTest under Xvfb; CDP key events skip the browser's Esc handling, so they can't show it).
+- Root cause: any refused `requestPointerLock` switched on the drag-look fallback for good. Chrome
+  refuses a re-lock for ~1.25 s after the user's Esc ("Pointer lock cannot be acquired immediately
+  after the user has exited the lock"), so a quick Resume after Esc left the game unpaused with a
+  free mouse that didn't steer, and clicking the court didn't recapture it. A later lock still
+  worked, but with the flag on, losing it didn't pause: the first Esc only freed the mouse, and
+  the second (now a page keydown) paused.
+- Fix (`src/core/input.ts`, `src/main.ts`): drag-look only when the lock is refused before it has
+  ever worked; a granted lock clears it. A refusal after that keeps the game paused with the menu
+  up and retries once Chrome's window has passed (the Resume click still counts as the gesture),
+  so a quick Resume just takes a moment. Esc on the pause menu resumes through the lock request
+  instead of unpausing with a free mouse; key repeats and the releasing press itself are ignored.
+  Firefox / Safari (no promise from `requestPointerLock`) report refusals via `pointerlockerror`.
+- Tests: `tests/pointerLock.test.ts` (scripted browser: fallback only before the first grant,
+  Chrome's cooldown refusal keeps lock mode, a grant clears the fallback, unadjustedMovement retry,
+  event-only browsers).
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)

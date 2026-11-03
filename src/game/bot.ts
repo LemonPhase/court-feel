@@ -200,6 +200,7 @@ export class SpikeBot {
     const me = g.me;
     if (!this.sim || this.sim.role !== me.role) this.sim = new Athlete(me.role, me.side);
     const a = this.sim;
+    a.copyBody(me);
     a.pos.copy(me.pos);
     a.vel.copy(me.vel);
     a.yaw = me.yaw;

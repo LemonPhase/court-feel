@@ -110,13 +110,32 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .settings { z-index: 26; }
 .pause-box, .settings-box { background: rgba(14,17,26,0.96); border: 1px solid rgba(255,255,255,0.12); border-radius: 14px;
   padding: 24px 28px; display: flex; flex-direction: column; gap: 10px; min-width: 300px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
-.settings-box { min-width: 520px; }
+.settings-box { min-width: 520px; max-height: 94vh; overflow-y: auto; }
 .pause-t { font-weight: 900; font-style: italic; font-size: 30px; margin-bottom: 6px; }
 .set-grid { display: grid; gap: 8px; }
 .set-row { display: grid; grid-template-columns: 170px 1fr 70px; align-items: center; gap: 10px; font-size: 13px; }
 .set-row .chip { grid-column: 2 / span 2; justify-self: start; }
 .set-val { text-align: right; opacity: 0.75; font-variant-numeric: tabular-nums; }
 .set-row input[type=range] { width: 100%; accent-color: #ffd23f; }
+/* settings: general on the left, "Your athlete" on the right */
+.settings-cols { display: flex; gap: 28px; align-items: flex-start; }
+.settings-cols > .set-grid { flex: 1 1 auto; }
+.body-set { flex: 0 0 340px; display: grid; gap: 8px; padding: 12px 14px; border-radius: 10px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); }
+.set-h { font-size: 12px; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase; color: var(--gold); }
+.set-note { font-size: 11px; opacity: 0.6; line-height: 1.4; margin-top: -2px; }
+.body-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.body-tab { padding: 6px 11px; font-size: 12px; position: relative; }
+.body-tab.custom::after { content: ''; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: #7dff9b; }
+.body-pos { font-size: 12px; font-weight: 700; opacity: 0.85; }
+.body-set .set-row { grid-template-columns: 96px 1fr 104px; }
+.body-sum { font-size: 12px; opacity: 0.85; line-height: 1.5; }
+.body-sum b { color: #fff; }
+.body-sum span { opacity: 0.6; font-size: 11px; }
+.body-reset { justify-self: start; padding: 7px 14px; font-size: 12px; }
+.body-reset:disabled { opacity: 0.35; cursor: default; }
+.pos-h b { color: #7dff9b; font-weight: 700; }
+@media (max-width: 1000px) { .settings-cols { flex-direction: column; align-items: stretch; } .body-set { flex: none; } }
 @media (max-width: 900px) { .pos-row { grid-template-columns: repeat(3, 1fr); } .mode-grid { grid-template-columns: repeat(2, 1fr); }
   .logo { font-size: 44px; } .settings-box { min-width: 0; width: 92vw; } .set-row { grid-template-columns: 1fr 1fr 50px; } }
 
@@ -283,4 +302,5 @@ body.touchmode .controls.tc { display: block; }
   .set-row { grid-template-columns: 1fr; gap: 4px; font-size: 12px; }
   .set-row .set-val { text-align: left; }
   .set-row .chip { grid-column: auto; }
+  .body-set .set-row { grid-template-columns: 1fr; }
 }

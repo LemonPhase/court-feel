@@ -22,8 +22,14 @@ export class Input {
   mouseDX = 0;
   mouseDY = 0;
   pointerLocked = false;
-  /** when pointer lock is unavailable (headless / denied) allow drag-look */
+  /** pointer lock is unavailable here (refused before it ever worked): drag to look instead */
   dragLook = false;
+  /** pointer lock has been granted on this page, so a later refusal is temporary */
+  private lockGranted = false;
+  /** a request whose requestPointerLock returned no promise (Firefox, Safari): it can only fail through pointerlockerror */
+  private eventRequest = false;
+  /** performance.now() when the pointer lock was last released */
+  lockLostAt = -1e9;
   private dragging = false;
   enabled = true;
   /** touch controls drive look and buttons (no pointer lock, mouse events emulated from touches are ignored) */
@@ -32,6 +38,8 @@ export class Input {
   readonly stick: Stick = { active: false, x: 0, y: 0, sprint: false };
   private lastTouchAt = -1e9;
   onPointerLockChange: ((locked: boolean) => void) | null = null;
+  /** a lock request was refused; `fallback`: the lock never worked here, so drag-look took over */
+  onLockRefused: ((fallback: boolean) => void) | null = null;
   /** keys that should never reach the browser default handler */
   private static readonly swallow = new Set([
     'Space', 'Tab', 'F3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight',
@@ -70,7 +78,20 @@ export class Input {
     });
     document.addEventListener('pointerlockchange', () => {
       this.pointerLocked = document.pointerLockElement === this.el;
+      this.eventRequest = false;
+      if (this.pointerLocked) {
+        // the lock works here: an earlier drag-look fallback no longer applies, so losing it pauses again
+        this.lockGranted = true;
+        this.dragLook = false;
+        this.dragging = false;
+      } else this.lockLostAt = performance.now();
       this.onPointerLockChange?.(this.pointerLocked);
+    });
+    document.addEventListener('pointerlockerror', () => {
+      // promise requests report through their promise (Chrome fires this event as well)
+      if (!this.eventRequest) return;
+      this.eventRequest = false;
+      this.lockRefused();
     });
   }
 
@@ -81,22 +102,38 @@ export class Input {
 
   requestLock(): void {
     if (this.touch) return;
+    const el = this.el as HTMLElement & { requestPointerLock?: (opts?: object) => Promise<void> | void };
+    if (typeof el.requestPointerLock !== 'function') return this.lockRefused();
+    // a request either returns a promise (Chrome) or reports back through pointerlockchange / pointerlockerror
+    const ask = (opts?: object): Promise<void> | null => {
+      const p = opts ? el.requestPointerLock!(opts) : el.requestPointerLock!();
+      if (p && typeof p.then === 'function') return p;
+      this.eventRequest = true;
+      return null;
+    };
     try {
-      const p = (this.el as any).requestPointerLock?.({ unadjustedMovement: true });
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => {
-          // unadjustedMovement is not supported everywhere: retry plainly
-          try {
-            const p2 = (this.el as any).requestPointerLock?.();
-            if (p2 && typeof p2.catch === 'function') p2.catch(() => (this.dragLook = true));
-          } catch {
-            this.dragLook = true;
-          }
-        });
-      }
+      ask({ unadjustedMovement: true })?.catch(() => {
+        // unadjustedMovement is not supported everywhere: retry plainly
+        try {
+          ask()?.catch(() => this.lockRefused());
+        } catch {
+          this.lockRefused();
+        }
+      });
     } catch {
-      this.dragLook = true;
+      this.lockRefused();
     }
+  }
+
+  /**
+   * Once the lock has worked here a refusal is temporary (Chrome refuses it for ~1.25 s after the user's
+   * Esc, and without a click), so stay in pointer-lock mode: drag-look is only for pages that never get it
+   * (a sandboxed frame, a browser without it). A sticky fallback here left the game unpaused with a free
+   * mouse, and a later lock then needed two Esc presses to pause.
+   */
+  private lockRefused(): void {
+    if (!this.lockGranted) this.dragLook = true;
+    this.onLockRefused?.(this.dragLook);
   }
 
   exitLock(): void {

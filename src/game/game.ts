@@ -8,6 +8,7 @@ import { CameraRig, type FollowTarget } from '../camera/cameraRig';
 import { Arena } from '../world/arena';
 import { Post } from '../fx/post';
 import { Athlete } from './athlete';
+import { bodyStats } from './body';
 import { UserController } from './userController';
 import { DebugOverlay, type DebugInfo } from '../ui/debug';
 import { BallEntity, type TouchKind } from './ballEntity';
@@ -164,7 +165,7 @@ export class Game {
     });
     this.contact.userAimYaw = () => this.rig.yaw;
 
-    this.me = new Athlete('OH', 1);
+    this.me = new Athlete('OH', 1, { body: settings.bodies.OH });
     this.me.isUser = true;
     this.me.place(-3.2, 4.5, 0);
     this.addAthlete(this.me);
@@ -191,14 +192,16 @@ export class Game {
     return v;
   }
 
+  private disposeView(v: AthleteView): void {
+    this.scene.remove(v.root);
+    v.rig.mesh.geometry.dispose();
+    v.rig.material.dispose();
+    v.rig.mesh.skeleton.dispose();
+  }
+
   removeAthlete(a: Athlete): void {
     const v = this.views.get(a);
-    if (v) {
-      this.scene.remove(v.root);
-      v.rig.mesh.geometry.dispose();
-      v.rig.material.dispose();
-      v.rig.mesh.skeleton.dispose();
-    }
+    if (v) this.disposeView(v);
     this.views.delete(a);
     this.brains.delete(a);
     this.athletes = this.athletes.filter((x) => x !== a);
@@ -266,16 +269,45 @@ export class Game {
     me.cmd.sprint = d > 2.5;
   }
 
-  /** change the user's position stats (height, jump, etc) */
+  /** change the user's position stats (height, jump, etc; your custom body for that position from the settings) */
   setUserPosition(pos: PositionId): void {
     this.position = pos;
     const old = this.me;
-    const a = new Athlete(pos, 1);
+    const a = new Athlete(pos, 1, { body: this.settings.bodies[pos] });
     a.isUser = true;
     this.removeAthlete(old);
     this.me = a;
     this.addAthlete(a, 1);
     this.user.athlete = a;
+  }
+
+  /** the user's model has to be rebuilt for a new height (done once per frame at most, while a slider drags) */
+  private userViewDirty = false;
+
+  /** apply your custom body (settings) to the user's athlete, live, also mid-drill */
+  applyUserBody(): void {
+    const me = this.me;
+    const st = bodyStats(me.role, this.settings.bodies[me.role]);
+    if (st.height === me.stats.height && st.jump === me.stats.jump && st.power === me.stats.power) return;
+    const h = me.height;
+    me.setBody(this.settings.bodies[me.role]);
+    if (me.height !== h) this.userViewDirty = true;
+  }
+
+  /** a new height: a new model with the same kit (the view keeps its slot, so the replay keeps its athlete order) */
+  private rebuildUserView(): void {
+    this.userViewDirty = false;
+    const a = this.me;
+    const old = this.views.get(a);
+    if (!old) return;
+    this.disposeView(old);
+    const v = new AthleteView(a, old.kit);
+    v.onFootstep = old.onFootstep;
+    this.views.set(a, v);
+    this.scene.add(v.root);
+    this.eyeInit = false;
+    // the replay buffer recorded the old model: start it afresh
+    this.fx.onModeStart();
   }
 
   // ------------------------------------------------------------ modes
@@ -322,6 +354,7 @@ export class Game {
     if (!this.inMenu) this.rig.setMode(s.firstPerson ? 'fp' : 'tp');
     this.hud.showHints = s.showHints;
     this.fx?.audio.setVolume(s.volume);
+    this.applyUserBody();
     saveSettings(s);
   }
 
@@ -669,6 +702,7 @@ export class Game {
   private _aim = new THREE.Vector3();
 
   render(realDt: number, draw = true): void {
+    if (this.userViewDirty) this.rebuildUserView();
     const alpha = this.accum / (1 / SIM.hz);
     for (const a of this.athletes) a.interpolate(alpha);
     this.ball.interpolate(alpha);

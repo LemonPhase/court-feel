@@ -91,6 +91,19 @@ power and ball control, where drills start you, and what the AI asks of you.
 | **Setter (S)** | 1.90 m | 0.74 m | Sets every second ball, attacks on two |
 | **Libero (L)** | 1.82 m | 0.66 m | Fastest feet and cleanest passing (back-row pipe in the spike drill) |
 
+### Your athlete (custom height, vert and spike power)
+
+Settings → **Your athlete** lets you make each position your own: pick the
+position tab and set your **height** (1.60–2.20 m), **vertical jump** (your
+approach jump, 40–110 cm; the standing jump keeps the position's fraction of
+it) and **spike power** (shown as the top speed of a Perfect, full-power
+spike, about 65–140 km/h; it also drives your serve speed). The panel shows
+the spike reach that gives you and the position's defaults, and a reset.
+Height moves everything that hangs off your body: reach and contact point,
+the set heights, block height, the camera and your model. Changes apply right
+away, even from the pause menu mid-drill, and the position cards on the start
+screen show them. Only your player uses them; AI players keep the defaults.
+
 ## Modes
 
 1. **Free Play** — a ball machine feeds you (set, free ball, float serve, hard
@@ -210,19 +223,21 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
+| `BODY` | Slider ranges for the custom height, vert and spike power (Settings → Your athlete) |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`) and how far off the net is out of system (`outOfSystem`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
-slow-mo assist, landing marker, replays, camera shake, volume, hints) are in
-the pause menu and persist in `localStorage`. Camera shake also scales the
+slow-mo assist, landing marker, replays, camera shake, volume, hints, and your
+custom height / vert / spike power per position) are in the pause menu and
+persist in `localStorage`. Camera shake also scales the
 impact FOV punch and camera kick (0 turns them off).
 
 ## Testing
 
-* `npm test` — 75 Vitest tests: set apex, spike landing point, topspin dip,
+* `npm test` — 89 Vitest tests: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
   acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the
@@ -233,7 +248,9 @@ impact FOV punch and camera kick (0 turns them off).
   (pins inside the antennae, shoot / back quick geometry, a back quick meeting
   the hitter), middles hitting zone 1 / 5, hit-sound power, the impact
   camera punch and kick, and the spike animation (hand on the ball at contact,
-  no re-cocking in the air after the hit).
+  no re-cocking in the air after the hit), and the custom body (a custom vert
+  is the jump you get, height moves the reach, power scales the spike, a quick
+  still meets a taller middle's hand, stored values are clamped).
 * `npm run e2e` — starts Vite, loads the game in headless Chromium, runs every
   drill with an autopilot that plays through the real input path (it plans
   its approach by forward-simulating the athlete), screenshots first- and
