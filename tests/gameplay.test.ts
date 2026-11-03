@@ -11,6 +11,8 @@ import { flyFor, solveApex, solveFixedTime } from '../src/physics/solve';
 import { planQuick } from '../src/ai/approach';
 import { laneFor, QUICK, quickSetFor, quickSpot, SET_PLAYS, SETTER_TARGET } from '../src/game/plays';
 import { HitterBrain } from '../src/ai/hitter';
+import { AthleteView } from '../src/character/athleteView';
+import { makeKit } from '../src/character/kits';
 import { AudioEngine } from '../src/audio/audio';
 
 const DT = 1 / SIM.hz;
@@ -187,7 +189,7 @@ function makeHost(ball: FakeBall, events: ContactEvent[]) {
  * Put a hitter in the air under a set, wind up for `hold` seconds and release
  * `offset` seconds from the ideal moment; returns the graded contact.
  */
-function spikeWithOffset(offset: number, hold = 0.45) {
+function spikeWithOffset(offset: number, hold = 0.45, onStep?: (a: Athlete, t: number, events: ContactEvent[]) => boolean) {
   const ball = new FakeBall();
   const events: ContactEvent[] = [];
   const host = makeHost(ball, events);
@@ -238,7 +240,8 @@ function spikeWithOffset(offset: number, hold = 0.45) {
     a.step(DT, host.simTime);
     cs.step([a]);
     stepBall(ball.state, DT, host.env, evs);
-    if (events.length) break;
+    // with a per-step hook, keep going until it says stop (e.g. the landing)
+    if (onStep ? onStep(a, host.simTime, events) : events.length) break;
   }
   return events[0];
 }
@@ -520,5 +523,45 @@ describe('first-person camera at the net', () => {
       // and it never crosses to the other side
       expect(Math.sign(rig.camera.position.z)).toBe(side);
     }
+  });
+});
+
+describe('spike animation', () => {
+  /** a full-power Perfect spike with the real animator: hand position at contact and after it */
+  function animatedSpike() {
+    let view: AthleteView | null = null;
+    let contactY = NaN;
+    let handToBall = Infinity;
+    let highestAfter = -Infinity;
+    let headY = 0;
+    let landedAt = -1;
+    let contactT = -1;
+    const e = spikeWithOffset(0, 0.45, (a, t, events) => {
+      view ??= new AthleteView(a, makeKit(0, false, 1));
+      a.interpolate(1);
+      view.update(DT, t);
+      if (events.length && contactT < 0) {
+        contactT = t;
+        contactY = view.palmR.y;
+        handToBall = view.palmR.distanceTo(events[0].point);
+        headY = view.headPos.y;
+      }
+      // after the follow-through, until the feet touch down
+      if (contactT > 0 && t - contactT > 0.22 && a.state === 'air') highestAfter = Math.max(highestAfter, view.palmR.y - view.headPos.y);
+      if (contactT > 0 && a.state === 'land' && landedAt < 0) landedAt = t;
+      return landedAt > 0;
+    });
+    return { e, contactY, handToBall, highestAfter, headY, landed: landedAt > 0 };
+  }
+
+  it('the hitting hand meets the ball, then stays down across the body until the landing (no re-cocking)', () => {
+    const r = animatedSpike();
+    expect(r.e.perfect).toBe(true);
+    expect(r.landed).toBe(true);
+    // the hand is on the ball at the contact, well above the head
+    expect(r.handToBall).toBeLessThan(0.3);
+    expect(r.contactY).toBeGreaterThan(r.headY + 0.3);
+    // after the swing the hitting hand never comes back up above the shoulders while still in the air
+    expect(r.highestAfter).toBeLessThan(-0.25);
   });
 });
