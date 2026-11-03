@@ -262,7 +262,8 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Mobile/touch layout.
 
 ## Next steps
-- None required. If resuming: pick from "Ideas for later" or the next round of playtest notes.
+- `main` holds the current playable build (all playtest rounds merged). If resuming: pick from
+  "Ideas for later" or the next round of playtest notes.
 
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)

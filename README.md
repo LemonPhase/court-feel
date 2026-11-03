@@ -166,7 +166,8 @@ the pause menu and persist in `localStorage`.
   its approach by forward-simulating the athlete), screenshots first- and
   third-person Perfect spikes, the impact and the replay, checks the console
   for errors and reports frame time, draw calls and memory over a soak.
-  Output goes to `scripts/out/`. Needs Playwright (`npm i -D playwright` and
+  Output goes to `scripts/out/`. The dev server uses port 5199 (set
+  `E2E_PORT` to change it; `SOAK` sets the soak length in seconds). Needs Playwright (`npm i -D playwright` and
   `npx playwright install chromium` if you don't have it globally).
 * URL shortcuts for quick testing: `?mode=spike&pos=OH&cam=fp&bot=perfect`
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,

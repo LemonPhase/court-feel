@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'scripts', 'out');
 fs.mkdirSync(out, { recursive: true });
-const PORT = 5199;
+const PORT = Number(process.env.E2E_PORT ?? 5199);
 const soakSeconds = Number(process.env.SOAK ?? 120);
 
 // own process group, so stopping it also stops the vite child that npx starts
