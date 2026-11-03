@@ -678,8 +678,9 @@ export class Game {
     }
     this.ball.updateVisuals(realDt, this.simTime, this.env);
     // the buffer holds live play (plus a short tail for the ball settling) only: a dead ball
-    // does not push the last highlight out of it
-    if (!this.fx.ballDead()) this.recordUntil = tr + 1.0;
+    // does not push the last highlight out of it. A ball in the air always counts (the toss
+    // and wind-up of a serve come before the rally goes live)
+    if (!this.fx.ballDead() || this.ball.active) this.recordUntil = tr + 1.0;
     if (tr <= this.recordUntil) this.fx.replay.record(tr, this.ball.mesh, this.ball.mesh.visible);
     this.fx.update(animDt);
     this.rig.ballPos = this.ball.active ? this.ball.rpos : null;
