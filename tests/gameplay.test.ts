@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { CONTACT, COURT, PLAYER, POSITIONS, SIM, TIMING, type PositionId } from '../src/config';
+import { CAMERA, CONTACT, COURT, PLAYER, POSITIONS, SIM, TIMING, type PositionId } from '../src/config';
+import { CameraRig } from '../src/camera/cameraRig';
 import { Athlete } from '../src/game/athlete';
 import { aimPitchRange, aimTargetFromLook, AIM_DEPTH, ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
 import { Judge } from '../src/game/judge';
@@ -500,5 +501,24 @@ describe('hit sound power', () => {
     expect(AudioEngine.powerFromSpeed(22)).toBeGreaterThan(AudioEngine.powerFromSpeed(17));
     expect(AudioEngine.powerFromSpeed(30)).toBe(1);
     expect(AudioEngine.powerFromSpeed(5)).toBe(0);
+  });
+});
+
+describe('first-person camera at the net', () => {
+  it('the lens stays far enough back that the net is never clipped by the near plane', () => {
+    for (const side of [1, -1] as const) {
+      const rig = new CameraRig(16 / 9);
+      rig.mode = 'fp';
+      rig.yaw = side === 1 ? 0 : Math.PI;
+      rig.pitch = 0.1;
+      // feet on the closest allowed spot to the centre line, eye at head height
+      const z = side * 0.22;
+      const t = { root: new THREE.Vector3(0, 0, z), eye: new THREE.Vector3(0, 1.82, z), sprint: 0, height: 1.95, side };
+      rig.update(1 / 60, t);
+      const cz = rig.camera.position.z * side;
+      expect(cz).toBeGreaterThanOrEqual(CAMERA.fpNear + 0.05);
+      // and it never crosses to the other side
+      expect(Math.sign(rig.camera.position.z)).toBe(side);
+    }
   });
 });

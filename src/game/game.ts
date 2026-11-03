@@ -237,7 +237,7 @@ export class Game {
     const d = Math.hypot(me.pos.x - r.x, me.pos.z - r.z);
     const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.input.isDown(k));
     if (keys) r.userDriven = true;
-    if (d < 0.3 || (r.userDriven && d < 0.9)) {
+    if (d < 0.1 || (r.userDriven && d < 0.9)) {
       this.ret = null;
       return;
     }

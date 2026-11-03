@@ -237,6 +237,8 @@ export const CAMERA = {
   far: 140,
   sensitivity: 0.0022,
   fpEyeForward: 0.09,
+  /** FP lens never gets closer to the net plane than fpNear + this (the net stays in view at the net) */
+  fpNetGap: 0.1,
   fpBobScale: 0.35,
   fpPitchMin: -1.35,
   fpPitchMax: 1.35,

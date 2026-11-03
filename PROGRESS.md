@@ -9,7 +9,7 @@ Serve Receive/Dig, Setter, 6v6 Mini Rally), five positions, instant FP/TP switch
 deterministic ball simulation, procedurally built and animated athletes with IK, graded timing
 (Perfect / Good / Early / Late) with buffering and adjustable assist, a full juice package
 (hit-stop, shake, streak sparks, fire trails, shockwave, dust, floor cracks, hand flashes,
-slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (50
+slow-mo cinematic replay), synthesised Web Audio, AI teammates/opponents, and test tooling (51
 unit tests + a Playwright e2e that plays every drill through the real input path).
 
 ### Acceptance criteria
@@ -26,7 +26,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   dig, set, serve toss; planted feet; head look-at. Side-view screenshot sheets checked.
 - [x] **Realistic ball physics** — set apex, spike landing, topspin dip, net/tape/antenna, women's
   net, floor bounce, determinism and predictor tests; arcs and spike speeds (25-30 m/s) at 1:1 scale.
-- [x] **60 fps target, no console errors, all tests pass** — 50/50 tests; e2e: no console errors;
+- [x] **60 fps target, no console errors, all tests pass** — 51/51 tests; e2e: no console errors;
   CPU frame median ~4.6 ms (p95 ~12 ms, from set-time AI planning) with 86 draw calls / 107k
   triangles; adaptive quality governor (MSAA → render scale → shadow size) protects weaker GPUs.
   No memory growth: 0 geometry/texture growth across repeated mode switches, JS heap flat over a
@@ -226,6 +226,19 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   start of the forward search window (which clamped every late release to about +78 ms).
   Full charge, by release time before contact: -170 ms Early, -150..-130 Good, -120..-25 Perfect
   (was -130..-70), -20..+20 Good, +30..+50 Late, +70 Miss.
+
+- **Playtest round 5: block drill base and FP at the net.**
+  - Every block rep starts at the net in front of their middle (their quick spot, `BASE` in
+    blockDrill.ts), not at a per-position spot (the outside blocker started left of their setter).
+    The hitter your position blocks in a match gets 45% of the sets. The jog back between reps
+    always runs and now arrives within 0.1 m (was 0.3 m, and skipped within 0.6 m).
+  - FP at the net: the eye follows the feet (0.22 m from the centre line at the closest) and the lens
+    sat 0.09 m ahead of it, inside the 0.22 m near plane's reach of the net, so the net and tape were
+    clipped away and you seemed to look from their side. The FP lens now never gets closer to the net
+    plane than near plane + 0.1 m (`CAMERA.fpNetGap`).
+  - Test bot: once it starts a quick run it sees it through to the landing (the "pass to our setter"
+    read can drop out just before the touch, and resetting there let go of the plant and the
+    wind-up). 4-minute rally as middle: 12/12 Perfect quicks.
 
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a

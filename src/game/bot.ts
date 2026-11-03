@@ -44,9 +44,11 @@ export class SpikeBot {
   private release(): void {
     const inp = this.g.input;
     for (const k of ['Space', 'KeyW', 'ShiftLeft']) inp.up(k);
-    // mid-air with no ball to hit (a decoy): keep holding; landing drops the wind-up
-    if (this.g.me.state !== 'air') inp.up('Mouse0');
+    // planting or in the air with no ball to hit (a decoy): keep holding; landing drops the wind-up
+    const st = this.g.me.state;
+    if (st === 'ground' || st === 'land') inp.up('Mouse0');
   }
+  private committed = false;
 
   step(_dt: number): void {
     const g = this.g;
@@ -69,11 +71,17 @@ export class SpikeBot {
       (ball.active && lt && lt.athlete !== me && lt.side === me.side &&
         (lt.kind === 'set' || (lt.kind === 'feed' && me.role === 'S')) &&
         (!team || team.setFor === me));
-    if (!setForMe && (this.phase !== 'air' || me.state === 'ground')) {
+    // a run started before the set (a quick) is seen through to the landing: the "pass to the
+    // setter" read can drop out in the last frames before the touch, and resetting there would
+    // let go of the plant and the wind-up mid-run
+    const committed = this.committed && (this.phase === 'approach' || this.phase === 'load' || (this.phase === 'air' && me.state !== 'ground'));
+    if (!setForMe && !committed && (this.phase !== 'air' || me.state === 'ground')) {
       if (this.phase !== 'wait') this.release();
       this.phase = 'wait';
       this.plan = null;
-      if (me.state !== 'air' && g.input.isDown('Mouse0')) g.input.up('Mouse0');
+      this.committed = false;
+      // let go of the attack button only on the floor (in the plant or the air it would swing)
+      if ((me.state === 'ground' || me.state === 'land') && g.input.isDown('Mouse0')) g.input.up('Mouse0');
       this.holding = false;
       this.mx = this.mz = 0;
       this.sprint = false;
@@ -81,7 +89,10 @@ export class SpikeBot {
       g.rig.pitch = g.rig.mode === 'fp' ? 0.25 : -0.3;
       return;
     }
-    if (this.phase === 'wait' && setForMe) this.makePlan();
+    if (this.phase === 'wait' && setForMe) {
+      this.makePlan();
+      this.committed = this.phase !== 'wait' && (quickCue || drillEarly);
+    }
     const plan = this.plan;
     if (!plan) return;
     // aim at the drill's target zone

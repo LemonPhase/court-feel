@@ -17,7 +17,16 @@ fs.mkdirSync(out, { recursive: true });
 const PORT = 5199;
 const soakSeconds = Number(process.env.SOAK ?? 120);
 
-const server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: root, stdio: 'pipe' });
+// own process group, so stopping it also stops the vite child that npx starts
+const server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: root, stdio: 'pipe', detached: true });
+const stopServer = () => {
+  try {
+    process.kill(-server.pid, 'SIGTERM');
+  } catch {
+    server.kill();
+  }
+};
+process.on('exit', stopServer);
 await new Promise((res, rej) => {
   const t = setTimeout(() => rej(new Error('vite did not start')), 30000);
   server.stdout.on('data', (d) => {
@@ -252,5 +261,5 @@ console.log('soak', JSON.stringify(soak));
 fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
 console.log(errors.length ? 'CONSOLE ERRORS:\n' + errors.join('\n') : 'no console errors');
 await browser.close();
-server.kill();
+stopServer();
 process.exit(errors.length ? 1 : 0);

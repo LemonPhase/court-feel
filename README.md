@@ -89,8 +89,11 @@ power and ball control, where drills start you, and what the AI asks of you.
    For fast sets the GO cue comes off the pass, because the run has to start
    before the setter touches the ball. Target zones follow your position: line
    and cross are mirrored for the opposite, and the middle aims at zone 1 or 5.
-3. **Block Drill** — the opponent setter sets one of three hitters. Read it,
-   shuffle, hands up, time the jump. Stuffs, soft blocks and touches score.
+3. **Block Drill** — the opponent setter sets one of three hitters. Every rep
+   starts at the net in front of their middle; read the set, shuffle, hands up,
+   time the jump. The hitter your position blocks in a match (outside: their
+   opposite, opposite: their outside, middle: their middle) gets the most sets.
+   Stuffs, soft blocks and touches score.
    Their middle runs a quick on every ball: to stop it, jump with them
    (commit) — if the set goes outside, you were fooled by the decoy.
 4. **Serve Receive / Dig** — float serves and attacks come at you; pass to the
@@ -149,7 +152,7 @@ the pause menu and persist in `localStorage`.
 
 ## Testing
 
-* `npm test` — 50 Vitest tests: set apex, spike landing point, topspin dip,
+* `npm test` — 51 Vitest tests: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
   acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the

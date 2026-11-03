@@ -7,13 +7,19 @@ import type { PositionId } from '../../config';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
-import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, SETTER_TARGET, setterTouchY } from '../plays';
+import { attackHeight, laneFor, quickSetFor, quickSpot, SETTER_SPOT, SETTER_TARGET, setterTouchY } from '../plays';
 import { kbd, Mode } from './mode';
 
 type Phase = 'intro' | 'feed' | 'live' | 'result';
 
 /** where the user starts blocking, by position (x along the net, home side) */
-const BLOCK_X: Record<PositionId, number> = { OH: -3.2, OPP: 3.2, MB: 0, S: 2.6, L: 0 };
+/**
+ * Base block position: every rep starts at the net in front of their middle
+ * (where their quick is hit, in front of their setter), reading the set from there.
+ */
+const BASE = { x: quickSpot(-SETTER_TARGET.x, -1).x, z: 0.5 };
+/** the hitter each position is responsible for at the net (gets the extra sets) */
+const MY_HITTER: Record<PositionId, 'OH' | 'MB' | 'OPP'> = { OH: 'OPP', OPP: 'OH', MB: 'MB', S: 'OH', L: 'MB' };
 
 /**
  * Block drill: the opponent setter sets one of three hitters; read the set,
@@ -33,7 +39,7 @@ export class BlockDrill extends Mode {
 
   setup(): void {
     const g = this.g;
-    g.placeUser(BLOCK_X[this.position], 0.5, 0);
+    g.placeUser(BASE.x, BASE.z, 0);
     // opponent setter (far side, faces +x = their left)
     const sx = -SETTER_SPOT.x;
     const sz = -SETTER_SPOT.z;
@@ -86,11 +92,9 @@ export class BlockDrill extends Mode {
   }
 
   private pickHitter() {
-    // 45%: the hitter in front of you, otherwise random
-    const me = this.g.me;
-    let near = this.hitters[0];
-    for (const h of this.hitters) if (Math.abs(h.a.pos.x - me.pos.x) < Math.abs(near.a.pos.x - me.pos.x)) near = h;
-    if (this.g.rng.next() < 0.45) return near;
+    // 45%: the hitter your position would block in a match, otherwise any of the three
+    const mine = this.hitters.find((h) => h.pos === MY_HITTER[this.position]) ?? this.hitters[0];
+    if (this.g.rng.next() < 0.45) return mine;
     return this.hitters[Math.floor(this.g.rng.next() * this.hitters.length)];
   }
 
@@ -215,7 +219,8 @@ export class BlockDrill extends Mode {
     this.setter.place(-SETTER_SPOT.x, -SETTER_SPOT.z, -Math.PI / 2);
     this.target = null;
     const me = g.me;
-    if (Math.hypot(me.pos.x - BLOCK_X[this.position], me.pos.z - 0.5) > 0.8 || me.state !== 'ground') g.returnUser(BLOCK_X[this.position], 0.5, 0);
+    // always back to the same base spot so every read starts from the same place
+    if (Math.hypot(me.pos.x - BASE.x, me.pos.z - BASE.z) > 0.15 || me.state !== 'ground') g.returnUser(BASE.x, BASE.z, 0);
     this.toPhase('feed');
   }
 

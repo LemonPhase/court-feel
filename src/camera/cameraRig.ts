@@ -121,6 +121,10 @@ export class CameraRig {
     if (this.mode === 'fp') {
       _dir.set(0, 0, -1).applyEuler(_e.set(0, this.yaw, 0, 'YXZ'));
       cam.position.copy(t.eye).addScaledVector(_dir, CAMERA.fpEyeForward);
+      // standing (or blocking) right at the net, the lens would get closer to the net than the near
+      // plane and the net would be clipped away: you would seem to see from their side. Hold it back.
+      const minZ = CAMERA.fpNear + CAMERA.fpNetGap;
+      if (Math.abs(cam.position.x) < COURT.postX + 0.5 && cam.position.z * t.side < minZ) cam.position.z = t.side * minZ;
       cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
       this.setFov(this.baseFov + this.fovBoost, dt, false);
       this.applyShake(CAMERA.fpShakeScale);
