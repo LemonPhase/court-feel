@@ -4,3 +4,6 @@ dist
 .DS_Store
 /shots
 /scripts/out
+
+# agent worktrees (local working copies, never committed)
+.claude/worktrees/
