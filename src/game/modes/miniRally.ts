@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { COURT } from '../../config';
 import { netYaw } from '../../ai/brain';
-import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT } from '../../ai/team';
+import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
-import { SET_PLAYS, SETTER_TARGET, type SetPlay } from '../plays';
+import { needsGoodPass, SET_PLAYS, SETTER_TARGET, type SetPlay } from '../plays';
 import { kbd, Mode } from './mode';
 
 type Phase = 'prepare' | 'serve' | 'live' | 'dead';
@@ -36,6 +36,7 @@ export class MiniRally extends Mode {
     this.away = new TeamAI(-1, g);
     this.home.opponents = this.away;
     this.away.opponents = this.home;
+    this.home.onRead = (r) => this.setterCall(r);
     const userSlot = USER_SLOT[this.position];
     let seed = 50;
     for (const slot of SLOTS) {
@@ -77,6 +78,44 @@ export class MiniRally extends Mode {
     return this.plays ? this.plays[this.callIdx] : null;
   }
 
+  /** the user plays a position the setter sets (outside, middle, opposite) */
+  private get hitter(): boolean {
+    return !!SET_PLAYS[this.position];
+  }
+
+  /**
+   * Our setter has read the pass. Out of system ("HIGH!": no quick, a called fast set goes
+   * up high) is always called; in system only when your call needs the good pass (a quick, a
+   * go, a fast back...), to say it is on. Shown in a bubble over the setter and shouted.
+   */
+  private setterCall(r: SetterRead): void {
+    const g = this.g;
+    if (!this.hitter) return;
+    const play = this.play;
+    let word: string;
+    let sub: string;
+    if (r.call === 'in') {
+      if (!play || !needsGoodPass(play)) return;
+      word = `${play.short.toUpperCase()}!`;
+      sub = 'in system';
+    } else if (r.call === 'out') {
+      word = 'HIGH!';
+      sub = this.position === 'MB' ? 'out of system · no quick' : 'out of system';
+    } else {
+      word = 'HELP!';
+      sub = "can't get there · no set";
+    }
+    const s = r.setter;
+    g.hud.call('SETTER', word, sub, r.call === 'in' ? 'in' : 'out', (out) => out.set(s.rpos.x, s.rpos.y + s.height + 0.42, s.rpos.z));
+    g.events.emit('setterCall', { athlete: s, call: r.call });
+  }
+
+  /** the setter's read of the pass we are on, if they have called it */
+  private get read(): SetterRead | null {
+    const r = this.home.read;
+    return r && r.touch === this.g.ball.lastTouch ? r : null;
+  }
+
   private prepare(first = false): void {
     const g = this.g;
     g.ballLive = false;
@@ -95,6 +134,7 @@ export class MiniRally extends Mode {
     this.phase = 'prepare';
     this.t = 0;
     this.userTouches = 0;
+    g.hud.clearCall();
     this.updateScore();
   }
 
@@ -141,10 +181,14 @@ export class MiniRally extends Mode {
     if (this.home.receiver === me) return `YOUR BALL · ${kbd('E')} pass / dig`;
     if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set') return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;
     if (me.role === 'S' && this.home.touches === 1) return `Your set · look at a hitter · ${kbd('RMB')}`;
-    if (me.role === 'MB' && this.home.passToSetter(g)) return `QUICK · run in now · ${kbd('Space')} as the setter touches it · hold/release ${kbd('LMB')}`;
+    // the setter's call on the pass overrides the plan: off a bad pass everything goes up high
+    const read = this.hitter && this.home.touches === 1 ? this.read : null;
+    if (read?.call === 'out') return `SETTER: HIGH · out of system · ${me.role === 'MB' ? 'no quick this time' : 'wait for the high ball'}`;
+    if (read?.call === 'help') return `SETTER: HELP · they can't get to it · no set this time`;
+    if (me.role === 'MB' && this.home.passToSetter(g)) return `QUICK · ${read ? 'in system · ' : ''}run in now · ${kbd('Space')} as the setter touches it · hold/release ${kbd('LMB')}`;
     const play = this.play;
-    const fast = play && play.inFront === undefined && play.lane.apexAbove < 1.0;
-    if (fast && this.home.touches === 1 && g.ball.lastTouch?.side === 1) return `${play.name.toUpperCase()} · start your approach as the setter touches it`;
+    const fast = play && play.inFront === undefined && needsGoodPass(play);
+    if (fast && this.home.touches === 1 && g.ball.lastTouch?.side === 1) return `${play.name.toUpperCase()} · ${read ? 'in system · ' : ''}start your approach as the setter touches it`;
     const calls = this.plays ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call` : '';
     if (Math.abs(me.pos.z) < 1.4) return `${kbd('RMB')} hands + ${kbd('Space')} block · ${kbd('V')} camera${calls}`;
     return `${kbd('WASD')} move · ${kbd('E')} pass · ${kbd('LMB')} attack · ${kbd('RMB')} block/set · ${kbd('V')} camera${calls}`;

@@ -39,6 +39,8 @@ export type GameEvents = {
   step: { athlete: Athlete; speed: number };
   land: { athlete: Athlete; impact: number };
   takeoff: { athlete: Athlete };
+  /** a team-mate's call to the user (the setter's read of the pass: in system, high, help) */
+  setterCall: { athlete: Athlete; call: 'in' | 'out' | 'help' };
 };
 
 /**
@@ -129,6 +131,7 @@ export class Game {
     this.user = new UserController(this.input, this.rig);
     this.debug = new DebugOverlay(container);
     this.hud = new Hud(container);
+    this.hud.camera = this.rig.camera;
     this.ball = new BallEntity(this.scene);
     this.ball.hide();
     this.gizmos = new DebugGizmos(this.scene);

@@ -345,6 +345,13 @@ export const AI = {
   blockerSkill: 0.5,
   defenderSkill: 0.7,
   setterAccuracy: 0.15,
+  /**
+   * Mini Rally: the setter reads the pass this long (s) after it is played and calls it
+   * ("HIGH!" when it is out of system). The call is the decision: the set follows it.
+   */
+  setterRead: 0.2,
+  /** a pass the setter takes further than this (m) from their spot is out of system: high balls only, no quick */
+  outOfSystem: 1.6,
 };
 
 /** user-adjustable settings (persisted) */

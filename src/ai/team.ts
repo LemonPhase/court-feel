@@ -3,6 +3,7 @@ import { AI, BALL, COURT, PLAYER, TIMING, type PositionId } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
+import type { Touch } from '../game/ballEntity';
 import type { Game } from '../game/game';
 import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, setterTouchY, type SetPlay } from '../game/plays';
 import { BlockerBrain } from './blocker';
@@ -35,6 +36,23 @@ const FORM: Record<'receive' | 'defense' | 'offense', Record<Slot, Spot>> = {
 };
 
 export type Job = 'base' | 'receive' | 'set' | 'attack' | 'block' | 'cover' | 'serve' | 'free';
+
+/**
+ * The setter's read of a pass on its way in, made AI.setterRead after the pass and
+ * called out loud. It is the decision, not a forecast: the set follows it.
+ * - `in`: in system, the hitters' calls are on (quicks, fast sets)
+ * - `out`: out of system, high balls only (no quick; a called fast set goes up high)
+ * - `help`: the setter cannot get there; someone else plays the second ball, no set
+ */
+export interface SetterRead {
+  /** the touch (pass, dig, free ball) this read is for */
+  touch: unknown;
+  setter: Athlete;
+  call: 'in' | 'out' | 'help';
+  /** where the setter will take the ball (their feet), and how far that is from their spot */
+  at: Spot;
+  off: number;
+}
 
 /** one AI player in a team: executes the job the coordinator assigns */
 export class TeamPlayer implements Brain {
@@ -203,6 +221,10 @@ export class TeamAI {
   /** the set the user has called for themselves (keys 1-3); null = the default for their position */
   userPlay: SetPlay | null = null;
   serving = false;
+  /** the setter's read of the current pass (see SetterRead) */
+  read: SetterRead | null = null;
+  /** the setter has just called a read (the Mini Rally shows and voices it) */
+  onRead: ((r: SetterRead) => void) | null = null;
 
   constructor(public side: 1 | -1, private g: Game) {}
 
@@ -234,6 +256,7 @@ export class TeamAI {
     this.touches = 0;
     this.setFor = null;
     this.receiver = null;
+    this.read = null;
   }
 
   get user(): Athlete | null {
@@ -277,6 +300,45 @@ export class TeamAI {
   }
   private qp: V3 = { x: 0, y: 0, z: 0 };
 
+  /**
+   * Where `setter` will take the ball now in flight: their feet, standing so it drops onto
+   * the hands (as SetterBrain does). A ball that never comes down through the hands is
+   * judged where it lands (`orLanding`), or not at all.
+   */
+  private setterSpotFor(setter: Athlete, g: Game, orLanding: boolean): Spot | null {
+    const now = g.simTime;
+    const pred = g.ball.ensurePrediction(g.env, now);
+    const t = pred.descendThrough(setterTouchY(setter), now);
+    if (t > 0) pred.posAt(t, this.rp);
+    else if (orLanding && pred.landT > now) Object.assign(this.rp, pred.land);
+    else return null;
+    const face = this.brains.get(setter)?.setter.faceYaw ?? netYaw(this.side);
+    return { x: this.rp.x + Math.sin(face) * 0.14, z: this.rp.z + Math.cos(face) * 0.14 };
+  }
+  private rp: V3 = { x: 0, y: 0, z: 0 };
+
+  /**
+   * The setter reads the pass `lt` (AI.setterRead after it was played) and calls it.
+   * If the ball is knocked off its path on the way in (the tape, the net) they look again,
+   * but a call only ever gets worse: once "high" is called the set goes up high.
+   */
+  private readPass(g: Game, setter: Athlete, lt: Touch, help: boolean): void {
+    const r = this.read && this.read.touch === lt ? this.read : null;
+    if (r) {
+      // only while the ball is still coming down to the hands (not as it drops through them)
+      if (r.call !== 'in') return;
+      const at = this.setterSpotFor(setter, g, false);
+      if (!at || Math.hypot(at.x - r.at.x, at.z - r.at.z) < 0.6) return;
+    } else if (g.simTime - lt.t < AI.setterRead) return;
+    const at = this.setterSpotFor(setter, g, !r);
+    if (r && !at) return;
+    const s = this.side;
+    const off = at ? Math.hypot(at.x - SETTER_SPOT.x * s, at.z - SETTER_SPOT.z * s) : Infinity;
+    const call = help ? 'help' : off > AI.outOfSystem ? 'out' : 'in';
+    this.read = { touch: lt, setter, call, at: at ?? { x: setter.pos.x, z: setter.pos.z }, off };
+    if (call !== r?.call) this.onRead?.(this.read);
+  }
+
   /** the setter's call: who gets the ball */
   callSet(g: Game, setter: Athlete) {
     const s = this.side;
@@ -288,13 +350,16 @@ export class TeamAI {
     add('OH1', 'OH', 1.2);
     add('OPP', 'OPP', 1.0);
     add('OH2', 'L', 0.35);
-    // the quick only goes if the middle is up with the setter's touch
+    // out of system is what the setter called on the pass (the hitters heard it, so the set
+    // must agree); without a read (none was made for this ball) judge it from where the setter is
+    const read = this.read && this.read.touch === g.ball.lastTouch && this.read.setter === setter ? this.read : null;
+    const outOfSystem = read
+      ? read.call !== 'in'
+      : Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s) > AI.outOfSystem;
+    // the quick only goes off a good pass, and only if the middle is up with the setter's touch
     const mb = this.players.get('MB');
-    const quick = mb && mb !== setter ? this.quickFor(mb) : null;
+    const quick = mb && mb !== setter && !outOfSystem ? this.quickFor(mb) : null;
     if (mb && quick?.onTime) options.push({ slot: 'MB', a: mb, lane: 'MB', w: 0.75 });
-    // bad pass: high ball to the outside
-    const passQuality = Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s);
-    if (passQuality > 1.6) for (const o of options) if (o.lane === 'MB') o.w = 0.05;
     const user = this.user;
     let pick = options[0];
     const userOpt = options.find((o) => o.a === user);
@@ -316,8 +381,8 @@ export class TeamAI {
     const lane = call ?? laneFor(pick.lane, s);
     const y = attackHeight(pick.a);
     // off a bad pass the setter can only put up a high ball
-    const apexBoost = passQuality > 1.6 ? 0.4 : 0;
-    const apexAbove = passQuality > 1.6 && call ? Math.max(call.apexAbove, laneFor(pick.lane, s).apexAbove) : lane.apexAbove;
+    const apexBoost = outOfSystem ? 0.4 : 0;
+    const apexAbove = outOfSystem && call ? Math.max(call.apexAbove, laneFor(pick.lane, s).apexAbove) : lane.apexAbove;
     return { target: { x: lane.x, y, z: lane.z }, apex: y + apexAbove + apexBoost, hitter: pick.a };
   }
 
@@ -465,6 +530,8 @@ export class TeamAI {
             const r = this.freeAthlete;
             if (r && r !== setter) setJob(r, 'free');
             else setJob(setter, 'set');
+            // (a good pass is not "coming to us" by the floor test: left alone it would drop at the net)
+            if (lt) this.readPass(g, setter, lt, !!r && r !== setter);
           }
         } else if (this.touches >= 2) {
           // third ball: the set hitter attacks; if nobody can, someone bumps it over

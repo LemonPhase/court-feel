@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { Grade } from '../game/athlete';
 
 const GRADE_CLASS: Record<Grade, string> = {
@@ -36,6 +37,16 @@ export class Hud {
   private loadRing: HTMLDivElement;
   private chargeRing: HTMLDivElement;
   private goCue: HTMLDivElement;
+  private callout: HTMLDivElement;
+  private callWho: HTMLDivElement;
+  private callWord: HTMLDivElement;
+  private callSub: HTMLDivElement;
+  private callTimer = 0;
+  private callAnchor: ((out: THREE.Vector3) => THREE.Vector3) | null = null;
+  private callP = new THREE.Vector3();
+  private callV = new THREE.Vector3();
+  /** the camera speech bubbles are placed with (set by the game) */
+  camera: THREE.Camera | null = null;
   private gradeTimer = 0;
   private bannerTimer = 0;
   private msgTimer = 0;
@@ -67,6 +78,11 @@ export class Hud {
     this.loadRing = el('div', 'load-ring', this.root);
     this.chargeRing = el('div', 'charge-ring', this.root);
     this.goCue = el('div', 'go-cue', this.root, 'GO');
+    this.callout = el('div', 'callout', this.root);
+    const bubble = el('div', 'callout-bubble', this.callout);
+    this.callWho = el('div', 'callout-who', bubble);
+    this.callWord = el('div', 'callout-word', bubble);
+    this.callSub = el('div', 'callout-sub', bubble);
     this.fadeEl = el('div', 'fade', parent);
   }
 
@@ -192,6 +208,69 @@ export class Hud {
     this.goCue.classList.add('show');
   }
 
+  /**
+   * A team-mate's call in a speech bubble over their head: `kind` 'out' is a warning
+   * (orange), 'in' a confirmation (cyan). `anchor` writes the point above their head and is
+   * followed every frame; when they are off screen the bubble waits at the edge on their side.
+   */
+  call(who: string, word: string, sub: string, kind: 'in' | 'out', anchor: ((out: THREE.Vector3) => THREE.Vector3) | null, dur = 1.5): void {
+    this.callWho.textContent = who;
+    this.callWord.textContent = word;
+    this.callSub.textContent = sub;
+    this.callAnchor = anchor;
+    this.callout.className = `callout show c-${kind}`;
+    this.placeCall();
+    void this.callout.offsetWidth;
+    this.callout.classList.add('pop');
+    this.callTimer = dur;
+  }
+
+  /** take a call bubble down (the point is over) */
+  clearCall(): void {
+    this.callTimer = 0;
+    this.callAnchor = null;
+    this.callout.classList.remove('show');
+  }
+
+  private placeCall(): void {
+    const cam = this.camera;
+    const w = this.root.clientWidth;
+    const h = this.root.clientHeight;
+    const st = this.callout.style;
+    if (!cam || !this.callAnchor || !w || !h) {
+      st.left = '50%';
+      st.top = '26%';
+      this.callout.classList.add('edge');
+      this.callout.classList.remove('edge-l', 'edge-r');
+      return;
+    }
+    const p = this.callAnchor(this.callP);
+    cam.updateMatrixWorld();
+    const v = this.callV.copy(p).applyMatrix4(cam.matrixWorldInverse);
+    let x: number;
+    let y: number;
+    if (v.z < -0.2) {
+      p.project(cam);
+      x = (p.x * 0.5 + 0.5) * w;
+      y = (-p.y * 0.5 + 0.5) * h;
+    } else {
+      // behind the camera: wait at the edge on their side
+      x = v.x < 0 ? 0 : w;
+      y = h * 0.3;
+    }
+    // keep the whole bubble on screen (its anchor is the tip of the tail, under the bubble),
+    // and on a touch screen above the thumb buttons
+    const mx = Math.min(110, w * 0.2);
+    const cx = Math.min(Math.max(x, mx), w - mx);
+    const cy = Math.min(Math.max(y, 96), h * (this.keyLabels ? 0.42 : 0.62));
+    // off screen: no tail, an arrow towards them instead
+    this.callout.classList.toggle('edge', Math.abs(cx - x) > 2 || Math.abs(cy - y) > 2);
+    this.callout.classList.toggle('edge-l', x < cx - 2);
+    this.callout.classList.toggle('edge-r', x > cx + 2);
+    st.left = `${cx.toFixed(1)}px`;
+    st.top = `${cy.toFixed(1)}px`;
+  }
+
   setCrosshair(visible: boolean, active = false): void {
     this.cross.style.display = visible ? 'block' : 'none';
     this.cross.classList.toggle('active', active);
@@ -220,6 +299,11 @@ export class Hud {
     if (this.msgTimer > 0) {
       this.msgTimer -= dt;
       if (this.msgTimer <= 0) this.msg.classList.remove('show');
+    }
+    if (this.callTimer > 0) {
+      this.callTimer -= dt;
+      if (this.callTimer <= 0) this.clearCall();
+      else this.placeCall();
     }
   }
 }
