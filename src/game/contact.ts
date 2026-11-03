@@ -619,7 +619,7 @@ export class ContactSystem {
     let kind: 'stuff' | 'soft' | 'tool' = 'soft';
     const roll = h.rand();
     // AI blockers convert fewer of their good blocks into stuffs than the user
-    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.42 : 0.2;
+    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;
     if (rank >= 2 && roll < stuffP) {
       // stuff: driven down into their court, close to the net
       kind = 'stuff';

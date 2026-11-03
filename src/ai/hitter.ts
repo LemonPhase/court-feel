@@ -174,7 +174,7 @@ export class HitterBrain implements Brain {
           { x: crossX, z: opp * 6.8, w: 1.2, name: 'cross' },
           { x: crossX * 0.9, z: opp * 3.6, w: 0.5, name: 'sharp' },
           // a steep cut inside the block: risky, the shot when the block has closed
-          { x: crossX * 0.95, z: opp * 2.4, w: 0.3, name: 'cut' },
+          { x: crossX * 0.92, z: opp * 2.8, w: 0.22, name: 'cut' },
           { x: hitX * 0.15, z: opp * 6.5, w: 0.6, name: 'seam' },
         ];
     // avoid the block: penalise shots whose direction passes over a blocker's hands
