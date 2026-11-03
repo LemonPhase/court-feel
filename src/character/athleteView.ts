@@ -73,7 +73,8 @@ const ARM_KEYS = {
   followDeep: { w: [-0.19, -0.3, 0.09], pole: [1, 0.1, -0.3] },
   followMid: { w: [-0.02, 0.06, 0.3], pole: [1, 0, -0.5] },
   offFollow: { w: [0.03, -0.18, 0.07], pole: [0.6, 0, -1] },
-  block: { w: [0.02, 0.305, 0.07], pole: [1, -0.35, -0.6] },
+  /** hands together over the net: wrists inside the shoulder line, under a ball-width apart */
+  block: { w: [-0.04, 0.305, 0.07], pole: [1, -0.35, -0.6] },
   pass: { w: [-0.098, -0.24, 0.19], pole: [1, -0.8, 0.2] },
   setPrep: { w: [-0.055, 0.115, 0.09], pole: [1, -0.25, 0.25] },
   setRelease: { w: [-0.04, 0.28, 0.1], pole: [1, -0.2, 0.2] },
@@ -90,7 +91,7 @@ type ArmKey = keyof typeof ARM_KEYS;
  * screen, the cocked hitting hand peeking in before the swing).
  */
 const FP_KEYS: Partial<Record<ArmKey, { w: readonly number[]; pole: readonly number[] }>> = {
-  block: { w: [0.045, 0.2, 0.25], pole: [1, -0.45, -0.4] },
+  block: { w: [-0.035, 0.2, 0.25], pole: [1, -0.45, -0.4] },
   cock: { w: [0.04, 0.17, 0.06], pole: [1, 0.4, -0.5] },
   cockDeep: { w: [0.075, 0.215, 0.015], pole: [1, 0.7, -0.4] },
   lag: { w: [0.05, 0.16, -0.05], pole: [0.5, 1, 0.4] },
@@ -133,7 +134,7 @@ export class AthleteView {
   readonly headPos = v3();
   readonly eyePos = v3();
 
-  constructor(public athlete: Athlete, kit: Kit) {
+  constructor(public athlete: Athlete, readonly kit: Kit) {
     this.H = athlete.height;
     this.rig = buildRig(this.H, kit);
     this.root = this.rig.root;

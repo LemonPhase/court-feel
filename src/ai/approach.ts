@@ -48,7 +48,7 @@ export function simulateApproach(
   a.action = null;
   a.onStep = a.onLand = a.onTakeoff = null;
   a.airNudge.set(0, 0, 0);
-  a.jumpMax = me.jumpMax;
+  a.copyBody(me);
   const dt = 1 / SIM.hz;
   let t = now;
   let pressed = false;
@@ -202,7 +202,7 @@ export function predictJump(me: Athlete, now: number, releaseAt = now, minT = 0)
   a.loadApproach = me.loadApproach;
   a.loadRelease = me.loadRelease;
   a.jumpH = me.jumpH;
-  a.jumpMax = me.jumpMax;
+  a.copyBody(me);
   a.takeoffT = me.takeoffT;
   a.takeoffY = me.takeoffY;
   a.takeoffYaw = me.takeoffYaw;

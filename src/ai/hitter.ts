@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, CONTACT, COURT } from '../config';
+import { AI, BALL, CONTACT, COURT } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
@@ -184,7 +184,7 @@ export class HitterBrain implements Brain {
         // where does the line from the hitter to the target cross the net?
         const f = Math.abs(a.pos.z) / (Math.abs(a.pos.z) + Math.abs(o.z));
         const cx = hitX + (o.x - hitX) * f;
-        if (Math.abs(cx - b.pos.x) < 0.9) o.w *= 0.15;
+        if (Math.abs(cx - b.pos.x) < CONTACT.blockHalfWidth + BALL.radius + 0.3) o.w *= 0.15;
       }
     }
     // a double block that did not close: hit through the seam
