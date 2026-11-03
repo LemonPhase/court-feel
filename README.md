@@ -64,7 +64,7 @@ Hold the phone sideways.
 | **BLOCK** | Hands up and load a jump; release to take off. The hands stay up until you land. When the ball is dropping onto you from your side the button reads **SET** and sets instead (no jump). |
 | **PASS** | Hold: platform ready. |
 | **TOSS** | Serve toss (Free Play). |
-| Top right | Pause, camera toggle, reset rep. Top left: set calls (Spike Drill) or feed types (Free Play). |
+| Top right | Pause, camera toggle, reset rep, and REPLAY when a highlight is available. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill) or feed types (Free Play). |
 
 Haptics (Android) tick at full charge and on a graded contact. Tunables are in
 `TOUCH` in `src/config.ts` (stick radius, run threshold, look scale, the

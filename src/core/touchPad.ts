@@ -19,7 +19,7 @@ import type { Stick } from './input';
  *                 does not have to find it after the jump), and rolling the
  *                 thumb from JUMP onto HIT without lifting takes off and winds up.
  */
-export type PadButton = 'jump' | 'hit' | 'block' | 'pass' | 'toss' | 'cam' | 'reset' | 'feed' | 'auto' | 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
+export type PadButton = 'jump' | 'hit' | 'block' | 'pass' | 'toss' | 'cam' | 'reset' | 'replay' | 'vsblock' | 'feed' | 'auto' | 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
 
 /** the slice of Input the pad drives (Input implements it) */
 export interface PadInput {
@@ -51,7 +51,9 @@ export const BUTTON_CODES: Record<PadButton, string[]> = {
   pass: ['KeyE'],
   toss: ['KeyQ'],
   cam: ['KeyV'],
-  reset: ['KeyR'],
+  reset: ['KeyN'],
+  replay: ['KeyR'],
+  vsblock: ['KeyB'],
   feed: ['KeyF'],
   auto: ['KeyT'],
   d1: ['Digit1'],

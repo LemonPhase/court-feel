@@ -21,7 +21,9 @@ export const TOUCH_KEY_LABELS: Record<string, string> = {
   E: 'PASS',
   Q: 'TOSS',
   V: 'CAM',
-  R: 'RESET',
+  N: 'RESET',
+  R: 'REPLAY',
+  B: 'VS BLOCK',
   F: 'FEED',
   T: 'AUTO',
   W: 'stick ↑',
@@ -72,6 +74,7 @@ export class TouchControls {
   private chips: HTMLDivElement;
   private chipsFor = '';
   private pauseBtn: HTMLDivElement;
+  private replayBtn: HTMLElement;
   private lastCharge = -1;
   private visible = false;
 
@@ -95,11 +98,12 @@ export class TouchControls {
     const top = el('div', 't-top', this.root);
     this.pauseBtn = el('div', 't-tap t-pause', top, '<span>❚❚</span>');
     this.pauseBtn.dataset.tap = 'pause';
-    for (const [id, label] of [['cam', 'CAM'], ['reset', 'RESET']] as [PadButton, string][]) {
+    for (const [id, label] of [['replay', 'REPLAY'], ['cam', 'CAM'], ['reset', 'RESET']] as [PadButton, string][]) {
       const e = el('div', 't-tap', top, label);
       e.dataset.btn = id;
       this.buttons.set(id, e);
     }
+    this.replayBtn = this.buttons.get('replay')!;
     this.chips = el('div', 't-chips', this.root);
     el('div', 't-rotate', this.root, 'Turn your phone sideways');
 
@@ -252,6 +256,10 @@ export class TouchControls {
     const wantsSet = g.contact.wantsSet(me);
     const want = wantsSet ? 'SET' : 'BLOCK';
     if (blockLabel.textContent !== want) blockLabel.textContent = want;
+    // the last highlight can be replayed once the ball is dead
+    const replay = g.replayAvailable() && !g.fx.replaying;
+    const rd = replay ? '' : 'none';
+    if (this.replayBtn.style.display !== rd) this.replayBtn.style.display = rd;
     // drill context: set calls / feed types / toss
     const key = `${g.modeId}:${g.position}`;
     if (key !== this.chipsFor) {
@@ -275,7 +283,7 @@ export class TouchControls {
 
   private buildChips(): void {
     const g = this.g;
-    for (const id of ['feed', 'auto', 'd1', 'd2', 'd3', 'd4', 'd5'] as PadButton[]) this.buttons.delete(id);
+    for (const id of ['feed', 'auto', 'vsblock', 'd1', 'd2', 'd3', 'd4', 'd5'] as PadButton[]) this.buttons.delete(id);
     this.chips.innerHTML = '';
     const chip = (id: PadButton, label: string) => {
       const e = el('div', 't-tap t-chip', this.chips, label);
@@ -284,12 +292,15 @@ export class TouchControls {
     };
     const toss = this.buttons.get('toss')!;
     toss.style.display = g.modeId === 'free' ? '' : 'none';
-    if (g.modeId === 'spike' && SET_PLAYS[g.position]) {
+    const calls = (g.modeId === 'spike' || g.modeId === 'rally') && SET_PLAYS[g.position];
+    if (calls) {
       el('span', 't-chip-l', this.chips, 'SET CALL');
       chip('d1', '1');
       chip('d2', '2');
       chip('d3', '3');
-    } else if (g.modeId === 'free') {
+    }
+    if (g.modeId === 'spike') chip('vsblock', 'VS BLOCK');
+    if (g.modeId === 'free') {
       el('span', 't-chip-l', this.chips, 'FEED');
       for (let i = 1; i <= 5; i++) chip(`d${i}` as PadButton, String(i));
       chip('feed', 'FEED');
