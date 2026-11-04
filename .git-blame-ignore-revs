@@ -10,3 +10,6 @@
 
 # Format the replay block event merged from main (#16)
 e276cdb43d2eb7f3435ccc0f7677f176ac84b126
+
+# Format the issue forms merged from main (#21) with Prettier
+0b19545f71b5185823a8bbfb860708893516b561
