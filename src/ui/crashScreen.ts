@@ -51,6 +51,8 @@ export function showCrashScreen(parent: HTMLElement, opts: { title: string; body
   box.append(title, body, details, buttons);
   root.append(box);
   parent.append(root);
+  // everything behind it (menus, HUD, canvas) is out of reach: no focus, no clicks, a real modal
+  for (const el of Array.from(parent.children)) if (el !== root && el instanceof HTMLElement) el.inert = true;
   // the game may hold the pointer: give it back so the buttons can be clicked
   try {
     if (document.pointerLockElement) document.exitPointerLock();

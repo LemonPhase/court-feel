@@ -54,12 +54,20 @@ game.onError = (err, where, fatal) => {
   // errors the game caught are not logged by the browser: keep them visible in the console
   console.error(`[court-feel] error in ${where}${fatal ? ' (game stopped)' : ''}`, err);
   const r = reporter.report(fatal ? 'crash' : 'error', err, where);
-  if (fatal) crashScreen(r);
+  if (fatal) {
+    // the game is over: silence it (the crowd bed loops forever) and stay silent
+    game.fx.audio.shutdown();
+    crashScreen(r);
+  }
 };
 
 let lastPlay: { mode: ModeId; pos: PositionId } = { mode: 'spike', pos: 'OH' };
 
+// Once the game has stopped (crash screen), every handler below leaves input alone: a pause menu or a
+// pointer lock on a dead game would hide the crash screen's buttons or take the mouse away from them.
+
 function resume(): void {
+  if (game.stopped) return;
   menu.showPause(false);
   game.paused = false;
   game.input.clearEdges();
@@ -68,6 +76,7 @@ function resume(): void {
 
 const menu = new Menu(app, settings, {
   play(mode, pos) {
+    if (game.stopped) return;
     game.fx.audio.unlock();
     lastPlay = { mode, pos };
     menu.showStart(false);
@@ -81,6 +90,7 @@ const menu = new Menu(app, settings, {
   },
   resume,
   restart() {
+    if (game.stopped) return;
     menu.showPause(false);
     game.startMode(lastPlay.mode, lastPlay.pos);
     game.input.clearEdges();
@@ -88,6 +98,7 @@ const menu = new Menu(app, settings, {
     game.input.requestLock();
   },
   quit() {
+    if (game.stopped) return;
     menu.showPause(false);
     game.stopMode();
     enterMenu();
@@ -157,7 +168,7 @@ function enterMenu(): void {
 }
 
 game.input.onPointerLockChange = (locked) => {
-  if (!locked && !game.inMenu && !game.input.dragLook) {
+  if (!locked && !game.inMenu && !game.input.dragLook && !game.stopped) {
     // Esc during a replay ends the replay (the pause menu still opens: the browser dropped the lock)
     if (game.fx.replaying) game.fx.endReplay();
     game.paused = true;
@@ -169,7 +180,7 @@ const LOCK_COOLDOWN_MS = 1350;
 let lockRetry = 0;
 game.input.onLockRefused = (fallback) => {
   // no pointer lock here at all: drag-look took over, play on
-  if (fallback || game.inMenu) return;
+  if (fallback || game.inMenu || game.stopped) return;
   // never leave the game running with a free mouse that doesn't look around: stay paused
   game.paused = true;
   menu.showPause(true);
@@ -185,13 +196,13 @@ game.input.onLockRefused = (fallback) => {
 // a hidden tab: silence the audio and pause play (touch devices have no pointer lock whose loss would pause it)
 document.addEventListener('visibilitychange', () => {
   game.fx.audio.setHidden(document.hidden);
-  if (document.hidden && !game.inMenu && !game.paused) {
+  if (document.hidden && !game.inMenu && !game.paused && !game.stopped) {
     game.paused = true;
     menu.showPause(true);
   }
 });
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Escape' || e.repeat || game.inMenu) return;
+  if (e.code !== 'Escape' || e.repeat || game.inMenu || game.stopped) return;
   // with pointer lock the browser consumes Esc and fires pointerlockchange instead (or delivers it too:
   // that same press must not resume)
   if (game.input.pointerLocked || performance.now() - game.input.lockLostAt < 250) return;
@@ -209,7 +220,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('pointerdown', () => game.fx.audio.unlock(), { once: false });
 window.addEventListener('keydown', () => game.fx.audio.unlock());
 app.addEventListener('mousedown', () => {
-  if (!game.inMenu && !game.paused && !game.input.pointerLocked && !game.input.dragLook) game.input.requestLock();
+  if (!game.inMenu && !game.paused && !game.stopped && !game.input.pointerLocked && !game.input.dragLook) game.input.requestLock();
 });
 
 // quick-start links for automation and sharing a drill: ?mode=spike&pos=OH&bot=perfect&cam=fp
