@@ -10,7 +10,7 @@ approach, plant, jump, spike, block, set, pass and dig — in first or third
 person, with timing that is graded, contacts that feel earned and Perfect
 spikes that explode.
 
-**▶ Play it: [court-feel.vercel.app](https://court-feel.vercel.app)**. It runs on
+**▶ Play it: [court-feel.jackzxq.dev](https://court-feel.jackzxq.dev)**. It runs on
 a computer (mouse and keyboard) or a phone (hold it sideways).
 
 > **Alpha.** Court Feel is being played at our volleyball club first. Expect

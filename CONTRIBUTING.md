@@ -12,7 +12,7 @@ means. This guide turns it into how we work.
 
 | You are... | Do this |
 |---|---|
-| A player (no code needed) | Play it at [court-feel.vercel.app](https://court-feel.vercel.app) and [write a feel report](https://github.com/LemonPhase/court-feel/issues/new?template=feel-report.yml) whenever something doesn't feel like the court. This is the most valuable contribution there is. |
+| A player (no code needed) | Play it at [court-feel.jackzxq.dev](https://court-feel.jackzxq.dev) and [write a feel report](https://github.com/LemonPhase/court-feel/issues/new?template=feel-report.yml) whenever something doesn't feel like the court. This is the most valuable contribution there is. |
 | Someone who hit a problem | [Report a bug](https://github.com/LemonPhase/court-feel/issues/new?template=bug-report.yml): a crash, an error, controls that stop responding, a wrong score. |
 | Someone with an idea | [Suggest it](https://github.com/LemonPhase/court-feel/issues/new?template=idea.yml): a drill, a mechanic, a setting. Start from the volleyball moment it's about. |
 | A developer | Pick an issue, or open one first for anything big (see below), then send a pull request. |
