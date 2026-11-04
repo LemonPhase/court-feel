@@ -106,8 +106,21 @@ export class MiniRally extends Mode {
       sub = "can't get there · no set";
     }
     const s = r.setter;
-    g.hud.call('SETTER', word, sub, r.call === 'in' ? 'in' : 'out', (out) => out.set(s.rpos.x, s.rpos.y + s.height + 0.42, s.rpos.z));
+    g.hud.call(this.setterName(s), word, sub, r.call === 'in' ? 'in' : 'out', (out) =>
+      out.set(s.rpos.x, s.rpos.y + s.height + 0.42, s.rpos.z),
+    );
     g.events.emit('setterCall', { athlete: s, call: r.call });
+  }
+
+  /** who is setting for us: the setter, or the libero backing up when the setter played the first ball */
+  private setterName(a: Athlete): string {
+    return a === this.home.players.get('S') ? 'SETTER' : 'LIBERO';
+  }
+
+  /** the setter played our first ball and the second is the user's to set (the user is the libero) */
+  private get yourBackupSet(): boolean {
+    const me = this.g.me;
+    return this.home.touches === 1 && this.home.secondBy === me && me !== this.home.players.get('S');
   }
 
   /** the setter's read of the pass we are on, if they have called it */
@@ -155,12 +168,16 @@ export class MiniRally extends Mode {
       // third contact without an attack: free ball deep into their court
       return { x: (this.g.rng.next() - 0.5) * 5, y: 0.5, z: -s * 6.5, apex: 5.2 };
     }
+    // a first ball goes to the setter target (or, played by the setter himself, high to the 3 m line)
+    if (team.touches === 0) return team.firstBallTarget(a);
     return { x: SETTER_TARGET.x * s, y: 2.35, z: SETTER_TARGET.z * s, apex: 4.1 };
   }
 
   setOptions(a: Athlete) {
-    // the user as setter: their AI hitters' lanes
+    // the user as setter: their AI hitters' lanes. As the libero backing up the setter (who
+    // played the first ball) the set is out of system: high balls to the pins, no quick
     const team = a.side === 1 ? this.home : this.away;
+    const backup = a !== team.players.get('S');
     const out = [];
     for (const [slot, lane] of [
       ['OH1', 'OH'],
@@ -168,8 +185,8 @@ export class MiniRally extends Mode {
       ['OPP', 'OPP'],
     ] as const) {
       const h = team.players.get(slot);
-      if (!h || h === a) continue;
-      const c = team.callSetFor(h, lane);
+      if (!h || h === a || (backup && lane === 'MB')) continue;
+      const c = team.callSetFor(h, lane, backup);
       out.push({ ...c, label: lane === 'OH' ? 'Outside' : lane === 'MB' ? 'Quick' : 'Back set' });
     }
     return out;
@@ -186,10 +203,12 @@ export class MiniRally extends Mode {
     if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set')
       return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;
     if (me.role === 'S' && this.home.touches === 1) return `Your set · look at a hitter · ${kbd('RMB')}`;
+    if (this.yourBackupSet) return `YOUR SET · the setter dug it · high ball to a pin · look at a hitter · ${kbd('RMB')}`;
     // the setter's call on the pass overrides the plan: off a bad pass everything goes up high
     const read = this.hitter && this.home.touches === 1 ? this.read : null;
-    if (read?.call === 'out') return `SETTER: HIGH · out of system · ${me.role === 'MB' ? 'no quick this time' : 'wait for the high ball'}`;
-    if (read?.call === 'help') return `SETTER: HELP · they can't get to it · no set this time`;
+    const who = read ? this.setterName(read.setter) : 'SETTER';
+    if (read?.call === 'out') return `${who}: HIGH · out of system · ${me.role === 'MB' ? 'no quick this time' : 'wait for the high ball'}`;
+    if (read?.call === 'help') return `${who}: HELP · they can't get to it · no set this time`;
     if (me.role === 'MB' && this.home.passToSetter(g))
       return `QUICK · ${read ? 'in system · ' : ''}run in now · ${kbd('Space')} as the setter touches it · hold/release ${kbd('LMB')}`;
     const play = this.play;
@@ -214,12 +233,14 @@ export class MiniRally extends Mode {
     this.t += dt;
     this.home.step();
     this.away.step();
-    // "your ball" cue (once per ball)
-    if (this.home.receiver === g.me && this.lastReceiverMsg !== g.ball.lastTouch) {
+    // "your ball" cue (once per ball), also for the second ball when the user backs up the setter
+    const backup = this.yourBackupSet;
+    const yours = this.home.receiver === g.me || backup;
+    if (yours && this.lastReceiverMsg !== g.ball.lastTouch) {
       this.lastReceiverMsg = g.ball.lastTouch;
-      g.hud.message('Your ball!', 0.9);
+      g.hud.message(backup ? 'Your set!' : 'Your ball!', 0.9);
     }
-    g.ball.markerColor.setRGB(...((this.home.receiver === g.me ? [0.35, 1.0, 0.45] : [0.3, 0.85, 1.0]) as [number, number, number]));
+    g.ball.markerColor.setRGB(...((yours ? [0.35, 1.0, 0.45] : [0.3, 0.85, 1.0]) as [number, number, number]));
     switch (this.phase) {
       case 'prepare':
         if (this.t > 1.6) {

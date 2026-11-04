@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { AI, CONTACT } from '../config';
+import { AI, CONTACT, TIMING } from '../config';
+import { handSetAllowed } from '../game/plays';
 import type { V3 } from '../physics/ball';
 import { solveApex, solveFixedTime } from '../physics/solve';
 import type { Athlete } from '../game/athlete';
@@ -30,6 +31,9 @@ export class SetterBrain implements Brain {
   private v = new THREE.Vector3();
   private p: V3 = { x: 0, y: 0, z: 0 };
   accuracy = AI.setterAccuracy;
+  /** bump-set this ball (forearms) instead of hand-setting it: a libero in the front zone (see handSetAllowed) */
+  private bump = false;
+  private bumpFor: unknown = null;
 
   constructor(
     public athlete: Athlete,
@@ -54,34 +58,47 @@ export class SetterBrain implements Brain {
     const ball = g.ball;
     if (!this.enabled) return;
     const mine = ball.active && ball.lastTouch?.athlete !== a && this.shouldPlay(g);
+    // the action the last ball was played with (hands, or forearms for a bump set)
+    const lastKind = this.bump ? 'pass' : 'set';
     if (!mine) {
-      if (a.action?.kind === 'set' && a.action.resolved && g.simTime - a.action.contactT > 0.4) a.endAction();
+      if (a.action?.kind === lastKind && a.action.resolved && g.simTime - a.action.contactT > 0.4) a.endAction();
       // hands that went up for a ball that never came: drop them, they must not block the next play
-      else if (a.action?.kind === 'set' && !a.action.resolved && g.simTime - a.action.t0 > 0.8) a.endAction();
+      else if (a.action?.kind === lastKind && !a.action.resolved && g.simTime - a.action.t0 > 0.8) a.endAction();
       moveTo(a, this.base.x, this.base.z, { face: this.faceYaw });
       return;
     }
     const pred = ball.ensurePrediction(g.env, g.simTime);
-    const handsH = a.height + 0.17;
-    const tc = pred.descendThrough(handsH, g.simTime);
+    const fx = -Math.sin(this.faceYaw);
+    const fz = -Math.cos(this.faceYaw);
+    if (this.bumpFor !== ball.lastTouch) {
+      // where would we hand-set it? a libero standing in the front zone bump-sets instead
+      this.bumpFor = ball.lastTouch;
+      const th = pred.descendThrough(a.height + 0.17, g.simTime);
+      if (th > 0) pred.posAt(th, this.p);
+      this.bump = th > 0 && !handSetAllowed(a, this.p.z - fz * 0.14);
+    }
+    // hands above the forehead, or the platform (as in a forearm pass) for a bump set
+    const contactH = this.bump ? a.height * 0.34 : a.height + 0.17;
+    const reach = this.bump ? 0.45 : 0.14;
+    const tc = pred.descendThrough(contactH, g.simTime);
     if (tc < 0) {
       stop(a, this.faceYaw);
       return;
     }
     pred.posAt(tc, this.p);
-    // stand so the ball drops onto the hands
-    const fx = -Math.sin(this.faceYaw);
-    const fz = -Math.cos(this.faceYaw);
-    const sx = this.p.x - fx * 0.14;
-    const sz = this.p.z - fz * 0.14;
+    // stand so the ball drops onto the hands (or the platform)
+    const sx = this.p.x - fx * reach;
+    const sz = this.p.z - fz * reach;
     moveTo(a, sx, sz, { face: this.faceYaw, arrive: 0.35, sprintDist: 1.5 });
     const until = tc - g.simTime;
-    if (until < 0.4 && (!a.action || a.action.kind !== 'set')) a.startAction('set', g.simTime);
-    // contact when the ball reaches the hands
-    this.handsPoint(this.v);
+    const kindNow = this.bump ? 'pass' : 'set';
+    if (until < (this.bump ? TIMING.passLead : 0.4) && (!a.action || a.action.kind !== kindNow)) a.startAction(kindNow, g.simTime);
+    // contact when the ball reaches the hands (or the platform)
+    if (this.bump) this.v.set(a.pos.x + fx * reach, a.pos.y + contactH, a.pos.z + fz * reach);
+    else this.handsPoint(this.v);
     const bp = ball.pos;
     const d = Math.hypot(bp.x - this.v.x, bp.y - this.v.y, bp.z - this.v.z);
-    if (d < CONTACT.setRadius && ball.vel.y < 0.5) this.doSet(g);
+    if (d < (this.bump ? CONTACT.passRadius : CONTACT.setRadius) && ball.vel.y < 0.5) this.doSet(g);
   }
 
   private doSet(g: Game): void {
@@ -89,7 +106,8 @@ export class SetterBrain implements Brain {
     const call = this.call(g);
     const ball = g.ball;
     if (!call) return;
-    const act = a.action && a.action.kind === 'set' ? a.action : a.startAction('set', g.simTime);
+    const kind = this.bump ? 'pass' : 'set';
+    const act = a.action && a.action.kind === kind ? a.action : a.startAction(kind, g.simTime);
     act.resolved = true;
     act.contactT = g.simTime;
     const bp = ball.pos;
@@ -103,7 +121,7 @@ export class SetterBrain implements Brain {
     ball.hit(out, { x: 0, y: 0, z: 0 }, 0, g.simTime);
     ball.lastTouch = { athlete: a, kind: 'set', t: g.simTime, side: a.side };
     a.lastTouchT = g.simTime;
-    g.onAiContact(a, 'set', Math.hypot(out.x, out.y, out.z));
+    g.onAiContact(a, this.bump ? 'pass' : 'set', Math.hypot(out.x, out.y, out.z));
     this.onSet?.(call);
   }
 }
