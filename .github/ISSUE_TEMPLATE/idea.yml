@@ -1,7 +1,7 @@
 name: Idea
 description: A new drill, mechanic or setting. Start from the volleyball moment it's about.
-title: "[Idea] "
-labels: ["enhancement"]
+title: '[Idea] '
+labels: ['enhancement']
 body:
   - type: markdown
     attributes:
@@ -12,7 +12,7 @@ body:
     id: moment
     attributes:
       label: Which volleyball moment is this about?
-      placeholder: "A slide attack for the middle: the one-foot take-off behind the setter."
+      placeholder: 'A slide attack for the middle: the one-foot take-off behind the setter.'
     validations:
       required: true
   - type: textarea
@@ -44,6 +44,6 @@ body:
     attributes:
       label: Would you like to build it?
       options:
-        - "No, just suggesting"
+        - 'No, just suggesting'
         - "Yes, I'd like to build it"
-        - "Yes, with help"
+        - 'Yes, with help'

@@ -1,7 +1,7 @@
 name: Bug report
 description: Something is broken, like a crash, an error, controls that stop responding or a wrong score.
-title: "[Bug] "
-labels: ["bug"]
+title: '[Bug] '
+labels: ['bug']
 body:
   - type: markdown
     attributes:
@@ -45,12 +45,12 @@ body:
     id: setup
     attributes:
       label: Position and camera
-      placeholder: "Middle Blocker, first person"
+      placeholder: 'Middle Blocker, first person'
   - type: input
     id: device
     attributes:
       label: Device and browser
-      placeholder: "MacBook Air, Chrome 142 / iPhone 15, Safari"
+      placeholder: 'MacBook Air, Chrome 142 / iPhone 15, Safari'
     validations:
       required: true
   - type: dropdown
