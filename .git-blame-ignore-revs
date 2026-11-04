@@ -2,7 +2,7 @@
 # locally: git config blame.ignoreRevsFile .git-blame-ignore-revs).
 
 # Format the codebase with Prettier (no code changes)
-2e21816fb26013b84b961a2bab3d8fff8f5bbf55
+6cb477719572aa01cb09d32d29c42bdd2d656ebc
 
 # Format the replay block event merged from main (#16)
-973d6bd3aefa2552d54d303b230ed57f7c107496
+f516cd5cd100739f95f32eb71a31fb905e96e7ea
