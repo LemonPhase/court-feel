@@ -321,13 +321,14 @@ impact FOV punch and camera kick (0 turns them off).
 
 ## Testing
 
-* `npm test` — 92 Vitest tests: set apex, spike landing point, topspin dip,
+* `npm test` — 100 Vitest tests: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
   acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the
   middle leaves the floor on the setter's touch and the set meets the hand at
   the top of the jump), the setter's call on the pass (in / out of system,
-  made once, early, and the set follows it), the spike timing grades driven through the real
+  made once, early, and the set follows it), the serve (not one of the serving team's touches,
+  base defence while it flies, a touch on it by the serving team is a fault), the spike timing grades driven through the real
   contact system (press, hold, release), hold-to-charge power, the set calls
   (pins inside the antennae, shoot / back quick geometry, a back quick meeting
   the hitter), middles hitting zone 1 / 5, hit-sound power, the impact

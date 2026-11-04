@@ -225,6 +225,10 @@ export class TeamAI {
   read: SetterRead | null = null;
   /** the setter has just called a read (the Mini Rally shows and voices it) */
   onRead: ((r: SetterRead) => void) | null = null;
+  /** our serve is in the air and nobody has touched it since */
+  private ourServe = false;
+  /** one of us touched our own serve before the other side did: a service fault */
+  serveFault = false;
 
   constructor(public side: 1 | -1, private g: Game) {}
 
@@ -257,6 +261,8 @@ export class TeamAI {
     this.setFor = null;
     this.receiver = null;
     this.read = null;
+    this.ourServe = false;
+    this.serveFault = false;
   }
 
   get user(): Athlete | null {
@@ -396,12 +402,19 @@ export class TeamAI {
     const lt = this.g.ball.lastTouch;
     if (!lt || lt === this.lastTouchRef) return;
     this.lastTouchRef = lt;
+    // the serving team may not play its own serve: only the other side can
+    if (lt.kind === 'serve') this.ourServe = lt.side === this.side;
+    else if (lt.kind !== 'feed') {
+      if (this.ourServe && lt.side === this.side) this.serveFault = true;
+      this.ourServe = false;
+    }
     if (lt.kind === 'block') {
       // our own block does not count; the other team's block starts us on a fresh three
       if (lt.side !== this.side) this.touches = 0;
       return;
     }
-    if (lt.side === this.side && lt.kind !== 'feed') this.touches++;
+    // our serve is not one of our three touches
+    if (lt.side === this.side && lt.kind !== 'feed' && lt.kind !== 'serve') this.touches++;
     else if (lt.side !== this.side) this.touches = 0;
     if (lt.kind === 'set' && lt.side === this.side) {
       // user set: whoever the aim picked
@@ -499,6 +512,10 @@ export class TeamAI {
         if (lt?.kind === 'set' && !onOurSide) {
           for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
         }
+      } else if (lt?.kind === 'serve') {
+        // our own serve on its way over: not one of our touches, and nobody plays it. The team
+        // settles into base defence (front row at the net to block) as the server walks in
+        form = 'defense';
       } else if (ourBlock) {
         // our block touched it and it is dropping back on our side: a block is not a touch,
         // so somebody (preferably not the blocker) picks it up and we run our offence
