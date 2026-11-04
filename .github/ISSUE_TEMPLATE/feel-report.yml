@@ -1,0 +1,105 @@
+name: Feel report
+description: Something doesn't feel like a real court. No coding needed.
+title: "[Feel] "
+labels: ["feel"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Court Feel has one principle: **true to the court.** Your experience as a player is how we check it.
+        Tell us what you did, what the game did, and what happens on a real court.
+
+        Tip: press **R** straight after the moment to replay it, and take a screenshot. **F3** shows the timing numbers.
+  - type: dropdown
+    id: drill
+    attributes:
+      label: Drill
+      options:
+        - Free Play
+        - Spike Drill
+        - Block Drill
+        - Serve Receive / Dig
+        - Setter Drill
+        - Mini Rally
+        - Start screen or settings
+    validations:
+      required: true
+  - type: dropdown
+    id: position
+    attributes:
+      label: Your position
+      options:
+        - Outside Hitter (OH)
+        - Opposite (OPP)
+        - Middle Blocker (MB)
+        - Setter (S)
+        - Libero (L)
+    validations:
+      required: true
+  - type: dropdown
+    id: camera
+    attributes:
+      label: Camera
+      options:
+        - First person
+        - Third person
+        - Both
+        - Not sure
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - Computer (mouse and keyboard)
+        - Phone
+        - Tablet
+    validations:
+      required: true
+  - type: textarea
+    id: doing
+    attributes:
+      label: What were you doing?
+      placeholder: "Calling a go (2) as the outside, approaching on the pass in the Mini Rally."
+    validations:
+      required: true
+  - type: textarea
+    id: game
+    attributes:
+      label: What happened in the game?
+      placeholder: "The set got to the pin after I had already landed, so I was hitting it on the way down."
+    validations:
+      required: true
+  - type: textarea
+    id: court
+    attributes:
+      label: What happens on a real court?
+      description: This is the most useful part. Describe it from your own play, or from coaching, a video or the rules.
+      placeholder: "A go set is at the pin as I plant. I'm still going up when I hit it."
+    validations:
+      required: true
+  - type: dropdown
+    id: often
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Most times
+        - Sometimes
+        - Once
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshots or a clip (optional)
+      description: Drag images or videos in here.
+  - type: dropdown
+    id: experience
+    attributes:
+      label: Your volleyball background (optional)
+      description: Helps us weigh feel reports. It never makes a report count for less.
+      options:
+        - Club or competitive player
+        - Coach
+        - Recreational player
+        - New to volleyball

@@ -1,0 +1,49 @@
+name: Idea
+description: A new drill, mechanic or setting. Start from the volleyball moment it's about.
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are judged by one question: **is it true to the court?**
+        The best ideas start from something that happens on a real court and isn't in the game yet, or isn't right.
+  - type: textarea
+    id: moment
+    attributes:
+      label: Which volleyball moment is this about?
+      placeholder: "A slide attack for the middle: the one-foot take-off behind the setter."
+    validations:
+      required: true
+  - type: textarea
+    id: court
+    attributes:
+      label: How does it work on a real court?
+      description: Timing, movement, what the player sees and decides. Link a video if you have one.
+    validations:
+      required: true
+  - type: textarea
+    id: game
+    attributes:
+      label: How could it work in the game?
+      description: Controls, the drill it belongs in, what gets graded. Rough is fine.
+  - type: dropdown
+    id: who
+    attributes:
+      label: Which positions does it matter for?
+      multiple: true
+      options:
+        - Outside Hitter (OH)
+        - Opposite (OPP)
+        - Middle Blocker (MB)
+        - Setter (S)
+        - Libero (L)
+        - Everyone
+  - type: dropdown
+    id: build
+    attributes:
+      label: Would you like to build it?
+      options:
+        - "No, just suggesting"
+        - "Yes, I'd like to build it"
+        - "Yes, with help"
