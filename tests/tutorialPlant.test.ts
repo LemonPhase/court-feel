@@ -20,7 +20,13 @@ function loadTForFrac(frac: number): number {
 }
 
 /** closest the standing plant's hand comes to the high ball, and the jump fraction there */
-function meet(tTakeoff: number, loadT: number, from: { x: number; y: number; z: number }, v: { x: number; y: number; z: number }, feet: { x: number; z: number }) {
+function meet(
+  tTakeoff: number,
+  loadT: number,
+  from: { x: number; y: number; z: number },
+  v: { x: number; y: number; z: number },
+  feet: { x: number; z: number },
+) {
   const a = new Athlete('OH', 1);
   a.place(feet.x, feet.z, 0);
   const b = makeBall();

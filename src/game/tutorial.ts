@@ -406,7 +406,10 @@ export class TutorialDirector {
   /** pause during a gate: they re-press on resume; the lock click is not the swing */
   onPause(): void {
     if (!this.active) return;
-    if (this.step === 3 && (this.gate === 'swing-draw' || this.gate === 'swing-ride' || this.gate === 'swing-release' || this.gate === 'swing-rehold')) {
+    if (
+      this.step === 3 &&
+      (this.gate === 'swing-draw' || this.gate === 'swing-ride' || this.gate === 'swing-release' || this.gate === 'swing-rehold')
+    ) {
       this.swallowNextAttack = true;
     }
   }

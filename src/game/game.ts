@@ -886,7 +886,10 @@ export class Game {
     const wind = me.action?.kind === 'windup' ? me.action : null;
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;
     this.hud.setCharge(wind && !this.inMenu ? charge : null);
-    const collarErr = this.idealValid && me.state === 'air' && !this.inMenu ? this.simTime + ContactSystem.swingLead(wind ? charge : 0) - this.idealCache.t : null;
+    const collarErr =
+      this.idealValid && me.state === 'air' && !this.inMenu
+        ? this.simTime + ContactSystem.swingLead(wind ? charge : 0) - this.idealCache.t
+        : null;
     this.hud.setTiming(collarErr !== null && (this.tutorial.active || this.settings.showHints) ? collarErr : null);
     if (charge >= 1 && this.lastCharge < 1) this.fx?.audio.chargeFull();
     if (!wind && me.action?.kind === 'swing' && me.action !== this.swished) {

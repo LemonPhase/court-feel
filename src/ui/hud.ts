@@ -270,7 +270,6 @@ export class Hud {
     return t;
   }
 
-
   setCam(fp: boolean): void {
     this.camTag.textContent = fp ? 'FIRST PERSON' : 'THIRD PERSON';
     this.camTag.classList.remove('pulse');

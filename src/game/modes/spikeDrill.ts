@@ -511,7 +511,10 @@ export class SpikeDrill extends Mode {
       this.approachRing.scale.setScalar(1 + this.ringPulse * 0.6);
     }
     if (teach) {
-      const inRing = Math.hypot(me.pos.x - this.approachRing.position.x, me.pos.z - this.approachRing.position.z) < 0.5 && me.speed < 0.6 && me.state !== 'air';
+      const inRing =
+        Math.hypot(me.pos.x - this.approachRing.position.x, me.pos.z - this.approachRing.position.z) < 0.5 &&
+        me.speed < 0.6 &&
+        me.state !== 'air';
       g.tutorial.noteFeet(inRing, dt);
       // takeoff() resets stateT to 0 after this step's increment, so 0 is the takeoff frame
       if (me.state === 'air' && me.stateT < 1e-4) g.tutorial.noteTakeoff();
