@@ -357,8 +357,9 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   calls of a position stop setting three different plays; the Perfect-spike
   replay doesn't start; the touch controls don't drive run / jump / wind-up /
   swing; a mistyped quick-start link or corrupted saved settings break the
-  page; the menus capture Tab / Space; or geometries, textures or shader
-  programs grow over the soak. Frame time, draw calls and heap are reported,
+  page or stop the drill from playing; the menus capture Tab / Space; a crash
+  lets the pause menu or pointer lock take over from the crash screen; or
+  geometries, textures or shader programs grow over the soak. Frame time, draw calls and heap are reported,
   not asserted. Screenshots and `report.json` go to `scripts/out/` (in CI:
   the `e2e-report` artifact). The dev server uses port 5199 (`E2E_PORT`
   changes it; `SOAK` sets the soak length in seconds). First time: `npx
