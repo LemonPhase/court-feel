@@ -278,6 +278,8 @@ export class TouchControls {
     this.lastCharge = charge;
     const air = me.state === 'air' || me.state === 'load';
     this.buttons.get('hit')!.classList.toggle('ready', air && TOUCH.airHitAnywhere && !wind);
+    this.buttons.get('hit')!.classList.toggle('sweet', g.hud.collarSweet);
+    this.skipBtn.classList.toggle('nudge', g.tutorial.stuck());
     // tutorial: the chip left of pause, and the buttons the current step is not teaching go quiet
     const tutoring = g.tutorial.active && g.tutorial.step < 6;
     const skipDisplay = tutoring ? 'flex' : 'none';

@@ -111,15 +111,20 @@ npm run format     # format the code with Prettier
 Click **PLAY** (or press Enter) on the start screen; the game captures the
 mouse (pointer lock). **Esc** pauses and opens settings.
 
-The first PLAY on a browser walks you through one Outside spike before a
-free-choice drill: run to the cyan plant ring, load the jump, swing through
-the ball, read the grade, then hit one on your own. **Skip tutorial** is in
-the corner the whole time (and in the pause menu). The drill cards stay
-open — double-click one to start that drill instead. It is remembered in
-this browser (`courtFeel.tutorial.v1`: `done`, `skipped`, or
-`in_progress:` plus the step). **Replay tutorial** is on the start screen
-and in Settings, next to Key hints. The lesson does not teach the tip (a
-tap of the attack button). First and third person both stay available (V).
+The first PLAY on a browser walks you through one Outside spike. The world
+slows, then stops at each decision — plant, load the jump, take off, draw
+the arm, release through the gold — and waits until you do that one thing.
+**Skip tutorial** is in the corner the whole time (and in the pause menu),
+including while the mouse is locked. The drill cards stay open — double-click
+one to start that drill instead. It is remembered in this browser
+(`courtFeel.tutorial.v1`: `done`, `skipped`, or `in_progress:` plus the step).
+**Replay tutorial** is on the start screen and in Settings. The lesson does
+not teach the tip (a tap of the attack button). First and third person both
+stay available (V).
+
+In the air, a collar around the charge ring shows where a release *now*
+would land: gold is Perfect, cyan is Good, wood is early or late. It follows
+Settings → Hints, which is on by default.
 
 ## Controls
 

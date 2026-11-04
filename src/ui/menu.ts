@@ -414,7 +414,7 @@ export class Menu {
     toggle('Perfect-spike replays', 'replays');
     slider('Camera shake', 'shake', (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`));
     slider('Volume', 'volume', (v) => `${Math.round(v * 100)}%`);
-    toggle('Key hints', 'showHints');
+    toggle('Hints', 'showHints');
     const replayRow = h('label', 'set-row');
     const replayBtn = h('button', 'chip', 'Replay tutorial');
     replayBtn.type = 'button';

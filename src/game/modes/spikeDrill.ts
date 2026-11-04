@@ -81,6 +81,8 @@ export class SpikeDrill extends Mode {
   private tossed = false;
   /** when a perfect approach would start for the current set (the GO cue) */
   private goAt = -1;
+  /** when a perfect approach would plant (the tutorial's jump freeze) */
+  private plantAt = -1;
   private plannedFor: unknown = null;
   private ringPulse = 0;
   private tmp = { x: 0, y: 0, z: 0 };
@@ -438,7 +440,9 @@ export class SpikeDrill extends Mode {
       }
       case 'result':
         // step 4 holds the grade a little longer so the coach line can be read
-        if (this.t > (g.tutorial.active && g.tutorial.step === 4 ? 2.6 : 1.9)) this.nextRep();
+        // beat 4 holds the next toss until the grade has been read
+        if (g.tutorial.active && g.tutorial.step === 4) break;
+        if (this.t > 1.9) this.nextRep();
         break;
     }
     // approach ring: where your feet should be when you hit (fades once the set is up)
@@ -477,6 +481,11 @@ export class SpikeDrill extends Mode {
         this.earlyFor = lt;
       } else plan = planApproach(me, pred, g.simTime, 0, 0);
       this.goAt = plan && plan.error < 0.6 ? plan.tStart : -1;
+      if (plan) this.plantAt = plan.tPress;
+    }
+    if (g.tutorial.active) {
+      g.tutorial.noteSetRising(!!setUp && lt?.kind === 'set');
+      if (this.plantAt > 0) g.tutorial.notePlant(g.simTime, this.plantAt, me.state !== 'air');
     }
     const teach = g.tutorial.active;
     const showRing = g.settings.landingMarker || teach;
@@ -500,11 +509,9 @@ export class SpikeDrill extends Mode {
     }
     if (teach) {
       const inRing = Math.hypot(me.pos.x - this.approachRing.position.x, me.pos.z - this.approachRing.position.z) < 0.5 && me.speed < 0.6 && me.state !== 'air';
-      const moving = me.speed > 0.8 || me.state === 'load';
-      g.tutorial.tick(dt, moving);
       g.tutorial.noteFeet(inRing, dt);
       // takeoff() resets stateT to 0 after this step's increment, so 0 is the takeoff frame
-      if (me.state === 'air' && me.stateT < 1e-4) g.tutorial.noteTakeoff(this.phase === 'live');
+      if (me.state === 'air' && me.stateT < 1e-4) g.tutorial.noteTakeoff();
     }
     this.updateShadow();
   }
@@ -637,7 +644,10 @@ export class SpikeDrill extends Mode {
   private toPhase(p: Phase): void {
     this.phase = p;
     this.t = 0;
-    if (p === 'feed') this.tossed = false;
+    if (p === 'feed') {
+      this.tossed = false;
+      this.plantAt = -1;
+    }
   }
 }
 

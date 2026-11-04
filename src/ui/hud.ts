@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { Grade } from '../game/athlete';
+import { TIMING } from '../config';
+import { COLLAR_DEG_PER_S, collarDegrees, collarZone } from '../game/tutorial';
 
 const GRADE_CLASS: Record<Grade, string> = {
   Perfect: 'g-perfect',
@@ -14,6 +16,20 @@ export function translateKeyMarkup(t: string, m: Record<string, string>): string
   t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
   t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
   return t.replace(/with the mouse/g, 'by dragging');
+}
+
+/** annular sector. Degrees are collar degrees: 0 at 12 o'clock, positive (late) to the right. */
+function ringSector(a0: number, a1: number, r0: number, r1: number): string {
+  const p = (deg: number, r: number) => {
+    const a = ((deg - 90) * Math.PI) / 180;
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  };
+  const large = a1 - a0 > 180 ? 1 : 0;
+  const [x0, y0] = p(a0, r1);
+  const [x1, y1] = p(a1, r1);
+  const [x2, y2] = p(a1, r0);
+  const [x3, y3] = p(a0, r0);
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r1} ${r1} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} A ${r0} ${r0} 0 ${large} 0 ${x3.toFixed(2)} ${y3.toFixed(2)} Z`;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, text = ''): HTMLElementTagNameMap[K] {
@@ -56,6 +72,13 @@ export class Hud {
   /** SKIP TUTORIAL chip (keyboard). Touch draws its own in the top row. */
   private skipBtn: HTMLButtonElement;
   onSkip: (() => void) | null = null;
+  /** timing collar is in the Perfect window: touch HIT borrows this */
+  collarSweet = false;
+  private collar!: HTMLDivElement;
+  private collarMarker!: SVGCircleElement;
+  private collarZones: { el: SVGPathElement; name: string }[] = [];
+  private freezeVeil!: HTMLDivElement;
+  private freezeTag!: HTMLDivElement;
   private callAnchor: ((out: THREE.Vector3) => THREE.Vector3) | null = null;
   private callP = new THREE.Vector3();
   private callV = new THREE.Vector3();
@@ -98,6 +121,9 @@ export class Hud {
     this.camTag = el('div', 'hud-cam', this.root, 'TP');
     this.loadRing = el('div', 'load-ring', this.root);
     this.chargeRing = el('div', 'charge-ring', this.root);
+    this.collar = this.buildCollar();
+    this.freezeVeil = el('div', 't-freeze', this.root);
+    this.freezeTag = el('div', 't-freeze-tag', this.root, 'FROZEN · YOUR MOVE');
     this.goCue = el('div', 'go-cue', this.root, 'GO');
     this.callout = el('div', 'callout', this.root);
     const bubble = el('div', 'callout-bubble', this.callout);
@@ -132,6 +158,86 @@ export class Hud {
   /** keyboard skip chip + the camera-tag nudge. Touch hides this chip in CSS. */
   setTutorialChrome(on: boolean): void {
     this.root.classList.toggle('tutoring', on);
+  }
+
+  /** freeze feel: desaturated court, vignette, FROZEN · YOUR MOVE */
+  setFrozen(on: boolean): void {
+    this.root.classList.toggle('frozen', on);
+    document.body.classList.toggle('frozen', on);
+    this.freezeVeil.setAttribute('aria-hidden', on ? 'false' : 'true');
+    this.freezeTag.setAttribute('aria-hidden', on ? 'false' : 'true');
+  }
+
+  /** anti-stuck: pulse the hint key and brighten Skip, once */
+  setNudge(on: boolean): void {
+    this.hint.classList.toggle('nudge', on);
+    this.skipBtn.classList.toggle('nudge', on);
+  }
+
+  nudgeTutorial(): void {
+    this.setNudge(true);
+  }
+
+  /**
+   * Timing collar around the charge ring. `err` is how late a release now would be
+   * (negative = early). Null hides it.
+   */
+  setTiming(err: number | null): void {
+    if (err === null) {
+      this.collar.style.opacity = '0';
+      this.chargeRing.classList.remove('sweet');
+      this.cross.classList.remove('sweet');
+      this.collarSweet = false;
+      document.body.classList.remove('collar');
+      return;
+    }
+    document.body.classList.add('collar');
+    this.collar.style.opacity = '1';
+    const zone = collarZone(err);
+    this.collarSweet = zone === 'perfect';
+    this.chargeRing.classList.toggle('sweet', this.collarSweet);
+    this.cross.classList.toggle('sweet', this.collarSweet);
+    const deg = collarDegrees(err);
+    const rad = ((deg - 90) * Math.PI) / 180;
+    const mx = Math.cos(rad) * 37;
+    const my = Math.sin(rad) * 37;
+    this.collarMarker.setAttribute('cx', mx.toFixed(2));
+    this.collarMarker.setAttribute('cy', my.toFixed(2));
+    for (const z of this.collarZones) z.el.classList.toggle('lit', z.name === zone);
+  }
+
+  private buildCollar(): HTMLDivElement {
+    const wrap = el('div', 'timing-collar', this.root);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '-46 -46 92 92');
+    const dps = COLLAR_DEG_PER_S;
+    const zones: { name: string; a0: number; a1: number }[] = [
+      { name: 'wood', a0: -90, a1: -TIMING.spikeGood * dps },
+      { name: 'good', a0: -TIMING.spikeGood * dps, a1: -TIMING.spikePerfect * dps },
+      { name: 'perfect', a0: -TIMING.spikePerfect * dps, a1: TIMING.spikePerfectLate * dps },
+      { name: 'good', a0: TIMING.spikePerfectLate * dps, a1: TIMING.spikeGoodLate * dps },
+      { name: 'wood', a0: TIMING.spikeGoodLate * dps, a1: 72 },
+    ];
+    for (const z of zones) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', ringSector(z.a0, z.a1, 33, 41));
+      path.setAttribute('class', `tz-${z.name}`);
+      svg.appendChild(path);
+      this.collarZones.push({ el: path, name: z.name });
+    }
+    const notch = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    notch.setAttribute('x1', '0');
+    notch.setAttribute('y1', '-29');
+    notch.setAttribute('x2', '0');
+    notch.setAttribute('y2', '-44');
+    notch.setAttribute('class', 'tz-notch');
+    svg.appendChild(notch);
+    this.collarMarker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    this.collarMarker.setAttribute('r', '5.2');
+    this.collarMarker.setAttribute('class', 'tz-marker');
+    svg.appendChild(this.collarMarker);
+    wrap.appendChild(svg);
+    return wrap;
   }
 
   /** viewport point over the keyboard Skip chip (hidden on touch, and whenever the lesson isn't up) */

@@ -86,6 +86,8 @@ export class Game {
   private accum = 0;
   timeScale = 1;
   private slowmo = 1;
+  /** tutorial clock: 1 normal, 0.35 between gates, 0 while a gate is frozen */
+  tutor = 1;
   hitStop = 0;
   paused = false;
   private last = 0;
@@ -373,6 +375,11 @@ export class Game {
     this.tutorial.present();
   }
 
+  /** Skip: don't stay frozen for a frame after the lesson ends */
+  snapTutor(): void {
+    this.tutor = 1;
+  }
+
   stopMode(): void {
     this.mode?.teardown();
     this.mode = null;
@@ -642,6 +649,11 @@ export class Game {
     if (this.input.consumePress('KeyR')) this.fx.startReplay();
     this.user.frame(dt);
     this.bot?.after();
+    if (this.tutorial.ignoreMovement()) {
+      this.me.cmd.moveX = 0;
+      this.me.cmd.moveZ = 0;
+      this.me.cmd.sprint = false;
+    }
     this.stepReturn(dt);
   }
 
@@ -673,17 +685,23 @@ export class Game {
     const step = 1 / SIM.hz;
     // slow-mo assist while lining up a contact
     let slowTarget = 1;
-    if (this.settings.slowmoAssist && this.me.state === 'air' && this.idealValid) {
+    const dip = (this.settings.slowmoAssist || this.tutorial.wantsContactDip()) && this.me.state === 'air' && this.idealValid;
+    if (dip) {
       const until = this.idealCache.t - this.simTime;
       if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4)
         slowTarget = ASSIST.slowmoScale;
     }
     this.slowmo = lerp(this.slowmo, slowTarget, damp(12, realDt));
-    let simDt = realDt * this.timeScale * this.slowmo;
+    // tutorial slow/freeze never stacks on top of the assist dip
+    const tutorTarget = this.tutorial.tutorTarget();
+    this.tutor = lerp(this.tutor, tutorTarget, damp(8, realDt));
+    if (tutorTarget === 0 && this.tutor < 0.015) this.tutor = 0;
+    const scale = Math.min(this.slowmo, this.tutor);
+    let simDt = realDt * this.timeScale * scale;
     if (this.hitStop > 0) {
       const used = Math.min(this.hitStop, realDt);
       this.hitStop -= used;
-      simDt = (realDt - used) * this.timeScale * this.slowmo;
+      simDt = (realDt - used) * this.timeScale * scale;
     }
     this.accum += simDt;
     const ts = performance.now();
@@ -703,6 +721,30 @@ export class Game {
     }
     this.stepsThisFrame = n;
     if (n) this.stepMs = (performance.now() - ts) / n;
+    if (this.tutorial.active && !this.fx.replaying) this.pumpTutorial(realDt);
+  }
+
+  /** real-time meters and gate checks. Runs even when the sim is frozen. */
+  private pumpTutorial(realDt: number): void {
+    const me = this.me;
+    const wind = me.action?.kind === 'windup' ? me.action : null;
+    const fill = this.tutorial.fillKind();
+    const jumpHeld = this.input.isDown('Space');
+    const attackHeld = this.input.isDown('Mouse0');
+    // stay under loadMax so a frozen hold cannot auto-takeoff; the release is the takeoff
+    if (fill === 'load' && me.state === 'load' && jumpHeld) me.loadT = Math.min(PLAYER.loadMax - 0.02, me.loadT + realDt);
+    if (fill === 'charge' && wind && attackHeld) wind.t0 -= realDt;
+    const loadFrac = me.state === 'load' ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : 0;
+    this.tutorial.noteLoad(loadFrac, jumpHeld && me.state === 'load');
+    if (this.idealValid && me.state === 'air') {
+      const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : 0;
+      const lead = ContactSystem.swingLead(charge);
+      const releaseIn = this.idealCache.t - this.simTime - lead;
+      const releaseErr = this.simTime + lead - this.idealCache.t;
+      this.tutorial.noteSwingWindow(releaseIn, releaseErr, true, charge);
+    }
+    const moving = me.speed > 0.8 || me.state === 'load';
+    this.tutorial.tick(realDt, moving);
   }
 
   fixedStep(dt: number): void {
@@ -844,6 +886,8 @@ export class Game {
     const wind = me.action?.kind === 'windup' ? me.action : null;
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;
     this.hud.setCharge(wind && !this.inMenu ? charge : null);
+    const collarErr = this.idealValid && me.state === 'air' && !this.inMenu ? this.simTime + ContactSystem.swingLead(wind ? charge : 0) - this.idealCache.t : null;
+    this.hud.setTiming(collarErr !== null && (this.tutorial.active || this.settings.showHints) ? collarErr : null);
     if (charge >= 1 && this.lastCharge < 1) this.fx?.audio.chargeFull();
     if (!wind && me.action?.kind === 'swing' && me.action !== this.swished) {
       this.swished = me.action;

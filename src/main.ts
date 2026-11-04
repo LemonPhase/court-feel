@@ -219,6 +219,7 @@ game.onTutorialSkipped = (where) => {
 game.input.onPointerLockChange = (locked) => {
   if (!locked && !game.inMenu && !game.input.dragLook && !game.stopped) {
     if (performance.now() - skipNavAt < 500) return;
+    if (game.tutorial.active) game.tutorial.onPause();
     // Esc during a replay ends the replay (the pause menu still opens: the browser dropped the lock)
     if (game.fx.replaying) game.fx.endReplay();
     game.paused = true;

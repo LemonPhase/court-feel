@@ -3,19 +3,27 @@ import { isDirectLockedTravel } from '../src/core/input';
 import { TOUCH_KEY_LABELS } from '../src/ui/touchControls';
 import { translateKeyMarkup } from '../src/ui/hud';
 import {
-  FAIL_FORWARD_TRIES,
+  COLLAR_DEG_PER_S,
   FEET_DWELL_S,
-  FEET_GIVE_UP_S,
-  HINT_JUMP,
-  HINT_SWING,
+  GATE_NUDGE_S,
+  HINT_DRAW,
+  HINT_LOAD,
+  HINT_THROUGH,
+  JUMP_GATE_LOAD,
+  SWING_SWEET_ERR,
+  TUTOR_SLOW,
   TUTORIAL_KEY,
   TutorialDirector,
+  collarDegrees,
+  collarZone,
+  jumpLoadFrac,
   readTutorialFlag,
   resumeStep,
   tutorialPending,
   writeTutorialFlag,
   type TutorialStorage,
 } from '../src/game/tutorial';
+import { PLAYER, TIMING } from '../src/config';
 
 function mem(): TutorialStorage & { raw: Map<string, string> } {
   const raw = new Map<string, string>();
@@ -48,7 +56,7 @@ describe('tutorial flag', () => {
   });
 });
 
-describe('tutorial steps', () => {
+describe('tutorial gates', () => {
   it('welcome advances on its own, or sooner once they run', () => {
     const d = new TutorialDirector();
     d.begin(0);
@@ -64,113 +72,141 @@ describe('tutorial steps', () => {
     expect(run.step).toBe(1);
   });
 
-  it('feet in the ring for ~0.4s starts the set; wandering resets; 10s fail-forwards', () => {
+  it('feet in the ring for 0.4s starts the toss, and waiting does not skip the gate', () => {
     const d = new TutorialDirector();
     d.begin(1);
     d.noteFeet(true, FEET_DWELL_S - 0.05);
     expect(d.step).toBe(1);
     d.noteFeet(false, 0.1);
-    d.noteFeet(true, 0.2);
-    expect(d.step).toBe(1);
     d.noteFeet(true, FEET_DWELL_S);
     expect(d.step).toBe(2);
     expect(d.holdingFeed()).toBe(false);
-
-    const give = new TutorialDirector();
-    give.begin(1);
-    give.tick(FEET_GIVE_UP_S - 0.1, false);
-    expect(give.step).toBe(1);
-    expect(give.holdingFeed()).toBe(true);
-    give.tick(0.1, false);
-    expect(give.step).toBe(2);
+    const stuck = new TutorialDirector();
+    stuck.begin(1);
+    stuck.tick(30, false);
+    expect(stuck.step).toBe(1);
   });
 
-  it('a live takeoff teaches the swing on the same ball; three missed reps fail forward', () => {
+  it('freezes for the jump hold, rejects an early release, then takes the release', () => {
     const d = new TutorialDirector();
     d.begin(2);
-    expect(d.hint()).toBe(HINT_JUMP);
-    d.noteTakeoff(false);
-    expect(d.step).toBe(2);
-    expect(d.hint()).toBe('Jump as the set rises — try again.');
-    d.noteTakeoff(true);
+    d.noteSetRising(true);
+    expect(d.tutorTarget).toBe(TUTOR_SLOW);
+    expect(d.onJumpPress()).toBe('block');
+    d.notePlant(2, 1.2, true);
+    expect(d.frozen).toBe(true);
+    expect(d.gate).toBe('jump-load');
+    expect(d.tutorTarget).toBe(0);
+    expect(d.onJumpPress()).toBe('allow');
+    expect(d.onJumpRelease()).toBe('cancel');
+    expect(d.hint()).toBe('Keep holding — fill the ring');
+    expect(d.frozen).toBe(true);
+    const ready = jumpLoadFrac(PLAYER.loadMax);
+    expect(ready).toBeGreaterThan(JUMP_GATE_LOAD);
+    d.noteLoad(JUMP_GATE_LOAD, true);
+    expect(d.gate).toBe('jump-release');
+    expect(d.hint()).toContain('Release');
+    expect(d.onJumpRelease()).toBe('allow');
+    expect(d.frozen).toBe(false);
+    expect(d.tutorTarget).toBe(TUTOR_SLOW);
+    d.noteTakeoff();
     expect(d.step).toBe(3);
-    expect(d.hint()).toBe(HINT_SWING);
-
-    const miss = new TutorialDirector();
-    miss.begin(2);
-    miss.noteRepEnd();
-    miss.noteRepEnd();
-    expect(miss.step).toBe(2);
-    miss.noteRepEnd();
-    expect(miss.step).toBe(3);
-    expect(miss.attempts).toBe(0);
+    expect(d.frozen).toBe(false);
   });
 
-  it('any contact reads the grade; three swings with no touch skip ahead', () => {
-    for (const grade of ['Perfect', 'Good', 'Early', 'Late', 'Miss'] as const) {
-      const d = new TutorialDirector();
-      d.begin(3);
-      d.noteContact(grade);
-      expect(d.step).toBe(4);
-      expect(d.hint().toLowerCase()).not.toContain('tip');
-    }
-    const perfect = new TutorialDirector();
-    perfect.begin(3);
-    perfect.noteContact('Perfect');
-    expect(perfect.hint()).toContain('Perfect = early enough that the arm is still coming through.');
-    expect(perfect.hint()).toContain('see that again');
-    expect(perfect.gradeSub('Early', 'Swing early')).toBe('Too early — wait for the ball');
-    expect(perfect.gradeSub('Late', 'Swing late')).toBe('Late — swing sooner next time');
-    expect(perfect.gradeSub('Good', '80 km/h')).toBe('80 km/h');
-
-    const whiff = new TutorialDirector();
-    whiff.begin(3);
-    for (let i = 0; i < FAIL_FORWARD_TRIES - 1; i++) whiff.noteRepEnd();
-    expect(whiff.step).toBe(3);
-    whiff.noteRepEnd();
-    expect(whiff.step).toBe(5);
-
-    const read = new TutorialDirector();
-    read.begin(3);
-    read.noteContact('Good');
-    read.noteRepEnd();
-    expect(read.step).toBe(5);
-    expect(read.label()).toBe('YOUR REP');
+  it('freezes the arm draw, swallows an early release, then freezes the sweet spot', () => {
+    const d = new TutorialDirector();
+    d.begin(3);
+    expect(d.onAttackPress()).toBe('block');
+    d.noteSwingWindow(0.4, -0.4, true, 0);
+    expect(d.frozen).toBe(false);
+    d.noteSwingWindow(0.2, -0.2, true, 0);
+    expect(d.gate).toBe('swing-draw');
+    expect(d.frozen).toBe(true);
+    expect(d.hint()).toBe(HINT_DRAW);
+    expect(d.onAttackRelease()).toBe('cancel');
+    expect(d.hint()).toBe('Hold until the ring closes');
+    d.noteSwingWindow(0.2, -0.2, true, 1);
+    expect(d.gate).toBe('swing-ride');
+    expect(d.frozen).toBe(false);
+    expect(d.tutorTarget).toBe(TUTOR_SLOW);
+    expect(d.onAttackRelease()).toBe('keep');
+    expect(d.gate).toBe('swing-rehold');
+    expect(d.frozen).toBe(true);
+    expect(d.onAttackPress()).toBe('allow');
+    expect(d.gate).toBe('swing-ride');
+    d.noteSwingWindow(0.05, SWING_SWEET_ERR, true, 1);
+    expect(d.gate).toBe('swing-release');
+    expect(d.frozen).toBe(true);
+    expect(d.hint()).toBe(HINT_THROUGH);
+    expect(d.onAttackRelease()).toBe('allow');
+    expect(d.tutorTarget).toBe(1);
+    d.noteContact('Perfect');
+    expect(d.step).toBe(4);
+    expect(d.hint().toLowerCase()).not.toContain('tip');
+    expect(d.gradeSub('Early', 'x')).toBe("You're under the ball — it sails long");
+    expect(d.gradeSub('Late', 'x')).toBe('Over the top — into the net');
   });
 
-  it('one Good+ finishes the alone rep; three attempts hand the court over', () => {
+  it('a gate never auto-advances; after 6s it only asks for attention', () => {
+    const d = new TutorialDirector();
+    d.begin(2);
+    d.notePlant(1, 0.5, true);
+    let nudged = false;
+    d.onStuck = () => (nudged = true);
+    d.tick(GATE_NUDGE_S - 0.1, false);
+    expect(d.gate).toBe('jump-load');
+    expect(nudged).toBe(false);
+    d.tick(0.1, false);
+    expect(nudged).toBe(true);
+    expect(d.step).toBe(2);
+  });
+
+  it('the solo rep has no freeze, and a second miss hands the court over', () => {
     const hit = new TutorialDirector();
     hit.begin(5);
-    hit.noteContact('Early');
-    expect(hit.step).toBe(5);
+    expect(hit.frozen).toBe(false);
+    expect(hit.contactDip).toBe(true);
     hit.noteContact('Good');
     expect(hit.step).toBe(6);
-    expect(hit.label()).toBe("You're on the court.");
     hit.tick(2.6, false);
     expect(hit.active).toBe(false);
 
-    const tries = new TutorialDirector();
-    tries.begin(5);
-    tries.noteContact('Miss');
-    tries.noteRepEnd();
-    tries.noteContact('Late');
-    tries.noteRepEnd();
-    expect(tries.step).toBe(5);
-    tries.noteRepEnd();
-    expect(tries.step).toBe(6);
+    const misses = new TutorialDirector();
+    misses.begin(5);
+    misses.noteContact('Miss');
+    misses.noteRepEnd();
+    expect(misses.step).toBe(5);
+    misses.noteContact('Miss');
+    misses.noteRepEnd();
+    expect(misses.step).toBe(6);
   });
 
-  it('never teaches the tip, and skip drops the lesson', () => {
+  it('never teaches the tip', () => {
     const d = new TutorialDirector();
     for (const step of [0, 1, 2, 3, 4, 5, 6] as const) {
       d.begin(step);
       expect(d.hint().toLowerCase()).not.toContain('tip');
-      expect((d.label() ?? '').toLowerCase()).not.toContain('tip');
     }
-    d.begin(3);
-    d.skip();
-    expect(d.active).toBe(false);
-    expect(d.holdingFeed()).toBe(false);
+  });
+});
+
+describe('timing collar', () => {
+  it('places Perfect on the gold, Good on the cyan, and a mishit on the wood', () => {
+    expect(collarZone(0)).toBe('perfect');
+    expect(collarZone(SWING_SWEET_ERR)).toBe('perfect');
+    expect(collarZone(-TIMING.spikePerfect)).toBe('perfect');
+    expect(collarZone(TIMING.spikePerfectLate)).toBe('perfect');
+    expect(collarZone(-TIMING.spikeGood)).toBe('good');
+    expect(collarZone(TIMING.spikeGoodLate)).toBe('good');
+    expect(collarZone(-0.15)).toBe('wood');
+    expect(collarZone(0.13)).toBe('wood');
+    // +0.015 s sits 6.75° to the right of 12 o'clock, inside the gold wedge
+    expect(collarDegrees(SWING_SWEET_ERR)).toBeCloseTo(SWING_SWEET_ERR * COLLAR_DEG_PER_S, 5);
+    expect(collarDegrees(-0.03)).toBeCloseTo(-13.5, 5);
+    expect(collarDegrees(0.07)).toBeCloseTo(31.5, 5);
+    expect(collarDegrees(-1)).toBe(-90);
+    expect(collarDegrees(1)).toBe(72);
   });
 });
 
@@ -193,8 +229,8 @@ describe('tutorial touch labels', () => {
     expect(TOUCH_KEY_LABELS['Left mouse']).toBe('HIT');
     expect(TOUCH_KEY_LABELS.LMB).toBe('HIT');
     expect(TOUCH_KEY_LABELS.Space).toBe('JUMP');
-    expect(translateKeyMarkup(HINT_JUMP, TOUCH_KEY_LABELS)).toBe('Hold <kbd>JUMP</kbd> to load the jump, release to leave the floor');
-    expect(translateKeyMarkup(HINT_SWING, TOUCH_KEY_LABELS)).toBe('Hold <kbd>HIT</kbd> to draw the arm, release through the ball');
+    expect(translateKeyMarkup(HINT_LOAD, TOUCH_KEY_LABELS)).toBe('Hold <kbd>JUMP</kbd> — load the jump');
+    expect(translateKeyMarkup(HINT_THROUGH, TOUCH_KEY_LABELS)).toBe('Now — release <kbd>HIT</kbd> through the ball');
     const feet = `Run in — hold <kbd>Shift</kbd>+<kbd>W</kbd>. Stop on the ring.`;
     expect(translateKeyMarkup(feet, TOUCH_KEY_LABELS)).toBe('Run in — hold <kbd>stick out</kbd>. Stop on the ring.');
   });
