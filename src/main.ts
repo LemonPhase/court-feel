@@ -198,6 +198,13 @@ function enterMenu(): void {
   game.startAttract();
 }
 
+// pointer lock delivers clicks to the canvas; Skip is hit from the integrated travel instead
+game.input.onLockedClick = (x, y) => {
+  if (!game.hud.skipHit(x, y)) return false;
+  game.tutorial.requestSkip();
+  return true;
+};
+
 game.onTutorialSkipped = (where) => {
   skipNavAt = performance.now();
   if (where === 'menu') {

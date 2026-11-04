@@ -114,6 +114,18 @@ describe('pointer lock', () => {
     expect(b.refusals).toEqual([true]);
   });
 
+  it('a second request while locked does not ask the browser again', async () => {
+    const b = browser(() => 'grant');
+    b.input.requestLock();
+    await settle();
+    expect(b.input.pointerLocked).toBe(true);
+    b.calls.length = 0;
+    b.input.requestLock();
+    await settle();
+    expect(b.calls).toEqual([]);
+    expect(b.input.pointerLocked).toBe(true);
+  });
+
   it('touch controls never ask for the lock', async () => {
     const b = browser(() => 'refuse');
     b.input.touch = true;

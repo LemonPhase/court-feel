@@ -134,6 +134,15 @@ export class Hud {
     this.root.classList.toggle('tutoring', on);
   }
 
+  /** viewport point over the keyboard Skip chip (hidden on touch, and whenever the lesson isn't up) */
+  skipHit(x: number, y: number): boolean {
+    if (!this.root.classList.contains('tutoring')) return false;
+    const r = this.skipBtn.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    const slop = 8;
+    return x >= r.left - slop && x <= r.right + slop && y >= r.top - slop && y <= r.bottom + slop;
+  }
+
   private lastHint = '';
 
   /** plain-text drill messages: key names become button names */

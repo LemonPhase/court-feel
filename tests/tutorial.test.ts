@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isDirectLockedTravel } from '../src/core/input';
 import { TOUCH_KEY_LABELS } from '../src/ui/touchControls';
 import { translateKeyMarkup } from '../src/ui/hud';
 import {
@@ -170,6 +171,20 @@ describe('tutorial steps', () => {
     d.skip();
     expect(d.active).toBe(false);
     expect(d.holdingFeed()).toBe(false);
+  });
+});
+
+describe('locked skip chip', () => {
+  it('a direct move from the lock anchor onto the chip counts, looking around does not', () => {
+    // measured in Chrome: lock at (400, 300), one move of (777, -272) lands on the chip
+    const x = 400 + 777;
+    const y = 300 - 272;
+    const travel = Math.hypot(777, -272);
+    expect(isDirectLockedTravel(400, 300, x, y, travel)).toBe(true);
+    // the same landing after wandering across the court is a swing, not Skip
+    expect(isDirectLockedTravel(400, 300, x, y, travel * 4)).toBe(false);
+    expect(isDirectLockedTravel(400, 300, x, y, 0)).toBe(false);
+    expect(isDirectLockedTravel(400, 300, 400, 300, 0)).toBe(true);
   });
 });
 
