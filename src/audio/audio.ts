@@ -70,10 +70,17 @@ export class AudioEngine {
     }
   }
 
+  /** the game stopped for good (crash screen): suspend the audio thread and never resume it */
+  shutdown(): void {
+    this.unavailable = true;
+    const ctx = this.ctx;
+    if (ctx && !this.offline && 'suspend' in ctx) (ctx as AudioContext).suspend().catch(() => {});
+  }
+
   /** a hidden tab stops the audio thread (the crowd bed loops forever); it resumes when the tab is visible again */
   setHidden(hidden: boolean): void {
     const ctx = this.ctx;
-    if (!ctx || this.offline || !('suspend' in ctx)) return;
+    if (!ctx || this.offline || this.unavailable || !('suspend' in ctx)) return;
     const live = ctx as AudioContext;
     if (hidden && live.state === 'running') {
       this.hiddenSuspended = true;
