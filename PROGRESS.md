@@ -462,6 +462,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   replayed blocker positions within 0.08 m of the live ones over the whole replay (was 3.9 m).
 
 ## Decisions
+- First-run tutorial v2 (issue #25) is a coach layer on Spike Drill, not a seventh mode: Outside, block off. The world slows, then freezes at each decision (jump load, jump release, arm draw, sweet-spot release) and waits for that input. No auto-advance; Skip is the way out, and after 6 s at a gate the hint key pulses and Skip brightens once. One solo rep afterwards uses the slow-mo dip and no freezes. A timing collar around the charge ring (gold / cyan / wood from the real spike windows) is on in the lesson and, after it, whenever Settings → Hints is on. FP / TP stays switchable. An early release is swallowed, never a tip. Once per browser in `courtFeel.tutorial.v1`. The jump freeze is the planned takeoff, not the press: the load fills in real time, so freezing on the press left the floor a plant-hold early and a gold release graded Good (body about 31% of the jump, falling). Measured in headless Chrome after the fix: same gates, sweet collar, Perfect at 97% of the jump. Skip from a freeze places the athlete on the ground at the approach start.
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,
   and no CC0 pack ships volleyball-specific motions anyway, so the athlete is a procedurally

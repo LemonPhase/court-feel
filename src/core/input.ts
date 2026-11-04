@@ -5,6 +5,19 @@
  */
 export type ButtonCode = string; // KeyboardEvent.code or 'Mouse0' / 'Mouse2'
 
+/**
+ * Pointer lock freezes clientX/Y, so a click on a HUD chip is only visible as travel
+ * from the lock anchor. A direct move onto the chip counts; wandering (looking around)
+ * makes the path much longer than the straight line and does not.
+ */
+export function isDirectLockedTravel(anchorX: number, anchorY: number, x: number, y: number, travel: number): boolean {
+  const straight = Math.hypot(x - anchorX, y - anchorY);
+  if (straight < 1) return true;
+  // no travel recorded for a long jump: the move never happened, so this isn't an aim at the chip
+  if (travel + 1 < straight * 0.5) return false;
+  return travel <= straight * 1.5 + 80;
+}
+
 /** analog movement axis fed by the touch joystick (x right, y forward, camera relative) */
 export interface Stick {
   active: boolean;
@@ -46,6 +59,19 @@ export class Input {
    * keep their default meaning, so Tab, Space and the arrow keys work on buttons and sliders.
    */
   captureKeys: () => boolean = () => true;
+  /**
+   * A click while the pointer is locked. Chrome retargets it at the canvas and freezes
+   * clientX/Y at the lock anchor; the travel is only in movementX/Y, which `shadowX/Y` integrates.
+   * Return true to swallow the click (the tutorial's Skip chip).
+   */
+  onLockedClick: ((x: number, y: number) => boolean) | null = null;
+  /** viewport point of the locked pointer (anchor + movement since the lock) */
+  shadowX = 0;
+  shadowY = 0;
+  private anchorX = 0;
+  private anchorY = 0;
+  /** path length of the mouse since the lock engaged */
+  private lockTravel = 0;
   /** game keys whose browser default is suppressed while gameplay captures the keyboard */
   private static readonly swallow = new Set([
     'Space',
@@ -69,9 +95,28 @@ export class Input {
     });
     window.addEventListener('keyup', (e) => this.up(e.code));
     window.addEventListener('blur', () => this.releaseAll());
+    // the locking gesture is often the PLAY button, not the canvas: remember that point
+    const noteFreePointer = (e: MouseEvent) => {
+      // read the lock from the document: the cached flag can lag the event that pointer lock retargets
+      if (document.pointerLockElement === this.el) return;
+      this.shadowX = e.clientX;
+      this.shadowY = e.clientY;
+    };
+    window.addEventListener('pointerdown', noteFreePointer, true);
+    window.addEventListener('pointermove', noteFreePointer, true);
     el.addEventListener('mousedown', (e) => {
       e.preventDefault();
       if (!this.enabled || this.emulatedMouse()) return;
+      if (document.pointerLockElement !== this.el) {
+        this.shadowX = e.clientX;
+        this.shadowY = e.clientY;
+      } else if (e.button === 0 && this.lockedClickHitsChip()) {
+        // the gesture was aimed at Skip: don't also swing, and drop the look from this move
+        this.mouseDX = 0;
+        this.mouseDY = 0;
+        e.stopPropagation();
+        return;
+      }
       this.down('Mouse' + e.button);
       if (this.dragLook) this.dragging = true;
     });
@@ -86,9 +131,18 @@ export class Input {
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
       if (!this.enabled) return;
-      if (this.pointerLocked || (this.dragLook && this.dragging)) {
+      const locked = document.pointerLockElement === this.el;
+      if (locked || (this.dragLook && this.dragging)) {
         this.mouseDX += e.movementX;
         this.mouseDY += e.movementY;
+        if (locked) {
+          this.shadowX += e.movementX;
+          this.shadowY += e.movementY;
+          this.lockTravel += Math.hypot(e.movementX, e.movementY);
+        }
+      } else {
+        this.shadowX = e.clientX;
+        this.shadowY = e.clientY;
       }
     });
     document.addEventListener('pointerlockchange', () => {
@@ -99,6 +153,10 @@ export class Input {
         this.lockGranted = true;
         this.dragLook = false;
         this.dragging = false;
+        // travel toward Skip is measured from where the cursor was locked, not from earlier looking
+        this.anchorX = this.shadowX;
+        this.anchorY = this.shadowY;
+        this.lockTravel = 0;
       } else this.lockLostAt = performance.now();
       this.onPointerLockChange?.(this.pointerLocked);
     });
@@ -116,7 +174,7 @@ export class Input {
   }
 
   requestLock(): void {
-    if (this.touch) return;
+    if (this.touch || this.pointerLocked || document.pointerLockElement) return;
     const el = this.el as HTMLElement & { requestPointerLock?: (opts?: object) => Promise<void> | void };
     if (typeof el.requestPointerLock !== 'function') return this.lockRefused();
     // a request either returns a promise (Chrome) or reports back through pointerlockchange / pointerlockerror
@@ -138,6 +196,17 @@ export class Input {
     } catch {
       this.lockRefused();
     }
+  }
+
+  /**
+   * A locked click lands on Skip only when the integrated pointer is on the chip and the
+   * gesture went there fairly directly. Looking around wanders a long path, so a later
+   * attack click does not skip the lesson.
+   */
+  private lockedClickHitsChip(): boolean {
+    if (!this.onLockedClick) return false;
+    if (!isDirectLockedTravel(this.anchorX, this.anchorY, this.shadowX, this.shadowY, this.lockTravel)) return false;
+    return this.onLockedClick(this.shadowX, this.shadowY);
   }
 
   /**

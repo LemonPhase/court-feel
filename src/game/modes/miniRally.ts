@@ -90,6 +90,8 @@ export class MiniRally extends Mode {
    */
   private setterCall(r: SetterRead): void {
     const g = this.g;
+    // tutorial reps are a quiet court: no setter bubble (the lesson is one coach line)
+    if (g.tutorial.active) return;
     if (!this.hitter) return;
     const play = this.play;
     let word: string;
