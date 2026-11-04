@@ -113,7 +113,7 @@ export class Menu {
         'div',
         'controls kb',
         `<b>WASD</b> move · <b>Shift</b> approach · <b>Space</b> plant & jump (hold to load) · <b>LMB</b> hold to wind up, release to spike (longer hold = harder · tap = tip) ·
-         <b>RMB</b> block / set · <b>E</b> pass · <b>Q</b> serve toss · <b>V</b> camera · <b>R</b> reset rep · <b>Esc</b> pause · <b>F3</b> debug`,
+         <b>RMB</b> block / set · <b>E</b> pass · <b>Q</b> serve toss · <b>V</b> camera · <b>R</b> replay · <b>N</b> reset rep · <b>Esc</b> pause · <b>F3</b> debug`,
       ),
       h(
         'div',
