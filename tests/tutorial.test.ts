@@ -144,6 +144,8 @@ describe('tutorial gates', () => {
     d.noteContact('Perfect');
     expect(d.step).toBe(4);
     expect(d.hint().toLowerCase()).not.toContain('tip');
+    expect(d.hint(false)).not.toContain('see that again');
+    expect(d.hint(true)).toContain('see that again');
     expect(d.gradeSub('Early', 'x')).toBe("You're under the ball — it sails long");
     expect(d.gradeSub('Late', 'x')).toBe('Over the top — into the net');
   });

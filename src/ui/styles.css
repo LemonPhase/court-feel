@@ -173,9 +173,10 @@ body.replaying .hud { opacity: 0.25; }
   -webkit-mask: radial-gradient(circle, transparent 21px, #000 22px, #000 25px, transparent 26px); mask: radial-gradient(circle, transparent 21px, #000 22px, #000 25px, transparent 26px); }
 .charge-ring.full { background: conic-gradient(#ff6a2a 100%, transparent 0); filter: drop-shadow(0 0 8px rgba(255,120,40,0.95)); animation: chargeFull 0.5s ease-in-out infinite alternate; }
 @keyframes chargeFull { from { transform: scale(1); } to { transform: scale(1.08); } }
+@keyframes sweetPulse { from { transform: scale(1); } to { transform: scale(1.08); } }
 /* full power keeps its colour; the pulse is reserved for the sweet spot */
-body.collar .charge-ring.full { animation: none; }
-.charge-ring.sweet { background: conic-gradient(#ffd23f 100%, transparent 0); filter: drop-shadow(0 0 10px rgba(255,210,63,0.95)); }
+body.collar .charge-ring.full:not(.sweet) { animation: none; }
+.charge-ring.sweet { background: conic-gradient(#ffd23f 100%, transparent 0); filter: drop-shadow(0 0 10px rgba(255,210,63,0.95)); animation: sweetPulse 0.5s ease-in-out infinite alternate; }
 .crosshair.sweet { border-color: var(--gold); box-shadow: 0 0 12px rgba(255,210,63,0.85); }
 /* timing collar: wood / good / perfect around the charge ring. 0° is 12 o'clock. */
 .timing-collar { position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; margin: -46px 0 0 -46px; opacity: 0; pointer-events: none; transition: opacity 0.12s; }
@@ -266,7 +267,7 @@ body.touchmode .hud-streak-val { font-size: 28px; }
 .t-hit { width: 92px; height: 92px; right: 28px; bottom: 28px; font-size: 16px; border-color: rgba(255,255,255,0.7); }
 .t-hit.ready { border-color: var(--gold); box-shadow: 0 0 22px rgba(255,200,60,0.6); animation: hitReady 0.7s ease-in-out infinite alternate; }
 body.collar .t-hit.ready { animation: none; box-shadow: none; border-color: rgba(255,255,255,0.7); }
-body.collar .t-hit.sweet { border-color: var(--gold); box-shadow: 0 0 18px rgba(255,210,63,0.9); }
+body.collar .t-hit.sweet { border-color: var(--gold); box-shadow: 0 0 18px rgba(255,210,63,0.9); animation: sweetPulse 0.5s ease-in-out infinite alternate; }
 @keyframes hitReady { from { transform: scale(1); } to { transform: scale(1.06); } }
 .t-jump { width: 80px; height: 80px; right: 136px; bottom: 36px; }
 .t-block { width: 70px; height: 70px; right: 40px; bottom: 138px; font-size: 11px; }

@@ -18,6 +18,7 @@ import {
   type AttackLane,
   type SetPlay,
 } from '../plays';
+import { jumpFreezeAt } from '../tutorial';
 import { kbd, makeFloorRing, Mode, ZoneMarker } from './mode';
 import { planApproach, planQuick, planToPoint, type ApproachPlan } from '../../ai/approach';
 import { BlockerBrain } from '../../ai/blocker';
@@ -399,8 +400,8 @@ export class SpikeDrill extends Mode {
     return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
   }
 
-  restartRep(): void {
-    this.endRep(null, true);
+  restartRep(snap = false): void {
+    this.endRep(null, true, snap);
   }
 
   step(dt: number): void {
@@ -481,7 +482,9 @@ export class SpikeDrill extends Mode {
         this.earlyFor = lt;
       } else plan = planApproach(me, pred, g.simTime, 0, 0);
       this.goAt = plan && plan.error < 0.6 ? plan.tStart : -1;
-      if (plan) this.plantAt = plan.tPress;
+      // the lesson freezes at takeoff: the load fills while the world is stopped,
+      // so freezing on the press would leave the floor a plant-hold early
+      if (plan) this.plantAt = g.tutorial.active ? jumpFreezeAt(plan.tPress, plan.hold) : plan.tPress;
     }
     if (g.tutorial.active) {
       g.tutorial.noteSetRising(!!setUp && lt?.kind === 'set');
@@ -569,10 +572,10 @@ export class SpikeDrill extends Mode {
     this.endRep(o);
   }
 
-  private endRep(o: Outcome | null, silent = false): void {
+  private endRep(o: Outcome | null, silent = false, snap = false): void {
     const g = this.g;
     if (silent) {
-      this.nextRep();
+      this.nextRep(snap);
       return;
     }
     this.toPhase('result');
@@ -623,7 +626,7 @@ export class SpikeDrill extends Mode {
     this.updateScore();
   }
 
-  private nextRep(): void {
+  private nextRep(snap = false): void {
     const g = this.g;
     g.tutorial.noteRepEnd();
     g.judge.disarm();
@@ -634,8 +637,9 @@ export class SpikeDrill extends Mode {
     this.placeBlockers();
     this.pickZone();
     this.updateScore();
-    // jog back to the approach start; the next toss waits for you
-    if (Math.hypot(me.pos.x - lane.sx, me.pos.z - lane.sz) > 0.6 || me.state !== 'ground') g.returnUser(lane.sx, lane.sz, 0);
+    // Skip puts them on the ground at the start. N jogs back, including after a landing.
+    if (snap) g.placeUser(lane.sx, lane.sz, 0);
+    else if (Math.hypot(me.pos.x - lane.sx, me.pos.z - lane.sz) > 0.6 || me.state !== 'ground') g.returnUser(lane.sx, lane.sz, 0);
     // N during the feet step must not toss the ball early
     if (g.tutorial.holdingFeed()) this.toPhase('intro');
     else this.toPhase('feed');

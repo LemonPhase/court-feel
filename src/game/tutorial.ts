@@ -37,6 +37,17 @@ export const JUMP_GATE_LOAD = 0.7;
 export const SWING_DRAW_LEAD = 0.25;
 /** release-now error (s) at the centre of the Perfect window: the release freeze */
 export const SWING_SWEET_ERR = 0.015;
+
+/**
+ * Sim time to freeze the jump lesson: the planned takeoff, not the press.
+ * The load meter fills in real time while the world is stopped, so a freeze
+ * at the press leaves the floor a plant-hold early. The peak then misses the
+ * high ball and contact downgrades a gold release to Good ("Jumped early")
+ * once the body is under 72% of the jump on the way down.
+ */
+export function jumpFreezeAt(tPress: number, hold: number): number {
+  return tPress + Math.max(0, hold);
+}
 /** slow-motion factor between freezes */
 export const TUTOR_SLOW = 0.35;
 /** solo rep: one miss gets another try, the next miss hands the court over */
@@ -400,7 +411,7 @@ export class TutorialDirector {
     }
   }
 
-  hint(): string {
+  hint(replay = false): string {
     if (this.nudge) return this.nudge;
     switch (this.step) {
       case 0:
@@ -412,7 +423,7 @@ export class TutorialDirector {
       case 3:
         return this.gate === 'swing-release' ? HINT_THROUGH : this.gate === 'swing-rehold' ? NUDGE_GOLD : HINT_DRAW;
       case 4:
-        return `${this.gradeLine()} · ${kbd('R')} see that again`;
+        return replay ? `${this.gradeLine()} · ${kbd('R')} see that again` : this.gradeLine();
       case 5:
         return HINT_SOLO;
       default:
@@ -549,7 +560,8 @@ export class Tutorial {
 
   /**
    * Skip. Welcome returns to the start screen. Anywhere else: cancel the
-   * half-taught rep (no swing, no takeoff), reset like N, stay in the drill.
+   * half-taught rep and put the athlete on the ground at the approach start.
+   * A jog-back would leave a mid-swing freeze falling through the jump.
    */
   requestSkip(): 'menu' | 'drill' | null {
     if (!this.director.active || this.director.step >= 6) return null;
@@ -559,7 +571,7 @@ export class Tutorial {
     this.director.skip();
     writeTutorialFlag('skipped');
     this.clearChrome();
-    if (where === 'drill') this.g.mode?.restartRep();
+    if (where === 'drill') this.g.mode?.restartRep(true);
     this.g.hud.dip();
     this.g.onTutorialSkipped?.(where);
     return where;
@@ -633,7 +645,7 @@ export class Tutorial {
   }
 
   hint(): string {
-    return this.director.hint();
+    return this.director.hint(this.director.step === 4 && this.g.replayAvailable());
   }
 
   gradeSub(grade: Grade, fallback: string): string {
