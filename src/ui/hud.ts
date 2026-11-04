@@ -9,6 +9,13 @@ const GRADE_CLASS: Record<Grade, string> = {
   Miss: 'g-miss',
 };
 
+/** hint `<kbd>` names → touch button names. Combined approach keys first. */
+export function translateKeyMarkup(t: string, m: Record<string, string>): string {
+  t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
+  t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
+  return t.replace(/with the mouse/g, 'by dragging');
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   e.className = cls;
@@ -42,6 +49,13 @@ export class Hud {
   private callWord: HTMLDivElement;
   private callSub: HTMLDivElement;
   private callTimer = 0;
+  /** tutorial step title stays up until the step changes (hud-msg is otherwise a toast) */
+  private msgPinned = false;
+  /** while the tutorial is running, setter speech bubbles stay down */
+  suppressCalls = false;
+  /** SKIP TUTORIAL chip (keyboard). Touch draws its own in the top row. */
+  private skipBtn: HTMLButtonElement;
+  onSkip: (() => void) | null = null;
   private callAnchor: ((out: THREE.Vector3) => THREE.Vector3) | null = null;
   private callP = new THREE.Vector3();
   private callV = new THREE.Vector3();
@@ -73,6 +87,13 @@ export class Hud {
     this.streakVal = el('span', 'hud-streak-val', this.streakBox, '0');
     this.hint = el('div', 'hud-hint', this.root);
     this.msg = el('div', 'hud-msg', this.root);
+    this.skipBtn = el('button', 't-tap t-skip-kb', this.root, 'SKIP TUTORIAL');
+    this.skipBtn.type = 'button';
+    this.skipBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onSkip?.();
+    });
     this.cross = el('div', 'crosshair', this.root);
     this.camTag = el('div', 'hud-cam', this.root, 'TP');
     this.loadRing = el('div', 'load-ring', this.root);
@@ -98,13 +119,19 @@ export class Hud {
     this.score.textContent = t;
   }
 
-  setHint(t: string): void {
-    if (!this.showHints) t = '';
-    else if (this.keyLabels) t = this.translateKeys(t);
+  /** `force` keeps a tutorial coach line up even when Settings → Hints is off */
+  setHint(t: string, force = false): void {
+    if (!this.showHints && !force) t = '';
+    else if (this.keyLabels && t) t = translateKeyMarkup(t, this.keyLabels);
     if (t !== this.lastHint) {
       this.lastHint = t;
       this.hint.innerHTML = t;
     }
+  }
+
+  /** keyboard skip chip + the camera-tag nudge. Touch hides this chip in CSS. */
+  setTutorialChrome(on: boolean): void {
+    this.root.classList.toggle('tutoring', on);
   }
 
   private lastHint = '';
@@ -128,19 +155,20 @@ export class Hud {
     return t;
   }
 
-  private translateKeys(t: string): string {
-    const m = this.keyLabels!;
-    // combined keys first (approach = push the stick out), then single keys
-    t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
-    t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
-    return t.replace(/with the mouse/g, 'by dragging');
-  }
 
   setCam(fp: boolean): void {
     this.camTag.textContent = fp ? 'FIRST PERSON' : 'THIRD PERSON';
     this.camTag.classList.remove('pulse');
     void this.camTag.offsetWidth;
     this.camTag.classList.add('pulse');
+  }
+
+  /** drop a grade / banner left up by the previous drill (tutorial entry, replay) */
+  clearFlash(): void {
+    this.gradeTimer = 0;
+    this.bannerTimer = 0;
+    this.grade.classList.remove('show');
+    this.banner.classList.remove('show');
   }
 
   showGrade(g: Grade, sub: string): void {
@@ -153,15 +181,30 @@ export class Hud {
     this.gradeTimer = g === 'Perfect' ? 1.6 : 1.2;
   }
 
-  showBanner(text: string, kind: 'good' | 'bad' | 'neutral' = 'neutral'): void {
+  showBanner(text: string, kind: 'good' | 'bad' | 'neutral' = 'neutral', dur = 1.5): void {
     this.banner.textContent = text;
     this.banner.className = 'hud-banner show b-' + kind;
     void this.banner.offsetWidth;
     this.banner.classList.add('pop');
-    this.bannerTimer = 1.5;
+    this.bannerTimer = dur;
+  }
+
+  /** step title that stays until cleared (the tutorial's STEP 2 · JUMP line) */
+  pinMessage(text: string | null): void {
+    if (!text) {
+      this.msgPinned = false;
+      this.msg.classList.remove('show');
+      this.msgTimer = 0;
+      return;
+    }
+    this.msgPinned = true;
+    this.msg.textContent = text;
+    this.msg.classList.add('show');
+    this.msgTimer = 0;
   }
 
   message(text: string, dur = 1.5): void {
+    if (this.msgPinned) return;
     if (this.keyLabels) text = Hud.translateText(text);
     this.msg.textContent = text;
     this.msg.classList.add('show');
@@ -221,6 +264,7 @@ export class Hud {
     anchor: ((out: THREE.Vector3) => THREE.Vector3) | null,
     dur = 1.5,
   ): void {
+    if (this.suppressCalls) return;
     this.callWho.textContent = who;
     this.callWord.textContent = word;
     this.callSub.textContent = sub;
@@ -303,7 +347,7 @@ export class Hud {
       this.bannerTimer -= dt;
       if (this.bannerTimer <= 0) this.banner.classList.remove('show');
     }
-    if (this.msgTimer > 0) {
+    if (!this.msgPinned && this.msgTimer > 0) {
       this.msgTimer -= dt;
       if (this.msgTimer <= 0) this.msg.classList.remove('show');
     }

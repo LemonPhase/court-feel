@@ -111,6 +111,16 @@ npm run format     # format the code with Prettier
 Click **PLAY** (or press Enter) on the start screen; the game captures the
 mouse (pointer lock). **Esc** pauses and opens settings.
 
+The first PLAY on a browser walks you through one Outside spike before a
+free-choice drill: run to the cyan plant ring, load the jump, swing through
+the ball, read the grade, then hit one on your own. **Skip tutorial** is in
+the corner the whole time (and in the pause menu). The drill cards stay
+open — double-click one to start that drill instead. It is remembered in
+this browser (`courtFeel.tutorial.v1`: `done`, `skipped`, or
+`in_progress:` plus the step). **Replay tutorial** is on the start screen
+and in Settings, next to Key hints. The lesson does not teach the tip (a
+tap of the attack button). First and third person both stay available (V).
+
 ## Controls
 
 | Input | Action |
@@ -367,7 +377,9 @@ and **e2e** (below). Both should be required checks for merging into `main`.
 * URL shortcuts for quick testing: `?mode=spike&pos=OH&cam=fp&bot=perfect`
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,
   sloppy, tip). Unknown values are ignored: an unknown mode opens the menu, an
-  unknown position falls back to OH.
+  unknown position falls back to OH. `?tutorial=0` starts the first-run lesson
+  at the welcome (0 welcome, 1 feet, 2 jump, 3 swing, 4 grade, 5 one alone,
+  6 hand-off). `cam=fp` and `touch=1` still apply.
 
 ## Errors and bug reports
 

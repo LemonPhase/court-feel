@@ -55,6 +55,12 @@ function buildTag(): HTMLElement {
 
 export interface MenuCallbacks {
   play(mode: ModeId, pos: PositionId): void;
+  /** PLAY / Enter while the first-run tutorial is still offered */
+  playTutorial(): void;
+  replayTutorial(): void;
+  skipTutorial(): void;
+  tutorialPending(): boolean;
+  tutorialActive(): boolean;
   resume(): void;
   restart(): void;
   quit(): void;
@@ -72,6 +78,8 @@ export class Menu {
   private posCards = new Map<PositionId, HTMLElement>();
   /** which position the "Your athlete" settings edit (follows the selected position when the settings open) */
   private bodyTab: PositionId = 'OH';
+  private tutNote!: HTMLElement;
+  private skipTutorialBtn!: HTMLButtonElement;
 
   constructor(
     parent: HTMLElement,
@@ -113,7 +121,7 @@ export class Menu {
         `<div class="mode-n">${i + 1}</div><div class="mode-t">${m.title}</div><div class="mode-b">${m.blurb}</div>`,
       );
       c.onclick = () => this.selectMode(id);
-      c.ondblclick = () => this.go();
+      c.ondblclick = () => this.go(true);
       modeGrid.append(c);
       this.modeCards.set(id, c);
     });
@@ -140,11 +148,15 @@ export class Menu {
     camSel.append(fpBtn, tpBtn);
     const play = h('button', 'play-btn', 'PLAY');
     play.id = 'play';
-    play.onclick = () => this.go();
+    play.onclick = () => this.go(false);
     const setBtn = h('button', 'ghost-btn', 'Settings');
     setBtn.onclick = () => this.openSettings(setBtn);
-    bottom.append(camSel, setBtn, play);
-    left.append(bottom);
+    const replay = h('button', 'ghost-btn tut-replay', 'Replay tutorial');
+    replay.type = 'button';
+    replay.onclick = () => this.cb.replayTutorial();
+    bottom.append(camSel, replay, setBtn, play);
+    this.tutNote = h('div', 'tut-note', 'PLAY walks you through one spike. Tutorial uses Outside. Double-click any drill to start it.');
+    left.append(this.tutNote, bottom);
     left.append(
       h(
         'div',
@@ -179,7 +191,11 @@ export class Menu {
     quit.onclick = () => this.cb.quit();
     const sett = h('button', 'ghost-btn', 'Settings');
     sett.onclick = () => this.openSettings(sett);
-    box.append(resume, sett, restart, quit, buildTag());
+    this.skipTutorialBtn = h('button', 'ghost-btn', 'Skip tutorial');
+    this.skipTutorialBtn.type = 'button';
+    this.skipTutorialBtn.style.display = 'none';
+    this.skipTutorialBtn.onclick = () => this.cb.skipTutorial();
+    box.append(resume, sett, restart, this.skipTutorialBtn, quit, buildTag());
     this.pause.append(box);
     parent.append(this.pause);
 
@@ -205,7 +221,7 @@ export class Menu {
           const control = (e.target as HTMLElement | null)?.closest?.('button, input, textarea, select');
           if (control && !control.matches('.pos-card, .mode-card')) return;
           e.preventDefault();
-          this.go();
+          this.go(false);
         }
       }
       if (e.key === 'Escape' && this.settingsOpen) {
@@ -237,11 +253,19 @@ export class Menu {
     }
   }
 
-  private go(): void {
+  /**
+   * PLAY and Enter offer the tutorial while it is still pending.
+   * A double-clicked drill card is an explicit choice and starts that drill.
+   */
+  private go(explicitDrill: boolean): void {
     try {
       localStorage.setItem('courtfeel.menu', JSON.stringify({ mode: this.mode, pos: this.pos }));
     } catch {
       /* ignore */
+    }
+    if (!explicitDrill && this.cb.tutorialPending()) {
+      this.cb.playTutorial();
+      return;
     }
     this.cb.play(this.mode, this.pos);
   }
@@ -258,13 +282,23 @@ export class Menu {
 
   showStart(v: boolean): void {
     this.start.style.display = v ? 'flex' : 'none';
+    if (v) this.syncTutorial();
   }
 
   showPause(v: boolean): void {
     const was = this.pauseVisible;
     this.pause.style.display = v ? 'flex' : 'none';
     if (!v) this.closeSettings();
-    else if (!was) this.resumeBtn?.focus();
+    else {
+      if (!was) this.resumeBtn?.focus();
+      this.syncTutorial();
+    }
+  }
+
+  /** start-screen note and the pause-menu skip, from the stored flag and the live session */
+  syncTutorial(): void {
+    this.tutNote.style.display = this.cb.tutorialPending() ? '' : 'none';
+    this.skipTutorialBtn.style.display = this.cb.tutorialActive() ? '' : 'none';
   }
 
   get pauseVisible(): boolean {
@@ -381,6 +415,16 @@ export class Menu {
     slider('Camera shake', 'shake', (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`));
     slider('Volume', 'volume', (v) => `${Math.round(v * 100)}%`);
     toggle('Key hints', 'showHints');
+    const replayRow = h('label', 'set-row');
+    const replayBtn = h('button', 'chip', 'Replay tutorial');
+    replayBtn.type = 'button';
+    replayBtn.onclick = (e) => {
+      e.preventDefault();
+      this.closeSettings();
+      this.cb.replayTutorial();
+    };
+    replayRow.append(h('span', 'set-l', 'Tutorial'), replayBtn);
+    grid.append(replayRow);
     const cols = h('div', 'settings-cols');
     cols.append(grid, this.buildBodySettings(changed));
     box.append(cols);

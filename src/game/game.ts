@@ -28,6 +28,7 @@ import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
 import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
+import { Tutorial, type TutorialBegin } from './tutorial';
 
 /** consecutive frames that throw before the game stops and shows the crash screen */
 const MAX_FAILED_FRAMES = 10;
@@ -98,6 +99,9 @@ export class Game {
   manual = false;
   /** called once per render frame after the HUD (the touch overlay draws itself here) */
   onFrame: (() => void) | null = null;
+  /** Skip tutorial: 'menu' from the welcome, 'drill' once a rep is underway */
+  onTutorialSkipped: ((where: 'menu' | 'drill') => void) | null = null;
+  tutorial!: Tutorial;
   /** test hook: stop the RAF loop from rendering (screenshots render on demand) */
   holdRender = false;
   /** in the menu: attract camera, no user control */
@@ -196,6 +200,7 @@ export class Game {
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
     this.resize();
+    this.tutorial = new Tutorial(this);
   }
 
   // ------------------------------------------------------------ athletes
@@ -356,6 +361,18 @@ export class Game {
     this.hud.setCam(this.settings.firstPerson);
   }
 
+  /**
+   * Guided first session: Spike Drill, Outside, block off. Camera stays whatever
+   * the player picked (FP and TP both stay available). `replay` starts at the welcome.
+   */
+  beginTutorial(opts: TutorialBegin = {}): void {
+    this.hud.setVisible(true);
+    this.paused = false;
+    this.tutorial.begin(opts);
+    this.startMode('spike', 'OH');
+    this.tutorial.present();
+  }
+
   stopMode(): void {
     this.mode?.teardown();
     this.mode = null;
@@ -412,7 +429,8 @@ export class Game {
         const kmh = ev.speed * 3.6;
         const pw =
           ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
-        const sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+        let sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+        if (this.tutorial.active) sub = this.tutorial.gradeSub(ev.grade, sub);
         this.hud.showGrade(ev.grade, sub);
       }
       if (ev.speed > 0) this.hud.setSpeed(ev.speed * 3.6);
@@ -812,7 +830,12 @@ export class Game {
     this.updateAimReticle(realDt);
     this.hud.update(realDt);
     this.onFrame?.();
-    if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint() + (this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : ''));
+    if (this.mode && !this.inMenu) {
+      const tutoring = this.tutorial.active;
+      const base = tutoring ? this.tutorial.hint() : this.mode.hint();
+      const replay = !tutoring && this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : '';
+      this.hud.setHint(base + replay, tutoring);
+    }
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
     this.hud.setLoad(
       me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null,

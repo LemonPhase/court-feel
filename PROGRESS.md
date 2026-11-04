@@ -462,6 +462,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   replayed blocker positions within 0.08 m of the live ones over the whole replay (was 3.9 m).
 
 ## Decisions
+- First-run tutorial (issue #25) is a guided first session of Spike Drill, not a seventh mode: Outside Hitter, block off, set calls and the opposing block kept off, setter speech bubbles suppressed. One coach line in the existing hint, pointed at the plant ring and the load / charge rings. PLAY suggests it; drill cards stay clickable (double-click starts that drill). Fail-forward after 3 missed reps, and after 10 s on the feet step. FP / TP stays switchable. The tip (tap HIT) is not taught. Once per browser in `courtFeel.tutorial.v1` (`done`, `skipped`, or `in_progress:` plus the step). Replay from Settings and the start screen.
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,
   and no CC0 pack ships volleyball-specific motions anyway, so the athlete is a procedurally
