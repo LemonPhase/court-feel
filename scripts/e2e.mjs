@@ -5,7 +5,8 @@
 //   - every drill's bot makes its contacts, mostly Perfect; rallies produce points
 //   - spike-drill set calls take effect (each call sets its own play)
 //   - the Perfect-spike replay starts; touch controls drive the athlete
-//   - bad quick-start links and corrupted saved settings still load; menus are keyboard-usable
+//   - bad quick-start links and corrupted saved settings still load and play; menus are keyboard-usable;
+//     a crash leaves the crash screen in control of the keyboard and mouse
 //   - GPU resources (geometries, textures, shader programs) do not grow over a soak
 // Frame time, draw calls and heap are reported, not asserted (software rendering here).
 // The simulation is stepped manually at a fixed dt, so results do not depend on machine speed.
@@ -475,6 +476,11 @@ for (const k of ['geometries', 'textures', 'programs']) {
         timeout: 60000,
         polling: 250,
       });
+      // rendering is held, so the loop never ticks: step the simulation and the drill for a second by hand
+      // (no drawing), so an error in the game loop fails the probe instead of hiding behind the hold
+      await p.evaluate(() => {
+        if (window.__court && !document.querySelector('.crash')) window.__court.play(1);
+      });
       const st = await p.evaluate(() => ({
         mode: window.__court?.mode ? window.__court.modeId : null,
         pos: window.__court?.position,
@@ -482,7 +488,7 @@ for (const k of ['geometries', 'textures', 'programs']) {
         fov: window.__court?.settings.fov,
         crash: !!document.querySelector('.crash'),
       }));
-      check(errs.length === 0 && !st.crash, `${label}: loads without errors`, { errs, st });
+      check(errs.length === 0 && !st.crash, `${label}: loads and plays a second without errors`, { errs, st });
       return { p, ctx, st };
     } catch (e) {
       // record it and carry on, so the report still lists every other check
@@ -519,6 +525,33 @@ for (const k of ['geometries', 'textures', 'programs']) {
   });
   check(!keys.inMenu.tab && !keys.inMenu.space, 'menus: Tab and Space keep their browser meaning', keys);
   check(keys.inGame.tab && keys.inGame.space, 'in play: Tab and Space are captured by the game', keys);
+  await r.ctx.close();
+  // a crash in play: the crash screen keeps the keyboard and mouse (no pause menu or pointer lock behind it)
+  r = await probe('crash screen', '?mode=spike&pos=OH');
+  try {
+    await r.p.evaluate(() => {
+      window.__court.frame = () => {
+        throw new Error('e2e: injected frame failure');
+      };
+    });
+    await r.p.waitForSelector('.crash', { timeout: 20000 });
+    await r.p.keyboard.press('Escape');
+    await r.p.click('.crash .ghost-btn');
+    const cs = await r.p.evaluate(() => ({
+      stopped: window.__court.stopped,
+      pauseMenu: window.__menu.pauseVisible,
+      pointerLocked: !!document.pointerLockElement,
+      focusOnCrashScreen: !!document.activeElement?.closest('.crash'),
+      restInert: [...document.querySelectorAll('#app > :not(.crash)')].every((e) => e.inert),
+    }));
+    check(
+      cs.stopped && !cs.pauseMenu && !cs.pointerLocked && cs.focusOnCrashScreen && cs.restInert,
+      'crash screen: Esc and clicks leave it in control (no pause menu or pointer lock behind it)',
+      cs,
+    );
+  } catch (e) {
+    check(false, 'crash screen: shows after repeated frame errors', String(e).split('\n')[0]);
+  }
   await r.ctx.close();
 }
 
