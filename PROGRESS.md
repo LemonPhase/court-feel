@@ -435,6 +435,47 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   it existed, and shown again when the replay ends, is skipped or the buffer is reset). Browser check:
   replayed blocker positions within 0.08 m of the live ones over the whole replay (was 3.9 m).
 
+## Left-handed players (settings: hitting hand, #19)
+- Report (a player): "I'm a lefty and my athlete always hits with the right hand." Everything one-handed
+  assumed a right hand: the contact point (`Athlete.idealContact`), the hitting arm in the animator, the
+  wind-up twist, the two-step plant, the ready stance, the serve toss and the third-person camera.
+- Change: Settings → Your athlete → **Hitting hand: Right / Left**, one value for every position, saved
+  with the settings (anything but `"left"` loads as right) and applied live; the start screen's position
+  cards say "lefty". `?hand=left` for testing. `Athlete.hand` (+1 / -1) and `hitSide()`: the contact point
+  mirrors across the line the athlete faces, which moves the cyan feet ring, the quick set to the middle's
+  hand, the approach planner and the autopilot with it (`copyBody` copies the hand to planner copies).
+  The serve toss goes up in front of the hitting shoulder. AI athletes stay right-handed.
+- Animator: the arm keys were already authored per arm (x times the arm's side), so a lefty only swaps
+  roles: the left arm cocks, whips and follows through, the right arm tosses, points at the ball and pulls
+  down. The attack twists of the chest and hips (authored for a righty) turn the other way, the plant is
+  left-right, the hitting-side foot is back in the ready stance and tucks most in the air. First person
+  needed nothing more: the same per-arm keys put the cocked left hand on the left of the view. Replays
+  record bone rotations and show the left hand as is. The only palm flashes in the FX are the block's,
+  on both hands, so there was nothing hand-specific to change there.
+- Third person: the camera follows the hitting shoulder (`CameraRig.shoulderSide`). At 25 ms before a
+  lefty's contact at the left pin, over the left shoulder the ball and hitting hand sit inside the head,
+  towards the crosshair (screen x +0.058 / +0.044, head +0.068); over the right shoulder they sit outside
+  it (-0.074 / -0.100, head -0.068). Over the hitting shoulder is the mirror of a righty's frame, so it stays.
+- Measured in the browser (dev server, `?mode=spike&bot=perfect&hand=left`, 90 s of sim each): OH 12/12
+  Perfect (108 km/h), OPP 13/13 (116), MB quick 15/15 (102), S attack on two 19/19 (88), L pipe 13/13 (81).
+  Every one is hit by the left hand: its palm 0.23-0.27 m from the ball against 1.01-1.12 m for the right,
+  on the last drawn frame before the contact. A righty OH, same run: 13/13, 108 km/h, 0.25 / 1.11 m.
+  In first person, on the contact frame, the left palm is 0.06 m from the ball.
+- Serves (Free Play feed 5, OPP, through the input path: Q, hold LMB 0.45 s, release on the ideal): the
+  lefty's toss leaves 0.13 m left of the body, the right hand up (palm 2.17 m) and the left cocked. Float
+  serve Perfect 60 km/h; jump serves (Space 0.35 / 0.45 / 0.55 s after the toss) Perfect 93, Perfect 81,
+  Good 63 km/h. The righty's are the same grades and speeds, with the palms swapped.
+- Lanes, checked and left as they are: with the hitting-side contact offset, a righty's run to the left
+  pin is 13° off straight and to the right pin 21°; a lefty's is 21° to the left pin and 13° to the
+  right. The off-hand pin already gets the wider run for both hands. A lefty setter's attack on two is
+  met in front of the left shoulder, 0.02 m from straight ahead of the lane start (a righty's is 0.32 m
+  to the left).
+- Tests: 100 (`tests/gameplay.test.ts`): the contact point mirrors; the left hand meets the ball and
+  stays down until the landing; the same release gives the same grade and speed (tips differ only by
+  the distance to the target); a quick meets a lefty middle's hand; a lefty's toss goes left and the
+  same timing serves just as well; the plant is left-right; in first person the left hand is drawn back
+  beside the head with the left shoulder turned away; the stored hand is sanitised.
+
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,
@@ -474,3 +515,8 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   silent swap at the touch): a hitter can only adjust a fast approach if they know ~1 s ahead.
 - Contact feedback for a Perfect is a freeze frame you can read (squashed ball, sparks, then a
   ring and the trail), not a flash: no full-screen flashes of any kind.
+- The hitting hand is one setting for the player, not per position, and only the user's athlete
+  has it: timing windows, power and reach are identical for both hands, so both share one leaderboard.
+- Lefties keep the same attack lanes: they already mirror (a lefty's left pin is a righty's right pin,
+  21° off straight). If players want the off-hand approach straighter, that is one lane change for both
+  hands, not a lefty special case.

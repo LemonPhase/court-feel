@@ -144,13 +144,17 @@ app.addEventListener('mousedown', () => {
   if (!game.inMenu && !game.paused && !game.input.pointerLocked && !game.input.dragLook) game.input.requestLock();
 });
 
-// URL params for automation / quick start: ?mode=spike&pos=OH&bot=perfect&cam=fp
+// URL params for automation / quick start: ?mode=spike&pos=OH&bot=perfect&cam=fp&hand=left
 const q = new URLSearchParams(location.search);
 enterMenu();
 if (q.get('mode')) {
   const mode = q.get('mode') as ModeId;
   const pos = (q.get('pos') || 'OH') as PositionId;
   if (q.get('cam')) settings.firstPerson = q.get('cam') === 'fp';
+  if (q.get('hand')) {
+    settings.hand = q.get('hand') === 'left' ? 'left' : 'right';
+    game.applyUserBody();
+  }
   menu.showStart(false);
   menu.selectPos(pos);
   lastPlay = { mode, pos };

@@ -46,6 +46,8 @@ export class CameraRig {
   private trauma = 0;
   private shakeTime = 0;
   shakeScale = 1;
+  /** TP: +1 over the right shoulder, -1 over the left (follows the user's hitting hand) */
+  shoulderSide: 1 | -1 = 1;
   /** FOV punch (degrees, springs back to 0) and a directional kick (pitch rad, height m) */
   private fovKick = 0;
   private fovKickV = 0;
@@ -209,7 +211,7 @@ export class CameraRig {
 
     _e.set(this.pitch, this.yaw, 0, 'YXZ');
     _q.setFromEuler(_e);
-    const offset = _v2.set(CAMERA.tpShoulder, 0.0, this.tpDist).applyQuaternion(_q);
+    const offset = _v2.set(CAMERA.tpShoulder * this.shoulderSide, 0.0, this.tpDist).applyQuaternion(_q);
     // obstacle test: ray from pivot to desired position
     let dist = offset.length();
     _dir.copy(offset).divideScalar(dist);

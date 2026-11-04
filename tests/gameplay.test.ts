@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { BODY, CAMERA, CONTACT, COURT, PLAYER, POSITIONS, SIM, TIMING, type BodyOverride, type PositionId } from '../src/config';
+import { BODY, CAMERA, CONTACT, COURT, DEFAULT_SETTINGS, PLAYER, POSITIONS, SIM, TIMING, type BodyOverride, type Hand, type PositionId } from '../src/config';
 import { CameraRig } from '../src/camera/cameraRig';
 import { Athlete } from '../src/game/athlete';
 import { aimPitchRange, aimTargetFromLook, AIM_DEPTH, ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
@@ -15,6 +15,7 @@ import { AthleteView } from '../src/character/athleteView';
 import { makeKit } from '../src/character/kits';
 import { AudioEngine } from '../src/audio/audio';
 import { bodyStats, isCustomBody, resolveBody, sanitizeBodies, setBodyValue, spikeReach, topSpikeKmh, type Bodies } from '../src/game/body';
+import { loadSettings, saveSettings } from '../src/core/settings';
 
 const DT = 1 / SIM.hz;
 
@@ -168,6 +169,13 @@ class FakeBall {
     Object.assign(this.state.w, w);
     this.version++;
   }
+  launch(p: any, v: any, w: any) {
+    Object.assign(this.state.p, p);
+    Object.assign(this.state.v, v);
+    Object.assign(this.state.w, w);
+    this.active = true;
+    this.version++;
+  }
 }
 
 function makeHost(ball: FakeBall, events: ContactEvent[]) {
@@ -192,12 +200,13 @@ function makeHost(ball: FakeBall, events: ContactEvent[]) {
  */
 function spikeWithOffset(
   offset: number, hold = 0.45, onStep?: (a: Athlete, t: number, events: ContactEvent[]) => boolean, body?: Partial<BodyOverride>,
+  hand: Hand = 'right',
 ) {
   const ball = new FakeBall();
   const events: ContactEvent[] = [];
   const host = makeHost(ball, events);
   const cs = new ContactSystem(host);
-  const a = new Athlete('OH', 1, { body });
+  const a = new Athlete('OH', 1, { body, hand });
   a.place(-3.4, 1.4, 0);
   // jump straight up with a full load
   a.jumpPress();
@@ -589,11 +598,12 @@ describe('impact camera: FOV punch and kick', () => {
 });
 
 describe('spike animation', () => {
-  /** a full-power Perfect spike with the real animator: hand position at contact and after it */
-  function animatedSpike() {
+  /** a full-power Perfect spike with the real animator: hitting-hand position at contact and after it */
+  function animatedSpike(hand: Hand = 'right') {
     let view: AthleteView | null = null;
     let contactY = NaN;
     let handToBall = Infinity;
+    let offHandToBall = Infinity;
     let highestAfter = -Infinity;
     let headY = 0;
     let landedAt = -1;
@@ -602,18 +612,21 @@ describe('spike animation', () => {
       view ??= new AthleteView(a, makeKit(0, false, 1));
       a.interpolate(1);
       view.update(DT, t);
+      const palm = hand === 'left' ? view.palmL : view.palmR;
+      const off = hand === 'left' ? view.palmR : view.palmL;
       if (events.length && contactT < 0) {
         contactT = t;
-        contactY = view.palmR.y;
-        handToBall = view.palmR.distanceTo(events[0].point);
+        contactY = palm.y;
+        handToBall = palm.distanceTo(events[0].point);
+        offHandToBall = off.distanceTo(events[0].point);
         headY = view.headPos.y;
       }
       // after the follow-through, until the feet touch down
-      if (contactT > 0 && t - contactT > 0.22 && a.state === 'air') highestAfter = Math.max(highestAfter, view.palmR.y - view.headPos.y);
+      if (contactT > 0 && t - contactT > 0.22 && a.state === 'air') highestAfter = Math.max(highestAfter, palm.y - view.headPos.y);
       if (contactT > 0 && a.state === 'land' && landedAt < 0) landedAt = t;
       return landedAt > 0;
-    });
-    return { e, contactY, handToBall, highestAfter, headY, landed: landedAt > 0 };
+    }, undefined, hand);
+    return { e, contactY, handToBall, offHandToBall, highestAfter, headY, landed: landedAt > 0 };
   }
 
   it('the hitting hand meets the ball, then stays down across the body until the landing (no re-cocking)', () => {
@@ -625,6 +638,193 @@ describe('spike animation', () => {
     expect(r.contactY).toBeGreaterThan(r.headY + 0.3);
     // after the swing the hitting hand never comes back up above the shoulders while still in the air
     expect(r.highestAfter).toBeLessThan(-0.25);
+  });
+
+  it("a lefty's left hand meets the ball, then stays down until the landing (no re-cocking)", () => {
+    const r = animatedSpike('left');
+    expect(r.e.perfect).toBe(true);
+    expect(r.landed).toBe(true);
+    expect(r.handToBall).toBeLessThan(0.3);
+    expect(r.contactY).toBeGreaterThan(r.headY + 0.3);
+    expect(r.highestAfter).toBeLessThan(-0.25);
+    // and it is the left hand, not the right, that is on the ball
+    expect(r.offHandToBall).toBeGreaterThan(0.45);
+  });
+});
+
+describe('left-handed players (settings: hitting hand)', () => {
+  it("a lefty's contact point is a righty's mirrored across the line they face", () => {
+    for (const yaw of [0, 0.7, Math.PI, -2.1]) {
+      const r = new Athlete('OPP', 1);
+      const l = new Athlete('OPP', 1, { hand: 'left' });
+      r.place(1.5, 3, yaw);
+      l.place(1.5, 3, yaw);
+      const pr = r.idealContact(new THREE.Vector3()).sub(r.pos);
+      const pl = l.idealContact(new THREE.Vector3()).sub(l.pos);
+      const f = r.forward();
+      const side = r.right();
+      expect(pl.dot(f)).toBeCloseTo(pr.dot(f), 6);
+      expect(pl.dot(side)).toBeCloseTo(-pr.dot(side), 6);
+      expect(pl.y).toBeCloseTo(pr.y, 6);
+      // in front of the left shoulder
+      expect(pl.dot(side)).toBeLessThan(-0.1);
+    }
+    // the AI stays right-handed
+    expect(new Athlete('OH', -1).hand).toBe(1);
+    expect(new Athlete('OH', 1, { hand: 'left' }).hand).toBe(-1);
+  });
+
+  it('the same release gives the same grade and ball speed with either hand', () => {
+    const cases: [number, number][] = [[0, 0.45], [-0.05, 0.45], [0.09, 0.45], [-0.1, 0.45], [0.13, 0.45], [0, 0.15], [0, 0.03]];
+    for (const [offset, hold] of cases) {
+      const r = spikeWithOffset(offset, hold);
+      const l = spikeWithOffset(offset, hold, undefined, undefined, 'left');
+      expect(l.grade).toBe(r.grade);
+      expect(l.tip).toBe(r.tip);
+      // a swing's speed is its power; a tip's is solved from the distance to the target (the lefty's contact is further left)
+      if (!r.tip) expect(l.speed).toBeCloseTo(r.speed, 1);
+      // met in front of the left shoulder: further left (facing the net, left is -x)
+      if (r.grade !== 'Miss') expect(l.point.x).toBeLessThan(r.point.x - 0.25);
+    }
+  });
+
+  it("a quick set still meets a left-handed middle's hand at the top of the jump", () => {
+    const a = new Athlete('MB', 1, { hand: 'left' });
+    a.place(0.2, 1.0, 0);
+    a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };
+    let t = 0;
+    a.jumpPress();
+    for (let i = 0; i < SIM.hz * PLAYER.loadMax; i++) a.step(DT, (t += DT));
+    a.jumpRelease();
+    while (a.state !== 'air') a.step(DT, (t += DT));
+    const q = quickSetFor(a, t, { x: 1.05, y: 2.5, z: 0.85 });
+    expect(q.onTime).toBe(true);
+    // the setter sends it to the left hand: left of the middle's body
+    expect(q.target.x).toBeLessThan(a.pos.x - 0.1);
+    const t1 = t + q.time;
+    while (t < t1 - 1e-9) a.step(DT, (t += DT));
+    const p = a.idealContact(new THREE.Vector3());
+    expect(Math.hypot(p.x - q.target.x, p.y - q.target.y, p.z - q.target.z)).toBeLessThan(0.04);
+  });
+
+  /** a standing float serve: toss (Q), wind up and release on the ideal moment */
+  function floatServe(hand: Hand) {
+    const ball = new FakeBall();
+    const events: ContactEvent[] = [];
+    const host = makeHost(ball, events);
+    const cs = new ContactSystem(host);
+    const a = new Athlete('OPP', 1, { hand });
+    a.place(1, 9.6, 0);
+    expect(cs.serveToss(a)).toBe(true);
+    const tossX = ball.pos.x - a.pos.x;
+    const info = cs.ideal(a, host.simTime, 2.0)!;
+    const hold = 0.45;
+    const releaseAt = info.t - ContactSystem.swingLead(ContactSystem.chargeFor(hold));
+    let pressed = false;
+    let released = false;
+    for (let i = 0; i < SIM.hz * 3 && !events.length; i++) {
+      if (!pressed && host.simTime >= releaseAt - hold - 1e-9) {
+        cs.beginWindup(a);
+        pressed = true;
+      }
+      if (pressed && !released && host.simTime >= releaseAt - 1e-9) released = !!cs.releaseWindup(a);
+      host.simTime += DT;
+      a.step(DT, host.simTime);
+      cs.step([a]);
+      stepBall(ball.state, DT, host.env);
+    }
+    return { tossX, e: events[0] };
+  }
+
+  it("a lefty's serve toss goes up in front of the left shoulder, and the same timing serves just as well", () => {
+    const r = floatServe('right');
+    const l = floatServe('left');
+    expect(r.tossX).toBeGreaterThan(0.05);
+    expect(l.tossX).toBeLessThan(-0.05);
+    expect(r.e.kind).toBe('serve');
+    expect(l.e.kind).toBe('serve');
+    expect(r.e.grade).toBe('Perfect');
+    expect(l.e.grade).toBe(r.e.grade);
+    expect(l.e.speed).toBeCloseTo(r.e.speed, 1);
+  });
+
+  it("a lefty's plant is left then right, the right foot closing ahead (a righty's is right-left)", () => {
+    for (const hand of ['right', 'left'] as const) {
+      const a = new Athlete('OH', 1, { hand });
+      a.place(0, 6, 0);
+      const view = new AthleteView(a, makeKit(0, false, 1));
+      let t = 0;
+      const tick = () => {
+        a.step(DT, (t += DT));
+        a.interpolate(1);
+        view.update(DT, t);
+      };
+      a.cmd = { moveX: 0, moveZ: -1, sprint: true, faceYaw: 0 };
+      for (let i = 0; i < SIM.hz * 0.6; i++) tick();
+      a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };
+      a.jumpPress();
+      const fL = new THREE.Vector3();
+      const fR = new THREE.Vector3();
+      let firstDownLifted = NaN;
+      while (a.state === 'load') {
+        tick();
+        view.rig.bones.footL.getWorldPosition(fL);
+        view.rig.bones.footR.getWorldPosition(fR);
+        // first foot down, the second still in the air
+        if (Number.isNaN(firstDownLifted) && a.loadT >= 0.08) firstDownLifted = hand === 'left' ? fR.y - fL.y : fL.y - fR.y;
+      }
+      expect(firstDownLifted).toBeGreaterThan(0.04);
+      // at takeoff the closing foot is ahead (facing -z: ahead = smaller z)
+      const closingAhead = hand === 'left' ? fL.z - fR.z : fR.z - fL.z;
+      expect(closingAhead).toBeGreaterThan(0.05);
+    }
+  });
+
+  it('first person: a lefty draws the left hand back beside the head, left shoulder turned away', () => {
+    for (const hand of ['right', 'left'] as const) {
+      const sgn = hand === 'left' ? -1 : 1;
+      let lat = NaN;
+      let shoulderBack = NaN;
+      let view: AthleteView | null = null;
+      spikeWithOffset(0, 0.45, (a, t, events) => {
+        if (!view) {
+          view = new AthleteView(a, makeKit(0, false, 1));
+          view.setFirstPerson(true);
+        }
+        a.interpolate(1);
+        view.update(DT, t);
+        const act = a.action;
+        if (act?.kind === 'windup' && a.state === 'air' && t - act.t0 > 0.3 && Number.isNaN(lat)) {
+          const palm = hand === 'left' ? view.palmL : view.palmR;
+          // facing -z: +x is the right of the screen
+          lat = palm.x - view.eyePos.x;
+          const sL = view.rig.bones.upperArmL.getWorldPosition(new THREE.Vector3());
+          const sR = view.rig.bones.upperArmR.getWorldPosition(new THREE.Vector3());
+          // the hitting shoulder is drawn back (further back = larger z)
+          shoulderBack = sgn * (sR.z - sL.z);
+        }
+        return events.length > 0;
+      }, undefined, hand);
+      expect(sgn * lat).toBeGreaterThan(0.1);
+      expect(shoulderBack).toBeGreaterThan(0.1);
+    }
+  });
+
+  it('the hitting hand is saved with the settings; anything but "left" loads as right', () => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal('localStorage', { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => (store[k] = v) });
+    try {
+      expect(DEFAULT_SETTINGS.hand).toBe('right');
+      expect(loadSettings().hand).toBe('right');
+      saveSettings({ ...DEFAULT_SETTINGS, bodies: {}, hand: 'left' });
+      expect(loadSettings().hand).toBe('left');
+      for (const junk of ['LEFT', 'ambi', 1, null, { x: 1 }]) {
+        store['courtfeel.settings.v1'] = JSON.stringify({ hand: junk });
+        expect(loadSettings().hand).toBe('right');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

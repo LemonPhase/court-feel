@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ASSIST, BALL, CONTACT, COURT, TIMING } from '../config';
-import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
+import { clamp, clamp01, dirFromYaw, lerp, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
 import { netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
 import { Athlete, type Action, type Grade } from './athlete';
@@ -667,7 +667,8 @@ export class ContactSystem {
     if (!h.canServe(a)) return false;
     if (a.state !== 'ground') return false;
     const f = dirFromYaw(a.yaw, _f);
-    const r = rightFromYaw(a.yaw, _r);
+    // the toss goes up in front of the hitting shoulder (a lefty tosses with the right hand to the left)
+    const r = a.hitSide(_r);
     const p = { x: a.pos.x + f.x * 0.3 + r.x * 0.12, y: a.pos.y + a.height * 0.82, z: a.pos.z + f.z * 0.3 + r.z * 0.12 };
     // toss to ~1.1 m above standing reach, drifting forward for a jump serve approach
     const apex = a.standReach + 1.15;
