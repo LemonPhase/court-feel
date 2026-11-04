@@ -1,8 +1,12 @@
 # Formatting-only commits, skipped by `git blame` (GitHub does this automatically;
 # locally: git config blame.ignoreRevsFile .git-blame-ignore-revs).
+#
+# The hashes must be the commits as they are on main. Pull requests here are often
+# rebase-merged, which gives every commit a new hash, so add a formatting commit
+# after its PR is merged, or update its entry then.
 
 # Format the codebase with Prettier (no code changes)
-6cb477719572aa01cb09d32d29c42bdd2d656ebc
+682a4abfe4d4a7dbcb50be160c5da0d9faac17bf
 
 # Format the replay block event merged from main (#16)
-f516cd5cd100739f95f32eb71a31fb905e96e7ea
+e276cdb43d2eb7f3435ccc0f7677f176ac84b126
