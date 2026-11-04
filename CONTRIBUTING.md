@@ -3,7 +3,7 @@
 Thanks for helping. Every change to Court Feel, whether it's code, a number in
 the config or an idea, is measured against one principle:
 
-> **If it doesn't feel like the court, it isn't done.**
+> **True to the court.**
 
 [The principle](README.md#the-principle) in the README explains what that
 means. This guide turns it into how we work.
@@ -41,8 +41,8 @@ part comes from your own experience as a player.
   nobody's work gets thrown away.
 
 The maintainer ([LemonPhase](https://github.com/LemonPhase)) makes the final
-call, and makes it against the principle. "Is this how it feels on a real
-court?" settles most debates.
+call, and makes it against the principle. "Is it true to the court?" settles
+most debates.
 
 ## Development setup
 
