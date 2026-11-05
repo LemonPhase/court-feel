@@ -325,6 +325,32 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   - Tests: +4, 89 in all (a stand-in Game drives the real team coordinator: a pass to the target is called in
     system once, 0.2 s after the pass; a pass 2.6 m off the net is called high; a called go is fast in
     system and a high ball out of system; the setter running down a bad pass keeps the high call).
+- **Production hardening** (from a code audit: the game is now played by a whole club).
+  - *Untrusted inputs*: quick-start links (`src/core/launch.ts`) and stored settings
+    (`sanitizeSettings` in `src/core/settings.ts`) are validated. A mistyped `?pos=` used to throw
+    on load and leave a screen with no menu; a stored setting of the wrong type threw in the
+    settings panel and put a string into the camera FOV. Slider ranges moved to `SETTING_RANGES`
+    in config (the panel and the loader share them). Menu restore uses own-key guards.
+  - *Errors*: `ErrorReporter` (`src/core/errors.ts`) + crash screen (`src/ui/crashScreen.ts`). The
+    render loop catches frame errors: a one-off is reported and play goes on, 10 failing frames
+    in a row stop the game and show the crash screen (Reload / Copy details). Start-up failures
+    (no WebGL) get the screen too. Event-bus listeners are isolated (an FX/audio bug no longer
+    aborts the simulation step). Optional `VITE_ERROR_REPORT_URL` sends reports. The build
+    (version + commit, injected by vite.config.ts) is shown in the menus and in reports.
+  - *Accessibility*: Input only swallows Tab / Space / arrows during play (they were blocked in the
+    menus too, so menus could not be used from the keyboard); cards expose `aria-pressed`, focus
+    moves to the pause / settings panels and back; Enter on a card plays (once). Reduced motion:
+    first-visit defaults without shake and auto replays, still menu camera, no CSS animations.
+  - *Robustness*: hidden tab suspends audio and pauses play; audio set-up failure no longer retries
+    (and leaks a context) on every key press; resume() rejections are caught.
+  - *Tooling*: LICENSE (MIT), Node 22 pinned (`.nvmrc`, `engines`), ESLint (typescript-eslint
+    recommended, clean) and Prettier (width 140; CSS and Markdown left hand-formatted), vite config
+    and Node-side typecheck, `npm run check`. The bot reads drill state through one typed
+    `DrillView` instead of `as any`, and its approach planner no longer runs a wasted simulation.
+  - *Verification*: the e2e asserts (drill contacts and grades, rally points, distinct set-call
+    plays, replay start, touch controls, robustness probes, keyboard capture, GPU resources flat
+    over the soak) and runs in CI as its own job with the screenshots as an artifact. New unit
+    tests for settings / launch validation, the reporter and event isolation.
 
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
@@ -470,7 +496,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   right. The off-hand pin already gets the wider run for both hands. A lefty setter's attack on two is
   met in front of the left shoulder, 0.02 m from straight ahead of the lane start (a righty's is 0.32 m
   to the left).
-- Tests: 100 (`tests/gameplay.test.ts`): the contact point mirrors; the left hand meets the ball and
+- Tests: +8, 123 in all (`tests/gameplay.test.ts`, `tests/settings.test.ts`): the contact point mirrors; the left hand meets the ball and
   stays down until the landing; the same release gives the same grade and speed (tips differ only by
   the distance to the target); a quick meets a lefty middle's hand; a lefty's toss goes left and the
   same timing serves just as well; the plant is left-right; in first person the left hand is drawn back

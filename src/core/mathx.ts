@@ -63,10 +63,8 @@ export class Rng {
 
 /** yaw (rotation about +Y) so that forward (0,0,-1) points along (dx,dz) */
 export const yawFromDir = (dx: number, dz: number) => Math.atan2(-dx, -dz);
-export const dirFromYaw = (yaw: number, out = new THREE.Vector3()) =>
-  out.set(-Math.sin(yaw), 0, -Math.cos(yaw));
-export const rightFromYaw = (yaw: number, out = new THREE.Vector3()) =>
-  out.set(Math.cos(yaw), 0, -Math.sin(yaw));
+export const dirFromYaw = (yaw: number, out = new THREE.Vector3()) => out.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+export const rightFromYaw = (yaw: number, out = new THREE.Vector3()) => out.set(Math.cos(yaw), 0, -Math.sin(yaw));
 
 /** simple 1D value noise for camera shake */
 export function noise1(x: number, seed = 0): number {

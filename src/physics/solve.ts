@@ -11,9 +11,15 @@ const tmp: BallState = makeBall();
 const acc: V3 = { x: 0, y: 0, z: 0 };
 
 function launch(p0: V3, v0: V3, w0: V3, knuckle = 0): BallState {
-  tmp.p.x = p0.x; tmp.p.y = p0.y; tmp.p.z = p0.z;
-  tmp.v.x = v0.x; tmp.v.y = v0.y; tmp.v.z = v0.z;
-  tmp.w.x = w0.x; tmp.w.y = w0.y; tmp.w.z = w0.z;
+  tmp.p.x = p0.x;
+  tmp.p.y = p0.y;
+  tmp.p.z = p0.z;
+  tmp.v.x = v0.x;
+  tmp.v.y = v0.y;
+  tmp.v.z = v0.z;
+  tmp.w.x = w0.x;
+  tmp.w.y = w0.y;
+  tmp.w.z = w0.z;
   tmp.knuckle = knuckle;
   tmp.kt = 0;
   tmp.rest = false;
@@ -131,8 +137,16 @@ export function solveApex(p0: V3, target: V3, apexY: number, w0: V3, out: V3): {
  * point into `land`. If the target is out of range the closest angle is used.
  */
 export function solveSpeedToFloor(
-  p0: V3, targetX: number, targetZ: number, speed: number, spinRate: number,
-  out: V3, w: V3, land: V3, minAngle = -1.35, maxAngle = 0.62,
+  p0: V3,
+  targetX: number,
+  targetZ: number,
+  speed: number,
+  spinRate: number,
+  out: V3,
+  w: V3,
+  land: V3,
+  minAngle = -1.35,
+  maxAngle = 0.62,
 ): number {
   const dx = targetX - p0.x;
   const dz = targetZ - p0.z;

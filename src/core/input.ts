@@ -40,14 +40,29 @@ export class Input {
   onPointerLockChange: ((locked: boolean) => void) | null = null;
   /** a lock request was refused; `fallback`: the lock never worked here, so drag-look took over */
   onLockRefused: ((fallback: boolean) => void) | null = null;
-  /** keys that should never reach the browser default handler */
+  /**
+   * Is gameplay in control of the keyboard? While it is, the game keys below never reach the
+   * browser (Space must not scroll, Tab must not move focus out of the game). In the menus they
+   * keep their default meaning, so Tab, Space and the arrow keys work on buttons and sliders.
+   */
+  captureKeys: () => boolean = () => true;
+  /** game keys whose browser default is suppressed while gameplay captures the keyboard */
   private static readonly swallow = new Set([
-    'Space', 'Tab', 'F3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight',
+    'Space',
+    'Tab',
+    'F3',
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'ShiftLeft',
+    'ShiftRight',
   ]);
 
   constructor(private readonly el: HTMLElement) {
     window.addEventListener('keydown', (e) => {
-      if (Input.swallow.has(e.code)) e.preventDefault();
+      // F3 (the debug overlay) is never left to the browser
+      if (Input.swallow.has(e.code) && (e.code === 'F3' || this.captureKeys())) e.preventDefault();
       if (e.repeat) return;
       if ((e.target as HTMLElement)?.tagName === 'INPUT' && e.code !== 'Escape') return;
       this.down(e.code);

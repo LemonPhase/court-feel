@@ -126,9 +126,17 @@ export const SET_PLAYS: Partial<Record<PositionId, SetPlay[]>> = {
   OH: [
     { name: 'High ball', short: 'High', lane: LANES.OH },
     // second tempo: a flat fast set to the pin, you are already running when it leaves the hands
-    { name: 'Go (fast to the pin)', short: 'Go', lane: { ...LANES.OH, x: -4.0, z: 0.85, apexAbove: 0.45, sx: -4.85, sz: 3.5, label: 'Outside go' } },
+    {
+      name: 'Go (fast to the pin)',
+      short: 'Go',
+      lane: { ...LANES.OH, x: -4.0, z: 0.85, apexAbove: 0.45, sx: -4.85, sz: 3.5, label: 'Outside go' },
+    },
     // run in from outside and hit between the middle and the pin
-    { name: '3 ball (inside)', short: '3', lane: { ...LANES.OH, x: -2.1, z: 0.8, apexAbove: 0.75, sx: -4.6, sz: 3.7, label: 'Inside 3 ball' } },
+    {
+      name: '3 ball (inside)',
+      short: '3',
+      lane: { ...LANES.OH, x: -2.1, z: 0.8, apexAbove: 0.75, sx: -4.6, sz: 3.7, label: 'Inside 3 ball' },
+    },
   ],
   MB: [
     { name: '1 (quick in front)', short: '1', lane: LANES.MB, inFront: QUICK.inFront },
@@ -140,9 +148,17 @@ export const SET_PLAYS: Partial<Record<PositionId, SetPlay[]>> = {
   OPP: [
     { name: 'Back set (pin)', short: 'Back', lane: LANES.OPP },
     // fast back set: low and flat to the right pin
-    { name: 'Fast back', short: 'Fast', lane: { ...LANES.OPP, x: 3.95, z: 0.85, apexAbove: 0.45, sx: 4.7, sz: 3.3, label: 'Opposite fast back' } },
+    {
+      name: 'Fast back',
+      short: 'Fast',
+      lane: { ...LANES.OPP, x: 3.95, z: 0.85, apexAbove: 0.45, sx: 4.7, sz: 3.3, label: 'Opposite fast back' },
+    },
     // close behind the setter
-    { name: 'Back 2 (behind the setter)', short: 'Back 2', lane: { ...LANES.OPP, x: 2.45, z: 0.8, apexAbove: 0.6, sx: 3.7, sz: 3.2, label: 'Opposite back 2' } },
+    {
+      name: 'Back 2 (behind the setter)',
+      short: 'Back 2',
+      lane: { ...LANES.OPP, x: 2.45, z: 0.8, apexAbove: 0.6, sx: 3.7, sz: 3.2, label: 'Opposite back 2' },
+    },
   ],
 };
 

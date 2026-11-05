@@ -1,7 +1,7 @@
 name: Feel report
 description: Something doesn't feel like a real court. No coding needed.
-title: "[Feel] "
-labels: ["feel"]
+title: '[Feel] '
+labels: ['feel']
 body:
   - type: markdown
     attributes:
@@ -59,14 +59,14 @@ body:
     id: doing
     attributes:
       label: What were you doing?
-      placeholder: "Calling a go (2) as the outside, approaching on the pass in the Mini Rally."
+      placeholder: 'Calling a go (2) as the outside, approaching on the pass in the Mini Rally.'
     validations:
       required: true
   - type: textarea
     id: game
     attributes:
       label: What happened in the game?
-      placeholder: "The set got to the pin after I had already landed, so I was hitting it on the way down."
+      placeholder: 'The set got to the pin after I had already landed, so I was hitting it on the way down.'
     validations:
       required: true
   - type: textarea

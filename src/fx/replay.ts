@@ -185,7 +185,9 @@ export class Replay {
     const ba = a * 8;
     const bb = b * 8;
     ballMesh.position.set(
-      this.lerp(this.ball[ba], this.ball[bb], u), this.lerp(this.ball[ba + 1], this.ball[bb + 1], u), this.lerp(this.ball[ba + 2], this.ball[bb + 2], u),
+      this.lerp(this.ball[ba], this.ball[bb], u),
+      this.lerp(this.ball[ba + 1], this.ball[bb + 1], u),
+      this.lerp(this.ball[ba + 2], this.ball[bb + 2], u),
     );
     _qa.set(this.ball[ba + 3], this.ball[ba + 4], this.ball[ba + 5], this.ball[ba + 6]);
     _qb.set(this.ball[bb + 3], this.ball[bb + 4], this.ball[bb + 5], this.ball[bb + 6]);
@@ -211,7 +213,11 @@ export class Replay {
       const d = this.data;
       v.root.position.set(this.lerp(d[oa], d[ob], u), this.lerp(d[oa + 1], d[ob + 1], u), this.lerp(d[oa + 2], d[ob + 2], u));
       v.root.rotation.y = this.lerp(d[oa + 3], d[ob + 3], u);
-      v.rig.bones.hips.position.set(this.lerp(d[oa + 4], d[ob + 4], u), this.lerp(d[oa + 5], d[ob + 5], u), this.lerp(d[oa + 6], d[ob + 6], u));
+      v.rig.bones.hips.position.set(
+        this.lerp(d[oa + 4], d[ob + 4], u),
+        this.lerp(d[oa + 5], d[ob + 5], u),
+        this.lerp(d[oa + 6], d[ob + 6], u),
+      );
       let k = 7;
       for (const n of BONE_ORDER) {
         _qa.set(d[oa + k], d[oa + k + 1], d[oa + k + 2], d[oa + k + 3]);

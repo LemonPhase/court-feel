@@ -15,7 +15,12 @@ export interface Brain {
  * Steering helper: walk/run towards (x,z) with an arrive radius so the
  * athlete decelerates (no snapping), optionally facing a fixed yaw.
  */
-export function moveTo(a: Athlete, x: number, z: number, opts: { face?: number | null; sprintDist?: number; arrive?: number; urgency?: number } = {}): number {
+export function moveTo(
+  a: Athlete,
+  x: number,
+  z: number,
+  opts: { face?: number | null; sprintDist?: number; arrive?: number; urgency?: number } = {},
+): number {
   const dx = x - a.pos.x;
   const dz = z - a.pos.z;
   const d = Math.hypot(dx, dz);

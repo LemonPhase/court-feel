@@ -31,7 +31,11 @@ export class SetterBrain implements Brain {
   private p: V3 = { x: 0, y: 0, z: 0 };
   accuracy = AI.setterAccuracy;
 
-  constructor(public athlete: Athlete, public base: { x: number; z: number }, public faceYaw: number) {}
+  constructor(
+    public athlete: Athlete,
+    public base: { x: number; z: number },
+    public faceYaw: number,
+  ) {}
 
   reset(): void {
     this.athlete.endAction();

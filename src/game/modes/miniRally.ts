@@ -57,7 +57,7 @@ export class MiniRally extends Mode {
       this.away.add(slot, a, false);
     }
     g.hud.setTitle('Mini Rally · you are the ' + g.me.stats.name);
-    this.plays = g.autoUser ? null : SET_PLAYS[this.position] ?? null;
+    this.plays = g.autoUser ? null : (SET_PLAYS[this.position] ?? null);
     this.callIdx = 0;
     this.servingSide = -1;
     this.prepare(true);
@@ -162,7 +162,11 @@ export class MiniRally extends Mode {
     // the user as setter: their AI hitters' lanes
     const team = a.side === 1 ? this.home : this.away;
     const out = [];
-    for (const [slot, lane] of [['OH1', 'OH'], ['MB', 'MB'], ['OPP', 'OPP']] as const) {
+    for (const [slot, lane] of [
+      ['OH1', 'OH'],
+      ['MB', 'MB'],
+      ['OPP', 'OPP'],
+    ] as const) {
       const h = team.players.get(slot);
       if (!h || h === a) continue;
       const c = team.callSetFor(h, lane);
@@ -179,16 +183,19 @@ export class MiniRally extends Mode {
     const g = this.g;
     const me = g.me;
     if (this.home.receiver === me) return `YOUR BALL · ${kbd('E')} pass / dig`;
-    if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set') return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;
+    if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set')
+      return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;
     if (me.role === 'S' && this.home.touches === 1) return `Your set · look at a hitter · ${kbd('RMB')}`;
     // the setter's call on the pass overrides the plan: off a bad pass everything goes up high
     const read = this.hitter && this.home.touches === 1 ? this.read : null;
     if (read?.call === 'out') return `SETTER: HIGH · out of system · ${me.role === 'MB' ? 'no quick this time' : 'wait for the high ball'}`;
     if (read?.call === 'help') return `SETTER: HELP · they can't get to it · no set this time`;
-    if (me.role === 'MB' && this.home.passToSetter(g)) return `QUICK · ${read ? 'in system · ' : ''}run in now · ${kbd('Space')} as the setter touches it · hold/release ${kbd('LMB')}`;
+    if (me.role === 'MB' && this.home.passToSetter(g))
+      return `QUICK · ${read ? 'in system · ' : ''}run in now · ${kbd('Space')} as the setter touches it · hold/release ${kbd('LMB')}`;
     const play = this.play;
     const fast = play && play.inFront === undefined && needsGoodPass(play);
-    if (fast && this.home.touches === 1 && g.ball.lastTouch?.side === 1) return `${play.name.toUpperCase()} · ${read ? 'in system · ' : ''}start your approach as the setter touches it`;
+    if (fast && this.home.touches === 1 && g.ball.lastTouch?.side === 1)
+      return `${play.name.toUpperCase()} · ${read ? 'in system · ' : ''}start your approach as the setter touches it`;
     const calls = this.plays ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call` : '';
     if (Math.abs(me.pos.z) < 1.4) return `${kbd('RMB')} hands + ${kbd('Space')} block · ${kbd('V')} camera${calls}`;
     return `${kbd('WASD')} move · ${kbd('E')} pass · ${kbd('LMB')} attack · ${kbd('RMB')} block/set · ${kbd('V')} camera${calls}`;
@@ -220,7 +227,7 @@ export class MiniRally extends Mode {
           this.t = 0;
           const recv = this.servingSide === 1 ? this.away : this.home;
           // aim the serve at a random receiver, sometimes at the user
-          const passers = ['OH1', 'OH2', 'L'].map((s) => recv.players.get(s as any)!).filter(Boolean);
+          const passers = (['OH1', 'OH2', 'L'] as const).map((s) => recv.players.get(s)).filter((a) => a !== undefined);
           const tgt = passers[Math.floor(g.rng.next() * passers.length)];
           const aim = new THREE.Vector3(tgt.pos.x + g.rng.gauss() * 0.9, 0, tgt.pos.z + g.rng.gauss() * 0.9);
           aim.x = Math.max(-COURT.halfWidth + 0.4, Math.min(COURT.halfWidth - 0.4, aim.x));
@@ -235,7 +242,7 @@ export class MiniRally extends Mode {
         for (const team of [this.home, this.away]) {
           if (team.touches > 3) {
             this.reason = 'FOUR TOUCHES';
-            this.endPoint((-team.side) as 1 | -1);
+            this.endPoint(-team.side as 1 | -1);
             return;
           }
         }
@@ -270,7 +277,9 @@ export class MiniRally extends Mode {
       else if (lt?.kind === 'block' && o.side !== lt.side) this.reason = 'BLOCKED';
       else if ((lt?.kind === 'spike' || lt?.kind === 'tip') && o.side !== lt.side) this.reason = by?.isUser ? 'YOUR KILL' : 'KILL';
       else this.reason = 'BALL DOWN';
-    } else this.reason = o.kind === 'out' ? 'OUT' : o.kind === 'antenna' ? 'ANTENNA' : o.kind === 'under-net' ? 'UNDER THE NET' : 'OUTSIDE ANTENNA';
+    } else
+      this.reason =
+        o.kind === 'out' ? 'OUT' : o.kind === 'antenna' ? 'ANTENNA' : o.kind === 'under-net' ? 'UNDER THE NET' : 'OUTSIDE ANTENNA';
     this.endPoint(o.winner);
   }
 

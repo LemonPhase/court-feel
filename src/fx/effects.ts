@@ -68,7 +68,10 @@ export class Effects {
   /** ball squash on contact / floor slam */
   private sq = { amount: 0, t: 0, q: new THREE.Quaternion() };
 
-  constructor(private g: Game, parent: HTMLElement) {
+  constructor(
+    private g: Game,
+    parent: HTMLElement,
+  ) {
     const scene = g.scene;
     scene.add(this.sparks.mesh);
     this.dust = new SpritePool(220, makeBlobTexture(0, 0.35), false);
@@ -83,7 +86,14 @@ export class Effects {
     for (let i = 0; i < 4; i++) {
       const m = new THREE.Mesh(
         new THREE.PlaneGeometry(1, 1),
-        new THREE.MeshBasicMaterial({ map: ringTex, color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }),
+        new THREE.MeshBasicMaterial({
+          map: ringTex,
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
       );
       m.rotation.x = -Math.PI / 2;
       m.visible = false;
@@ -95,7 +105,15 @@ export class Effects {
     for (let i = 0; i < 2; i++) {
       const m = new THREE.Mesh(
         new THREE.PlaneGeometry(1, 1),
-        new THREE.MeshBasicMaterial({ map: airTex, color: new THREE.Color(3.2, 2.6, 1.7), transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
+        new THREE.MeshBasicMaterial({
+          map: airTex,
+          color: new THREE.Color(3.2, 2.6, 1.7),
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+        }),
       );
       m.visible = false;
       m.renderOrder = 7;
@@ -106,7 +124,14 @@ export class Effects {
     for (let i = 0; i < 4; i++) {
       const m = new THREE.Mesh(
         new THREE.PlaneGeometry(1.5, 1.5),
-        new THREE.MeshBasicMaterial({ map: makeCrackTexture(11 + i * 7), transparent: true, opacity: 0, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }),
+        new THREE.MeshBasicMaterial({
+          map: makeCrackTexture(11 + i * 7),
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -4,
+        }),
       );
       m.rotation.x = -Math.PI / 2;
       m.visible = false;
@@ -115,7 +140,13 @@ export class Effects {
       this.decals.push({ mesh: m, t: 1e9 });
     }
     // hand / contact flashes
-    const flashMat = new THREE.SpriteMaterial({ map: makeBlobTexture(0, 0.15), color: new THREE.Color(3, 3.2, 3.6), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const flashMat = new THREE.SpriteMaterial({
+      map: makeBlobTexture(0, 0.15),
+      color: new THREE.Color(3, 3.2, 3.6),
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
     for (let i = 0; i < 6; i++) {
       const s = new THREE.Sprite(flashMat.clone());
       s.visible = false;
@@ -224,7 +255,17 @@ export class Effects {
         if (e.grade === 'Miss') return;
         const q = e.quality;
         const vel = g.ball.vel;
-        const data = { x: p.x, y: p.y, z: p.z, q, perfect: e.perfect ? 1 : 0, vx: vel.x, vy: vel.y, vz: vel.z, serve: e.kind === 'serve' ? 1 : 0 };
+        const data = {
+          x: p.x,
+          y: p.y,
+          z: p.z,
+          q,
+          perfect: e.perfect ? 1 : 0,
+          vx: vel.x,
+          vy: vel.y,
+          vz: vel.z,
+          serve: e.kind === 'serve' ? 1 : 0,
+        };
         this.playEvent({ t: g.simTime, kind: 'spike', data }, false);
         this.replay.addEvent(g.simTime, 'spike', data);
         this.pendingImpact = { q, perfect: e.perfect, user, speed: e.speed };
@@ -256,7 +297,13 @@ export class Effects {
         const v = g.views.get(e.athlete);
         this.blockFx(p, stuff, v, user && g.rig.mode === 'fp', false);
         // the replay plays it back on the replayed blocker's hands
-        this.replay.addEvent(g.simTime, 'block', { x: p.x, y: p.y, z: p.z, stuff: stuff ? 1 : 0, view: v ? this.replay.views.indexOf(v) : -1 });
+        this.replay.addEvent(g.simTime, 'block', {
+          x: p.x,
+          y: p.y,
+          z: p.z,
+          stuff: stuff ? 1 : 0,
+          view: v ? this.replay.views.indexOf(v) : -1,
+        });
         if (user || this.near(p, 6)) {
           g.rig.addTrauma(FX.shakeBlock * (stuff ? 1 : 0.5) * (user ? 1 : 0.4));
           if (user && stuff) g.hitStop = FX.hitStopBlock;
@@ -341,7 +388,14 @@ export class Effects {
         // a fast bright inner ring, a flash on the boards and wood chips kicked up
         this.shockwave(d.x, d.z, 1.5 + 0.5 * pw, 1, true, 0.2);
         this.glowAt(new THREE.Vector3(d.x, 0.15, d.z), 0.4 + 0.3 * pw, new THREE.Color(3.2, 2.3, 1.1), 0.2);
-        this.burst(new THREE.Vector3(d.x, 0.06, d.z), Math.round(18 + 16 * pw), new THREE.Color(3.2, 2.2, 1.1), 5, 0.8, new THREE.Vector3(0, 7, 0));
+        this.burst(
+          new THREE.Vector3(d.x, 0.06, d.z),
+          Math.round(18 + 16 * pw),
+          new THREE.Color(3.2, 2.2, 1.1),
+          5,
+          0.8,
+          new THREE.Vector3(0, 7, 0),
+        );
       }
       if (!fromReplay) {
         g.crowd(perfect ? 1.3 : 0.4 + q * 0.4, true);
@@ -364,9 +418,9 @@ export class Effects {
     const dl = dir ? dir.length() : 0;
     for (let i = 0; i < n; i++) {
       // a cone along the ball's new direction plus a spherical spray
-      let vx = (Math.random() * 2 - 1);
+      let vx = Math.random() * 2 - 1;
       let vy = (Math.random() * 2 - 1) * 0.8 + 0.3;
-      let vz = (Math.random() * 2 - 1);
+      let vz = Math.random() * 2 - 1;
       const l = Math.hypot(vx, vy, vz) || 1;
       const s = speed * (0.35 + Math.random() * 0.9);
       vx = (vx / l) * s;
@@ -378,7 +432,19 @@ export class Effects {
         vz += (dir.z / dl) * speed * 0.9;
       }
       const k = 0.6 + Math.random() * 0.6;
-      this.sparks.emit(at.x, at.y, at.z, vx, vy, vz, 0.25 + Math.random() * 0.45, size * (0.06 + Math.random() * 0.05), col.r * k, col.g * k, col.b * k);
+      this.sparks.emit(
+        at.x,
+        at.y,
+        at.z,
+        vx,
+        vy,
+        vz,
+        0.25 + Math.random() * 0.45,
+        size * (0.06 + Math.random() * 0.05),
+        col.r * k,
+        col.g * k,
+        col.b * k,
+      );
     }
   }
 
@@ -438,8 +504,20 @@ export class Effects {
       const a = Math.random() * Math.PI * 2;
       const s = 0.4 + Math.random() * 0.9;
       const shade = 0.62 + Math.random() * 0.12;
-      this.dust.emit(x + Math.cos(a) * 0.1, y, z + Math.sin(a) * 0.1, Math.cos(a) * s, 0.25 + Math.random() * 0.45, Math.sin(a) * s,
-        0.6 + Math.random() * 0.5, size * (0.7 + Math.random() * 0.6), 1.6, shade * alpha, shade * 0.92 * alpha, shade * 0.82 * alpha);
+      this.dust.emit(
+        x + Math.cos(a) * 0.1,
+        y,
+        z + Math.sin(a) * 0.1,
+        Math.cos(a) * s,
+        0.25 + Math.random() * 0.45,
+        Math.sin(a) * s,
+        0.6 + Math.random() * 0.5,
+        size * (0.7 + Math.random() * 0.6),
+        1.6,
+        shade * alpha,
+        shade * 0.92 * alpha,
+        shade * 0.82 * alpha,
+      );
     }
   }
 
@@ -448,8 +526,20 @@ export class Effects {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.2;
       const s = (3 + Math.random() * 3) * strength;
       const shade = 0.6 + Math.random() * 0.15;
-      this.dust.emit(x, 0.05, z, Math.cos(a) * s, 0.4 + Math.random() * 0.8 * strength, Math.sin(a) * s, 0.7 + Math.random() * 0.6,
-        0.25 + Math.random() * 0.25, 2.2, shade, shade * 0.9, shade * 0.78);
+      this.dust.emit(
+        x,
+        0.05,
+        z,
+        Math.cos(a) * s,
+        0.4 + Math.random() * 0.8 * strength,
+        Math.sin(a) * s,
+        0.7 + Math.random() * 0.6,
+        0.25 + Math.random() * 0.25,
+        2.2,
+        shade,
+        shade * 0.9,
+        shade * 0.78,
+      );
     }
   }
 

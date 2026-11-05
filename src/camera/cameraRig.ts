@@ -67,6 +67,8 @@ export class CameraRig {
   cineTarget = new THREE.Vector3();
   cineFov = 50;
   menuTime = 0;
+  /** the OS asks for reduced motion: the menu camera holds still */
+  reducedMotion = false;
   netTop: number = COURT.netHeightMen;
 
   constructor(aspect: number) {
@@ -150,7 +152,7 @@ export class CameraRig {
     this.springs(dt);
 
     if (this.mode === 'menu') {
-      this.menuTime += dt;
+      if (!this.reducedMotion) this.menuTime += dt;
       const a = this.menuTime * 0.06 + 0.6;
       cam.position.set(Math.sin(a) * 15, 5.2 + Math.sin(this.menuTime * 0.1) * 0.6, Math.cos(a) * 15);
       cam.lookAt(0, 1.6, 0);

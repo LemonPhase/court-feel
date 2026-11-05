@@ -213,7 +213,14 @@ export class Hud {
    * (orange), 'in' a confirmation (cyan). `anchor` writes the point above their head and is
    * followed every frame; when they are off screen the bubble waits at the edge on their side.
    */
-  call(who: string, word: string, sub: string, kind: 'in' | 'out', anchor: ((out: THREE.Vector3) => THREE.Vector3) | null, dur = 1.5): void {
+  call(
+    who: string,
+    word: string,
+    sub: string,
+    kind: 'in' | 'out',
+    anchor: ((out: THREE.Vector3) => THREE.Vector3) | null,
+    dur = 1.5,
+  ): void {
     this.callWho.textContent = who;
     this.callWord.textContent = word;
     this.callSub.textContent = sub;

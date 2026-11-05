@@ -7,3 +7,4 @@ dist
 
 # agent worktrees (local working copies, never committed)
 .claude/worktrees/
+/coverage

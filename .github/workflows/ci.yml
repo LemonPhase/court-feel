@@ -1,6 +1,12 @@
-# Continuous integration: typecheck, unit tests and a production build on every
-# pull request and on main. Deployments are handled by Vercel's Git integration:
-# every PR gets a preview deployment, merges to main go to production.
+# Continuous integration on every pull request and on main. Deployments are handled by
+# Vercel's Git integration: every PR gets a preview deployment, merges to main go to production.
+#
+# Two jobs run in parallel:
+#   check - typecheck, lint, formatting, unit tests, production build (about a minute)
+#   e2e   - the game in headless Chromium: every drill played by the autopilots, touch
+#           controls, robustness probes and a resource soak (scripts/e2e.mjs). Screenshots
+#           and report.json are uploaded as the "e2e-report" artifact.
+# Make both required checks on main (Settings > Branches > branch protection rule).
 name: CI
 
 on:
@@ -12,8 +18,12 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   check:
+    # the name predates the lint and format steps; it is kept so an existing required-check rule keeps matching
     name: Typecheck, test, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -21,9 +31,38 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
       - run: npm test
-      - run: npm run build
+      # typecheck already ran above; `npm run build` would repeat it
+      - run: npx vite build
+
+  e2e:
+    name: End-to-end (headless Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Play every drill
+        run: npm run e2e
+        env:
+          SOAK: '30'
+      - name: Upload screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: scripts/out/
+          retention-days: 14
+          if-no-files-found: ignore

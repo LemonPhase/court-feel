@@ -1,6 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { BODY, CAMERA, CONTACT, COURT, DEFAULT_SETTINGS, PLAYER, POSITIONS, SIM, TIMING, type BodyOverride, type Hand, type PositionId } from '../src/config';
+import {
+  BODY,
+  CAMERA,
+  CONTACT,
+  COURT,
+  DEFAULT_SETTINGS,
+  PLAYER,
+  POSITIONS,
+  SIM,
+  TIMING,
+  type BodyOverride,
+  type Hand,
+  type PositionId,
+} from '../src/config';
 import { CameraRig } from '../src/camera/cameraRig';
 import { Athlete } from '../src/game/athlete';
 import { aimPitchRange, aimTargetFromLook, AIM_DEPTH, ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
@@ -199,7 +212,10 @@ function makeHost(ball: FakeBall, events: ContactEvent[]) {
  * `offset` seconds from the ideal moment; returns the graded contact.
  */
 function spikeWithOffset(
-  offset: number, hold = 0.45, onStep?: (a: Athlete, t: number, events: ContactEvent[]) => boolean, body?: Partial<BodyOverride>,
+  offset: number,
+  hold = 0.45,
+  onStep?: (a: Athlete, t: number, events: ContactEvent[]) => boolean,
+  body?: Partial<BodyOverride>,
   hand: Hand = 'right',
 ) {
   const ball = new FakeBall();
@@ -466,7 +482,7 @@ describe('spike drill set calls', () => {
     expect(quickSpot(-sx, -1, back.inFront).x).toBeLessThan(-sx - 0.9);
   });
 
-  it('a back quick set over the setter\'s head still meets the hitter at the top of the jump', () => {
+  it("a back quick set over the setter's head still meets the hitter at the top of the jump", () => {
     const a = new Athlete('MB', 1);
     a.place(2.1, 1.0, 0);
     a.cmd = { moveX: 0, moveZ: 0, sprint: false, faceYaw: 0 };
@@ -608,24 +624,30 @@ describe('spike animation', () => {
     let headY = 0;
     let landedAt = -1;
     let contactT = -1;
-    const e = spikeWithOffset(0, 0.45, (a, t, events) => {
-      view ??= new AthleteView(a, makeKit(0, false, 1));
-      a.interpolate(1);
-      view.update(DT, t);
-      const palm = hand === 'left' ? view.palmL : view.palmR;
-      const off = hand === 'left' ? view.palmR : view.palmL;
-      if (events.length && contactT < 0) {
-        contactT = t;
-        contactY = palm.y;
-        handToBall = palm.distanceTo(events[0].point);
-        offHandToBall = off.distanceTo(events[0].point);
-        headY = view.headPos.y;
-      }
-      // after the follow-through, until the feet touch down
-      if (contactT > 0 && t - contactT > 0.22 && a.state === 'air') highestAfter = Math.max(highestAfter, palm.y - view.headPos.y);
-      if (contactT > 0 && a.state === 'land' && landedAt < 0) landedAt = t;
-      return landedAt > 0;
-    }, undefined, hand);
+    const e = spikeWithOffset(
+      0,
+      0.45,
+      (a, t, events) => {
+        view ??= new AthleteView(a, makeKit(0, false, 1));
+        a.interpolate(1);
+        view.update(DT, t);
+        const palm = hand === 'left' ? view.palmL : view.palmR;
+        const off = hand === 'left' ? view.palmR : view.palmL;
+        if (events.length && contactT < 0) {
+          contactT = t;
+          contactY = palm.y;
+          handToBall = palm.distanceTo(events[0].point);
+          offHandToBall = off.distanceTo(events[0].point);
+          headY = view.headPos.y;
+        }
+        // after the follow-through, until the feet touch down
+        if (contactT > 0 && t - contactT > 0.22 && a.state === 'air') highestAfter = Math.max(highestAfter, palm.y - view.headPos.y);
+        if (contactT > 0 && a.state === 'land' && landedAt < 0) landedAt = t;
+        return landedAt > 0;
+      },
+      undefined,
+      hand,
+    );
     return { e, contactY, handToBall, offHandToBall, highestAfter, headY, landed: landedAt > 0 };
   }
 
@@ -675,7 +697,15 @@ describe('left-handed players (settings: hitting hand)', () => {
   });
 
   it('the same release gives the same grade and ball speed with either hand', () => {
-    const cases: [number, number][] = [[0, 0.45], [-0.05, 0.45], [0.09, 0.45], [-0.1, 0.45], [0.13, 0.45], [0, 0.15], [0, 0.03]];
+    const cases: [number, number][] = [
+      [0, 0.45],
+      [-0.05, 0.45],
+      [0.09, 0.45],
+      [-0.1, 0.45],
+      [0.13, 0.45],
+      [0, 0.15],
+      [0, 0.03],
+    ];
     for (const [offset, hold] of cases) {
       const r = spikeWithOffset(offset, hold);
       const l = spikeWithOffset(offset, hold, undefined, undefined, 'left');
@@ -786,25 +816,31 @@ describe('left-handed players (settings: hitting hand)', () => {
       let lat = NaN;
       let shoulderBack = NaN;
       let view: AthleteView | null = null;
-      spikeWithOffset(0, 0.45, (a, t, events) => {
-        if (!view) {
-          view = new AthleteView(a, makeKit(0, false, 1));
-          view.setFirstPerson(true);
-        }
-        a.interpolate(1);
-        view.update(DT, t);
-        const act = a.action;
-        if (act?.kind === 'windup' && a.state === 'air' && t - act.t0 > 0.3 && Number.isNaN(lat)) {
-          const palm = hand === 'left' ? view.palmL : view.palmR;
-          // facing -z: +x is the right of the screen
-          lat = palm.x - view.eyePos.x;
-          const sL = view.rig.bones.upperArmL.getWorldPosition(new THREE.Vector3());
-          const sR = view.rig.bones.upperArmR.getWorldPosition(new THREE.Vector3());
-          // the hitting shoulder is drawn back (further back = larger z)
-          shoulderBack = sgn * (sR.z - sL.z);
-        }
-        return events.length > 0;
-      }, undefined, hand);
+      spikeWithOffset(
+        0,
+        0.45,
+        (a, t, events) => {
+          if (!view) {
+            view = new AthleteView(a, makeKit(0, false, 1));
+            view.setFirstPerson(true);
+          }
+          a.interpolate(1);
+          view.update(DT, t);
+          const act = a.action;
+          if (act?.kind === 'windup' && a.state === 'air' && t - act.t0 > 0.3 && Number.isNaN(lat)) {
+            const palm = hand === 'left' ? view.palmL : view.palmR;
+            // facing -z: +x is the right of the screen
+            lat = palm.x - view.eyePos.x;
+            const sL = view.rig.bones.upperArmL.getWorldPosition(new THREE.Vector3());
+            const sR = view.rig.bones.upperArmR.getWorldPosition(new THREE.Vector3());
+            // the hitting shoulder is drawn back (further back = larger z)
+            shoulderBack = sgn * (sR.z - sL.z);
+          }
+          return events.length > 0;
+        },
+        undefined,
+        hand,
+      );
       expect(sgn * lat).toBeGreaterThan(0.1);
       expect(shoulderBack).toBeGreaterThan(0.1);
     }

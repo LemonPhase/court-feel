@@ -26,8 +26,11 @@ import { createMode } from './modes/registry';
 import { makeRingTexture } from '../world/textures';
 import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
-import { BlockBot, SpikeBot, TouchBot, type BotQuality } from './bot';
+import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
+
+/** consecutive frames that throw before the game stops and shows the crash screen */
+const MAX_FAILED_FRAMES = 10;
 
 export type GameEvents = {
   toggleCam: { fp: boolean };
@@ -55,7 +58,8 @@ export class Game {
   readonly post: Post;
   readonly input: Input;
   readonly user: UserController;
-  readonly events = new Emitter<GameEvents>();
+  /** a listener that throws is reported, the others still run and the step carries on */
+  readonly events = new Emitter<GameEvents>((err, type) => this.reportError(err, `'${String(type)}' event handler`, false));
   readonly debug: DebugOverlay;
   readonly hud: Hud;
   athletes: Athlete[] = [];
@@ -102,13 +106,25 @@ export class Game {
   ballLive = false;
   /** test hook: the user's athlete is driven by the team AI */
   autoUser = false;
+  /**
+   * Errors caught by the game: a frame or an event handler that threw. `fatal` means the
+   * game has stopped (frames kept throwing). Without a handler they go to the console.
+   */
+  onError: ((err: unknown, where: string, fatal: boolean) => void) | null = null;
+  /** the render loop has stopped after repeated errors */
+  stopped = false;
+  /** consecutive frames that threw */
+  private failedFrames = 0;
   private aimReticle: THREE.Mesh;
   private idealCache: IdealInfo = { t: 0, d: 0, ball: new THREE.Vector3(), point: new THREE.Vector3() };
   private idealValid = false;
   /** last timing info for the debug overlay */
   private lastPress: { at: number; ideal: number } | null = null;
 
-  constructor(private container: HTMLElement, public settings: Settings) {
+  constructor(
+    private container: HTMLElement,
+    public settings: Settings,
+  ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
@@ -139,8 +155,12 @@ export class Game {
     this.aimReticle = new THREE.Mesh(
       new THREE.PlaneGeometry(0.9, 0.9),
       new THREE.MeshBasicMaterial({
-        map: makeRingTexture(0.22), color: new THREE.Color(0.95, 0.35, 0.25), transparent: true, opacity: 0,
-        depthWrite: false, blending: THREE.AdditiveBlending,
+        map: makeRingTexture(0.22),
+        color: new THREE.Color(0.95, 0.35, 0.25),
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
       }),
     );
     this.aimReticle.rotation.x = -Math.PI / 2;
@@ -246,7 +266,8 @@ export class Game {
     r.t += dt;
     const d = Math.hypot(me.pos.x - r.x, me.pos.z - r.z);
     const keys =
-      ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.input.isDown(k)) || this.input.stick.active;
+      ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].some((k) => this.input.isDown(k)) ||
+      this.input.stick.active;
     if (keys) r.userDriven = true;
     if (d < 0.1 || (r.userDriven && d < 0.9)) {
       this.ret = null;
@@ -391,7 +412,8 @@ export class Game {
     if (ev.athlete.isUser) {
       if (ev.grade) {
         const kmh = ev.speed * 3.6;
-        const pw = ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
+        const pw =
+          ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
         const sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
         this.hud.showGrade(ev.grade, sub);
       }
@@ -416,14 +438,39 @@ export class Game {
   start(): void {
     this.last = performance.now();
     const loop = (now: number) => {
+      if (this.stopped) return;
       requestAnimationFrame(loop);
-      this.frame(now);
+      try {
+        this.frame(now);
+        this.failedFrames = 0;
+      } catch (err) {
+        // a one-off error is reported and play goes on; a run of failing frames means the
+        // game is stuck in a broken state: stop and say so instead of freezing silently
+        this.failedFrames++;
+        const fatal = this.failedFrames >= MAX_FAILED_FRAMES;
+        if (fatal) this.stopped = true;
+        this.reportError(err, 'frame', fatal);
+      }
     };
     requestAnimationFrame(loop);
   }
 
-  /** test hook: render one frame right now */
+  private reportError(err: unknown, where: string, fatal: boolean): void {
+    if (this.onError) this.onError(err, where, fatal);
+    else console.error(`[court-feel] error in ${where}`, err);
+  }
+
+  /**
+   * test hook: render one frame right now. During a replay it only draws, like `tick` does:
+   * the live `render()` would re-pose every athlete and the ball from the live simulation
+   * under the cinematic camera instead of showing the frame the replay posed
+   */
   renderNow(dt = 1 / 60): void {
+    if (this.fx.replaying) {
+      this.renderer.info.reset();
+      this.post.render(dt);
+      return;
+    }
     this.render(dt);
   }
 
@@ -497,7 +544,7 @@ export class Game {
     if (realDt <= 0) return;
     // quality changes resize the canvas, which clears it: do it before drawing this frame
     this.governQuality(realDt);
-    if (this.manual) this.render(realDt);
+    if (this.manual) this.renderNow(realDt);
     else this.tick(realDt, true);
     this.frameMs = performance.now() - t0;
     this.fpsAcc += realDt;
@@ -583,13 +630,16 @@ export class Game {
   }
 
   enableBot(q: string): void {
-    const quality = (['perfect', 'good', 'sloppy', 'tip'].includes(q) ? q : 'perfect') as BotQuality;
+    const quality: BotQuality = isBotQuality(q) ? q : 'perfect';
     const role = this.me.role;
     this.bot =
-      this.modeId === 'block' ? new BlockBot(this, quality)
-      : this.modeId === 'receive' || (this.modeId === 'rally' && role === 'L') ? new TouchBot(this, 'pass', quality)
-      : this.modeId === 'setter' || (this.modeId === 'rally' && role === 'S') ? new TouchBot(this, 'set', quality)
-      : new SpikeBot(this, quality);
+      this.modeId === 'block'
+        ? new BlockBot(this, quality)
+        : this.modeId === 'receive' || (this.modeId === 'rally' && role === 'L')
+          ? new TouchBot(this, 'pass', quality)
+          : this.modeId === 'setter' || (this.modeId === 'rally' && role === 'S')
+            ? new TouchBot(this, 'set', quality)
+            : new SpikeBot(this, quality);
   }
 
   /** start-screen background: the bot runs the spike drill under an orbiting camera */
@@ -609,7 +659,8 @@ export class Game {
     let slowTarget = 1;
     if (this.settings.slowmoAssist && this.me.state === 'air' && this.idealValid) {
       const until = this.idealCache.t - this.simTime;
-      if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4) slowTarget = ASSIST.slowmoScale;
+      if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4)
+        slowTarget = ASSIST.slowmoScale;
     }
     this.slowmo = lerp(this.slowmo, slowTarget, damp(12, realDt));
     let simDt = realDt * this.timeScale * this.slowmo;
@@ -669,7 +720,8 @@ export class Game {
     this.fx.checkReplay();
     this.fx.cueReplay();
     // timing window cache for HUD / slow-mo / debug
-    const info = this.me.state === 'air' || this.me.state === 'load' ? this.contact.ideal(this.me, this.simTime, 0.9, this.idealCache) : null;
+    const info =
+      this.me.state === 'air' || this.me.state === 'load' ? this.contact.ideal(this.me, this.simTime, 0.9, this.idealCache) : null;
     this.idealValid = !!info;
   }
 
@@ -764,7 +816,9 @@ export class Game {
     this.onFrame?.();
     if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint() + (this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : ''));
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
-    this.hud.setLoad(me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null);
+    this.hud.setLoad(
+      me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null,
+    );
     // spike wind-up: power ring, a tick at full charge, a swish on release
     const wind = me.action?.kind === 'windup' ? me.action : null;
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;

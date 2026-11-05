@@ -1,13 +1,7 @@
 import * as THREE from 'three';
 import { COURT } from '../config';
 import { Rng } from '../core/mathx';
-import {
-  makeAntennaTexture,
-  makeBoardTexture,
-  makeCrowdAtlas,
-  makeNetTexture,
-  makeWoodTextures,
-} from './textures';
+import { makeAntennaTexture, makeBoardTexture, makeCrowdAtlas, makeNetTexture, makeWoodTextures } from './textures';
 
 /**
  * Static arena: floor, court, net system, stands, crowd and lighting.
@@ -26,7 +20,10 @@ export class Arena {
   /** objects the TP camera must not pass through (net + posts) */
   readonly cameraBlockers: THREE.Box3[] = [];
 
-  constructor(private renderer: THREE.WebGLRenderer, private scene: THREE.Scene) {
+  constructor(
+    private renderer: THREE.WebGLRenderer,
+    private scene: THREE.Scene,
+  ) {
     this.buildFloor();
     this.buildLines();
     this.buildNet();
@@ -220,11 +217,12 @@ export class Arena {
     const plat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.6), frameMat);
     plat.position.y = 1.4;
     ref.add(plat);
-    for (const dx of [-0.3, 0.3]) for (const dz of [-0.25, 0.25]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.4, 0.05), frameMat);
-      leg.position.set(dx, 0.7, dz);
-      ref.add(leg);
-    }
+    for (const dx of [-0.3, 0.3])
+      for (const dz of [-0.25, 0.25]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.4, 0.05), frameMat);
+        leg.position.set(dx, 0.7, dz);
+        ref.add(leg);
+      }
     ref.position.set(COURT.postX + 0.6, 0, 0);
     this.netGroup.add(ref);
     this.group.add(this.netGroup);
@@ -458,7 +456,9 @@ export class Arena {
       }
     }
     for (const [c, geos] of byColor) {
-      this.group.add(new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, side: THREE.DoubleSide })));
+      this.group.add(
+        new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, side: THREE.DoubleSide })),
+      );
     }
   }
 
@@ -494,10 +494,7 @@ export class Arena {
   private buildEnvironment(): void {
     const envScene = new THREE.Scene();
     envScene.background = new THREE.Color(0x10131c);
-    const box = new THREE.Mesh(
-      new THREE.BoxGeometry(60, 18, 60),
-      new THREE.MeshBasicMaterial({ color: 0x1a1f2c, side: THREE.BackSide }),
-    );
+    const box = new THREE.Mesh(new THREE.BoxGeometry(60, 18, 60), new THREE.MeshBasicMaterial({ color: 0x1a1f2c, side: THREE.BackSide }));
     box.position.y = 8;
     envScene.add(box);
     const panel = new THREE.MeshBasicMaterial({ color: new THREE.Color(5.0, 5.0, 4.7) });
