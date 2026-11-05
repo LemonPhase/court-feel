@@ -4,7 +4,7 @@ import { Rng } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import type { Touch } from '../src/game/ballEntity';
 import type { Game } from '../src/game/game';
-import { attackHeight, LANES, needsGoodPass, SET_PLAYS, SETTER_SPOT, SETTER_TARGET } from '../src/game/plays';
+import { attackHeight, handSetAllowed, LANES, needsGoodPass, SET_PLAYS, SETTER_SPOT, SETTER_TARGET } from '../src/game/plays';
 import { makeBall, stepBall, type BallEnv, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { solveApex } from '../src/physics/solve';
@@ -76,6 +76,18 @@ function homeTeam(pos: PositionId) {
     ball.touch(from, out);
     ball.lastTouch = { athlete: libero, kind: 'pass', t: g.simTime, side: 1 };
   };
+  /** our setter digs the first ball from his defence spot, aimed where a first ball by him goes */
+  const setterDigs = () => {
+    const setter = team.players.get('S')!;
+    const d = team.formSpot('defense', 'S');
+    setter.place(d.x, d.z, 0);
+    const T = team.firstBallTarget(setter);
+    const from = { x: d.x, y: 0.75, z: d.z };
+    const out = { x: 0, y: 0, z: 0 };
+    solveApex(from, T, T.apex, { x: 0, y: 0, z: 0 }, out);
+    ball.touch(from, out);
+    ball.lastTouch = { athlete: setter, kind: 'dig', t: g.simTime, side: 1 };
+  };
   /** run the team (and the ball) until the setter would touch it: the ball drops to their hands */
   const flight = () => {
     const setter = team.players.get('S')!;
@@ -87,7 +99,7 @@ function homeTeam(pos: PositionId) {
       if (state.v.y < 0 && state.p.y < hands) break;
     }
   };
-  return { g, team, me, ball, reads, pass, flight };
+  return { g, team, me, ball, reads, pass, setterDigs, flight };
 }
 
 describe("the setter's call on the pass (Mini Rally)", () => {
@@ -148,5 +160,83 @@ describe("the setter's call on the pass (Mini Rally)", () => {
     setter.place(SETTER_SPOT.x, SETTER_SPOT.z, 0);
     const set = team.callSet(g as unknown as Game, setter);
     expect(set.apex - attackHeight(team.user!)).toBeGreaterThan(LANES.OPP.apexAbove);
+  });
+});
+
+describe('when our setter plays the first ball (Mini Rally)', () => {
+  it('he digs it high to the middle of the court, just behind the 3 m line', () => {
+    const { team } = homeTeam('OH');
+    const dig = team.firstBallTarget(team.players.get('S')!);
+    const pass = team.firstBallTarget(team.players.get('L')!);
+    // anyone else passes to the setter target at the net
+    expect(pass.z).toBeCloseTo(SETTER_TARGET.z, 6);
+    expect(dig.z).toBeGreaterThan(COURT.attackLine);
+    expect(dig.z).toBeLessThan(COURT.attackLine + 1);
+    expect(Math.abs(dig.x)).toBeLessThan(1.5);
+    expect(dig.apex).toBeGreaterThan(pass.apex);
+  });
+
+  it('he does not go to set the second ball: he goes back to defend, and the libero sets it', () => {
+    const { team, setterDigs, flight } = homeTeam('OH');
+    setterDigs();
+    flight();
+    const setter = team.brains.get(team.players.get('S')!)!;
+    const d = team.formSpot('defense', 'S');
+    expect(setter.job).toBe('base');
+    expect(Math.hypot(setter.spot.x - d.x, setter.spot.z - d.z)).toBeLessThan(1e-9);
+    expect(team.brains.get(team.players.get('L')!)!.job).toBe('set');
+    expect(team.secondBy).toBe(team.players.get('L'));
+  });
+
+  it('the second ball is out of system: the libero calls HIGH! and a called go goes up high', () => {
+    const { g, team, me, reads, setterDigs, flight } = homeTeam('OH');
+    team.userPlay = SET_PLAYS.OH![1];
+    team.userSetBias = 1;
+    setterDigs();
+    flight();
+    expect(reads).toHaveLength(1);
+    expect(reads[0].r.setter).toBe(team.players.get('L'));
+    expect(reads[0].r.call).toBe('out');
+    const set = team.callSet(g as unknown as Game, team.players.get('L')!);
+    expect(set.hitter).toBe(me);
+    expect((set as { time?: number }).time).toBeUndefined();
+    expect(set.apex - attackHeight(me)).toBeGreaterThanOrEqual(LANES.OH.apexAbove + 0.4 - 1e-6);
+  });
+
+  it('the libero only sets high balls to the pins: no quick, no pipe', () => {
+    const { g, team, setterDigs, flight } = homeTeam('OH');
+    team.userSetBias = 0;
+    setterDigs();
+    flight();
+    const libero = team.players.get('L')!;
+    const pins = new Set([team.players.get('OH1'), team.players.get('OPP')]);
+    for (let i = 0; i < 40; i++) {
+      const set = team.callSet(g as unknown as Game, libero);
+      expect(pins.has(set.hitter!)).toBe(true);
+      expect((set as { time?: number }).time).toBeUndefined();
+    }
+  });
+
+  it('a libero hand-sets only from behind the 3 m line (in front of it they bump-set)', () => {
+    const libero = new Athlete('L', 1);
+    const setter = new Athlete('S', 1);
+    expect(handSetAllowed(libero, COURT.attackLine + 0.3)).toBe(true);
+    expect(handSetAllowed(libero, -(COURT.attackLine + 0.3))).toBe(true);
+    expect(handSetAllowed(libero, COURT.attackLine - 0.3)).toBe(false);
+    expect(handSetAllowed(libero, 0.7)).toBe(false);
+    // on the line is the front zone
+    expect(handSetAllowed(libero, COURT.attackLine)).toBe(false);
+    expect(handSetAllowed(setter, 0.7)).toBe(true);
+  });
+
+  it('when the user is the libero, the second ball is theirs: no AI is sent to play it', () => {
+    const { team, me, setterDigs, flight } = homeTeam('L');
+    setterDigs();
+    flight();
+    expect(team.secondBy).toBe(me);
+    for (const b of team.brains.values()) {
+      expect(b.job).not.toBe('set');
+      expect(b.job).not.toBe('free');
+    }
   });
 });

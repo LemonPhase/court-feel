@@ -5,7 +5,7 @@ import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
 import type { Game } from '../game/game';
-import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, setterTouchY, type SetPlay } from '../game/plays';
+import { attackHeight, BACKUP_TARGET, laneFor, quickSetFor, SETTER_SPOT, SETTER_TARGET, setterTouchY, type SetPlay } from '../game/plays';
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 import { HitterBrain } from './hitter';
@@ -250,6 +250,8 @@ export class TeamAI {
   private ourServe = false;
   /** one of us touched our own serve before the other side did: a service fault */
   serveFault = false;
+  /** who plays our second ball: the setter, or the libero when the setter played the first */
+  secondBy: Athlete | null = null;
 
   constructor(
     public side: 1 | -1,
@@ -287,18 +289,27 @@ export class TeamAI {
     this.read = null;
     this.ourServe = false;
     this.serveFault = false;
+    this.secondBy = null;
   }
 
   get user(): Athlete | null {
     return this.userSlot ? (this.players.get(this.userSlot) ?? null) : null;
   }
 
+  /** where a first ball (pass, dig) by `a` goes: the setter target, or high to the 3 m line when the setter plays it */
+  firstBallTarget(a: Athlete): { x: number; y: number; z: number; apex: number } {
+    const s = this.side;
+    if (a === this.players.get('S'))
+      return { x: BACKUP_TARGET.x * s, y: BACKUP_TARGET.y, z: BACKUP_TARGET.z * s, apex: BACKUP_TARGET.apex };
+    return { x: SETTER_TARGET.x * s, y: 2.35, z: SETTER_TARGET.z * s, apex: 4.1 };
+  }
+
   /** set call for a specific hitter in a lane (the middle gets a quick timed to their jump) */
-  callSetFor(h: Athlete, lanePos: PositionId): { target: V3; apex: number; hitter: Athlete | null; time?: number } {
+  callSetFor(h: Athlete, lanePos: PositionId, outOfSystem = false): { target: V3; apex: number; hitter: Athlete | null; time?: number } {
     if (lanePos === 'MB') return this.quickFor(h);
     const lane = laneFor(lanePos, this.side);
     const y = attackHeight(h);
-    return { target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove, hitter: h };
+    return { target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove + (outOfSystem ? AI.outOfSystemApex : 0), hitter: h };
   }
 
   /** the quick for our middle, met at the top of their jump if they are up */
@@ -351,6 +362,7 @@ export class TeamAI {
    * The setter reads the pass `lt` (AI.setterRead after it was played) and calls it.
    * If the ball is knocked off its path on the way in (the tape, the net) they look again,
    * but a call only ever gets worse: once "high" is called the set goes up high.
+   * A backup setting for the setter (who played the first ball) always calls it high.
    */
   private readPass(g: Game, setter: Athlete, lt: Touch, help: boolean): void {
     const r = this.read && this.read.touch === lt ? this.read : null;
@@ -364,7 +376,8 @@ export class TeamAI {
     if (r && !at) return;
     const s = this.side;
     const off = at ? Math.hypot(at.x - SETTER_SPOT.x * s, at.z - SETTER_SPOT.z * s) : Infinity;
-    const call = help ? 'help' : off > AI.outOfSystem ? 'out' : 'in';
+    const backup = setter !== this.players.get('S');
+    const call = help ? 'help' : backup || off > AI.outOfSystem ? 'out' : 'in';
     this.read = { touch: lt, setter, call, at: at ?? { x: setter.pos.x, z: setter.pos.z }, off };
     if (call !== r?.call) this.onRead?.(this.read);
   }
@@ -377,15 +390,17 @@ export class TeamAI {
       const a = this.players.get(slot);
       if (a && a !== setter) options.push({ slot, a, lane, w });
     };
+    // a backup (the setter played the first ball) puts up a high ball to a pin: always out of system
+    const backup = setter !== this.players.get('S');
     add('OH1', 'OH', 1.2);
     add('OPP', 'OPP', 1.0);
-    add('OH2', 'L', 0.35);
+    if (!backup) add('OH2', 'L', 0.35);
     // out of system is what the setter called on the pass (the hitters heard it, so the set
     // must agree); without a read (none was made for this ball) judge it from where the setter is
     const read = this.read && this.read.touch === g.ball.lastTouch && this.read.setter === setter ? this.read : null;
-    const outOfSystem = read
-      ? read.call !== 'in'
-      : Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s) > AI.outOfSystem;
+    const outOfSystem =
+      backup ||
+      (read ? read.call !== 'in' : Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s) > AI.outOfSystem);
     // the quick only goes off a good pass, and only if the middle is up with the setter's touch
     const mb = this.players.get('MB');
     const quick = mb && mb !== setter && !outOfSystem ? this.quickFor(mb) : null;
@@ -411,7 +426,7 @@ export class TeamAI {
     const lane = call ?? laneFor(pick.lane, s);
     const y = attackHeight(pick.a);
     // off a bad pass the setter can only put up a high ball
-    const apexBoost = outOfSystem ? 0.4 : 0;
+    const apexBoost = outOfSystem ? AI.outOfSystemApex : 0;
     const apexAbove = outOfSystem && call ? Math.max(call.apexAbove, laneFor(pick.lane, s).apexAbove) : lane.apexAbove;
     return { target: { x: lane.x, y, z: lane.z }, apex: y + apexAbove + apexBoost, hitter: pick.a };
   }
@@ -548,9 +563,12 @@ export class TeamAI {
       } else if (ourBall) {
         form = 'offense';
         if (this.touches === 1) {
-          // second ball: the setter (or the libero if the setter played the first)
-          let setter = this.players.get('S');
-          if (setter && lt?.athlete === setter) setter = this.players.get('L');
+          // second ball: the setter, or the libero as backup if the setter played the first. A setter
+          // who played the first ball stays out of the second and goes back to defend
+          const S = this.players.get('S');
+          const setter = S && lt?.athlete === S ? this.players.get('L') : S;
+          if (setter !== S) setJob(S, 'base', this.formSpot('defense', 'S'));
+          this.secondBy = setter ?? null;
           if (setter && !setter.isUser) {
             // a pass the setter cannot run down (dug from the back row): whoever is closest
             // bumps the second ball. Decided once per ball, so the two never leave it to each other.

@@ -392,6 +392,8 @@ export const AI = {
   setterRead: 0.2,
   /** a pass the setter takes further than this (m) from their spot is out of system: high balls only, no quick */
   outOfSystem: 1.6,
+  /** an out-of-system set (and a backup's set, when the setter played the first ball) goes this much (m) higher */
+  outOfSystemApex: 0.4,
 };
 
 /** the hand you spike, tip and serve with; passing, setting and blocking use both hands */

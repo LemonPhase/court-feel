@@ -375,6 +375,38 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   - Tests: +8, 123 in all (`tests/serve.test.ts`, for both sides: the serve is not a touch and gets
     no setter call; base defence while it flies; a net serve is left alone and touching it is a
     fault; after the other side plays it our touches are ordinary).
+- **Playtest round 8: when the setter digs** (#23). Notes: after the setter digs, he still runs
+  to set it; the libero then sets from the net, even a go to the pin, which a libero can't do;
+  and does the libero bump or hand-set inside the 3 m line?
+  - Cause: the second-ball logic in `TeamAI.step` handed the libero the setter's whole job: the
+    read judged against `SETTER_SPOT` (a dig to the setter target read **in** system) and `callSet`
+    offered everything, the user's fast call included. The setter got no job for that ball, so
+    the offense formation sent him to `SETTER_SPOT`. Every first ball, the setter's own dig too,
+    was aimed at `SETTER_TARGET`, and the AI libero always hand-set (`SetterBrain`), with no 3 m
+    line check. With the user as the libero nobody was assigned at all.
+  - Fix: a setter who played the first ball goes back to his defence spot. His dig goes high to
+    the middle at the 3 m line (`BACKUP_TARGET`: 0.5 m right of centre, 3.4 m off the net, apex
+    5.2 m; `TeamAI.firstBallTarget`). The libero backs up: the read is always **out** (shown as
+    **LIBERO: HIGH!**), and the set is a high ball to a pin (+`AI.outOfSystemApex`), with no quick,
+    no pipe and the user's go / fast back going up high. `handSetAllowed`: a libero hand-sets only
+    from behind the 3 m line (the line is the front zone), and in front of it the AI libero
+    bump-sets (`SetterBrain.bump`: platform height, forearm-pass pose, still a set for the
+    hitters). The user as the libero gets the ball (`TeamAI.secondBy`): "Your set!", the green
+    marker, a hint, and high-ball set options only.
+  - Measured in the browser by injecting a down-ball at the setter (right back) during live
+    all-AI rallies, before -> after (12 digs): the setter's closest approach to `SETTER_SPOT`
+    0.04-0.08 m -> 5.8 m; the libero's second ball 0.67-0.83 m off the net, read `in` -> a hand
+    set 3.1-3.4 m off the net, read `out`; pin sets +1.65 / +1.55 m above contact -> +2.05 /
+    +1.95 m, attacked by the AI hitters. A dig forced to 2 m off the net: 10/10 bump sets 1.2-2.2 m
+    off the net, high, attacked. User OH calling a go: the libero's set to them 0.45 m -> 2.05 m
+    above contact, HIGH! instead of GO!. User libero: 0/4 -> 4/4 second balls assigned to the
+    user with the cue, no AI sent. A 300 s all-AI soak (no setter digs in it) scores exactly as
+    before, with no console errors.
+  - Not done: a user libero hand-setting in front of the 3 m line isn't judged yet (#23's open
+    question: a fault when the hitter attacks above the net, or RMB becomes a bump set there).
+  - Tests: +6, 137 in all (`tests/setterCall.test.ts`: the dig target; the setter goes back to
+    defend and the libero sets; out of system, a called go goes up high; pins only, no quick or
+    pipe; `handSetAllowed`; the user libero's ball).
 
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
@@ -565,6 +597,10 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   silent swap at the touch): a hitter can only adjust a fast approach if they know ~1 s ahead.
 - A team's own serve is not one of its three touches, and the serving team may not play it until
   the other side has (a touch is a service fault). While it flies the team is in base defence.
+- When the setter plays the first ball, the libero is the backup setter (not whoever is closest),
+  and that second ball is always out of system. A libero hand-sets only from behind the 3 m line;
+  in front of it they bump-set (an attack above the net off a libero's front-zone finger set is a
+  fault).
 - Contact feedback for a Perfect is a freeze frame you can read (squashed ball, sparks, then a
   ring and the trail), not a flash: no full-screen flashes of any kind.
 - The hitting hand is one setting for the player, not per position, and only the user's athlete

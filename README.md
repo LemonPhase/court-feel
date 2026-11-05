@@ -266,6 +266,14 @@ screen show them. Only your player uses them; AI players keep the defaults.
 
    The call is the decision, not a guess: the set always follows it.
 
+   **When the setter digs.** If your setter plays the first ball, he digs it high
+   to the middle of the court, just behind the 3 m line, and goes back to defend.
+   The libero sets the second ball, and it is always out of system (**HIGH!**, from
+   the libero): a high ball to a pin, never a quick or a fast set. Like a real
+   libero, they hand-set only from behind the 3 m line and bump-set in front of
+   it. When you are the libero, that set is yours ("Your set!"): RMB, look at a
+   hitter.
+
 The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 
 ### Replays
@@ -323,7 +331,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`) and how far off the net is out of system (`outOfSystem`) |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, your
@@ -347,7 +355,9 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   middle leaves the floor on the setter's touch and the set meets the hand at
   the top of the jump), the setter's call on the pass (in / out of system,
   made once, early, and the set follows it), the serve (not one of the serving team's touches,
-  base defence while it flies, a touch on it by the serving team is a fault), the spike timing grades driven through the real
+  base defence while it flies, a touch on it by the serving team is a fault), the second ball when
+  the setter digs (high to the 3 m line, the libero backs up out of system and bump-sets in front of
+  the 3 m line, the user libero's set), the spike timing grades driven through the real
   contact system (press, hold, release), hold-to-charge power, the set calls
   (pins inside the antennae, shoot / back quick geometry, a back quick meeting
   the hitter), middles hitting zone 1 / 5, hit-sound power, the impact

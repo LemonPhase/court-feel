@@ -1,4 +1,4 @@
-import { PLAYER, type PositionId } from '../config';
+import { COURT, PLAYER, type PositionId } from '../config';
 import { clamp } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import { predictJump } from '../ai/approach';
@@ -38,6 +38,20 @@ export const LANES: Record<PositionId, AttackLane> = {
 export const SETTER_SPOT = { x: 1.1, z: 0.65 };
 /** target for passes / free balls: where the setter wants the ball */
 export const SETTER_TARGET = { x: 1.0, z: 0.9, height: 3.6 };
+/**
+ * Target for a dig by the setter himself: high to the middle of the court, just behind the
+ * 3 m line, so the backup (the libero) has time to get there and may hand-set it.
+ */
+export const BACKUP_TARGET = { x: 0.5, y: 2.35, z: 3.4, apex: 5.2 };
+
+/**
+ * May `a` hand-set a ball while standing at z? A libero's overhand set from the front zone (the
+ * line included) can't be attacked above the net, so a libero hand-sets only from behind the
+ * 3 m line and bump-sets in front of it.
+ */
+export function handSetAllowed(a: Athlete, z: number): boolean {
+  return a.role !== 'L' || Math.abs(z) > COURT.attackLine;
+}
 
 export function laneFor(pos: PositionId, side: 1 | -1): AttackLane {
   const l = LANES[pos];
