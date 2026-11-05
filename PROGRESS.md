@@ -352,6 +352,30 @@ unit tests + a Playwright e2e that plays every drill through the real input path
     over the soak) and runs in CI as its own job with the screenshots as an artifact. New unit
     tests for settings / launch validation, the reporter and event isolation.
 
+- **Playtest round 7: our own serve.** Notes: in the Mini Rally the setter shouted **HIGH!** on
+  every one of our serves; a serve that hit the net and dropped back could be played on and over;
+  and after serving, the front row ran off the net as if to attack, then came back to block.
+  - Cause: `TeamAI` treated the serving team's own serve as its first touch (`touches` = 1), so
+    while it flew the team ran its "second ball" logic: the setter read the serve as a pass (always
+    far off their spot, so "out"), went to set it (and did, off the net), and the team switched to
+    the offense formation with the hitters walking to their approach starts until the other side
+    passed.
+  - Fix (`src/ai/team.ts`): our serve in the air is its own state. It is not one of our touches,
+    nobody is sent to play it, and the team settles into base defence (front row at the net to
+    block) while the server walks in. Any touch on it by the serving team, the user included,
+    before the other side has played it is a service fault (`TeamAI.serveFault`); the Mini Rally
+    gives the point away as **SERVE FAULT**. A serve that hits the net and drops back or under it
+    is called **SERVE IN THE NET** (was BALL DOWN / UNDER THE NET).
+  - Measured in the browser (all-AI rally, both sides serving): the front row stays 0.7 m off the
+    net from the serve to the receiving team's pass (was backing off to 2.8-3.7 m), jobs `base`
+    only (was `attack`); 0 setter calls over 30 home serves (was one per serve); 16/16 forced net
+    serves called right on both sides (left alone: SERVE IN THE NET, dug up by the serving team:
+    SERVE FAULT, the point to the receiver every time, no AI touches). A 300 s soak scores the same
+    as before the change, with no console errors.
+  - Tests: +8, 123 in all (`tests/serve.test.ts`, for both sides: the serve is not a touch and gets
+    no setter call; base defence while it flies; a net serve is left alone and touching it is a
+    fault; after the other side plays it our touches are ordinary).
+
 ## Known issues
 - This container renders with SwiftShader (software GL, ~1 fps), so GPU frame time at 1080p on a
   real laptop could not be measured here. CPU-side frame time, draw calls and triangle counts are
@@ -498,5 +522,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   a higher peak. Everything scales with the ball speed, never with a heavy/light switch.
 - The Mini Rally setter's out-of-system call is made early on the pass and binds the set (never a
   silent swap at the touch): a hitter can only adjust a fast approach if they know ~1 s ahead.
+- A team's own serve is not one of its three touches, and the serving team may not play it until
+  the other side has (a touch is a service fault). While it flies the team is in base defence.
 - Contact feedback for a Perfect is a freeze frame you can read (squashed ball, sparks, then a
   ring and the trail), not a flash: no full-screen flashes of any kind.

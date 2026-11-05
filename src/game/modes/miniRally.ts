@@ -238,8 +238,13 @@ export class MiniRally extends Mode {
         if (this.t > 6) this.prepare();
         break;
       case 'live': {
-        // four-touch fault
+        // service fault (the serving team played its own serve) and four-touch fault
         for (const team of [this.home, this.away]) {
+          if (team.serveFault) {
+            this.reason = 'SERVE FAULT';
+            this.endPoint(-team.side as 1 | -1);
+            return;
+          }
           if (team.touches > 3) {
             this.reason = 'FOUR TOUCHES';
             this.endPoint(-team.side as 1 | -1);
@@ -272,7 +277,10 @@ export class MiniRally extends Mode {
     if (this.phase !== 'live') return;
     const lt = this.g.ball.lastTouch;
     const by = lt?.athlete;
-    if (o.kind === 'in') {
+    // a serve that hit the net and never made it over (dropped back, or slid under it)
+    if (lt?.kind === 'serve' && o.netTouch && (o.kind === 'under-net' || (o.kind === 'in' && o.side === lt.side)))
+      this.reason = 'SERVE IN THE NET';
+    else if (o.kind === 'in') {
       if (lt?.kind === 'serve' && o.side !== lt.side) this.reason = 'ACE';
       else if (lt?.kind === 'block' && o.side !== lt.side) this.reason = 'BLOCKED';
       else if ((lt?.kind === 'spike' || lt?.kind === 'tip') && o.side !== lt.side) this.reason = by?.isUser ? 'YOUR KILL' : 'KILL';
