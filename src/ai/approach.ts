@@ -31,8 +31,15 @@ const _b: V3 = { x: 0, y: 0, z: 0 };
  * tStart, sprint along dir, plant at tPress, hold the load, then fly until tc.
  */
 export function simulateApproach(
-  me: Athlete, now: number, tStart: number, tPress: number, hold: number, dir: THREE.Vector3,
-  runYaw: number, airYaw: number, tc: number,
+  me: Athlete,
+  now: number,
+  tStart: number,
+  tPress: number,
+  hold: number,
+  dir: THREE.Vector3,
+  runYaw: number,
+  airYaw: number,
+  tc: number,
 ): Athlete {
   const key = me.role + me.side;
   let a = _sim.get(key);
@@ -89,7 +96,11 @@ export function riseTime(H: number): number {
  * jump height depends on the run.
  */
 function planTo(
-  me: Athlete, now: number, runYaw: number, airYaw: number, hold: number,
+  me: Athlete,
+  now: number,
+  runYaw: number,
+  airYaw: number,
+  hold: number,
   target: (H: number) => { tc: number; contact: THREE.Vector3 } | null,
 ): ApproachPlan | null {
   const off = new THREE.Vector3();
@@ -120,8 +131,16 @@ function planTo(
     }
     const r = simulateApproach(me, now, lo, tPress, hold, dir, runYaw, airYaw, tc);
     best = {
-      tStart: lo, tPress, tc, hold, dir, runYaw, airYaw, contact,
-      feet: r.pos.clone(), error: Math.hypot(r.pos.x - feet.x, r.pos.z - feet.z),
+      tStart: lo,
+      tPress,
+      tc,
+      hold,
+      dir,
+      runYaw,
+      airYaw,
+      contact,
+      feet: r.pos.clone(),
+      error: Math.hypot(r.pos.x - feet.x, r.pos.z - feet.z),
     };
     if (Math.abs(r.jumpH - H) < 0.01) break;
     H = r.jumpH;
@@ -135,7 +154,11 @@ function planTo(
  * plant (so the jump peaks at contact) and when to start running.
  */
 export function planApproach(
-  me: Athlete, pred: BallPredictor, now: number, runYaw: number, airYaw: number,
+  me: Athlete,
+  pred: BallPredictor,
+  now: number,
+  runYaw: number,
+  airYaw: number,
   hold = PLAYER.loadMax - 0.02,
 ): ApproachPlan | null {
   const reachY = me.standReach - 0.16;
@@ -153,7 +176,12 @@ export function planApproach(
  * will meet the hand.
  */
 export function planQuick(
-  me: Athlete, now: number, spot: { x: number; z: number }, tTakeoff: number, runYaw: number, airYaw: number,
+  me: Athlete,
+  now: number,
+  spot: { x: number; z: number },
+  tTakeoff: number,
+  runYaw: number,
+  airYaw: number,
   hold = PLAYER.loadMax - 0.02,
 ): ApproachPlan | null {
   const reachY = me.standReach - 0.16;
@@ -165,7 +193,12 @@ export function planQuick(
 
 /** plan to meet a ball that will be at `contact` at time `tc` (a set not yet made: tempo balls) */
 export function planToPoint(
-  me: Athlete, now: number, contact: THREE.Vector3, tc: number, runYaw: number, airYaw: number,
+  me: Athlete,
+  now: number,
+  contact: THREE.Vector3,
+  tc: number,
+  runYaw: number,
+  airYaw: number,
   hold = PLAYER.loadMax - 0.02,
 ): ApproachPlan | null {
   return planTo(me, now, runYaw, airYaw, hold, () => ({ tc, contact }));

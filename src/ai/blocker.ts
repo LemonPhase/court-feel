@@ -39,7 +39,12 @@ export class BlockerBrain implements Brain {
    * @param lateralRange how far from home this blocker will go along the net
    * @param closer a middle: reads faster and closes next to the wing blocker on pin sets
    */
-  constructor(public athlete: Athlete, homeX: number, public lateralRange = 2.2, public closer = false) {
+  constructor(
+    public athlete: Athlete,
+    homeX: number,
+    public lateralRange = 2.2,
+    public closer = false,
+  ) {
     this.homeX = homeX;
   }
 

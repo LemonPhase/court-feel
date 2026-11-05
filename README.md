@@ -10,7 +10,7 @@ approach, plant, jump, spike, block, set, pass and dig — in first or third
 person, with timing that is graded, contacts that feel earned and Perfect
 spikes that explode.
 
-**▶ Play it: [court-feel.vercel.app](https://court-feel.vercel.app)**. It runs on
+**▶ Play it: [court-feel.jackzxq.dev](https://court-feel.jackzxq.dev)**. It runs on
 a computer (mouse and keyboard) or a phone (hold it sideways).
 
 > **Alpha.** Court Feel is being played at our volleyball club first. Expect
@@ -94,15 +94,18 @@ Real frames from the game: no paint-overs, no staged cameras.
 
 ## Run it locally
 
+Needs Node 22 (see `.nvmrc`; `nvm use` picks it up).
+
 ```bash
 npm install
 npm run dev        # http://localhost:5173
 ```
 
 ```bash
-npm run build      # static build in dist/ (open with any static server, e.g. npm run preview)
-npm test           # unit tests (physics, jumps, movement, aim, timing grades, line judge)
-npm run e2e        # end-to-end check with Playwright (see below)
+npm run build      # typecheck + static build in dist/ (open with any static server, e.g. npm run preview)
+npm run check      # typecheck, lint, formatting and unit tests: run this before pushing
+npm run e2e        # end-to-end check in headless Chromium (see Testing)
+npm run format     # format the code with Prettier
 ```
 
 Click **PLAY** (or press Enter) on the start screen; the game captures the
@@ -317,11 +320,18 @@ Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, and your
 custom height / vert / spike power per position) are in the pause menu and
 persist in `localStorage`. Camera shake also scales the
-impact FOV punch and camera kick (0 turns them off).
+impact FOV punch and camera kick (0 turns them off). Stored settings are
+checked on load: a value of the wrong type (say, from an older build) falls
+back to its default, and numbers are clamped to the slider ranges, which live
+in `SETTING_RANGES` in `src/config.ts`.
 
 ## Testing
 
-* `npm test` — 100 Vitest tests: set apex, spike landing point, topspin dip,
+CI (`.github/workflows/ci.yml`) runs two jobs on every pull request and on
+`main`: **check** (typecheck, ESLint, Prettier, unit tests, production build)
+and **e2e** (below). Both should be required checks for merging into `main`.
+
+* `npm test` — the Vitest suite in `tests/`: set apex, spike landing point, topspin dip,
   net/tape/antenna collisions, women's net, floor bounce, determinism,
   predictor == simulation, per-position jump heights and hang time, movement
   acceleration, aim mapping, line judge, pin set lanes, quick-set timing (the
@@ -332,29 +342,66 @@ impact FOV punch and camera kick (0 turns them off).
   contact system (press, hold, release), hold-to-charge power, the set calls
   (pins inside the antennae, shoot / back quick geometry, a back quick meeting
   the hitter), middles hitting zone 1 / 5, hit-sound power, the impact
-  camera punch and kick, and the spike animation (hand on the ball at contact,
-  no re-cocking in the air after the hit), and the custom body (a custom vert
+  camera punch and kick, the spike animation (hand on the ball at contact,
+  no re-cocking in the air after the hit), the custom body (a custom vert
   is the jump you get, height moves the reach, power scales the spike, a quick
   still meets a taller middle's hand, stored values are clamped), the block
-  shadow, the touch pad model, the pointer-lock fallback, and the replay of
-  athletes added mid-recording (the Spike Drill's blockers).
-* `npm run e2e` — starts Vite, loads the game in headless Chromium, runs every
-  drill with an autopilot that plays through the real input path (it plans
-  its approach by forward-simulating the athlete), screenshots first- and
-  third-person Perfect spikes, the impact and the replay, checks the console
-  for errors and reports frame time, draw calls and memory over a soak.
-  Output goes to `scripts/out/`. The dev server uses port 5199 (set
-  `E2E_PORT` to change it; `SOAK` sets the soak length in seconds). Needs Playwright (`npm i -D playwright` and
-  `npx playwright install chromium` if you don't have it globally).
+  shadow, the touch pad model, the pointer-lock fallback, the replay of
+  athletes added mid-recording (the Spike Drill's blockers), stored-settings
+  and quick-start-link validation, and the error reporter.
+* `npm run e2e` — starts Vite, loads the game in headless Chromium and plays
+  every drill with an autopilot through the real input path (it plans its
+  approach by forward-simulating the athlete). The simulation is stepped at a
+  fixed rate, so results don't depend on the machine. It **fails** when:
+  there is a console error or warning; a drill's bot stops making its contacts
+  or fewer than half are Perfect; a rally produces no points; the three set
+  calls of a position stop setting three different plays; the Perfect-spike
+  replay doesn't start; the touch controls don't drive run / jump / wind-up /
+  swing; a mistyped quick-start link or corrupted saved settings break the
+  page or stop the drill from playing; the menus capture Tab / Space; a crash
+  lets the pause menu or pointer lock take over from the crash screen; or
+  geometries, textures or shader programs grow over the soak. Frame time, draw calls and heap are reported,
+  not asserted. Screenshots and `report.json` go to `scripts/out/` (in CI:
+  the `e2e-report` artifact). The dev server uses port 5199 (`E2E_PORT`
+  changes it; `SOAK` sets the soak length in seconds). First time: `npx
+  playwright install chromium`.
 * URL shortcuts for quick testing: `?mode=spike&pos=OH&cam=fp&bot=perfect`
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,
-  sloppy, tip).
+  sloppy, tip). Unknown values are ignored: an unknown mode opens the menu, an
+  unknown position falls back to OH.
+
+## Errors and bug reports
+
+* The start and pause menus show the build (`v0.1.0 · abc1234`, version and
+  commit), so a bug report can name it.
+* An error the game cannot recover from (it fails to start, e.g. no WebGL, or
+  frames keep throwing) shows a crash screen with **Reload** and **Copy
+  details** (build, error, game state, browser) instead of a frozen or blank
+  page. A one-off error in a frame or an event handler is reported and play
+  goes on.
+* Reports stay in the browser unless `VITE_ERROR_REPORT_URL` is set at build
+  time (e.g. a Vercel environment variable). Then each distinct error is POSTed
+  once (at most 10 per page load) as JSON in a `text/plain` body: kind, where,
+  message, stack, build, page path and query, user agent, time and game state
+  (mode, position, camera, quality, touch). No personal data. Any endpoint that
+  accepts a POST and logs the body works.
+
+## Accessibility
+
+* Menus work from the keyboard: Tab / Shift+Tab move between controls, Space
+  or Enter presses a button, arrow keys move the sliders, Enter on the start
+  screen plays, Esc closes the settings. The game only captures Tab, Space and
+  the arrow keys while you play.
+* If the OS asks for reduced motion, a first visit starts with camera shake
+  and automatic replays off, the menu camera holds still and UI animations are
+  disabled. Both settings can be changed in the settings panel.
 
 ## Project layout
 
 ```
 src/config.ts          all tunables
-src/core/              input (with buffering), touch pad model, settings, math, events
+src/core/              input (with buffering), touch pad model, settings (validated), quick-start links,
+                       error reporter, build info, math, events
 src/physics/           ball physics, predictor, trajectory solvers (pure, tested)
 src/character/         procedural rig, animator (poses + IK), kits
 src/game/              game loop, athlete kinematics, contact/timing system, judge, modes, bots
@@ -362,7 +409,7 @@ src/ai/                setter, hitter, blocker, server, team coordinator
 src/fx/                particles, trails, effects director, replay, post-processing
 src/audio/             Web Audio synthesis
 src/world/             arena and procedural textures
-src/ui/                HUD, menu/settings, touch controls overlay, debug overlay
+src/ui/                HUD, menu/settings, touch controls overlay, crash screen, debug overlay
 tests/                 unit tests
 scripts/               e2e and screenshot tooling
 docs/screenshots/      the README screenshots (real frames from the game)

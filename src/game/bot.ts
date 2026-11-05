@@ -7,8 +7,26 @@ import type { V3 } from '../physics/ball';
 import type { Game } from './game';
 import { planQuick, type ApproachPlan } from '../ai/approach';
 import { quickSpot, setterTouchY } from './plays';
+import type { TeamAI } from '../ai/team';
 
-export type BotQuality = 'perfect' | 'good' | 'sloppy' | 'tip';
+/**
+ * What the autopilots read from the current drill, when it has it: the Mini Rally's team
+ * coordinator, the spike drill's target zone and its early (fast-set) approach plan, the
+ * setter drill's options. Drills do not implement this on purpose (the bots are test and
+ * attract-mode tooling), so every field is optional.
+ */
+interface DrillView {
+  home?: Pick<TeamAI, 'setFor' | 'receiver' | 'touches' | 'passToSetter'>;
+  zone?: { x0: number; x1: number; z0: number; z1: number };
+  earlyPlan?: ApproachPlan | null;
+  earlyFor?: unknown;
+  setOptions?(a: Athlete): { target: V3 }[];
+}
+const drillView = (g: Game): DrillView | null => g.mode as unknown as DrillView | null;
+
+export const BOT_QUALITIES = ['perfect', 'good', 'sloppy', 'tip'] as const;
+export type BotQuality = (typeof BOT_QUALITIES)[number];
+export const isBotQuality = (v: unknown): v is BotQuality => BOT_QUALITIES.includes(v as BotQuality);
 
 /**
  * Autopilot for the spike drill. It drives the user's athlete through the
@@ -39,7 +57,10 @@ export class SpikeBot {
   private mz = 0;
   private sprint = false;
 
-  constructor(private g: Game, private quality: BotQuality = 'perfect') {}
+  constructor(
+    private g: Game,
+    private quality: BotQuality = 'perfect',
+  ) {}
 
   private release(): void {
     const inp = this.g.input;
@@ -57,24 +78,32 @@ export class SpikeBot {
     const now = g.simTime;
     const lt = ball.lastTouch;
     // a set from the setter, or (setter's attack on two) the coach's pass
-    const team = (g.mode as any)?.home as { setFor: unknown; passToSetter(g: Game): { t: number; x: number } | null } | undefined;
+    const drill = drillView(g);
+    const team = drill?.home;
     // a middle goes on the pass (the drill's toss, or a team-mate's pass to our setter)
     const quickCue =
-      me.role === 'MB' && ball.active && lt && lt.athlete !== me && lt.side === me.side &&
+      me.role === 'MB' &&
+      ball.active &&
+      lt &&
+      lt.athlete !== me &&
+      lt.side === me.side &&
       (lt.kind === 'feed' || (!!team && (lt.kind === 'pass' || lt.kind === 'dig') && !!team.passToSetter(g)));
     // the spike drill plans fast sets (quicks, go balls) from the pass: follow that plan
-    const drill = g.mode as any;
     const drillEarly = !!drill?.earlyPlan && lt?.kind === 'feed' && drill.earlyFor === lt;
     const setForMe =
       quickCue ||
       drillEarly ||
-      (ball.active && lt && lt.athlete !== me && lt.side === me.side &&
+      (ball.active &&
+        lt &&
+        lt.athlete !== me &&
+        lt.side === me.side &&
         (lt.kind === 'set' || (lt.kind === 'feed' && me.role === 'S')) &&
         (!team || team.setFor === me));
     // a run started before the set (a quick) is seen through to the landing: the "pass to the
     // setter" read can drop out in the last frames before the touch, and resetting there would
     // let go of the plant and the wind-up mid-run
-    const committed = this.committed && (this.phase === 'approach' || this.phase === 'load' || (this.phase === 'air' && me.state !== 'ground'));
+    const committed =
+      this.committed && (this.phase === 'approach' || this.phase === 'load' || (this.phase === 'air' && me.state !== 'ground'));
     if (!setForMe && !committed && (this.phase !== 'air' || me.state === 'ground')) {
       if (this.phase !== 'wait') this.release();
       this.phase = 'wait';
@@ -247,10 +276,10 @@ export class SpikeBot {
     off.y = me.standReach - 0.16;
     let H = me.jumpMax;
     const aim = new THREE.Vector3(2.5, 0, -7);
-    const zone = (g.mode as any)?.zone;
+    const drill = drillView(g);
+    const zone = drill?.zone;
     if (zone && typeof zone.x0 === 'number' && typeof zone.z0 === 'number') aim.set((zone.x0 + zone.x1) / 2, 0, (zone.z0 + zone.z1) / 2);
     let best: { tStart: number; tPress: number; tc: number; contact: THREE.Vector3; dir: THREE.Vector3 } | null = null;
-    const drill = g.mode as any;
     const early: ApproachPlan | null = drill?.earlyPlan && drill.earlyFor === g.ball.lastTouch ? drill.earlyPlan : null;
     const quick = !early && me.role === 'MB' && g.ball.lastTouch?.kind !== 'set';
     if (early) {
@@ -258,7 +287,7 @@ export class SpikeBot {
       best = { tStart: early.tStart, tPress: early.tPress, tc: early.tc, contact: early.contact, dir: early.dir };
     } else if (quick) {
       // middle quick: leave the floor as the setter touches the pass
-      const team = (g.mode as any)?.home as { passToSetter(g: Game): { t: number; x: number } | null } | undefined;
+      const team = drill?.home;
       let tSet = -1;
       let sx = 0;
       if (team) {
@@ -298,15 +327,14 @@ export class SpikeBot {
       // later start = shorter run: binary search the start time for the right distance
       let lo = now;
       let hi = tPress;
-      let r = this.simulate(lo, tPress, hold, dir, tc);
       for (let i = 0; i < 14; i++) {
         const mid = (lo + hi) / 2;
-        r = this.simulate(mid, tPress, hold, dir, tc);
-        const along = (r.x - me.pos.x) * dir.x + (r.z - me.pos.z) * dir.z;
+        const m = this.simulate(mid, tPress, hold, dir, tc);
+        const along = (m.x - me.pos.x) * dir.x + (m.z - me.pos.z) * dir.z;
         if (along > total) lo = mid;
         else hi = mid;
       }
-      r = this.simulate(lo, tPress, hold, dir, tc);
+      const r = this.simulate(lo, tPress, hold, dir, tc);
       best = { tStart: lo, tPress, tc, contact, dir };
       if (Math.abs(r.jumpH - H) < 0.01) break;
       H = r.jumpH;
@@ -334,7 +362,10 @@ export class BlockBot {
   private offset = 0;
   results: string[] = [];
 
-  constructor(private g: Game, private quality: BotQuality = 'perfect') {}
+  constructor(
+    private g: Game,
+    private quality: BotQuality = 'perfect',
+  ) {}
 
   step(_dt: number): void {
     const g = this.g;
@@ -411,7 +442,11 @@ export class TouchBot {
   /** setter: which option to aim at (cycles) */
   private pick = 0;
 
-  constructor(private g: Game, private kind: 'pass' | 'set', private quality: BotQuality = 'perfect') {}
+  constructor(
+    private g: Game,
+    private kind: 'pass' | 'set',
+    private quality: BotQuality = 'perfect',
+  ) {}
 
   step(_dt: number): void {
     const g = this.g;
@@ -421,9 +456,12 @@ export class TouchBot {
     const lt = ball.lastTouch;
     this.mx = this.mz = 0;
     const key = this.kind === 'pass' ? 'KeyE' : 'Mouse2';
-    const team = (g.mode as any)?.home as { receiver: unknown; touches: number } | undefined;
+    const team = drillView(g)?.home;
     const incoming =
-      ball.active && !ball.state.rest && lt && lt.athlete !== me &&
+      ball.active &&
+      !ball.state.rest &&
+      lt &&
+      lt.athlete !== me &&
       (this.kind === 'pass' ? lt.side !== me.side || lt.kind === 'feed' : lt.side === me.side) &&
       (!team || (this.kind === 'pass' ? team.receiver === me : team.touches === 1));
     if (!incoming) {
@@ -435,7 +473,7 @@ export class TouchBot {
     const pred = ball.ensurePrediction(g.env, now);
     let yaw = 0;
     if (this.kind === 'set') {
-      const opts = (g.mode as any)?.setOptions?.(me) as { target: V3 }[] | undefined;
+      const opts = drillView(g)?.setOptions?.(me);
       if (opts && opts.length) {
         const o = opts[this.pick % opts.length].target;
         yaw = yawFromDir(o.x - me.pos.x, o.z - me.pos.z);

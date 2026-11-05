@@ -154,7 +154,12 @@ export class ReceiveDrill extends Mode {
   }
 
   canServe(a: Athlete): boolean {
-    return a === this.server && this.phase === 'live' && this.kind === 'serve' && (!this.g.ball.active || this.g.ball.state.rest || this.g.ball.lastTouch?.athlete === a);
+    return (
+      a === this.server &&
+      this.phase === 'live' &&
+      this.kind === 'serve' &&
+      (!this.g.ball.active || this.g.ball.state.rest || this.g.ball.lastTouch?.athlete === a)
+    );
   }
 
   hint(): string {
@@ -216,7 +221,10 @@ export class ReceiveDrill extends Mode {
       const r = ratePass(g, 1);
       this.passed = { rating: r.rating, grade: ev.grade ?? '' };
       const label = r.over ? 'OVERPASS' : `${r.rating}-PASS`;
-      g.hud.showBanner(`${label}${r.rating === 3 ? ' · PERFECT TO TARGET' : ''}`, r.rating >= 2 ? 'good' : r.rating === 1 ? 'neutral' : 'bad');
+      g.hud.showBanner(
+        `${label}${r.rating === 3 ? ' · PERFECT TO TARGET' : ''}`,
+        r.rating >= 2 ? 'good' : r.rating === 1 ? 'neutral' : 'bad',
+      );
       g.crowd(r.rating >= 2 ? 0.35 : 0.05);
     }
   }

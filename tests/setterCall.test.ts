@@ -48,8 +48,14 @@ function homeTeam(pos: PositionId) {
     },
   };
   const g = {
-    simTime: 0, env, rng: new Rng(7), ballLive: true, ball,
-    setBrain() {}, hud: { message() {} }, contact: { lastSet: null },
+    simTime: 0,
+    env,
+    rng: new Rng(7),
+    ballLive: true,
+    ball,
+    setBrain() {},
+    hud: { message() {} },
+    contact: { lastSet: null },
   };
   const team = new TeamAI(1, g as unknown as Game);
   const me = new Athlete(pos, 1);
@@ -109,7 +115,10 @@ describe("the setter's call on the pass (Mini Rally)", () => {
   it('the set follows the call: a called go is fast in system and a high ball out of system', () => {
     const go = SET_PLAYS.OH![1];
     expect(needsGoodPass(go)).toBe(true);
-    for (const [z, out] of [[SETTER_TARGET.z, false], [SETTER_SPOT.z + 2.6, true]] as const) {
+    for (const [z, out] of [
+      [SETTER_TARGET.z, false],
+      [SETTER_SPOT.z + 2.6, true],
+    ] as const) {
       const { g, team, me, pass, flight } = homeTeam('OH');
       team.userPlay = go;
       team.userSetBias = 1;

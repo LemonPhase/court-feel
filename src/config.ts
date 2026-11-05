@@ -94,34 +94,74 @@ export interface PositionStats {
 
 export const POSITIONS: Record<PositionId, PositionStats> = {
   OH: {
-    id: 'OH', name: 'Outside Hitter', short: 'OH',
+    id: 'OH',
+    name: 'Outside Hitter',
+    short: 'OH',
     blurb: 'Left-side attacker. High balls, big swings, passes serve too.',
-    height: 1.95, jump: 0.86, standingJumpFrac: 0.66, approachSpeed: 5.3, shuffleSpeed: 3.3, accel: 15,
-    power: 1.0, ballControl: 0.75,
+    height: 1.95,
+    jump: 0.86,
+    standingJumpFrac: 0.66,
+    approachSpeed: 5.3,
+    shuffleSpeed: 3.3,
+    accel: 15,
+    power: 1.0,
+    ballControl: 0.75,
   },
   OPP: {
-    id: 'OPP', name: 'Opposite', short: 'OPP',
+    id: 'OPP',
+    name: 'Opposite',
+    short: 'OPP',
     blurb: 'Right-side weapon. Biggest jump and power, blocks the outside.',
-    height: 1.99, jump: 0.9, standingJumpFrac: 0.66, approachSpeed: 5.2, shuffleSpeed: 3.2, accel: 14.5,
-    power: 1.08, ballControl: 0.6,
+    height: 1.99,
+    jump: 0.9,
+    standingJumpFrac: 0.66,
+    approachSpeed: 5.2,
+    shuffleSpeed: 3.2,
+    accel: 14.5,
+    power: 1.08,
+    ballControl: 0.6,
   },
   MB: {
-    id: 'MB', name: 'Middle Blocker', short: 'MB',
+    id: 'MB',
+    name: 'Middle Blocker',
+    short: 'MB',
     blurb: 'Tallest. Quick tempo attacks and reading blocks along the net.',
-    height: 2.04, jump: 0.82, standingJumpFrac: 0.72, approachSpeed: 4.8, shuffleSpeed: 3.6, accel: 16,
-    power: 0.95, ballControl: 0.5,
+    height: 2.04,
+    jump: 0.82,
+    standingJumpFrac: 0.72,
+    approachSpeed: 4.8,
+    shuffleSpeed: 3.6,
+    accel: 16,
+    power: 0.95,
+    ballControl: 0.5,
   },
   S: {
-    id: 'S', name: 'Setter', short: 'S',
+    id: 'S',
+    name: 'Setter',
+    short: 'S',
     blurb: 'Runs the offence. Sets every second ball, dumps when it is open.',
-    height: 1.9, jump: 0.74, standingJumpFrac: 0.7, approachSpeed: 5.0, shuffleSpeed: 3.6, accel: 17,
-    power: 0.82, ballControl: 0.95,
+    height: 1.9,
+    jump: 0.74,
+    standingJumpFrac: 0.7,
+    approachSpeed: 5.0,
+    shuffleSpeed: 3.6,
+    accel: 17,
+    power: 0.82,
+    ballControl: 0.95,
   },
   L: {
-    id: 'L', name: 'Libero', short: 'L',
+    id: 'L',
+    name: 'Libero',
+    short: 'L',
     blurb: 'Back-row defender. Fastest feet, cleanest passing, different jersey.',
-    height: 1.82, jump: 0.66, standingJumpFrac: 0.7, approachSpeed: 5.6, shuffleSpeed: 4.0, accel: 19,
-    power: 0.75, ballControl: 1.0,
+    height: 1.82,
+    jump: 0.66,
+    standingJumpFrac: 0.7,
+    approachSpeed: 5.6,
+    shuffleSpeed: 4.0,
+    accel: 19,
+    power: 0.75,
+    ballControl: 1.0,
   },
 };
 
@@ -393,3 +433,24 @@ export const DEFAULT_SETTINGS: Settings = {
   touchSensitivity: 1.0,
   bodies: {},
 };
+
+export type NumericSettingKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
+export type BooleanSettingKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
+
+/**
+ * Ranges of the numeric settings. The settings panel builds its sliders from these and the
+ * loader clamps stored values to them, so the two can never disagree.
+ */
+export const SETTING_RANGES: Record<NumericSettingKey, { min: number; max: number; step: number }> = {
+  sensitivity: { min: 0.2, max: 3, step: 0.05 },
+  touchSensitivity: { min: 0.3, max: 3, step: 0.05 },
+  fov: { min: 55, max: 100, step: 1 },
+  aimAssist: { min: 0, max: 1, step: 0.05 },
+  shake: { min: 0, max: 1.5, step: 0.05 },
+  volume: { min: 0, max: 1, step: 0.05 },
+};
+
+export const TOUCH_CONTROL_MODES: readonly Settings['touchControls'][] = ['auto', 'on', 'off'];
+
+/** a position id from outside the type system (URL, storage): own keys of POSITIONS only */
+export const isPositionId = (v: unknown): v is PositionId => typeof v === 'string' && Object.hasOwn(POSITIONS, v);

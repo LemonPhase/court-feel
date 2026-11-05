@@ -80,7 +80,19 @@ export class StreakPool {
     this.mesh.renderOrder = 6;
   }
 
-  emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number, r: number, gc: number, b: number): void {
+  emit(
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    life: number,
+    size: number,
+    r: number,
+    gc: number,
+    b: number,
+  ): void {
     const i = this.next;
     this.next = (this.next + 1) % this.max;
     this.pos[i * 3] = x;
@@ -145,7 +157,11 @@ export class SpritePool {
   drag = 2.5;
   gravity = -0.4;
 
-  constructor(private max: number, tex: THREE.Texture, additive: boolean) {
+  constructor(
+    private max: number,
+    tex: THREE.Texture,
+    additive: boolean,
+  ) {
     this.pos = new Float32Array(max * 3);
     this.vel = new Float32Array(max * 3);
     this.life = new Float32Array(max);
@@ -192,7 +208,20 @@ export class SpritePool {
     (this.points.material as THREE.ShaderMaterial).uniforms.uScale.value = viewportHeight / (2 * Math.tan((fovDeg * Math.PI) / 360));
   }
 
-  emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number, size: number, grow: number, r: number, g: number, b: number): void {
+  emit(
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vy: number,
+    vz: number,
+    life: number,
+    size: number,
+    grow: number,
+    r: number,
+    g: number,
+    b: number,
+  ): void {
     const i = this.next;
     this.next = (this.next + 1) % this.max;
     this.pos.set([x, y, z], i * 3);

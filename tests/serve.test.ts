@@ -46,8 +46,14 @@ function servingTeam(side: 1 | -1) {
     },
   };
   const g = {
-    simTime: 0, env, rng: new Rng(7), ballLive: true, ball,
-    setBrain() {}, hud: { message() {} }, contact: { lastSet: null },
+    simTime: 0,
+    env,
+    rng: new Rng(7),
+    ballLive: true,
+    ball,
+    setBrain() {},
+    hud: { message() {} },
+    contact: { lastSet: null },
   };
   const team = new TeamAI(side, g as unknown as Game);
   for (const slot of SLOTS) team.add(slot, new Athlete(SLOT_ROLE[slot], side), false);
@@ -133,7 +139,7 @@ describe.each([1, -1] as const)('our own serve (side %i)', (side) => {
     const { team, touch, serve, run } = servingTeam(side);
     serve();
     run(0.6);
-    touch(new Athlete('L', (-side) as 1 | -1), 'pass');
+    touch(new Athlete('L', -side as 1 | -1), 'pass');
     team.step();
     touch(team.players.get('L')!, 'dig');
     team.step();

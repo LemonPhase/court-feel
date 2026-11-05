@@ -57,7 +57,38 @@ describe('block shadow', () => {
       }
     }
     // a square fully inside is untouched; one hanging over the sideline gets cut at it
-    expect(clipPoly([[0, -1], [1, -1], [1, -2], [0, -2]], -4.5, 4.5, -9, 0)).toHaveLength(4);
-    expect(clipPoly([[4, -1], [6, -1], [6, -3], [4, -3]], -4.5, 4.5, -9, 0)).toEqual([[4, -1], [4.5, -1], [4.5, -3], [4, -3]]);
+    expect(
+      clipPoly(
+        [
+          [0, -1],
+          [1, -1],
+          [1, -2],
+          [0, -2],
+        ],
+        -4.5,
+        4.5,
+        -9,
+        0,
+      ),
+    ).toHaveLength(4);
+    expect(
+      clipPoly(
+        [
+          [4, -1],
+          [6, -1],
+          [6, -3],
+          [4, -3],
+        ],
+        -4.5,
+        4.5,
+        -9,
+        0,
+      ),
+    ).toEqual([
+      [4, -1],
+      [4.5, -1],
+      [4.5, -3],
+      [4, -3],
+    ]);
   });
 });
