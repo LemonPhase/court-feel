@@ -94,7 +94,13 @@ describe('loadSettings', () => {
 
 describe('quick-start links', () => {
   it('parses a full link', () => {
-    expect(parseLaunchParams('?mode=spike&pos=MB&cam=fp&bot=good')).toEqual({ mode: 'spike', pos: 'MB', cam: 'fp', bot: 'good' });
+    expect(parseLaunchParams('?mode=spike&pos=MB&cam=fp&bot=good&hand=left')).toEqual({
+      mode: 'spike',
+      pos: 'MB',
+      cam: 'fp',
+      bot: 'good',
+      hand: 'left',
+    });
   });
 
   it('a mistyped position falls back to the outside hitter instead of crashing', () => {
@@ -107,8 +113,14 @@ describe('quick-start links', () => {
     expect(parseLaunchParams('')).toBeNull();
   });
 
-  it('unknown camera and bot values are ignored', () => {
-    expect(parseLaunchParams('?mode=block&cam=drone&bot=godmode')).toEqual({ mode: 'block', pos: 'OH', cam: null, bot: null });
+  it('unknown camera, bot and hand values are ignored', () => {
+    expect(parseLaunchParams('?mode=block&cam=drone&bot=godmode&hand=ambi')).toEqual({
+      mode: 'block',
+      pos: 'OH',
+      cam: null,
+      bot: null,
+      hand: null,
+    });
   });
 
   it('inherited object keys are not ids', () => {

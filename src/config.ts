@@ -394,6 +394,9 @@ export const AI = {
   outOfSystem: 1.6,
 };
 
+/** the hand you spike, tip and serve with; passing, setting and blocking use both hands */
+export type Hand = 'right' | 'left';
+
 /** user-adjustable settings (persisted) */
 export interface Settings {
   sensitivity: number;
@@ -414,6 +417,8 @@ export interface Settings {
   touchSensitivity: number;
   /** your custom body per position (absent = the position's defaults); only your athlete uses it, never the AI */
   bodies: Partial<Record<PositionId, BodyOverride>>;
+  /** your hitting hand, one for every position (the AI stays right-handed); timing, power and reach are the same for both */
+  hand: Hand;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -432,6 +437,7 @@ export const DEFAULT_SETTINGS: Settings = {
   touchControls: 'auto',
   touchSensitivity: 1.0,
   bodies: {},
+  hand: 'right',
 };
 
 export type NumericSettingKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];

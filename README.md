@@ -176,7 +176,16 @@ power and ball control, where drills start you, and what the AI asks of you.
 | **Setter (S)** | 1.90 m | 0.74 m | Sets every second ball, attacks on two |
 | **Libero (L)** | 1.82 m | 0.66 m | Fastest feet and cleanest passing (back-row pipe in the spike drill) |
 
-### Your athlete (custom height, vert and spike power)
+### Your athlete (hitting hand, custom height, vert and spike power)
+
+**Hitting hand: Right / Left** (one setting for every position): a lefty spikes,
+tips, rolls and serves with the left hand. The contact point moves in front of
+the left shoulder, and with it the cyan feet ring, the quick set to a middle
+and the autopilot. The wind-up turns the left shoulder back, the two-step plant
+is left-right, the serve is tossed with the right hand, and the third-person
+camera sits over the left shoulder. Passing, setting and blocking use both
+hands and don't change. Timing windows, power and reach are the same for both
+hands. The AI players stay right-handed.
 
 Settings → **Your athlete** lets you make each position your own: pick the
 position tab and set your **height** (1.60–2.20 m), **vertical jump** (your
@@ -317,8 +326,8 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`) and how far off the net is out of system (`outOfSystem`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
-slow-mo assist, landing marker, replays, camera shake, volume, hints, and your
-custom height / vert / spike power per position) are in the pause menu and
+slow-mo assist, landing marker, replays, camera shake, volume, hints, your
+hitting hand, and your custom height / vert / spike power per position) are in the pause menu and
 persist in `localStorage`. Camera shake also scales the
 impact FOV punch and camera kick (0 turns them off). Stored settings are
 checked on load: a value of the wrong type (say, from an older build) falls
@@ -345,7 +354,10 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   camera punch and kick, the spike animation (hand on the ball at contact,
   no re-cocking in the air after the hit), the custom body (a custom vert
   is the jump you get, height moves the reach, power scales the spike, a quick
-  still meets a taller middle's hand, stored values are clamped), the block
+  still meets a taller middle's hand, stored values are clamped), the
+  left-handed player (the contact point, serve toss, plant and wind-up mirror,
+  a quick still meets a lefty middle's hand, the same release gives the same
+  grade and speed with either hand, the stored hand is sanitised), the block
   shadow, the touch pad model, the pointer-lock fallback, the replay of
   athletes added mid-recording (the Spike Drill's blockers), stored-settings
   and quick-start-link validation, and the error reporter.
@@ -367,8 +379,8 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   playwright install chromium`.
 * URL shortcuts for quick testing: `?mode=spike&pos=OH&cam=fp&bot=perfect`
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,
-  sloppy, tip). Unknown values are ignored: an unknown mode opens the menu, an
-  unknown position falls back to OH.
+  sloppy, tip; `&hand=left` plays as a lefty). Unknown values are ignored: an
+  unknown mode opens the menu, an unknown position falls back to OH.
 
 ## Errors and bug reports
 

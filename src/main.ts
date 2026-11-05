@@ -223,11 +223,15 @@ app.addEventListener('mousedown', () => {
   if (!game.inMenu && !game.paused && !game.stopped && !game.input.pointerLocked && !game.input.dragLook) game.input.requestLock();
 });
 
-// quick-start links for automation and sharing a drill: ?mode=spike&pos=OH&bot=perfect&cam=fp
+// quick-start links for automation and sharing a drill: ?mode=spike&pos=OH&bot=perfect&cam=fp&hand=left
 enterMenu();
 const launch = parseLaunchParams(location.search);
 if (launch) {
   if (launch.cam) settings.firstPerson = launch.cam === 'fp';
+  if (launch.hand) {
+    settings.hand = launch.hand;
+    game.applyUserBody();
+  }
   menu.showStart(false);
   menu.selectPos(launch.pos);
   lastPlay = { mode: launch.mode, pos: launch.pos };

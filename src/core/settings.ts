@@ -28,6 +28,7 @@ export const VALIDATED_KEYS: readonly (keyof Settings)[] = [
   ...(Object.keys(BOOLEAN_SETTINGS) as BooleanSettingKey[]),
   'touchControls',
   'bodies',
+  'hand',
 ];
 
 /** does the OS ask for reduced motion? (false where matchMedia is unavailable) */
@@ -74,6 +75,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings = DEFAULT_SETT
   }
   const tc = src.touchControls;
   if (TOUCH_CONTROL_MODES.includes(tc as Settings['touchControls'])) out.touchControls = tc as Settings['touchControls'];
+  if (src.hand === 'left' || src.hand === 'right') out.hand = src.hand;
   return out;
 }
 

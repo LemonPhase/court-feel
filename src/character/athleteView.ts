@@ -203,9 +203,9 @@ export class AthleteView {
   private stanceFoot(s: number, out: V): V {
     const a = this.athlete;
     const H = this.H;
-    // shoulder-width stance, right foot slightly back (ready position)
+    // shoulder-width stance, hitting-side foot slightly back (ready position)
     const lat = s * 0.13 * H;
-    const fwd = s > 0 ? -0.03 * H : 0.035 * H;
+    const fwd = s === a.hand ? -0.03 * H : 0.035 * H;
     this.bodyToWorld(lat, 0, fwd, out);
     out.x += a.rpos.x;
     out.z += a.rpos.z;
@@ -264,6 +264,8 @@ export class AthleteView {
     const last = a.lastAction;
     const tSinceTake = tr - a.takeoffT;
     const tSinceLand = tr - this.landT;
+    // the attack twists are authored for a righty: a lefty turns the other way
+    const hs = a.hand;
 
     // ================================================== torso
     const bd = this.body;
@@ -321,8 +323,8 @@ export class AthleteView {
         const cock = smooth01((tSinceTake - 0.1) / 0.22);
         spineX = lerp(spineX, 0.14, cock);
         chestX = lerp(chestX, 0.16, cock);
-        chestY = lerp(chestY, -0.5, cock);
-        hipsY = lerp(hipsY, -0.12, cock);
+        chestY = lerp(chestY, -0.5 * hs, cock);
+        hipsY = lerp(hipsY, -0.12 * hs, cock);
       }
     }
     // actions on the torso
@@ -339,19 +341,19 @@ export class AthleteView {
         // kinetic chain: the hips open first, the chest follows, the arm whips last (see updateArms)
         const eh = easeOutCubic(swingS * 1.6);
         const ec = smooth01(swingS * 1.25);
-        chestY = lerp(W.chestY, 0.14 + 0.08 * ch, ec);
+        chestY = hs * lerp(W.chestY, 0.14 + 0.08 * ch, ec);
         spineX = lerp(W.spineX, -0.12 - 0.05 * ch, ec);
         chestX = lerp(W.chestX, -0.06, ec);
-        hipsY = lerp(W.hipsY, 0.08, eh);
+        hipsY = hs * lerp(W.hipsY, 0.08, eh);
         bodyRate = 90;
       } else if (swingF >= 0 && (swingF < 1 || st === 'air')) {
         // follow-through: a hard swing keeps going and folds the body (jackknife), held until landing
         const e = easeOutCubic(swingF);
         const jk = swing.tip ? 0 : 0.55 + 0.45 * ch;
-        chestY = lerp(0.14 + 0.08 * ch, swing.tip ? 0.1 : 0.3 + 0.12 * jk, e);
+        chestY = hs * lerp(0.14 + 0.08 * ch, swing.tip ? 0.1 : 0.3 + 0.12 * jk, e);
         spineX = lerp(-0.12 - 0.05 * ch, swing.tip ? -0.12 : -0.3 - 0.32 * jk, e);
         chestX = lerp(-0.06, -0.12 - 0.14 * jk, e);
-        hipsY = lerp(0.08, 0.16, e);
+        hipsY = hs * lerp(0.08, 0.16, e);
         bodyRate = swingF < 1 ? 60 : 20;
       }
     }
@@ -359,10 +361,10 @@ export class AthleteView {
     if (act && act.kind === 'windup' && st !== 'load') {
       const W = windupTorso(windupCharge(act.t0, tr));
       const p = smooth01((tr - act.t0) / 0.12);
-      chestY = lerp(chestY, W.chestY, p);
+      chestY = lerp(chestY, hs * W.chestY, p);
       spineX = lerp(spineX, W.spineX, p);
       chestX = lerp(chestX, W.chestX, p);
-      hipsY = lerp(hipsY, W.hipsY, p);
+      hipsY = lerp(hipsY, hs * W.hipsY, p);
       bodyRate = Math.max(bodyRate, 22);
     }
     const passAct = act && act.kind === 'pass' ? act : null;
@@ -462,6 +464,8 @@ export class AthleteView {
     const d = this.rig.dims;
     const st = a.state;
     const ankleY = d.ankleY;
+    // the hitting side's leg (right for a righty): plants first, tucks most in the air
+    const hs = a.hand;
 
     if (st === 'air') {
       // body-relative leg pose
@@ -492,17 +496,17 @@ export class AthleteView {
         let up = hipH - (d.thigh + d.shin) * 0.985;
         let fwd = -0.02 * H;
         // tucked: knees bent, feet behind (spike air pose)
-        const tk = Math.max(0, tuck - kick * 0.8) * (s > 0 ? 1 : 0.8);
+        const tk = Math.max(0, tuck - kick * 0.8) * (s === hs ? 1 : 0.8);
         up = lerp(up, hipH - (0.33 - 0.045 * bow) * H, tk);
         fwd = lerp(fwd, -(0.15 + 0.05 * bow) * H, tk);
         // prepare to land
         const prep = Math.max(descending * 0.7, kick * 0.6);
         up = lerp(up, hipH - 0.42 * H, prep);
-        fwd = lerp(fwd, (s > 0 ? 0.02 : 0.06) * H, prep);
+        fwd = lerp(fwd, (s === hs ? 0.02 : 0.06) * H, prep);
         lat = lerp(lat, s * 0.1 * H, prep);
         // jackknife after the hit
         up = lerp(up, hipH - 0.35 * H, pike * 0.8);
-        fwd = lerp(fwd, (s > 0 ? 0.1 : 0.14) * H, pike * 0.8);
+        fwd = lerp(fwd, (s === hs ? 0.1 : 0.14) * H, pike * 0.8);
         this.bodyToWorld(lat, 0, fwd, _t3);
         const target = _t4.set(a.rpos.x + _t3.x, a.rpos.y + up, a.rpos.z + _t3.z);
         f.cur.lerp(target, damp(rise < 1 ? 30 : 16, dt));
@@ -511,7 +515,7 @@ export class AthleteView {
         f.stepping = false;
       }
     } else if (st === 'load') {
-      // two-step plant: right foot lands first, left closes slightly ahead
+      // two-step plant: the hitting-side foot lands first (right for a righty), the other closes slightly ahead
       if (!this.loadFeetInit) {
         this.loadFeetInit = true;
         const lead = clamp(a.loadApproach * 0.1, 0, 0.45) + 0.05;
@@ -519,7 +523,7 @@ export class AthleteView {
           const s = i === 0 ? -1 : 1;
           const f = this.feet[i];
           f.from.copy(f.cur);
-          const fwd = lead + (s < 0 ? 0.06 * H : -0.01 * H);
+          const fwd = lead + (s !== hs ? 0.06 * H : -0.01 * H);
           this.bodyToWorld(s * 0.12 * H, 0, fwd, _t3);
           f.to.set(a.rpos.x + _t3.x, ankleY, a.rpos.z + _t3.z);
         }
@@ -527,7 +531,7 @@ export class AthleteView {
       for (let i = 0; i < 2; i++) {
         const s = i === 0 ? -1 : 1;
         const f = this.feet[i];
-        const t0 = s > 0 ? 0 : 0.035;
+        const t0 = s === hs ? 0 : 0.035;
         const p = smooth01((a.loadT - t0) / 0.075);
         f.cur.lerpVectors(f.from, f.to, p);
         f.cur.y = ankleY + Math.sin(Math.PI * p) * 0.05 * H * (p < 1 ? 1 : 0);
@@ -655,8 +659,10 @@ export class AthleteView {
     const tSinceLand = tr - this.landT;
 
     for (let i = 0; i < 2; i++) {
-      const s = i === 0 ? -1 : 1; // -1 left, +1 right (hitting arm)
-      const hitting = s > 0;
+      // -1 left, +1 right. The keys are authored per arm (x * s mirrors them), so a lefty only swaps roles:
+      // the left arm hits, the right arm tosses, points at the ball and pulls down
+      const s = i === 0 ? -1 : 1;
+      const hitting = s === a.hand;
       const arm = this.arms[i];
       const w = _w.set(0, 0, 0);
       const pole = _p.set(0, 0, 0);

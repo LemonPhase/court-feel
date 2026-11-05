@@ -233,7 +233,7 @@ export class Menu {
         <div class="pos-blurb">${p.blurb}</div>
         ${bar('Jump', b.jump, STAT_MAX.jump)}${bar('Speed', p.approachSpeed, STAT_MAX.speed)}
         ${bar('Power', b.power, STAT_MAX.power)}${bar('Control', p.ballControl, STAT_MAX.control)}
-        <div class="pos-h">${b.height.toFixed(2)} m${isCustomBody(id, custom) ? ' · <b>custom</b>' : ''}</div>`;
+        <div class="pos-h">${b.height.toFixed(2)} m${isCustomBody(id, custom) ? ' · <b>custom</b>' : ''}${this.settings.hand === 'left' ? ' · <b>lefty</b>' : ''}</div>`;
     }
   }
 
@@ -391,7 +391,7 @@ export class Menu {
     p.style.display = this.settingsOpen ? 'flex' : 'none';
   }
 
-  /** "Your athlete": height, vertical jump and spike power for each position you play (only your player, never the AI) */
+  /** "Your athlete": your hitting hand, and height, vertical jump and spike power for each position you play (only your player, never the AI) */
   private buildBodySettings(changed: () => void): HTMLElement {
     const s = this.settings;
     const wrap = h('div', 'body-set');
@@ -401,8 +401,29 @@ export class Menu {
       const p = POSITIONS[id];
       wrap.append(
         h('div', 'set-h', 'Your athlete'),
-        h('div', 'set-note', 'Height, vert and spike power for each position you play. Only your player changes; it applies right away.'),
+        h(
+          'div',
+          'set-note',
+          'Your hitting hand, and height, vert and spike power for each position you play. Only your player changes; it applies right away.',
+        ),
       );
+      // one hand for every position: spikes, tips and serves (passing, setting and blocking use both hands)
+      const handRow = h('label', 'set-row');
+      const handBtn = h('button', 'chip');
+      const syncHand = () => {
+        handBtn.textContent = s.hand === 'left' ? 'Left' : 'Right';
+        handBtn.classList.toggle('on', s.hand === 'left');
+      };
+      handBtn.onclick = (e) => {
+        e.preventDefault();
+        s.hand = s.hand === 'left' ? 'right' : 'left';
+        syncHand();
+        this.refreshPosCards();
+        changed();
+      };
+      syncHand();
+      handRow.append(h('span', 'set-l', 'Hitting hand'), handBtn);
+      wrap.append(handRow);
       const tabs = h('div', 'body-tabs');
       for (const pid of Object.keys(POSITIONS) as PositionId[]) {
         const t = h('button', 'chip body-tab', POSITIONS[pid].short);

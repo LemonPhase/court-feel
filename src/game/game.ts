@@ -7,7 +7,7 @@ import { clamp01, damp, lerp, Rng } from '../core/mathx';
 import { CameraRig, type FollowTarget } from '../camera/cameraRig';
 import { Arena } from '../world/arena';
 import { Post } from '../fx/post';
-import { Athlete } from './athlete';
+import { Athlete, handSign } from './athlete';
 import { bodyStats } from './body';
 import { UserController } from './userController';
 import { DebugOverlay, type DebugInfo } from '../ui/debug';
@@ -185,7 +185,7 @@ export class Game {
     });
     this.contact.userAimYaw = () => this.rig.yaw;
 
-    this.me = new Athlete('OH', 1, { body: settings.bodies.OH });
+    this.me = new Athlete('OH', 1, { body: settings.bodies.OH, hand: settings.hand });
     this.me.isUser = true;
     this.me.place(-3.2, 4.5, 0);
     this.addAthlete(this.me);
@@ -296,7 +296,7 @@ export class Game {
   setUserPosition(pos: PositionId): void {
     this.position = pos;
     const old = this.me;
-    const a = new Athlete(pos, 1, { body: this.settings.bodies[pos] });
+    const a = new Athlete(pos, 1, { body: this.settings.bodies[pos], hand: this.settings.hand });
     a.isUser = true;
     this.removeAthlete(old);
     this.me = a;
@@ -307,9 +307,11 @@ export class Game {
   /** the user's model has to be rebuilt for a new height (done once per frame at most, while a slider drags) */
   private userViewDirty = false;
 
-  /** apply your custom body (settings) to the user's athlete, live, also mid-drill */
+  /** apply your custom body and hitting hand (settings) to the user's athlete, live, also mid-drill */
   applyUserBody(): void {
     const me = this.me;
+    me.hand = handSign(this.settings.hand);
+    this.rig.shoulderSide = me.hand;
     const st = bodyStats(me.role, this.settings.bodies[me.role]);
     if (st.height === me.stats.height && st.jump === me.stats.jump && st.power === me.stats.power) return;
     const h = me.height;

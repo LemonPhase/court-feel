@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALL, COURT, PLAYER, type PositionId, type PositionStats } from '../config';
+import { BALL, COURT, PLAYER, type Hand, type PositionId, type PositionStats } from '../config';
 import { standingReach } from '../character/rig';
 import { bodyStats, type CustomBody } from './body';
 import { angleLerp, clamp, clamp01, damp, dirFromYaw, lerp, rightFromYaw, wrapAngle } from '../core/mathx';
@@ -74,6 +74,8 @@ export class Athlete {
   side: 1 | -1;
   team: 0 | 1;
   isUser = false;
+  /** hitting hand: +1 right, -1 left (only the user's athlete can be a lefty) */
+  hand: 1 | -1 = 1;
   height: number;
   standReach: number;
   jumpMax: number;
@@ -119,12 +121,13 @@ export class Athlete {
   number = 0;
   time = 0;
 
-  /** `body`: a custom height / vert / spike power for this position (the user's settings) */
-  constructor(role: PositionId, side: 1 | -1, opts: { height?: number; body?: CustomBody } = {}) {
+  /** `body`: a custom height / vert / spike power for this position, `hand`: the hitting hand (the user's settings) */
+  constructor(role: PositionId, side: 1 | -1, opts: { height?: number; body?: CustomBody; hand?: Hand } = {}) {
     this.role = role;
     this.stats = bodyStats(role, opts.body);
     this.side = side;
     this.team = side === 1 ? 0 : 1;
+    this.hand = handSign(opts.hand);
     this.height = opts.height ?? this.stats.height;
     this.standReach = standingReach(this.height);
     this.jumpMax = this.stats.jump;
@@ -145,12 +148,13 @@ export class Athlete {
     this.jumpMax = this.stats.jump;
   }
 
-  /** take another athlete's body as is (forward-simulation copies must jump and reach like the real one) */
+  /** take another athlete's body as is (forward-simulation copies must jump and reach like the real one, with the same hand) */
   copyBody(from: Athlete): void {
     this.stats = from.stats;
     this.height = from.height;
     this.standReach = from.standReach;
     this.jumpMax = from.jumpMax;
+    this.hand = from.hand;
   }
 
   /** teleport (no interpolation streak) */
@@ -455,7 +459,7 @@ export class Athlete {
   idealContact(out: THREE.Vector3, at?: THREE.Vector3): THREE.Vector3 {
     const p = at ?? this.pos;
     const f = dirFromYaw(this.yaw, _f);
-    const r = rightFromYaw(this.yaw, _r);
+    const r = this.hitSide(_r);
     const H = this.height;
     // ball centre in front of the hitting shoulder, a palm below full reach
     return out.set(p.x + r.x * 0.09 * H + f.x * 0.1 * H, p.y + this.standReach - 0.16, p.z + r.z * 0.09 * H + f.z * 0.1 * H);
@@ -469,6 +473,16 @@ export class Athlete {
   right(out = new THREE.Vector3()): THREE.Vector3 {
     return rightFromYaw(this.yaw, out);
   }
+
+  /** unit vector towards the hitting-hand side (the right for a righty, the left for a lefty) */
+  hitSide(out = new THREE.Vector3()): THREE.Vector3 {
+    return rightFromYaw(this.yaw, out).multiplyScalar(this.hand);
+  }
+}
+
+/** +1 for a right-handed athlete, -1 for a lefty */
+export function handSign(hand?: Hand): 1 | -1 {
+  return hand === 'left' ? -1 : 1;
 }
 
 const _f = new THREE.Vector3();
