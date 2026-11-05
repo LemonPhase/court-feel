@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import type { PositionId } from '../../config';
-import type { Athlete } from '../athlete';
+import type { Athlete, Grade } from '../athlete';
 import type { ContactEvent } from '../contact';
 import type { Game } from '../game';
 import type { Outcome } from '../judge';
-import { makeRingTexture } from '../../world/textures';
+import { repMark, type RankedRun } from '../ranked';
+import { makeFadeTexture, makeRingTexture } from '../../world/textures';
 
 export type ModeId = 'free' | 'spike' | 'block' | 'receive' | 'setter' | 'rally';
 
@@ -84,41 +85,152 @@ export abstract class Mode {
     this.bestStreak = Math.max(this.bestStreak, this.streak);
     this.g.hud.setStreak(this.streak);
   }
+
+  /** the ranked run being played (null in practice) */
+  protected get ranked(): RankedRun | null {
+    return this.g.ranked;
+  }
+
+  /**
+   * A rep is about to start. In a ranked run its randomness (feed, AI errors) comes from the rep's
+   * own seed, so it is the same ball for everyone; once every rep is played the run ends (false).
+   */
+  protected beginRep(): boolean {
+    const r = this.ranked;
+    if (!r) return true;
+    if (r.done) {
+      r.bestStreak = this.bestStreak;
+      this.g.finishRanked();
+      return false;
+    }
+    this.g.rng.reseed(r.seedFor(r.current));
+    return true;
+  }
+
+  /** a rep was scored: a ranked run records it */
+  protected logRep(points: number, label: string, grade: Grade | null = null, kmh: number | null = null): void {
+    this.ranked?.record({ points, label, grade, kmh });
+  }
+
+  /** N before the rep is scored: practice throws the rep away, a ranked run counts it as 0 */
+  protected skipRep(): void {
+    const r = this.ranked;
+    if (!r) return;
+    this.reps++;
+    this.bumpStreak(false);
+    r.skip();
+    this.g.hud.showBanner('SKIPPED  +0', 'bad');
+  }
+
+  /** redraw the scoreboard (a scored drill shows its score, the split and the run strip) */
+  refreshScore(): void {}
+
+  /** the scoreboard: score, split against your best and the run strip in a ranked run; `detail` is what the drill is doing now */
+  protected showScore(detail: string[] = []): void {
+    const r = this.ranked;
+    this.g.hud.setScoreboard({
+      points: this.score,
+      split: r?.split ?? null,
+      run: r ? { marks: r.reps.map(repMark), length: r.length } : null,
+      status: r ? (r.unranked ? 'unranked' : 'ranked') : 'practice',
+      detail: r ? (r.week ? ['this week', ...detail] : detail) : [`${this.reps} ${this.reps === 1 ? 'rep' : 'reps'}`, ...detail],
+    });
+  }
+
+  /** the N key in the hints: in a ranked run it skips the rep for 0 points */
+  protected resetHint(practice: string): string {
+    return this.ranked ? `${kbd('N')} skip rep (scores 0)` : `${kbd('N')} ${practice}`;
+  }
 }
 
-/** translucent target zone on the floor with a bright border */
+/** the target zone's solid edge band (m) */
+const ZONE_EDGE = 0.15;
+/** its light walls rise this high (m), fading out upwards: they make the zone readable from a hitter's low angle */
+const ZONE_WALL = 0.9;
+/** fill and wall opacity: base and pulse */
+const ZONE_FILL = [0.3, 0.08] as const;
+const ZONE_GLOW = [0.5, 0.12] as const;
+/** the court floor is pulled towards the camera with a polygon offset: the zone is pulled further, or it loses the depth test at grazing angles */
+const ZONE_OFFSET = { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 };
+
+/** a target zone on the floor: a tinted fill, a solid edge band and low light walls that fade upwards */
 export class ZoneMarker {
   readonly group = new THREE.Group();
   private fill: THREE.Mesh;
-  private border: THREE.LineSegments;
+  /** edge bands: near, far, left, right */
+  private edges: THREE.Mesh[] = [];
+  private walls: THREE.Mesh[] = [];
+  private glow: THREE.MeshBasicMaterial;
   private t = 0;
 
   constructor(color = 0xffc23a) {
+    const floor = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
     this.fill = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16, depthWrite: false }),
+      floor,
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: ZONE_FILL[0], depthWrite: false, ...ZONE_OFFSET }),
     );
-    this.fill.rotation.x = -Math.PI / 2;
-    const edges = new THREE.EdgesGeometry(new THREE.PlaneGeometry(1, 1));
-    this.border = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }));
-    this.border.rotation.x = -Math.PI / 2;
-    this.group.add(this.fill, this.border);
+    const band = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+      toneMapped: false,
+      ...ZONE_OFFSET,
+    });
+    for (let i = 0; i < 4; i++) this.edges.push(new THREE.Mesh(floor, band));
+    this.glow = new THREE.MeshBasicMaterial({
+      color,
+      map: makeFadeTexture(),
+      transparent: true,
+      opacity: ZONE_GLOW[0],
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    // a unit wall standing on the floor, facing +z
+    const wall = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+    for (let i = 0; i < 4; i++) this.walls.push(new THREE.Mesh(wall, this.glow));
+    this.group.add(this.fill, ...this.edges, ...this.walls);
     this.group.position.y = 0.012;
     this.group.renderOrder = 2;
+    for (const w of this.walls) w.renderOrder = 3;
   }
 
   set(x0: number, x1: number, z0: number, z1: number): void {
     const w = Math.abs(x1 - x0);
     const d = Math.abs(z1 - z0);
     this.group.position.set((x0 + x1) / 2, 0.012, (z0 + z1) / 2);
-    this.fill.scale.set(w, d, 1);
-    this.border.scale.set(w, d, 1);
+    this.fill.scale.set(w, 1, d);
+    const e = ZONE_EDGE;
+    const [near, far, left, right] = this.edges;
+    near.scale.set(w, 1, e);
+    near.position.set(0, 0.001, d / 2 - e / 2);
+    far.scale.set(w, 1, e);
+    far.position.set(0, 0.001, -d / 2 + e / 2);
+    left.scale.set(e, 1, d - 2 * e);
+    left.position.set(-w / 2 + e / 2, 0.001, 0);
+    right.scale.set(e, 1, d - 2 * e);
+    right.position.set(w / 2 - e / 2, 0.001, 0);
+    const [wn, wf, wl, wr] = this.walls;
+    wn.scale.set(w, ZONE_WALL, 1);
+    wn.position.set(0, 0, d / 2);
+    wf.scale.set(w, ZONE_WALL, 1);
+    wf.position.set(0, 0, -d / 2);
+    wl.scale.set(d, ZONE_WALL, 1);
+    wl.rotation.y = Math.PI / 2;
+    wl.position.set(-w / 2, 0, 0);
+    wr.scale.set(d, ZONE_WALL, 1);
+    wr.rotation.y = Math.PI / 2;
+    wr.position.set(w / 2, 0, 0);
     this.group.visible = true;
   }
 
   update(dt: number): void {
     this.t += dt;
-    (this.fill.material as THREE.MeshBasicMaterial).opacity = 0.12 + Math.sin(this.t * 4) * 0.05;
+    const p = Math.sin(this.t * 4);
+    (this.fill.material as THREE.MeshBasicMaterial).opacity = ZONE_FILL[0] + p * ZONE_FILL[1];
+    this.glow.opacity = ZONE_GLOW[0] + p * ZONE_GLOW[1];
   }
 }
 

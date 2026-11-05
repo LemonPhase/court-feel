@@ -558,6 +558,99 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   same timing serves just as well; the plant is left-right; in first person the left hand is drawn back
   beside the head with the left shoulder turned away; the stored hand is sanitised.
 
+## Ranked runs (#20, step 1)
+- Request (a player): leaderboards for the scored drills. Today's totals can't be compared: every drill
+  is endless, the feeds come from one RNG shared across the session (`Game.rng`), N throws a rep away
+  for free, and several settings make a drill easier.
+- Change: a **RANKED RUN** button next to PLAY (and `?ranked=spike&pos=OH`). A run is 20 reps on one
+  board (drill × position). The rules live in `src/game/ranked.ts` (pure, tested in Node): every board
+  has a fixed season seed, and at the start of each rep the drill reseeds `g.rng` with
+  `hash(boardSeed, k)` (`Mode.beginRep`), so the target zone, feed, serve, AI setter error, hitter aim
+  and blocker read of rep k don't depend on reps 1 to k-1. N scores the rep as 0, breaks the streak
+  and counts towards the 20 (`Mode.skipRep`); N during a rep's result banner adds nothing. The Spike
+  Drill follows the issue's call and block script with the keys locked, and announces each rep
+  ("Rep 7/20 · set 2: Go (fast to the pin) · block: off"). After rep 20 the game pauses on a results
+  screen (total, Perfects, best streak, every rep).
+- Locked settings are an **effective-settings layer** (`Game.locked`): aim assist, slow-mo, the net and
+  the user's body are read through it, so the player's saved settings are never overwritten. Changing
+  one mid-run (`applySettings` compares a snapshot) makes the run UNRANKED, and from then on the
+  player's own settings apply.
+- The drills' points moved, unchanged, from the modes into `SCORING` in `config.ts`. `RANKED.ruleset`
+  versions the scoring and difficulty: a test hashes `SCORING`, `RANKED` and the difficulty sections
+  and fails until the version is bumped and the new hash recorded.
+- Measured in the browser (dev server, bots, `g.play` stepping): Spike OH, perfect bot 5 070 pts
+  (20/20 Perfect at 108 km/h, 15 on-target kills, 5 tooled off the block, 200 s of sim); same board,
+  sloppy bot 3 572 (11 Perfect, 3 no-attacks) with **the same 20 target zones and the same mixed calls
+  on reps 16-20**. Block MB, good bot: 1 200 (8 stuffs), 108 s. Setter S, good bot: 2 900 (20 Perfect,
+  18 kills), 123 s. Receive L, good bot, N on rep 3 and aim assist changed on rep 5: the skip scored 0
+  and counted, the HUD switched to UNRANKED, the run finished as an unranked 1 400 in 152 s. A run takes
+  about 2 to 3.5 minutes of play.
+- Tests: +24, 161 in all (`tests/ranked.test.ts`; the quick-start link tests in `tests/settings.test.ts`
+  gained the `ranked` field).
+- **First play of the ranked Spike Drill** (MatusGib). Notes: (1) the set calls are confusing, the
+  setter should call what he sets; (2) the target zone is hard to find on court; (3) the automatic
+  replay should be off; (4) the score should be centred with a live +/- against your best at the same
+  point of the run, green or red; (5) the score UI should be cleaner and pop more.
+  - Setter's call: every rep (practice too) the AI setter calls the set as the coach tosses, in a speech
+    bubble over their head and out loud (`setterCall` with a `word`: "go" for quicks and fast sets,
+    "high" otherwise), the same bubble and voice as Mini Rally. The "Rep 7/20 · set 2..." message is gone.
+    Bubbles stay below the scoreboard (`Hud.placeCall`).
+  - Target zone (`ZoneMarker`, also Free Play's serve targets): fill 0.16 -> 0.30, a solid 0.15 m edge
+    band instead of a 1 px line, 0.9 m additive light walls fading upwards so the zone reads from a
+    hitter's low angle, and the floor overlays' polygon offset so it wins the depth test at grazing angles.
+  - Auto replay: off during ranked runs in every drill (choice: ranked only, not the practice Spike
+    Drill, where it is a showcase and the e2e checks it). R still replays.
+  - Personal bests (`src/game/bests.ts`): the best run per board and ruleset in localStorage, with its
+    points per rep. `RankedRun.split` = your total minus your best's total after as many reps. Beats
+    your best: a higher total, then more Perfects, then the longer streak; a full tie keeps the earlier
+    run. Never saved from an unranked run or a bot run. Stored bests are sanitised (reps must add up to
+    the total). The results screen shows your best and the difference, or New personal best.
+  - Scoreboard (`Hud.setScoreboard`, the four scored drills; Free Play and Mini Rally keep the title and
+    score line): the score as a 54 px italic 900 numeral like the km/h and streak readouts, one pop
+    when points land; the split beside it (green ahead, red behind, the system's own colours); a strip
+    of 20 segments, one per rep (gold Perfect, cyan Good, orange weak, red 0, white the rep in play);
+    one detail line on a dark backing (RANKED RUN / UNRANKED, the set, the block, the target).
+  - Measured in the browser: with a stored best of 200 a rep, the good bot's 997 after four reps showed
+    +197; against 300 a rep, 1 573 after six showed -227 in red. The setter called HIGH! for the high
+    balls of reps 1-4 and GO! for the fast set of rep 7. On a phone-sized screen (844 x 390, touch
+    controls) the scoreboard ends at 92 px and the setter's bubble starts at 136 px.
+  - Tests: +12, 173 in all (`tests/bests.test.ts`).
+
+## Leaderboard: medals, the weekly board, sharing and the online boards (#20, steps 2-3)
+- Asked (MatusGib): focus on the Spike Drill, the drill that plays best for now (the other drills' ranked
+  runs off), and build the rest of the plan from the research: medals (Trackmania, Wii Sports Resort
+  training), a weekly board with fresh balls (Spelunky / GeoGuessr dailies), a share card (Wordle), instant
+  retry (Trackmania), the online boards with the players just above you and who is next up (Autolog,
+  Yu-kai Chou), and a medal table (Voltaic's overall rank, read as an Olympic table).
+- Ranked runs: `RANKED_MODES` (`src/game/boards.ts`) is the Spike Drill only; the Block, Receive and Setter
+  rules stay in `boardFor` for when they reopen. `boards.ts` imports only the config, so the server shares
+  the board ids, the weekly rotation and the medals with the game.
+- Medals: Bronze / Silver / Gold per position at 60 / 75 / 90% of the perfect bot's season run, rounded to
+  50 (`RANKED.medals`). Measured on the five season boards (one run each): sloppy / good / perfect = OH
+  3572 / 4765 / 5070, OPP 2848 / 4996 / 5186, MB 3513 / 4794 / 4980, S 2344 / 3886 / 3966, L 1976 / 3096 /
+  3198. The good bot makes gold everywhere, the sloppy bot bronze or nothing. No player data yet: check
+  them against real runs. The Coach medal (`RANKED.coach`) waits for a club player's run.
+- Weekly board: ISO weeks (UTC); the position rotates OH, OPP, MB, S, L; its seed is the season seed, the
+  board and the week (`1:spike:L:2026-W45`). The server takes this week's and last week's (a run that
+  ends past midnight on Sunday).
+- Results: the medal and what the next one takes, R runs again, Share copies the run (board, total, medal,
+  place, 20 squares, a link to the same board), Leaderboard. The first finished run asks for a name.
+- Online boards: `api/leaderboard.ts` (Vercel Function, named GET / POST exports) over `src/net/server.ts`
+  (web-standard Request / Response) and a store: Upstash Redis over its REST API with plain fetch (no new
+  dependency), a memory store for the Vite dev server (a plugin in `vite.config.ts` serves
+  `/api/leaderboard`) and the tests. A board is a sorted set: total, then Perfects, then best streak, then
+  the earlier run packed into one score (`rankScore`), only ever raised (ZADD GT): your best counts. The
+  medal table reads the top 500 of each season board. Production and preview deployments keep separate
+  boards. The server's import chain carries `.js` extensions (native ES modules on the serverless runtime);
+  the game resolves them to the `.ts` files as before.
+- Not verified here: the deployed function (no Vercel access from this machine). Locally: the dev server's
+  board took four stand-in players and a run with a typed name ("#2 of 5 on the board · Next up: Kasia
+  4 800 (+323)"), the board and medal table showed them, Share copied, R started the next run with the
+  best loaded, and `?ranked=weekly` started the libero's week-45 board.
+- Tests: +30, 203 in all (`tests/leaderboard.test.ts`: ISO weeks and the rotation, weekly seeds, medals,
+  what the server refuses, the board order, best-only boards, your place and who is next, the two above
+  you, the per-player limit, renames, the medal table, the share card).
+
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,
@@ -605,6 +698,14 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   ring and the trail), not a flash: no full-screen flashes of any kind.
 - The hitting hand is one setting for the player, not per position, and only the user's athlete
   has it: timing windows, power and reach are identical for both hands, so both share one leaderboard.
+- A ranked run never writes the locked settings into the player's settings: they are read through
+  `Game.locked`, so a run can't leave someone's practice aim assist, net or custom body changed.
+- The leaderboard has no accounts: a random id in the browser and a nickname. It keeps the barrier to
+  zero for a club; impersonation and invented runs are possible until verified runs (#18).
+- Personal bests split rep by rep (your total against your best's after the same number of reps), not
+  against the best's final total: a run is judged where it stands, like a speedrun split.
+- N in a ranked run scores 0 and still counts as a rep: otherwise players could re-roll every feed
+  they don't like. Practice keeps N as a free reset.
 - Lefties keep the same attack lanes: they already mirror (a lefty's left pin is a righty's right pin,
   21° off straight). If players want the off-hand approach straighter, that is one lane change for both
   hands, not a lefty special case.

@@ -189,7 +189,8 @@ export class Effects {
             h.impact = new THREE.Vector3(e.x, 0, e.z);
             h.impactT = g.simTime;
           }
-          if (imp.perfect && imp.user && g.settings.replays && FX.replayEnabled && !g.inMenu) {
+          // never during a ranked run: 20 reps keep their pace (R still replays)
+          if (imp.perfect && imp.user && g.settings.replays && FX.replayEnabled && !g.inMenu && !g.ranked) {
             this.replayAt = g.simTime + 0.55;
             this.replayTo = g.simTime + FX.replayPost;
             this.replay.impact.set(e.x, 0, e.z);
@@ -222,9 +223,9 @@ export class Effects {
       if (g.modeId === 'rally') setTimeout(() => this.audio.whistle(), 250);
     });
     ev.on('crowd', ({ amount, cheer }) => this.audio.crowd(amount, cheer));
-    ev.on('setterCall', ({ athlete, call }) => {
+    ev.on('setterCall', ({ athlete, call, word }) => {
       const d = athlete.pos.distanceTo(g.rig.camera.position);
-      this.audio.shout(call === 'in' ? 'go' : call === 'out' ? 'high' : 'help', clamp01(1.2 - d / 12));
+      this.audio.shout(word ?? (call === 'in' ? 'go' : call === 'out' ? 'high' : 'help'), clamp01(1.2 - d / 12));
     });
   }
 

@@ -205,8 +205,10 @@ screen show them. Only your player uses them; AI players keep the defaults.
    practice: you start behind the end line, toss with Q and hit with the left
    mouse (jump for a topspin jump serve) at a target zone.
 2. **Spike Drill** — a coach tosses to the setter, the setter sets your lane.
-   Score = timing grade + power (km/h) + kill + hitting the highlighted target
-   zone. A cyan ring shows where your feet should be at contact. As the middle
+   Every rep the setter calls the set as the coach tosses ("HIGH!", "GO!",
+   "1!"), in a bubble over their head and out loud. Score = timing grade +
+   power (km/h) + kill + hitting the target zone (a gold box with light walls
+   on their floor). A cyan ring shows where your feet should be at contact. As the middle
    you hit a real quick: run in as the pass goes up and leave the floor as the
    setter touches the ball — the set is sent to where your hand will be at the
    top of your jump (jump late and the quick comes to the usual spot, too fast).
@@ -276,10 +278,111 @@ screen show them. Only your player uses them; AI players keep the defaults.
 
 The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 
+### Ranked runs
+
+The **Spike Drill** has ranked runs (the other drills score in practice; their
+ranked boards are off for now, `RANKED_MODES` in `src/game/boards.ts`). On the
+start screen, under PLAY: **RANKED RUN** plays the season board of the selected
+position, **THIS WEEK** plays the week's featured board, and **Leaderboard**
+opens the online boards. A ranked run is a fixed run of **20 reps** whose total
+can be compared between players. Practice (PLAY) stays exactly as it was.
+
+* **The same balls for everyone.** Each board (drill × position) has a fixed
+  seed for the season, and rep *k* is generated from its own seed: the target
+  zone, the feed, the serve, the AI setter's error, the hitter's aim, the
+  blockers' read. Rep 7 is the same ball however reps 1–6 went. The AI still
+  reacts to what you do.
+* **N counts.** N skips the rep for **0 points** and breaks the streak (in
+  practice it still throws the rep away). The pause menu restarts the whole
+  run at any time.
+* **Locked settings.** Aim assist at the default 55%, no slow-mo assist, the
+  men's net and the position's default body (your custom height, vert and
+  power are set aside, not changed). Changing one of these mid-run makes the
+  run **UNRANKED**: it goes on with your own settings but doesn't count.
+  Camera, FOV, sensitivity, volume, hints, replays, touch or mouse and your
+  hitting hand are up to you.
+* **Spike Drill script.** The set call and the block follow a script, the keys
+  are locked, and the setter calls each set as the coach tosses:
+
+  | Reps | Call | Block |
+  |---|---|---|
+  | 1–5 | 1 | off |
+  | 6–10 | 2 (fast) | off |
+  | 11–15 | 1 | single |
+  | 16–20 | a seeded mix of 1 / 2 / 3 | double |
+
+  The setter (attack on two) and the libero (pipe) have one set each and
+  follow only the block column.
+* **Boards.** One season board per position (OH, OPP, MB, S, L), each with its
+  own fixed balls for the season. **This week's board** is one position with
+  new balls every week (ISO weeks, Monday to Sunday UTC); the position rotates
+  OH → OPP → MB → S → L, so it comes round every five weeks.
+* **Medals.** Every board has Bronze, Silver and Gold totals for its position
+  (`RANKED.medals`), so there is always a target short of first place: the
+  start screen shows your best and what the next medal takes, the results show
+  the medal you made. A **Coach** medal (a strong club player's run, like a
+  track author's time) can be set per position in `RANKED.coach`; none yet.
+  First cut from the autopilot: 60 / 75 / 90% of the perfect bot's run.
+* **Your best and the split.** Your best run on each board is kept in this
+  browser. During a run the scoreboard shows your score in the centre and, next
+  to it, how far ahead (green) or behind (red) your best you are after the same
+  number of reps. A strip of 20 segments under the score fills in as you go:
+  gold for a Perfect that scored, cyan for Good, orange for a weaker contact,
+  red for no points.
+* **No automatic replays** during a run, so the 20 reps keep their pace (R
+  still replays a touch).
+* **Results.** After rep 20 the run ends on a results screen: the total and
+  medal, what the next medal takes, your best and how this run compares (or
+  **New personal best**), where you landed on the online board and who is next
+  up ("#3 of 11 · Next up: Kasia 2 210 (+70)"), Perfect contacts and best
+  streak (the tie-breaks, in that order), and every rep's result, timing, ball
+  speed and points. **R** (or Enter) runs again straight away. **Share** copies
+  the run for a group chat: the board, total, medal and place, one square per
+  rep in the strip's colours, and a link that opens the same board. An
+  unranked run, or one the autopilot played, never becomes your best and never
+  goes on the leaderboard.
+* **Scoring and seasons.** The points per rep are in `SCORING` in
+  `src/config.ts` (practice scores the same). `RANKED.ruleset` is the season:
+  scores only compare while the scoring and the difficulty stay the same, so a
+  test hashes `SCORING`, `RANKED` and the difficulty sections (`TIMING CONTACT
+  ASSIST PLAYER POSITIONS BODY BALL AI`) and fails when they change without a
+  version bump.
+
+### Leaderboard
+
+The online boards: the top 10 of each season board, this week's board, and a
+**medal table** over all the season boards (most golds first, like an Olympic
+table). Your line is marked; outside the top 10 you see your line and the two
+players just above you. There are no accounts: the first ranked run you finish
+asks for a name (2 to 16 letters or digits), and a random id in your browser
+keeps you as you. Only your best run on each board counts.
+
+The server (`api/leaderboard.ts`, a Vercel Function over `src/net/server.ts`)
+refuses anything impossible: a board that isn't open, a rep worth more than a
+rep can be, the wrong number of reps, a run played faster than 20 reps can be
+(`RANKED.maxRepPoints`, `RANKED.minRunMs`), a weekly board that isn't this
+week's or last week's. One run per player per 30 s and 40 an hour per address.
+A determined cheat could still invent a run: verified runs (replaying the input
+log on the server) come with #18.
+
+**Switching it on (Vercel):** the project needs a Redis store. In the Vercel
+dashboard: Storage → Create / Marketplace → **Upstash for Redis** (the free
+plan is plenty), connected to this project. That sets `KV_REST_API_URL` and
+`KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` / `_TOKEN`), and the next
+deployment has a leaderboard. Production keeps its own boards; preview
+deployments share a separate test set. Without the store the API answers 503
+and the game says the online leaderboard is unavailable (personal bests still
+work).
+
+**Locally:** `npm run dev` serves `/api/leaderboard` itself, with the same
+handler over a store in memory: the leaderboard works on your machine, and the
+runs vanish when the dev server restarts.
+
 ### Replays
 
 A Perfect spike or serve that hits the floor plays back by itself in slow
-motion from a broadcast camera (settings: "Perfect-spike replays"). Anything
+motion from a broadcast camera (settings: "Perfect-spike replays"; never
+during a ranked run). Anything
 else you did well is kept too: after your attacks, serves, blocks and Perfect
 or Good passes, sets and digs the hint shows **R replay** as soon as the ball
 is dead ("Nice · R to replay"), and R plays the last few seconds around that
@@ -332,6 +435,8 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
+| `SCORING` | Points per rep in the Spike, Block, Serve Receive and Setter drills (practice and ranked runs) |
+| `RANKED` | Ranked runs: the ruleset (season) version, reps per run, the season seed, the locked aim assist, the Spike Drill's call and block script |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, your
@@ -370,7 +475,15 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   grade and speed with either hand, the stored hand is sanitised), the block
   shadow, the touch pad model, the pointer-lock fallback, the replay of
   athletes added mid-recording (the Spike Drill's blockers), stored-settings
-  and quick-start-link validation, and the error reporter.
+  and quick-start-link validation, the ranked run (rep k's seed doesn't
+  depend on the earlier reps, N scores 0 and counts, the locked settings and
+  the UNRANKED check, the Spike Drill script, the boards, the ruleset hash,
+  your best and the split against it, what beats your best, stored bests
+  sanitised, the strip's rep marks), the leaderboard (ISO weeks and the weekly
+  rotation, medals, what the server refuses, the board order, best-only boards,
+  your place and who is next, the two above you, the per-player limit,
+  renames, the medal table, the share card),
+  and the error reporter.
 * `npm run e2e` — starts Vite, loads the game in headless Chromium and plays
   every drill with an autopilot through the real input path (it plans its
   approach by forward-simulating the athlete). The simulation is stepped at a
@@ -389,8 +502,11 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   playwright install chromium`.
 * URL shortcuts for quick testing: `?mode=spike&pos=OH&cam=fp&bot=perfect`
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,
-  sloppy, tip; `&hand=left` plays as a lefty). Unknown values are ignored: an
-  unknown mode opens the menu, an unknown position falls back to OH.
+  sloppy, tip; `&hand=left` plays as a lefty). `?ranked=spike&pos=OH` starts
+  a ranked run on a season board instead of practice, `?ranked=weekly` this
+  week's board.
+  Unknown values are ignored: an unknown mode opens the menu, an unknown
+  position falls back to OH.
 
 ## Errors and bug reports
 
@@ -431,7 +547,9 @@ src/ai/                setter, hitter, blocker, server, team coordinator
 src/fx/                particles, trails, effects director, replay, post-processing
 src/audio/             Web Audio synthesis
 src/world/             arena and procedural textures
-src/ui/                HUD, menu/settings, touch controls overlay, crash screen, debug overlay
+src/ui/                HUD, menu/settings, results, leaderboard, share text, touch controls, crash screen, debug
+src/net/               the online leaderboard: wire format and checks, the server handler, the Upstash store, the client
+api/                   Vercel Functions (the leaderboard)
 tests/                 unit tests
 scripts/               e2e and screenshot tooling
 docs/screenshots/      the README screenshots (real frames from the game)

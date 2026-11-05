@@ -396,6 +396,96 @@ export const AI = {
   outOfSystemApex: 0.4,
 };
 
+/** points per rep in the scored drills (practice and ranked runs score the same) */
+export const SCORING = {
+  spike: {
+    /** timing grade of the attack: Perfect / Good / Early or Late */
+    perfect: 100,
+    good: 60,
+    other: 30,
+    /** 1 point per km/h over this */
+    kmhFloor: 70,
+    /** the ball lands in their court */
+    kill: 50,
+    /** ...inside the target zone */
+    onTarget: 100,
+    /** tooled off the block: the timing points plus this */
+    tooled: 50,
+  },
+  block: {
+    /** stuff block (Perfect): the ball goes straight down on their side */
+    stuff: 150,
+    point: 100,
+    /** soft block / touch: the ball stays in play */
+    soft: 60,
+    /** tooled off your hands */
+    tooled: 20,
+    /** no touch, the hitter missed */
+    hitterError: 10,
+  },
+  receive: {
+    /** by pass rating 0-3 (no pass, ace and no dig are 0) */
+    byRating: [0, 20, 60, 100],
+  },
+  setter: {
+    /** timing grade of the set: Perfect / Good / anything else */
+    perfect: 100,
+    good: 60,
+    other: 25,
+    /** your hitter kills it */
+    kill: 50,
+  },
+};
+
+/** a step of the Spike Drill's ranked script: set call (0 = the position's first call, 'mix' = seeded) and opposing block */
+export interface SpikeScriptStep {
+  reps: number;
+  call: number | 'mix';
+  block: 0 | 1 | 2;
+}
+
+/**
+ * Ranked runs (issue #20): a fixed number of reps, the same balls for everyone and locked
+ * settings. Bump `ruleset` whenever these, the scoring or the difficulty sections change
+ * (a new season: old scores no longer compare); the ranked test checks it.
+ */
+export const RANKED = {
+  ruleset: 1,
+  reps: 20,
+  /** every board's seed comes from this, the drill and the position */
+  seasonSeed: 20261105,
+  /** aim assist is locked to the default in a ranked run (slow-mo off, men's net, the position's default body) */
+  aimAssist: ASSIST.aim,
+  /** Spike Drill: the set call and block follow this script (the keys are locked) */
+  spikeScript: [
+    { reps: 5, call: 0, block: 0 },
+    { reps: 5, call: 1, block: 0 },
+    { reps: 5, call: 0, block: 1 },
+    { reps: 5, call: 'mix', block: 2 },
+  ] as SpikeScriptStep[],
+  /**
+   * Spike Drill medals per position: [bronze, silver, gold] totals. First cut from the autopilot
+   * on the season boards: 60 / 75 / 90% of the perfect bot's run, rounded to 50 (perfect bot:
+   * OH 5070, OPP 5186, MB 4980, S 3966, L 3198; the good bot makes gold, the sloppy bot bronze or
+   * nothing). Check them against what players score.
+   */
+  medals: {
+    OH: [3050, 3800, 4550],
+    OPP: [3100, 3900, 4650],
+    MB: [3000, 3750, 4500],
+    S: [2400, 2950, 3550],
+    L: [1900, 2400, 2900],
+  } as Record<PositionId, [number, number, number]>,
+  /** the Coach medal: a strong club player's run per position (like a track author's time); none set yet */
+  coach: {} as Partial<Record<PositionId, number>>,
+  /** the weekly featured board's position rotates through these, one a week */
+  weeklyPositions: ['OH', 'OPP', 'MB', 'S', 'L'] as PositionId[],
+  /** the leaderboard server rejects a rep worth more than this (a Perfect kill on target at 150 km/h is ~330) */
+  maxRepPoints: 400,
+  /** ...and a run that took less than this (ms): 20 reps can't be played faster */
+  minRunMs: 60_000,
+};
+
 /** the hand you spike, tip and serve with; passing, setting and blocking use both hands */
 export type Hand = 'right' | 'left';
 

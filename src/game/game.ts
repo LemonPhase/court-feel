@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, type PositionId, type Settings } from '../config';
+import { ASSIST, CAMERA, COURT, PLAYER, RANKED, SIM, TIMING, type PositionId, type Settings } from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
@@ -28,6 +28,9 @@ import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
 import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
+import { RankedRun } from './ranked';
+import { beats, bestFrom, loadBests, saveBest } from './bests';
+import { rankedBoard, weekOf, weeklyBoard, type RankedPlay } from './boards';
 
 /** consecutive frames that throw before the game stops and shows the crash screen */
 const MAX_FAILED_FRAMES = 10;
@@ -43,7 +46,9 @@ export type GameEvents = {
   land: { athlete: Athlete; impact: number };
   takeoff: { athlete: Athlete };
   /** a team-mate's call to the user (the setter's read of the pass: in system, high, help) */
-  setterCall: { athlete: Athlete; call: 'in' | 'out' | 'help' };
+  setterCall: { athlete: Athlete; call: 'in' | 'out' | 'help'; word?: 'high' | 'go' | 'help' };
+  /** the last rep of a ranked run is over: the game pauses for the results */
+  rankedDone: RankedRun;
 };
 
 /**
@@ -77,6 +82,8 @@ export class Game {
   mode: Mode | null = null;
   modeId: ModeId = 'spike';
   position: PositionId = 'OH';
+  /** the ranked run being played (null in practice) */
+  ranked: RankedRun | null = null;
   /** autopilot driving the user's inputs (tests / attract mode) */
   bot: { step(dt: number): void; after(): void } | null = null;
 
@@ -175,7 +182,7 @@ export class Game {
         return game.simTime;
       },
       env: this.env,
-      aimAssist: (a) => (a.isUser ? this.settings.aimAssist : 0.3),
+      aimAssist: (a) => (a.isUser ? (this.locked ? RANKED.aimAssist : this.settings.aimAssist) : 0.3),
       aimTargetFor: (a, out) => this.aimTargetFor(a, out),
       emitContact: (ev) => this.onContact(ev),
       rand: () => this.rng.next(),
@@ -292,11 +299,25 @@ export class Game {
     me.cmd.sprint = d > 2.5;
   }
 
+  /**
+   * A ranked run is on and still ranked: its locked settings apply instead of the player's own
+   * (aim assist at the default, no slow-mo, the men's net, the position's default body). The
+   * player's settings are never overwritten, only set aside until the run ends or goes unranked.
+   */
+  get locked(): boolean {
+    return !!this.ranked && !this.ranked.unranked;
+  }
+
+  /** your custom body for a position (the position's default in a ranked run) */
+  private userBody(pos: PositionId) {
+    return this.locked ? undefined : this.settings.bodies[pos];
+  }
+
   /** change the user's position stats (height, jump, etc; your custom body for that position from the settings) */
   setUserPosition(pos: PositionId): void {
     this.position = pos;
     const old = this.me;
-    const a = new Athlete(pos, 1, { body: this.settings.bodies[pos], hand: this.settings.hand });
+    const a = new Athlete(pos, 1, { body: this.userBody(pos), hand: this.settings.hand });
     a.isUser = true;
     this.removeAthlete(old);
     this.me = a;
@@ -312,10 +333,11 @@ export class Game {
     const me = this.me;
     me.hand = handSign(this.settings.hand);
     this.rig.shoulderSide = me.hand;
-    const st = bodyStats(me.role, this.settings.bodies[me.role]);
+    const body = this.userBody(me.role);
+    const st = bodyStats(me.role, body);
     if (st.height === me.stats.height && st.jump === me.stats.jump && st.power === me.stats.power) return;
     const h = me.height;
-    me.setBody(this.settings.bodies[me.role]);
+    me.setBody(body);
     if (me.height !== h) this.userViewDirty = true;
   }
 
@@ -336,7 +358,11 @@ export class Game {
   }
 
   // ------------------------------------------------------------ modes
-  startMode(id: ModeId, pos: PositionId): void {
+  /**
+   * Start a drill: practice, a ranked run on the drill's season board for this position (if it
+   * has one), or a ranked run on this week's featured board (which picks the drill and position).
+   */
+  startMode(id: ModeId, pos: PositionId, ranked: RankedPlay | null = null): void {
     this.mode?.teardown();
     this.bot = null;
     this.ballLive = false;
@@ -345,7 +371,17 @@ export class Game {
     this.judge.disarm();
     this.ball.hide();
     this.ball.lastTouch = null;
+    const week = ranked === 'weekly' ? weekOf(Date.now()) : null;
+    const board = week ? weeklyBoard(week) : ranked ? rankedBoard(id, pos) : null;
+    if (board) {
+      id = board.mode;
+      pos = board.pos;
+    }
+    this.ranked = board ? new RankedRun(board.mode, board.pos, this.settings, week?.id ?? null) : null;
+    if (this.ranked) this.ranked.best = loadBests()[this.ranked.board] ?? null;
     if (pos !== this.position || this.me.role !== pos) this.setUserPosition(pos);
+    this.applyLocked();
+    this.hud.setScoreboard(null);
     this.modeId = id;
     const mode = createMode(id, this, pos);
     this.mode = mode;
@@ -361,26 +397,54 @@ export class Game {
   stopMode(): void {
     this.mode?.teardown();
     this.mode = null;
+    this.ranked = null;
+    this.applyLocked();
+    this.hud.setScoreboard(null);
     this.judge.disarm();
     this.ball.hide();
+  }
+
+  /**
+   * The last rep of the ranked run is over: pause for the results (once). A ranked run that beats
+   * your best on the board replaces it (never an unranked run, and never one the autopilot played).
+   */
+  finishRanked(): void {
+    const r = this.ranked;
+    if (!r || this.paused) return;
+    this.paused = true;
+    if (!r.unranked && !this.bot && beats(r, r.best)) {
+      saveBest(r.board, bestFrom(r, Date.now()));
+      r.newBest = true;
+    }
+    this.events.emit('rankedDone', r);
   }
 
   // ------------------------------------------------------------ settings
   applySettings(): void {
     const s = this.settings;
+    // a locked setting changed mid-run: the run goes on unranked, with the player's own settings from now on
+    if (this.ranked?.checkSettings(s)) {
+      this.mode?.refreshScore();
+      this.hud.message('Unranked: a locked setting changed (aim assist, slow-mo, net or your athlete)', 3);
+    }
     this.rig.baseFov = s.fov;
     this.rig.shakeScale = s.shake;
-    this.arena.setNetHeight(s.womenNet ? COURT.netHeightWomen : COURT.netHeightMen);
-    this.rig.netTop = this.arena.netTop;
-    this.env.netTop = this.arena.netTop;
-    this.ball.version++;
     this.ball.showMarker = s.landingMarker;
-    this.rig.blockers = this.arena.cameraBlockers;
     if (!this.inMenu) this.rig.setMode(s.firstPerson ? 'fp' : 'tp');
     this.hud.showHints = s.showHints;
     this.fx?.audio.setVolume(s.volume);
-    this.applyUserBody();
+    this.applyLocked();
     saveSettings(s);
+  }
+
+  /** the settings a ranked run locks: the net height and your body (aim assist and slow-mo are read where they apply) */
+  private applyLocked(): void {
+    this.arena.setNetHeight(this.settings.womenNet && !this.locked ? COURT.netHeightWomen : COURT.netHeightMen);
+    this.rig.netTop = this.arena.netTop;
+    this.env.netTop = this.arena.netTop;
+    this.ball.version++;
+    this.rig.blockers = this.arena.cameraBlockers;
+    this.applyUserBody();
   }
 
   toggleCamera(): void {
@@ -657,7 +721,7 @@ export class Game {
     const step = 1 / SIM.hz;
     // slow-mo assist while lining up a contact
     let slowTarget = 1;
-    if (this.settings.slowmoAssist && this.me.state === 'air' && this.idealValid) {
+    if (this.settings.slowmoAssist && !this.locked && this.me.state === 'air' && this.idealValid) {
       const until = this.idealCache.t - this.simTime;
       if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4)
         slowTarget = ASSIST.slowmoScale;

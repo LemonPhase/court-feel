@@ -97,6 +97,7 @@ describe('quick-start links', () => {
     expect(parseLaunchParams('?mode=spike&pos=MB&cam=fp&bot=good&hand=left')).toEqual({
       mode: 'spike',
       pos: 'MB',
+      ranked: null,
       cam: 'fp',
       bot: 'good',
       hand: 'left',
@@ -117,6 +118,7 @@ describe('quick-start links', () => {
     expect(parseLaunchParams('?mode=block&cam=drone&bot=godmode&hand=ambi')).toEqual({
       mode: 'block',
       pos: 'OH',
+      ranked: null,
       cam: null,
       bot: null,
       hand: null,

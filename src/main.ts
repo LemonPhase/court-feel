@@ -7,7 +7,14 @@ import { Game } from './game/game';
 import { Menu } from './ui/menu';
 import type { ModeId } from './game/modes/mode';
 import type { PositionId } from './config';
+import type { RankedPlay } from './game/boards';
 import { showCrashScreen } from './ui/crashScreen';
+import { ResultsScreen } from './ui/results';
+import { LeaderboardScreen } from './ui/leaderboard';
+import { shareText } from './ui/share';
+import { fetchBoard, fetchMedals, loadPlayer, setPlayerName, submitRun, toSubmission, type Player } from './net/client';
+import type { SubmitResult } from './net/protocol';
+import type { RankedRun } from './game/ranked';
 import { TouchControls, wantsTouch } from './ui/touchControls';
 
 const app = document.getElementById('app')!;
@@ -61,7 +68,7 @@ game.onError = (err, where, fatal) => {
   }
 };
 
-let lastPlay: { mode: ModeId; pos: PositionId } = { mode: 'spike', pos: 'OH' };
+let lastPlay: { mode: ModeId; pos: PositionId; ranked: RankedPlay | null } = { mode: 'spike', pos: 'OH', ranked: null };
 
 // Once the game has stopped (crash screen), every handler below leaves input alone: a pause menu or a
 // pointer lock on a dead game would hide the crash screen's buttons or take the mouse away from them.
@@ -75,12 +82,12 @@ function resume(): void {
 }
 
 const menu = new Menu(app, settings, {
-  play(mode, pos) {
+  play(mode, pos, ranked) {
     if (game.stopped) return;
     game.fx.audio.unlock();
-    lastPlay = { mode, pos };
+    lastPlay = { mode, pos, ranked };
     menu.showStart(false);
-    game.startMode(mode, pos);
+    game.startMode(mode, pos, ranked);
     // the key that pressed PLAY (Space, Enter) must not also act in the drill
     game.input.clearEdges();
     game.paused = false;
@@ -89,10 +96,14 @@ const menu = new Menu(app, settings, {
     if (touch.enabled) goFullscreen();
   },
   resume,
+  leaderboard() {
+    if (game.stopped) return;
+    leaderboard.show({ mode: menu.mode, pos: menu.pos });
+  },
   restart() {
     if (game.stopped) return;
     menu.showPause(false);
-    game.startMode(lastPlay.mode, lastPlay.pos);
+    game.startMode(lastPlay.mode, lastPlay.pos, lastPlay.ranked);
     game.input.clearEdges();
     game.paused = false;
     game.input.requestLock();
@@ -110,6 +121,83 @@ const menu = new Menu(app, settings, {
   },
 });
 window.__menu = menu;
+
+// the end of a ranked run: the game has paused itself; the mouse is freed for the results screen
+let finished: RankedRun | null = null;
+/** the online leaderboard's answer for the finished run (its place goes into the share text) */
+let placed: SubmitResult | null = null;
+const results = new ResultsScreen(app, {
+  again: () => playAgain(lastPlay.ranked ?? 'season'),
+  practice: () => playAgain(null),
+  menu() {
+    if (game.stopped) return;
+    results.hide();
+    game.stopMode();
+    enterMenu();
+  },
+  leaderboard() {
+    if (finished) leaderboard.show({ tab: finished.week ? 'weekly' : 'season', mode: finished.mode, pos: finished.pos });
+  },
+  submitName(name) {
+    const p = setPlayerName(name);
+    if (!p) results.setOnline({ kind: 'name', error: 'A name is 2 to 16 letters or digits (spaces, dots and dashes are fine)' });
+    else if (finished) void putOnBoard(finished, p);
+  },
+  shareText: () =>
+    finished
+      ? shareText(finished, {
+          link: location.origin + location.pathname,
+          place: placed ? { rank: placed.me.rank, count: placed.count } : null,
+        })
+      : '',
+});
+game.events.on('rankedDone', (run) => {
+  menu.showPause(false);
+  game.input.exitLock();
+  finished = run;
+  placed = null;
+  results.show(run);
+  // unranked and autopilot runs stay off the leaderboard; your first run asks for your name
+  if (run.unranked) results.setOnline({ kind: 'skipped', why: "Unranked runs don't go on the leaderboard." });
+  else if (game.bot) results.setOnline({ kind: 'skipped', why: "Autopilot runs don't go on the leaderboard." });
+  else {
+    const p = loadPlayer();
+    if (p.name) void putOnBoard(run, p);
+    else results.setOnline({ kind: 'name' });
+  }
+});
+
+/** submit a finished run to the online leaderboard and show where it landed */
+async function putOnBoard(run: RankedRun, p: Player): Promise<void> {
+  results.setOnline({ kind: 'sending' });
+  const how = { cam: settings.firstPerson ? 'fp' : 'tp', input: touch.enabled ? 'touch' : 'mouse', hand: settings.hand } as const;
+  const r = await submitRun(toSubmission(run, p, how));
+  // moved on to something else meanwhile
+  if (finished !== run || !results.visible) return;
+  placed = r;
+  results.setOnline(r ? { kind: 'done', result: r } : { kind: 'offline' });
+}
+
+// the online boards (from the start screen or the results screen, over either)
+const leaderboard = new LeaderboardScreen(app, {
+  close: () => leaderboard.hide(),
+  fetchBoard: (board) => fetchBoard(board, loadPlayer().id),
+  fetchMedals: () => fetchMedals(loadPlayer().id),
+  name: () => loadPlayer().name,
+  rename: (name) => setPlayerName(name)?.name ?? null,
+});
+
+/** from the results screen: the same drill again, ranked or in practice */
+function playAgain(ranked: RankedPlay | null): void {
+  if (game.stopped) return;
+  results.hide();
+  leaderboard.hide();
+  lastPlay = { ...lastPlay, ranked };
+  game.startMode(lastPlay.mode, lastPlay.pos, ranked);
+  game.input.clearEdges();
+  game.paused = false;
+  game.input.requestLock();
+}
 
 // touch controls (phones / tablets): on-screen stick and hold buttons through the same input path
 const touch = new TouchControls(app, game, {
@@ -158,6 +246,8 @@ function goFullscreen(): void {
 }
 
 function enterMenu(): void {
+  results.hide();
+  leaderboard.hide();
   game.inMenu = true;
   game.paused = false;
   game.rig.setMode('menu');
@@ -168,7 +258,7 @@ function enterMenu(): void {
 }
 
 game.input.onPointerLockChange = (locked) => {
-  if (!locked && !game.inMenu && !game.input.dragLook && !game.stopped) {
+  if (!locked && !game.inMenu && !game.input.dragLook && !game.stopped && !results.visible && !leaderboard.visible) {
     // Esc during a replay ends the replay (the pause menu still opens: the browser dropped the lock)
     if (game.fx.replaying) game.fx.endReplay();
     game.paused = true;
@@ -202,7 +292,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Escape' || e.repeat || game.inMenu || game.stopped) return;
+  if (e.code !== 'Escape' || e.repeat || game.inMenu || game.stopped || results.visible || leaderboard.visible) return;
   // with pointer lock the browser consumes Esc and fires pointerlockchange instead (or delivers it too:
   // that same press must not resume)
   if (game.input.pointerLocked || performance.now() - game.input.lockLostAt < 250) return;
@@ -234,8 +324,8 @@ if (launch) {
   }
   menu.showStart(false);
   menu.selectPos(launch.pos);
-  lastPlay = { mode: launch.mode, pos: launch.pos };
-  game.startMode(launch.mode, launch.pos);
+  lastPlay = { mode: launch.mode, pos: launch.pos, ranked: launch.ranked };
+  game.startMode(launch.mode, launch.pos, launch.ranked);
   game.hud.setVisible(true);
   if (launch.bot) game.enableBot(launch.bot);
 }

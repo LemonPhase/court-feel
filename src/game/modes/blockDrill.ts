@@ -3,7 +3,7 @@ import { solveApex } from '../../physics/solve';
 import { HitterBrain } from '../../ai/hitter';
 import type { Game } from '../game';
 import { SetterBrain } from '../../ai/setter';
-import type { PositionId } from '../../config';
+import { SCORING, type PositionId } from '../../config';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
@@ -81,7 +81,8 @@ export class BlockDrill extends Mode {
     this.spawned.push(this.coach);
     this.coach.airIntent = 'neutral';
     g.hud.setTitle('Block Drill');
-    this.updateScore();
+    this.beginRep();
+    this.refreshScore();
     g.hud.message(
       this.position === 'MB'
         ? 'Their middle hits quicks: if they jump with the setter, jump with them · otherwise read the set'
@@ -101,14 +102,15 @@ export class BlockDrill extends Mode {
   hint(): string {
     const me = this.g.me;
     if (me.state === 'air') return `hold ${kbd('RMB')} hands over the net`;
-    return `${kbd('A')}${kbd('D')} shuffle · ${kbd('RMB')} hands up · ${kbd('Space')} block jump (vs the quick: go up with their middle) · ${kbd('V')} camera · ${kbd('N')} reset`;
+    return `${kbd('A')}${kbd('D')} shuffle · ${kbd('RMB')} hands up · ${kbd('Space')} block jump (vs the quick: go up with their middle) · ${kbd('V')} camera · ${this.resetHint('reset')}`;
   }
 
-  private updateScore(): void {
-    this.g.hud.setScore(`${this.score} pts · rep ${this.reps}`);
+  refreshScore(): void {
+    this.showScore();
   }
 
   restartRep(): void {
+    if (this.phase !== 'result') this.skipRep();
     this.nextRep();
   }
 
@@ -180,21 +182,22 @@ export class BlockDrill extends Mode {
     let label: string;
     let good = false;
     const lastByMe = g.ball.lastTouch?.athlete === g.me;
+    const S = SCORING.block;
     if (b && o && o.kind === 'in' && o.side === -1) {
-      pts = b.grade === 'Perfect' ? 150 : 100;
+      pts = b.grade === 'Perfect' ? S.stuff : S.point;
       label = b.grade === 'Perfect' ? 'STUFF BLOCK!' : 'BLOCK POINT';
       good = true;
       g.crowd(b.grade === 'Perfect' ? 1.2 : 0.8);
     } else if (b && (!o || o.kind === 'in')) {
-      pts = 60;
+      pts = S.soft;
       label = 'SOFT BLOCK · TOUCH';
       good = true;
       g.crowd(0.3);
     } else if (b && lastByMe) {
-      pts = 20;
+      pts = S.tooled;
       label = 'TOOLED';
     } else if (!b && o && o.kind !== 'in') {
-      pts = 10;
+      pts = S.hitterError;
       label = 'HITTER ERROR';
     } else if (!b && o && o.kind === 'in' && o.side === 1) {
       label = 'KILLED';
@@ -203,14 +206,17 @@ export class BlockDrill extends Mode {
     }
     this.score += pts;
     this.bumpStreak(good);
+    this.logRep(pts, label, b?.grade ?? null);
     g.hud.showBanner(pts > 0 ? `${label}  +${pts}` : label, good ? 'good' : 'bad');
-    this.updateScore();
+    this.refreshScore();
   }
 
   private nextRep(): void {
+    if (!this.beginRep()) return;
     const g = this.g;
     g.judge.disarm();
     g.ball.hide();
+    this.refreshScore();
     for (const h of this.hitters) {
       h.brain.reset();
       const lane = laneFor(h.pos, -1);
