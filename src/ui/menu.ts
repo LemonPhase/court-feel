@@ -2,6 +2,7 @@ import {
   BODY,
   isPositionId,
   POSITIONS,
+  RANKED,
   SETTING_RANGES,
   type BodyOverride,
   type BooleanSettingKey,
@@ -11,6 +12,9 @@ import {
 } from '../config';
 import { isCustomBody, resolveBody, setBodyValue, spikeReach, topSpikeKmh } from '../game/body';
 import { isModeId, MODE_INFO, type ModeId } from '../game/modes/mode';
+import { boardId, MEDAL_NAMES, medalFor, nextMedal, RANKED_MODES, rankedBoard, weekOf, weeklyBoard, type RankedPlay } from '../game/boards';
+import { loadBests } from '../game/bests';
+import { formatPoints } from './hud';
 import { BUILD_LABEL } from '../core/build';
 
 type Opt = { value: string; label: string };
@@ -54,8 +58,11 @@ function buildTag(): HTMLElement {
 }
 
 export interface MenuCallbacks {
-  play(mode: ModeId, pos: PositionId): void;
+  /** start a drill: practice, or a ranked run on its season board or this week's board */
+  play(mode: ModeId, pos: PositionId, ranked: RankedPlay | null): void;
   resume(): void;
+  /** open the leaderboard */
+  leaderboard(): void;
   restart(): void;
   quit(): void;
   settingsChanged(): void;
@@ -145,6 +152,22 @@ export class Menu {
     setBtn.onclick = () => this.openSettings(setBtn);
     bottom.append(camSel, setBtn, play);
     left.append(bottom);
+    // ranked runs: the selected drill's season board, this week's featured board, the leaderboard
+    const rankedRow = h('div', 'ranked-row');
+    const ranked = h('button', 'ghost-btn ranked-btn', 'RANKED RUN');
+    ranked.id = 'ranked';
+    ranked.onclick = () => this.go('season');
+    this.rankedBtn = ranked;
+    const weekly = h('button', 'ghost-btn ranked-btn week-btn');
+    weekly.id = 'weekly';
+    weekly.onclick = () => this.go('weekly');
+    this.weeklyBtn = weekly;
+    const boards = h('button', 'ghost-btn', 'Leaderboard');
+    boards.id = 'leaderboard';
+    boards.onclick = () => this.cb.leaderboard();
+    this.rankedInfo = h('div', 'ranked-info');
+    rankedRow.append(ranked, weekly, boards, this.rankedInfo);
+    left.append(rankedRow);
     left.append(
       h(
         'div',
@@ -218,6 +241,9 @@ export class Menu {
 
   private settingsOpen = false;
   private resumeBtn: HTMLButtonElement | null = null;
+  private rankedBtn: HTMLButtonElement | null = null;
+  private weeklyBtn: HTMLButtonElement | null = null;
+  private rankedInfo: HTMLDivElement | null = null;
   /** the button that opened the settings: focus returns there when they close */
   private settingsOpener: HTMLElement | null = null;
 
@@ -237,27 +263,62 @@ export class Menu {
     }
   }
 
-  private go(): void {
+  private go(ranked: RankedPlay | null = null): void {
+    if (ranked === 'season' && !rankedBoard(this.mode, this.pos)) return;
     try {
       localStorage.setItem('courtfeel.menu', JSON.stringify({ mode: this.mode, pos: this.pos }));
     } catch {
       /* ignore */
     }
-    this.cb.play(this.mode, this.pos);
+    this.cb.play(this.mode, this.pos, ranked);
   }
 
   selectPos(id: PositionId): void {
     this.pos = id;
     for (const [k, c] of this.posCards) setOn(c, k === id);
+    this.refreshRanked();
   }
 
   selectMode(id: ModeId): void {
     this.mode = id;
     for (const [k, c] of this.modeCards) setOn(c, k === id);
+    this.refreshRanked();
+  }
+
+  /**
+   * The ranked row: the RANKED RUN button names the board it plays on (or is off where the drill has
+   * no ranked runs), the weekly button names this week's board, and the line under them shows your
+   * best on the selected board, its medal and what the next medal takes.
+   */
+  refreshRanked(): void {
+    const btn = this.rankedBtn;
+    if (!btn || !this.weeklyBtn || !this.rankedInfo) return;
+    const board = rankedBoard(this.mode, this.pos);
+    const bests = loadBests();
+    btn.disabled = !board;
+    btn.textContent = board && board.pos !== this.pos ? `RANKED RUN · ${board.pos}` : 'RANKED RUN';
+    btn.title = board
+      ? `${RANKED.reps} reps on the ${MODE_INFO[board.mode].title} board for ${POSITIONS[board.pos].name}: the same balls for everyone, locked settings`
+      : `Ranked runs are on the ${RANKED_MODES.map((m) => MODE_INFO[m].title).join(', ')} for now`;
+    const week = weekOf(Date.now());
+    const wb = weeklyBoard(week);
+    this.weeklyBtn.textContent = `THIS WEEK · ${wb.pos}`;
+    this.weeklyBtn.title = `This week's board (${week.id}): ${MODE_INFO[wb.mode].title} as the ${POSITIONS[wb.pos].name}, new balls every week`;
+    if (!board) {
+      this.rankedInfo.textContent = `Ranked runs: ${RANKED_MODES.map((m) => MODE_INFO[m].title).join(', ')} only for now`;
+      return;
+    }
+    const best = bests[boardId(board.mode, board.pos)];
+    const next = nextMedal(best?.total ?? 0, board.pos);
+    const medal = best ? medalFor(best.total, board.pos) : null;
+    const parts = [best ? `Your best ${formatPoints(best.total)}${medal ? ` · ${MEDAL_NAMES[medal]}` : ''}` : 'No ranked run yet'];
+    if (next) parts.push(`${MEDAL_NAMES[next.medal]} at ${formatPoints(next.at)}`);
+    this.rankedInfo.textContent = parts.join(' · ');
   }
 
   showStart(v: boolean): void {
     this.start.style.display = v ? 'flex' : 'none';
+    if (v) this.refreshRanked();
   }
 
   showPause(v: boolean): void {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SCORING } from '../../config';
 import { yawFromDir } from '../../core/mathx';
 import { solveApex } from '../../physics/solve';
 import { BlockerBrain } from '../../ai/blocker';
@@ -70,7 +71,8 @@ export class SetterDrill extends Mode {
     bb.skill = 0.55;
     g.setBrain(this.blocker, bb);
     g.hud.setTitle('Setter Drill');
-    this.updateScore();
+    this.beginRep();
+    this.refreshScore();
     g.hud.message('Look at a hitter · press RMB as the ball drops onto your hands', 3.2);
     this.toPhase('intro');
   }
@@ -108,14 +110,16 @@ export class SetterDrill extends Mode {
   }
 
   hint(): string {
-    return `${kbd('WASD')} get under it · look at a hitter · ${kbd('RMB')} set (press just before it lands on your hands) · ${kbd('V')} camera`;
+    const skip = this.ranked ? ` · ${this.resetHint('reset')}` : '';
+    return `${kbd('WASD')} get under it · look at a hitter · ${kbd('RMB')} set (press just before it lands on your hands) · ${kbd('V')} camera${skip}`;
   }
 
-  private updateScore(): void {
-    this.g.hud.setScore(`${this.score} pts · rep ${this.reps}`);
+  refreshScore(): void {
+    this.showScore();
   }
 
   restartRep(): void {
+    if (this.phase !== 'result') this.skipRep();
     this.nextRep();
   }
 
@@ -206,11 +210,12 @@ export class SetterDrill extends Mode {
     let label = 'NO SET';
     let good = false;
     if (this.set) {
-      pts += this.set.grade === 'Perfect' ? 100 : this.set.grade === 'Good' ? 60 : 25;
+      const S = SCORING.setter;
+      pts += this.set.grade === 'Perfect' ? S.perfect : this.set.grade === 'Good' ? S.good : S.other;
       if (o && this.attacked) {
         const r = outcomeLabel(o, 1);
         if (o.kind === 'in' && o.side === -1) {
-          pts += 50;
+          pts += S.kill;
           label = 'KILL';
           good = this.set.grade === 'Perfect' || this.set.grade === 'Good';
           g.crowd(0.7);
@@ -219,14 +224,17 @@ export class SetterDrill extends Mode {
     }
     this.score += pts;
     this.bumpStreak(good);
+    this.logRep(pts, label, this.set?.grade ?? null);
     g.hud.showBanner(pts ? `${label}  +${pts}` : label, good ? 'good' : 'neutral');
-    this.updateScore();
+    this.refreshScore();
   }
 
   private nextRep(): void {
+    if (!this.beginRep()) return;
     const g = this.g;
     g.judge.disarm();
     g.ball.hide();
+    this.refreshScore();
     this.tossed = false;
     for (const [pos, h] of this.hitters) {
       h.brain.reset();

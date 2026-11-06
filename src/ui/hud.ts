@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Grade } from '../game/athlete';
+import type { RepMark } from '../game/ranked';
 
 const GRADE_CLASS: Record<Grade, string> = {
   Perfect: 'g-perfect',
@@ -8,6 +9,21 @@ const GRADE_CLASS: Record<Grade, string> = {
   Late: 'g-late',
   Miss: 'g-miss',
 };
+
+/** what the scored drills show at the top centre */
+export interface Scoreboard {
+  points: number;
+  /** a ranked run against your best after as many reps: + ahead, - behind (null: practice, or no best yet) */
+  split: number | null;
+  /** a ranked run: how each finished rep went, and the run's length (null in practice) */
+  run: { marks: RepMark[]; length: number } | null;
+  status: 'ranked' | 'unranked' | 'practice';
+  /** what the drill is doing now (the set, the block, the target...) */
+  detail: string[];
+}
+
+/** 1260 -> "1 260" (a narrow space between thousands) */
+export const formatPoints = (n: number): string => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -22,6 +38,20 @@ export class Hud {
   readonly root: HTMLDivElement;
   private title: HTMLDivElement;
   private score: HTMLDivElement;
+  private sb: {
+    score: HTMLSpanElement;
+    val: HTMLSpanElement;
+    split: HTMLSpanElement;
+    splitVal: HTMLSpanElement;
+    run: HTMLDivElement;
+    strip: HTMLSpanElement;
+    count: HTMLSpanElement;
+    detail: HTMLDivElement;
+    status: HTMLSpanElement;
+    detailText: HTMLSpanElement;
+  };
+  /** the scoreboard's last points (-1: just shown), so only a gain pops the number */
+  private sbLast = -1;
   private grade: HTMLDivElement;
   private gradeText: HTMLDivElement;
   private gradeSub: HTMLDivElement;
@@ -59,6 +89,21 @@ export class Hud {
     const top = el('div', 'hud-top', this.root);
     this.title = el('div', 'hud-title', top);
     this.score = el('div', 'hud-score', top);
+    const sb = el('div', 'sb', top);
+    const main = el('div', 'sb-main', sb);
+    const score = el('span', 'sb-score', main);
+    const val = el('span', 'sb-val', score, '0');
+    el('span', 'sb-unit', score, 'pts');
+    const split = el('span', 'sb-split', main);
+    const splitVal = el('span', 'sb-split-val', split);
+    el('span', 'sb-split-label', split, 'vs best');
+    const run = el('div', 'sb-run', sb);
+    const strip = el('span', 'sb-strip', run);
+    const count = el('span', 'sb-count', run);
+    const detail = el('div', 'sb-detail', sb);
+    const status = el('span', 'sb-status', detail);
+    const detailText = el('span', '', detail);
+    this.sb = { score, val, split, splitVal, run, strip, count, detail, status, detailText };
     this.grade = el('div', 'hud-grade', this.root);
     this.gradeText = el('div', 'hud-grade-text', this.grade);
     this.gradeSub = el('div', 'hud-grade-sub', this.grade);
@@ -96,6 +141,47 @@ export class Hud {
 
   setScore(t: string): void {
     this.score.textContent = t;
+  }
+
+  /**
+   * The scored drills' scoreboard at the top centre: the score, the split against your best, the
+   * run strip and a detail line. Null hides it (Free Play and Mini Rally keep their title + score line).
+   */
+  setScoreboard(s: Scoreboard | null): void {
+    const sb = this.sb;
+    this.root.classList.toggle('has-sb', s !== null);
+    if (!s) {
+      this.sbLast = -1;
+      return;
+    }
+    sb.val.textContent = formatPoints(s.points);
+    if (this.sbLast >= 0 && s.points > this.sbLast) {
+      // the points landing: one pop of the number
+      sb.score.classList.remove('bump');
+      void sb.score.offsetWidth;
+      sb.score.classList.add('bump');
+    }
+    this.sbLast = s.points;
+    const split = s.split;
+    sb.split.classList.toggle('show', split !== null);
+    if (split !== null) {
+      sb.splitVal.textContent = split > 0 ? `+${formatPoints(split)}` : split < 0 ? `−${formatPoints(-split)}` : '±0';
+      sb.split.classList.toggle('up', split > 0);
+      sb.split.classList.toggle('down', split < 0);
+    }
+    sb.run.classList.toggle('show', s.run !== null);
+    if (s.run) {
+      const { marks, length } = s.run;
+      while (sb.strip.children.length < length) el('i', '', sb.strip);
+      while (sb.strip.children.length > length) sb.strip.lastChild!.remove();
+      for (let i = 0; i < length; i++)
+        (sb.strip.children[i] as HTMLElement).className = i < marks.length ? `m-${marks[i]}` : i === marks.length ? 'm-now' : '';
+      sb.count.textContent = `${Math.min(marks.length + 1, length)}/${length}`;
+    }
+    sb.status.textContent = s.status === 'practice' ? '' : s.status === 'ranked' ? 'Ranked run' : 'Unranked';
+    sb.status.className = `sb-status s-${s.status}`;
+    sb.detailText.textContent = (s.status !== 'practice' && s.detail.length ? ' · ' : '') + s.detail.join(' · ');
+    sb.detail.classList.toggle('show', s.status !== 'practice' || s.detail.length > 0);
   }
 
   setHint(t: string): void {
@@ -269,7 +355,8 @@ export class Hud {
     // and on a touch screen above the thumb buttons
     const mx = Math.min(110, w * 0.2);
     const cx = Math.min(Math.max(x, mx), w - mx);
-    const cy = Math.min(Math.max(y, 96), h * (this.keyLabels ? 0.42 : 0.62));
+    // the whole bubble below the scoreboard when it is up
+    const cy = Math.min(Math.max(y, this.root.classList.contains('has-sb') ? 200 : 96), h * (this.keyLabels ? 0.42 : 0.62));
     // off screen: no tail, an arrow towards them instead
     this.callout.classList.toggle('edge', Math.abs(cx - x) > 2 || Math.abs(cy - y) > 2);
     this.callout.classList.toggle('edge-l', x < cx - 2);

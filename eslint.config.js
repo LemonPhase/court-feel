@@ -21,8 +21,8 @@ export default defineConfig([
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   },
   {
-    // node tooling; the e2e also runs functions inside the page (page.evaluate), hence browser globals too
-    files: ['scripts/**/*.mjs', 'vite.config.ts', 'eslint.config.js'],
+    // node tooling and the serverless leaderboard; the e2e also runs functions inside the page (page.evaluate), hence browser globals too
+    files: ['scripts/**/*.mjs', 'vite.config.ts', 'eslint.config.js', 'api/**/*.ts'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 ]);

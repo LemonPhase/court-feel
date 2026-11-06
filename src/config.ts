@@ -394,6 +394,145 @@ export const AI = {
   outOfSystem: 1.6,
   /** an out-of-system set (and a backup's set, when the setter played the first ball) goes this much (m) higher */
   outOfSystemApex: 0.4,
+  /**
+   * The Spike Drill's block. Each block rep the block takes the line or the cross: the pin blocker
+   * stands this far (m) from the attack towards that side (formed before the set on pin sets; on inside
+   * sets it starts at its usual spot and moves after the set). A double block's middle closes this far
+   * inside it: formed early on high balls; on fast sets it starts `fastStart` of the way from the middle
+   * of the net to that spot (shading towards the pin) and arrives with your swing, a seam still open for
+   * a perfect one. The target zone is one the block covers less than `openFrac` of.
+   */
+  drillBlock: {
+    takeShift: 0.45,
+    closeGap: 0.95,
+    insideX: 3.0,
+    fastStart: 0.5,
+    /** ...and when you swing it still has this fraction of its run to go (measured on the go: 0.5-1.0 m of 1.7) */
+    arriveShort: 0.4,
+    openFrac: 0.12,
+    /** targets are kept this far (m) clear of each blocker's hands (an AI block's hands are a little wider than the shadow) */
+    handsMargin: 0.08,
+    /** a drill blocker told which side to take still misreads, this fraction of the usual (AI.blockerSkill) */
+    readError: 0.3,
+  },
+};
+
+/** points per rep in the scored drills (practice and ranked runs score the same) */
+export const SCORING = {
+  spike: {
+    /** timing grade of the attack: Perfect / Good / Early or Late */
+    perfect: 100,
+    good: 60,
+    other: 30,
+    /** 1 point per km/h over this */
+    kmhFloor: 70,
+    /** the ball lands in their court */
+    kill: 50,
+    /** ...inside the target zone */
+    onTarget: 100,
+    /** tooled off the block: the timing points plus this */
+    tooled: 50,
+    /** with a block up: a clean kill around it (the target on the open side still earns `onTarget`) */
+    aroundBlock: 50,
+  },
+  block: {
+    /** stuff block (Perfect): the ball goes straight down on their side */
+    stuff: 150,
+    point: 100,
+    /** soft block / touch: the ball stays in play */
+    soft: 60,
+    /** tooled off your hands */
+    tooled: 20,
+    /** no touch, the hitter missed */
+    hitterError: 10,
+  },
+  receive: {
+    /** by pass rating 0-3 (no pass, ace and no dig are 0) */
+    byRating: [0, 20, 60, 100],
+  },
+  setter: {
+    /** timing grade of the set: Perfect / Good / anything else */
+    perfect: 100,
+    good: 60,
+    other: 25,
+    /** your hitter kills it */
+    kill: 50,
+  },
+};
+
+/** a step of the Spike Drill's ranked script: set call (0 = the position's first call, 'mix' = seeded) and opposing block */
+export interface SpikeScriptStep {
+  reps: number;
+  call: number | 'mix';
+  block: 0 | 1 | 2;
+}
+
+/**
+ * Ranked runs (issue #20): a fixed number of reps, the same balls for everyone and locked
+ * settings. Bump `ruleset` whenever these, the scoring or the difficulty sections change
+ * (a new season: old scores no longer compare); the ranked test checks it.
+ */
+export const RANKED = {
+  ruleset: 1,
+  reps: 20,
+  /** every board's seed comes from this, the drill and the position */
+  seasonSeed: 20261105,
+  /** aim assist is locked to the default in a ranked run (slow-mo off, men's net, the position's default body) */
+  aimAssist: ASSIST.aim,
+  /** Spike Drill: the set call and block follow this script (the keys are locked) */
+  spikeScript: [
+    { reps: 5, call: 0, block: 0 },
+    { reps: 5, call: 1, block: 0 },
+    { reps: 5, call: 0, block: 1 },
+    { reps: 5, call: 'mix', block: 2 },
+  ] as SpikeScriptStep[],
+  /**
+   * Spike Drill medals per position: [bronze, silver, gold] totals. First cut from the autopilot
+   * on the season boards, 60 / 75 / 90% of the perfect bot's run rounded to 50 (perfect bot, with the
+   * block taking a side: OH 5760, OPP 5920, MB 5508, S 5006, L 3759), then 1500 lower each after the
+   * first play (MatusGib: players can't reach the bot's numbers). Check them against what players score.
+   */
+  medals: {
+    OH: [1950, 2800, 3700],
+    OPP: [2050, 2950, 3850],
+    MB: [1800, 2650, 3450],
+    S: [1500, 2250, 3000],
+    L: [750, 1300, 1900],
+  } as Record<PositionId, [number, number, number]>,
+  /** the Coach medal: a strong club player's run per position (like a track author's time); none set yet */
+  coach: {} as Partial<Record<PositionId, number>>,
+  /** the weekly featured board's position rotates through these, one a week */
+  weeklyPositions: ['OH', 'OPP', 'MB', 'S', 'L'] as PositionId[],
+  /** the leaderboard server rejects a rep worth more than this (a Perfect kill on target at 150 km/h is ~330) */
+  maxRepPoints: 400,
+  /** ...and a run that took less than this (ms): 20 reps can't be played faster */
+  minRunMs: 60_000,
+};
+
+/**
+ * The online leaderboard's limits and caching (server and game). Not part of the ranked ruleset:
+ * changing these never changes what a score is worth.
+ */
+export const LEADERBOARD = {
+  /** one new run per player per this many seconds (a retry of the same run always gets through) */
+  playerWindowS: 30,
+  /** new runs per address per hour: a whole club on one Wi-Fi shares an address */
+  addressRunsPerHour: 300,
+  /** board and medal reads per address per minute (most are answered from the CDN cache first) */
+  addressReadsPerMinute: 600,
+  /** the public lists may be this old (s): the CDN and the function cache them */
+  publicCacheS: 10,
+  medalsCacheS: 30,
+  /** a submission id is remembered this long (s), so a retry after a lost answer changes nothing */
+  submissionMemoryS: 7 * 86_400,
+  /** a weekly board is deleted this long after its last run (days) */
+  weeklyRetentionDays: 84,
+  /** the medal table counts this many runs from the top of each board */
+  medalDepth: 500,
+  /** finished runs kept on the device until the leaderboard has them */
+  pendingMax: 10,
+  /** the game doesn't ask for the same list again within this (s) */
+  clientCacheS: 10,
 };
 
 /** the hand you spike, tip and serve with; passing, setting and blocking use both hands */

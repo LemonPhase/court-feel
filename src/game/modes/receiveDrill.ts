@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { yawFromDir } from '../../core/mathx';
-import type { PositionId } from '../../config';
+import { SCORING, type PositionId } from '../../config';
 import { solveApex } from '../../physics/solve';
 import { HitterBrain } from '../../ai/hitter';
 import { ServerBrain } from '../../ai/server';
 import { SetterBrain } from '../../ai/setter';
-import { Athlete } from '../athlete';
+import { Athlete, type Grade } from '../athlete';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
 import { attackHeight, laneFor, SETTER_SPOT, SETTER_TARGET } from '../plays';
@@ -56,7 +56,7 @@ export class ReceiveDrill extends Mode {
   private phase: Phase = 'intro';
   private t = 0;
   private kind: 'serve' | 'attack' = 'serve';
-  private passed: { rating: number; grade: string } | null = null;
+  private passed: { rating: number; grade: Grade | null; label: string } | null = null;
   private targetRing!: THREE.Mesh;
   private targetHalo!: THREE.Mesh;
   private tossed = false;
@@ -135,7 +135,8 @@ export class ReceiveDrill extends Mode {
     this.targetHalo.rotation.x = Math.PI / 2;
     this.add(this.targetHalo);
     g.hud.setTitle('Serve Receive / Dig');
-    this.updateScore();
+    this.beginRep();
+    this.refreshScore();
     g.hud.message('Get behind the ball · press E early to form the platform', 3);
     this.toPhase('intro');
   }
@@ -163,15 +164,16 @@ export class ReceiveDrill extends Mode {
   }
 
   hint(): string {
-    return `${kbd('WASD')} get behind the ball · ${kbd('E')} pass / dig (press early, hold) · ${kbd('V')} camera · ${kbd('N')} reset`;
+    return `${kbd('WASD')} get behind the ball · ${kbd('E')} pass / dig (press early, hold) · ${kbd('V')} camera · ${this.resetHint('reset')}`;
   }
 
-  private updateScore(): void {
-    this.g.hud.setScore(`${this.score} pts · rep ${this.reps}${this.reps ? ` · avg ${(this.ratingSum / this.reps).toFixed(2)}` : ''}`);
+  refreshScore(): void {
+    this.showScore(this.reps ? [`pass average ${(this.ratingSum / this.reps).toFixed(2)}`] : []);
   }
   private ratingSum = 0;
 
   restartRep(): void {
+    if (this.phase !== 'result') this.skipRep();
     this.nextRep();
   }
 
@@ -219,8 +221,8 @@ export class ReceiveDrill extends Mode {
     const g = this.g;
     if (ev.athlete === g.me && (ev.kind === 'pass' || ev.kind === 'dig')) {
       const r = ratePass(g, 1);
-      this.passed = { rating: r.rating, grade: ev.grade ?? '' };
       const label = r.over ? 'OVERPASS' : `${r.rating}-PASS`;
+      this.passed = { rating: r.rating, grade: ev.grade, label };
       g.hud.showBanner(
         `${label}${r.rating === 3 ? ' · PERFECT TO TARGET' : ''}`,
         r.rating >= 2 ? 'good' : r.rating === 1 ? 'neutral' : 'bad',
@@ -244,18 +246,21 @@ export class ReceiveDrill extends Mode {
     const p = this.passed;
     const rating = p ? p.rating : 0;
     this.ratingSum += rating;
-    const pts = [0, 20, 60, 100][rating];
+    const pts = SCORING.receive.byRating[rating];
     this.score += pts;
     this.bumpStreak(rating >= 2);
+    this.logRep(pts, p ? p.label : this.kind === 'serve' ? 'ACE' : 'NO DIG', p?.grade ?? null);
     if (!p) g.hud.showBanner(this.kind === 'serve' ? 'ACE' : 'NO DIG', 'bad');
     else g.hud.message(`+${pts}`, 1.2);
-    this.updateScore();
+    this.refreshScore();
   }
 
   private nextRep(): void {
+    if (!this.beginRep()) return;
     const g = this.g;
     g.judge.disarm();
     g.ball.hide();
+    this.refreshScore();
     this.tossed = false;
     this.serverBrain.phase = 'idle';
     this.server.endAction();

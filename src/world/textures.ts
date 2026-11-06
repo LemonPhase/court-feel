@@ -243,6 +243,18 @@ export function makeRingTexture(width = 0.12): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
+/** A vertical fade for light walls: opaque at the bottom (v = 0), gone at the top. */
+export function makeFadeTexture(): THREE.CanvasTexture {
+  const [c, ctx] = canvas(4, 128);
+  const g = ctx.createLinearGradient(0, 128, 0, 0);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.4)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 4, 128);
+  return new THREE.CanvasTexture(c);
+}
+
 /** Floor crack decal: radial fractures with a dark core. Alpha in the texture. */
 export function makeCrackTexture(seed = 7): THREE.CanvasTexture {
   const s = 512;
