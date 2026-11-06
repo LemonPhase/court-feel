@@ -225,14 +225,28 @@ screen show them. Only your player uses them; AI players keep the defaults.
    and cross are mirrored for the opposite, and the middle aims at zone 1 or 5.
 
    Press **B** to practise hitting around a block: **single** puts an opposing
-   blocker in front of your lane, **double** adds their middle closing next to
-   them. They read the set and jump like the AI blockers in the rally. The
-   **block shadow** is drawn in red on their floor: everything a straight ball
-   from your contact point would hit into the hands, updated live as the block
-   forms, so you can see the line, the cross and the seam opening up, and how
-   deep a ball has to go to clear the top. A stuffed ball scores **BLOCKED**
-   (0, streak lost); a ball off their hands that goes out or over scores
-   **TOOLED** (timing points + 50); a kill past the block scores as usual.
+   blocker in front of your lane, **double** adds their middle next to them.
+   Every block rep the block **takes a side**, the line or the cross (shown on
+   the score line), and the target zone is always on the side it leaves open:
+   - on a pin set (high ball, go, back set, fast back) the block is **formed
+     before the set** on its side and only times the jump;
+   - on an inside set (3 ball, the quicks, attack on two, pipe) the pin
+     blocker starts at its usual spot and **moves after the set**;
+   - a double block's middle closes next to the pin blocker: already closed on
+     a high ball; on a **fast set** (go, fast back, 3 ball, quicks) it starts
+     halfway, shading towards the pin, and is **still arriving as you swing**:
+     its hands are up, but the seam between the two blockers is the shot.
+
+   The **block shadow** is drawn in red on their floor: everything a straight
+   ball from your contact point would hit into the hands, at the height the
+   blockers' hands really reach (hands as high as your contact cover the whole
+   court behind them). The floor it leaves open is **green**. Against a block
+   that takes the cross, the target can be the narrow **line past the block**.
+   The target zone **lights up green** when your ball lands in it.
+   A kill on the target scores as usual (+100); any other clean kill past the
+   block scores **AROUND THE BLOCK** (+50), so a block rep is worth as much as
+   a free one. A stuffed ball scores **BLOCKED** (0, streak lost); a ball off
+   their hands that goes out or over scores **TOOLED** (timing points + 50).
 3. **Block Drill** — the opponent setter sets one of three hitters. Every rep
    starts at the net in front of their middle; read the set, shuffle, hands up,
    time the jump. The hitter your position blocks in a match (outside: their
@@ -322,7 +336,10 @@ can be compared between players. Practice (PLAY) stays exactly as it was.
   start screen shows your best and what the next medal takes, the results show
   the medal you made. A **Coach** medal (a strong club player's run, like a
   track author's time) can be set per position in `RANKED.coach`; none yet.
-  First cut from the autopilot: 60 / 75 / 90% of the perfect bot's run.
+  First cut from the autopilot (60 / 75 / 90% of the perfect bot's run), then
+  1 500 lower each after the first play: OH 1 950 / 2 800 / 3 700, OPP 2 050 /
+  2 950 / 3 850, MB 1 800 / 2 650 / 3 450, S 1 500 / 2 250 / 3 000, L 750 /
+  1 300 / 1 900.
 * **Your best and the split.** Your best run on each board is kept in this
   browser. During a run the scoreboard shows your score in the centre and, next
   to it, how far ahead (green) or behind (red) your best you are after the same
@@ -361,9 +378,45 @@ The server (`api/leaderboard.ts`, a Vercel Function over `src/net/server.ts`)
 refuses anything impossible: a board that isn't open, a rep worth more than a
 rep can be, the wrong number of reps, a run played faster than 20 reps can be
 (`RANKED.maxRepPoints`, `RANKED.minRunMs`), a weekly board that isn't this
-week's or last week's. One run per player per 30 s and 40 an hour per address.
-A determined cheat could still invent a run: verified runs (replaying the input
-log on the server) come with #18.
+week's or last week's.
+
+* **One step.** Recording a run is one Redis script: whether it beats your
+  best, its details and its rank are written together or not at all, and two
+  runs can't interleave.
+* **Retries are safe.** Every finished run has its own id. It stays on your
+  device until the leaderboard has it; a retry sends the same run and counts
+  once (the answer says `repeat`). The results screen tells the cases apart:
+  no connection, the leaderboard can't take runs right now, one run at a time
+  (with a countdown), or refused. The leaderboard screen offers to send any
+  run still waiting. Nothing polls.
+* **Limits (`LEADERBOARD` in `src/config.ts`).** One new run per player per
+  30 s (a retry of the same run always gets through); 300 runs an hour and
+  600 reads a minute per address, since a whole club shares one Wi-Fi
+  address. The public lists are the same for everyone and cached for 10 s
+  (the medal table 30 s) at the edge; your own line is fetched separately and
+  never cached.
+* **Looking after it.** Weekly boards are deleted 12 weeks after their last
+  run. With `LEADERBOARD_ADMIN_TOKEN` set on Vercel, an admin can list a
+  board with player ids (`GET ?view=admin&board=1:spike:OH`) and take a bogus
+  run off it (`DELETE ?board=…&player=…`), both with `Authorization: Bearer
+  <token>`. Season boards stay until a new ruleset (a new season); an old
+  ruleset's keys can be deleted in the Upstash console (`cf:prod:board:1:*`).
+
+**What it is and isn't.** These are results the player's browser reports.
+The server's checks are plausibility checks, not proof the run was played: a
+friendly, honour-based board for a club, not cheat-proof. The random id is
+not an account and doesn't move to another device (clearing the browser
+starts a new player). The medal table counts the top 500 runs of each board.
+Verified runs (the server replays the input log) come with #18; a trusted
+match server would write through the same ranking step, marked as a
+different source (stored runs carry `source: 'browser'`).
+
+**Checking a deployment:** `node scripts/leaderboard-check.mjs <url>` plays
+two browsers against a deployed leaderboard: A submits and B sees it, a retry
+counts once, a second run within 30 s waits, a worse run keeps the best, and
+the health check names the store and the set of boards (a preview must say
+`cf:dev`, production `cf:prod`). Pass `--admin-token` to remove the test
+run afterwards.
 
 **Switching it on (Vercel):** the project needs a Redis store. In the Vercel
 dashboard: Storage → Create / Marketplace → **Upstash for Redis** (the free
@@ -376,7 +429,9 @@ work).
 
 **Locally:** `npm run dev` serves `/api/leaderboard` itself, with the same
 handler over a store in memory: the leaderboard works on your machine, and the
-runs vanish when the dev server restarts.
+runs vanish when the dev server restarts. `scripts/leaderboard-check.mjs
+http://localhost:5173` runs against it too (its "store is Upstash" check fails
+there, as it should).
 
 ### Replays
 
@@ -482,7 +537,12 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   sanitised, the strip's rep marks), the leaderboard (ISO weeks and the weekly
   rotation, medals, what the server refuses, the board order, best-only boards,
   your place and who is next, the two above you, the per-player limit,
-  renames, the medal table, the share card),
+  renames, the medal table, the share card, a retry after a lost answer
+  counting once, a store failure writing nothing, runs in any order keeping
+  the best run's own details, club Wi-Fi limits, caching, weekly expiry, the
+  admin tools), the Spike Drill's block (the side it takes, formed on pin sets
+  and moving on inside sets, the middle late on fast sets, the target always
+  on the open side, nothing over a block whose hands reach your contact),
   and the error reporter.
 * `npm run e2e` — starts Vite, loads the game in headless Chromium and plays
   every drill with an autopilot through the real input path (it plans its

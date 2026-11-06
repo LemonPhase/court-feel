@@ -227,6 +227,10 @@ body.touchmode .sb-detail { font-size: 9.5px; letter-spacing: 0.14em; max-width:
 .boards-medals { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em;
   text-transform: uppercase; font-variant-numeric: tabular-nums; }
 .boards-note { font-size: 13px; opacity: 0.7; padding: 10px 2px; }
+.boards-note.small { font-size: 11px; padding: 4px 2px 0; opacity: 0.55; }
+.boards-pending { font-size: 12px; font-weight: 700; color: var(--orange); }
+.res-retry { margin-top: 8px; }
+.res-retry:disabled { opacity: 0.5; cursor: default; }
 .boards-table { display: grid; gap: 1px; font-size: 13px; }
 .boards-row { display: grid; grid-template-columns: 34px 1fr 72px 64px 54px; gap: 10px; padding: 5px 8px; border-radius: 5px;
   font-variant-numeric: tabular-nums; align-items: center; }

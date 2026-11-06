@@ -3,6 +3,7 @@ import { Rng } from '../core/mathx';
 import type { Grade } from './athlete';
 import type { BestRun } from './bests';
 import { boardId, type RankedMode } from './boards';
+import type { BlockTakes } from './blockPlan';
 
 export { isRankedMode, RANKED_MODES, rankedBoard, type RankedMode } from './boards';
 
@@ -38,11 +39,14 @@ export function lockedKey(s: Settings, pos: PositionId): string {
 export interface ScriptedRep {
   call: number;
   block: 0 | 1 | 2;
+  /** the side the block takes away (when there is one): the same for everyone, from the rep's seed */
+  takes: BlockTakes;
 }
 
 /**
  * The Spike Drill script for rep k (0-based): `calls` is how many set calls the position has
- * (0 = none: only the block follows the script). A mixed call is drawn from the rep's seed.
+ * (0 = none: only the block follows the script). A mixed call and the block's side are drawn from
+ * the rep's seed.
  */
 export function spikeScript(k: number, seed: number, calls: number): ScriptedRep {
   let first = 0;
@@ -55,9 +59,10 @@ export function spikeScript(k: number, seed: number, calls: number): ScriptedRep
     }
     first += s.reps;
   }
-  if (calls <= 0) return { call: 0, block: step.block };
+  const takes: BlockTakes = new Rng(hash32(seed, 'takes')).next() < 0.5 ? 'line' : 'cross';
+  if (calls <= 0) return { call: 0, block: step.block, takes };
   const call = step.call === 'mix' ? Math.floor(new Rng(hash32(seed, 'call')).next() * calls) : Math.min(step.call, calls - 1);
-  return { call, block: step.block };
+  return { call, block: step.block, takes };
 }
 
 /** one rep of a ranked run, as the results screen shows it */

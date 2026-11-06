@@ -34,6 +34,10 @@ export class BlockerBrain implements Brain {
   readFeed = false;
   /** close this far inside (towards the court centre) of the attack point: a second blocker next to the pin blocker */
   closeInside = 0;
+  /** a drill's formed block: stand here and only time the jump (null: read the set and move) */
+  holdX: number | null = null;
+  /** a drill's call: take the line (+) or the cross (-) by this much (m) from the attack, instead of the usual shade */
+  takeShift: number | null = null;
 
   /**
    * @param lateralRange how far from home this blocker will go along the net
@@ -112,21 +116,26 @@ export class BlockerBrain implements Brain {
         if (Math.abs(this.b.z) < 4.5 && !fooled && (inZone || (this.closer && this.commit))) {
           const reach = this.lateralRange;
           let want: number;
-          if (this.closer && away > 1.6) {
+          if (this.holdX !== null) {
+            // a formed block: it stays where it set up and only times the jump
+            want = this.holdX;
+          } else if (this.closer && away > 1.6) {
             // close next to the wing blocker, who takes the line; a middle arriving on the
             // run rarely seals the seam perfectly
             want = this.b.x - Math.sign(this.b.x) * 1.1 + this.readErr;
           } else {
-            // take away the line a little: shade towards the sideline the hitter is near;
-            // a drill's second blocker closes a fixed distance inside instead
-            const shade = Math.sign(this.b.x) * 0.25;
+            // take away the line a little: shade towards the sideline the hitter is near (or the side
+            // a drill calls); a drill's second blocker closes a fixed distance inside instead
+            const shade = this.takeShift === null ? Math.sign(this.b.x) * 0.25 : Math.sign(this.b.x || -1) * this.takeShift;
             const inside = -Math.sign(this.b.x || 1) * this.closeInside;
-            want = this.b.x + shade + inside + this.readErr;
+            // a drill blocker has been told which side to take: it misreads the set less
+            const err = this.takeShift === null ? this.readErr : this.readErr * AI.drillBlock.readError;
+            want = this.b.x + shade + inside + err;
           }
           this.targetX = clamp(want, this.homeX - reach, this.homeX + reach);
           moveTo(a, this.targetX, a.side * 0.45, { face, arrive: 0.3, sprintDist: 1.2 });
           // time the jump: hands peak ~0.12 s after the hitter's contact
-          const H = a.jumpMax * a.stats.standingJumpFrac * 1.1;
+          const H = blockJump(a);
           const vy = Math.sqrt(2 * BALL.gravity * H);
           const tUp = vy / BALL.gravity + 0.05;
           // a quick is hit the moment it is set: the block goes up with the hitter and is a
@@ -157,3 +166,9 @@ export class BlockerBrain implements Brain {
 }
 
 export const BLOCK_NET_X = COURT.halfWidth;
+
+/** how high an AI blocker jumps to block: a little over its standing jump */
+export const blockJump = (a: Athlete): number => a.jumpMax * a.stats.standingJumpFrac * 1.1;
+
+/** how high an AI blocker's hands reach at the top of its block jump (the top of the block volume in `ContactSystem.tryBlock`) */
+export const blockReach = (a: Athlete): number => a.standReach + 0.04 + blockJump(a);

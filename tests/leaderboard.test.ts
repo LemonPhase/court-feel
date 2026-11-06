@@ -1,18 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, RANKED, type Settings } from '../src/config';
+import { DEFAULT_SETTINGS, LEADERBOARD, RANKED, type Settings } from '../src/config';
 import { boardId, medalFor, nextMedal, parseBoardId, seasonBoards, weekOf, weeklyBoard } from '../src/game/boards';
 import { RankedRun } from '../src/game/ranked';
-import { cleanName, rankScore, validateRun, type BoardView, type MedalView, type SubmitResult } from '../src/net/protocol';
-import { createHandler, MemoryStore } from '../src/net/server';
+import { Rng } from '../src/core/mathx';
+import { cleanName, rankScore, validateRun, type BoardView, type ErrorBody, type MedalView, type SubmitResult } from '../src/net/protocol';
+import { createHandler, MemoryStore, type Store, type SubmitOp } from '../src/net/server';
 import { shareText } from '../src/ui/share';
 
 const NOW = Date.UTC(2026, 10, 5, 18, 0); // Thursday 5 November 2026, week 45
 const settings = (): Settings => ({ ...DEFAULT_SETTINGS, bodies: {} });
 
-/** a valid submission: 20 reps of `pts`, from player `id` */
+const OH = boardId('spike', 'OH');
+let nextRun = 0;
+
+/** a valid submission: 20 reps of `pts`, from player `id` (each call is a new run with its own id) */
 function run(id: string, pts: number, over: Record<string, unknown> = {}) {
   return {
-    board: boardId('spike', 'OH'),
+    id: `run-${String(++nextRun).padStart(6, '0')}`,
+    board: OH,
     player: id,
     name: `Player ${id.slice(-2)}`,
     reps: new Array(RANKED.reps).fill(pts),
@@ -27,21 +32,25 @@ function run(id: string, pts: number, over: Record<string, unknown> = {}) {
   };
 }
 
-/** a leaderboard over memory, with a clock the test moves */
-function server() {
+/** a leaderboard over memory (or the given store), with a clock the test moves */
+function server(store?: Store, adminToken: string | null = null) {
   let now = NOW;
-  const handler = createHandler(new MemoryStore(() => now), { prefix: 't', now: () => now });
+  const handler = createHandler(store ?? new MemoryStore(() => now), { prefix: 't', now: () => now, adminToken });
   const post = async (body: unknown, ip = '1.2.3.4') => {
     const res = await handler(
       new Request('http://x/api/leaderboard', { method: 'POST', body: JSON.stringify(body), headers: { 'x-forwarded-for': ip } }),
     );
-    return { status: res.status, body: (await res.json()) as SubmitResult & { error?: string } };
+    return { status: res.status, body: (await res.json()) as SubmitResult & ErrorBody };
   };
-  const get = async (query: string) => {
-    const res = await handler(new Request(`http://x/api/leaderboard?${query}`));
-    return { status: res.status, body: (await res.json()) as BoardView & MedalView & { error?: string } };
+  const raw = (query: string, headers: Record<string, string> = {}) =>
+    handler(new Request(`http://x/api/leaderboard?${query}`, { headers }));
+  const get = async (query: string, ip = '9.9.9.9') => {
+    const res = await raw(query, { 'x-forwarded-for': ip });
+    return { status: res.status, body: (await res.json()) as BoardView & MedalView & ErrorBody };
   };
-  return { post, get, wait: (s: number) => (now += s * 1000) };
+  const del = (query: string, auth?: string) =>
+    handler(new Request(`http://x/api/leaderboard?${query}`, { method: 'DELETE', headers: auth ? { authorization: auth } : {} }));
+  return { post, get, raw, del, wait: (secs: number) => (now += secs * 1000) };
 }
 
 describe('the weekly board', () => {
@@ -149,24 +158,25 @@ describe('the board order', () => {
 });
 
 describe('the leaderboard server', () => {
-  it('a run goes on the board, and the board shows it with your line marked', async () => {
+  it('a run goes on the board, and your own line comes back marked', async () => {
     const s = server();
     const r = await s.post(run('player-0001', 200));
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ saved: true, count: 1, next: null, me: { rank: 1, total: 4000 } });
-    const b = await s.get(`board=${boardId('spike', 'OH')}&player=player-0001`);
+    expect(r.body).toMatchObject({ saved: true, repeat: false, count: 1, next: null, me: { rank: 1, total: 4000 } });
+    const b = await s.get(`board=${OH}`);
     expect(b.body.top).toHaveLength(1);
-    expect(b.body.top[0]).toMatchObject({ rank: 1, name: 'Player 01', total: 4000, you: true });
-    expect(b.body.me?.rank).toBe(1);
+    expect(b.body.top[0]).toMatchObject({ rank: 1, name: 'Player 01', total: 4000 });
+    const me = await s.get(`view=me&board=${OH}&player=player-0001`);
+    expect(me.body.me).toMatchObject({ rank: 1, you: true });
   });
 
   it('only your best counts: a worse run leaves it, a better one replaces it', async () => {
     const s = server();
     await s.post(run('player-0001', 200));
-    s.wait(60);
+    s.wait(31);
     const worse = await s.post(run('player-0001', 150));
     expect(worse.body).toMatchObject({ saved: false, me: { total: 4000 } });
-    s.wait(60);
+    s.wait(31);
     const better = await s.post(run('player-0001', 210));
     expect(better.body).toMatchObject({ saved: true, me: { total: 4200 }, count: 1 });
   });
@@ -184,30 +194,35 @@ describe('the leaderboard server', () => {
   it('outside the top 10 you see your line and the two players above you', async () => {
     const s = server();
     for (let i = 0; i < 14; i++) await s.post(run(`player-00${String(i).padStart(2, '0')}`, 300 - i * 10), `10.0.0.${i}`);
-    const b = await s.get(`board=${boardId('spike', 'OH')}&player=player-0013`);
-    expect(b.body.top).toHaveLength(10);
-    expect(b.body.me).toMatchObject({ rank: 14, you: true });
-    expect(b.body.above.map((r) => r.rank)).toEqual([12, 13]);
+    const pub = await s.get(`board=${OH}`);
+    expect(pub.body.top).toHaveLength(10);
+    const me = await s.get(`view=me&board=${OH}&player=player-0013`);
+    expect(me.body.me).toMatchObject({ rank: 14, you: true });
+    expect(me.body.above.map((r) => r.rank)).toEqual([12, 13]);
   });
 
-  it('one run per player at a time: a second submission within 30 s is refused', async () => {
+  it('a new run within 30 s is refused, and the answer says how long to wait', async () => {
     const s = server();
     expect((await s.post(run('player-0001', 200))).status).toBe(200);
-    expect((await s.post(run('player-0001', 210))).status).toBe(429);
-    s.wait(31);
+    const again = await s.post(run('player-0001', 210));
+    expect(again.status).toBe(429);
+    expect(again.body.retryAfterS).toBeGreaterThan(0);
+    expect(again.body.retryAfterS).toBeLessThanOrEqual(LEADERBOARD.playerWindowS);
+    s.wait(LEADERBOARD.playerWindowS + 1);
     expect((await s.post(run('player-0001', 210))).status).toBe(200);
   });
 
   it('a renamed player shows under the new name', async () => {
     const s = server();
     await s.post(run('player-0001', 200));
-    s.wait(60);
+    s.wait(31);
     await s.post(run('player-0001', 100, { name: 'Kasia' }));
-    const b = await s.get(`board=${boardId('spike', 'OH')}`);
+    s.wait(LEADERBOARD.publicCacheS + 1);
+    const b = await s.get(`board=${OH}`);
     expect(b.body.top[0]).toMatchObject({ name: 'Kasia', total: 4000 });
   });
 
-  it('the medal table counts medals over every season board, golds first', async () => {
+  it('the medal table counts medals over every season board, golds first, and says how deep it reads', async () => {
     const s = server();
     const [, silverOH, goldOH] = RANKED.medals.OH;
     const goldMB = RANKED.medals.MB[2];
@@ -216,12 +231,12 @@ describe('the leaderboard server', () => {
     await s.post(run('player-0002', per(goldOH)), '2.2.2.2');
     s.wait(31);
     await s.post(run('player-0001', per(goldMB), { board: boardId('spike', 'MB') }), '1.1.1.1');
-    const m = await s.get('view=medals&player=player-0002');
+    const m = await s.get('view=medals');
     expect(m.body.rows.map((r) => [r.name, r.gold, r.silver])).toEqual([
       ['Player 01', 1, 1],
       ['Player 02', 1, 0],
     ]);
-    expect(m.body.rows[1].you).toBe(true);
+    expect(m.body.depth).toBe(LEADERBOARD.medalDepth);
   });
 
   it('a bad request is an error, not a crash', async () => {
@@ -229,6 +244,141 @@ describe('the leaderboard server', () => {
     expect((await s.get('board=1:spike:XX')).status).toBe(400);
     expect((await s.post({ hello: 1 })).status).toBe(400);
     expect((await s.post(run('player-0001', RANKED.maxRepPoints + 1))).status).toBe(400);
+    expect((await s.post(run('player-0001', 100, { id: undefined }))).status).toBe(400);
+  });
+});
+
+describe('the leaderboard keeps a run and its rank together', () => {
+  it('a lost answer: sending the same run again changes nothing, and the 30 s limit lets it through', async () => {
+    const s = server();
+    const sub = run('player-0001', 200);
+    expect((await s.post(sub)).status).toBe(200);
+    // the answer never arrived: the game sends the very same run (same id) straight away
+    const retry = await s.post(sub);
+    expect(retry.status).toBe(200);
+    expect(retry.body).toMatchObject({ saved: true, repeat: true, count: 1, me: { rank: 1, total: 4000 } });
+    const b = await s.get(`board=${OH}`);
+    expect(b.body.count).toBe(1);
+  });
+
+  it('a store failure records nothing, and the same run can be sent again', async () => {
+    let failNext = true;
+    const store = new MemoryStore(() => NOW);
+    const flaky = new Proxy(store, {
+      get(target, prop, receiver) {
+        if (prop === 'submit')
+          return (op: SubmitOp) => {
+            if (failNext) {
+              failNext = false;
+              return Promise.reject(new Error('connection reset'));
+            }
+            return target.submit(op);
+          };
+        const v = Reflect.get(target, prop, receiver);
+        return typeof v === 'function' ? v.bind(target) : v;
+      },
+    }) as Store;
+    const s = server(flaky);
+    const sub = run('player-0001', 200);
+    expect((await s.post(sub)).status).toBe(503);
+    expect((await s.get(`board=${OH}`)).body.count).toBe(0);
+    const again = await s.post(sub);
+    expect(again.status).toBe(200);
+    expect(again.body).toMatchObject({ saved: true, repeat: false, me: { total: 4000 } });
+  });
+
+  it('runs arriving in any order: the board always shows your best run with its own details', async () => {
+    // many runs from one player, out of order, straight into the store (no time limits): whatever the
+    // order, the rank score and the details shown must belong to the same, best run
+    const rng = new Rng(11);
+    for (let trial = 0; trial < 20; trial++) {
+      const store = new MemoryStore(() => NOW);
+      const totals = Array.from({ length: 6 }, () => Math.floor(rng.next() * 5000));
+      await Promise.all(
+        totals.map((total, i) =>
+          store.submit({
+            keys: { board: 'b', entries: 'e', names: 'n', submission: `s${i}`, playerLimit: `pl${i}`, addressLimit: 'a' },
+            player: 'p',
+            name: 'P',
+            submission: `s${i}`,
+            score: rankScore(total, 0, 0, NOW),
+            entry: JSON.stringify({ total }),
+            playerWindowS: 30,
+            addressWindowS: 3600,
+            addressMax: 100,
+            submissionTtlS: 60,
+            boardTtlS: 0,
+          }),
+        ),
+      );
+      const [entry] = await store.hmget('e', ['p']);
+      expect(JSON.parse(entry!).total).toBe(Math.max(...totals));
+      expect(await store.zcard('b')).toBe(1);
+    }
+  });
+});
+
+describe('the leaderboard on club Wi-Fi', () => {
+  it('a whole club behind one address can play: 30 players in an hour are fine', async () => {
+    const s = server();
+    for (let i = 0; i < 30; i++) {
+      const r = await s.post(run(`player-${String(i).padStart(4, '0')}`, 100 + i), '192.168.0.1');
+      expect(r.status).toBe(200);
+    }
+  });
+
+  it('the public lists are cached for a few seconds and the same for everyone; your own line is never cached', async () => {
+    const s = server();
+    await s.post(run('player-0001', 200));
+    const pub = await s.raw(`board=${OH}`);
+    expect(pub.headers.get('cache-control')).toContain(`s-maxage=${LEADERBOARD.publicCacheS}`);
+    const me = await s.raw(`view=me&board=${OH}&player=player-0001`);
+    expect(me.headers.get('cache-control')).toContain('no-store');
+    expect((await s.raw('view=medals')).headers.get('cache-control')).toContain('public');
+  });
+
+  it('reads are limited per address, generously', async () => {
+    const s = server();
+    for (let i = 0; i < LEADERBOARD.addressReadsPerMinute; i++) expect((await s.get(`board=${OH}`, '5.5.5.5')).status).toBe(200);
+    expect((await s.get(`board=${OH}`, '5.5.5.5')).status).toBe(429);
+    expect((await s.get(`board=${OH}`, '6.6.6.6')).status).toBe(200);
+    s.wait(61);
+    expect((await s.get(`board=${OH}`, '5.5.5.5')).status).toBe(200);
+  });
+});
+
+describe('looking after the boards', () => {
+  it('a weekly board is deleted 12 weeks after its last run; season boards stay', async () => {
+    const s = server();
+    const week = weekOf(NOW);
+    const weekly = boardId('spike', weeklyBoard(week).pos, week.id);
+    await s.post(run('player-0001', 200, { board: weekly }), '1.1.1.1');
+    await s.post(run('player-0002', 200), '2.2.2.2');
+    s.wait(LEADERBOARD.weeklyRetentionDays * 86_400 + 60);
+    expect((await s.get(`board=${weekly}`)).body.count).toBe(0);
+    expect((await s.get(`board=${OH}`)).body.count).toBe(1);
+  });
+
+  it('an admin (with the token) can see who is who and take a bogus run off a board; nobody else can', async () => {
+    const s = server(undefined, 'secret-admin-token');
+    await s.post(run('player-0001', 300), '1.1.1.1');
+    await s.post(run('player-0002', 200), '2.2.2.2');
+    expect((await s.raw(`view=admin&board=${OH}`)).status).toBe(403);
+    const admin = await s.raw(`view=admin&board=${OH}`, { authorization: 'Bearer secret-admin-token' });
+    const rows = ((await admin.json()) as { rows: { name: string; player: string }[] }).rows;
+    expect(rows.map((r) => r.player)).toEqual(['player-0001', 'player-0002']);
+    expect((await s.del(`board=${OH}&player=player-0001`)).status).toBe(403);
+    expect((await s.del(`board=${OH}&player=player-0001`, 'Bearer wrong-token-here')).status).toBe(403);
+    const del = await s.del(`board=${OH}&player=player-0001`, 'Bearer secret-admin-token');
+    expect(await del.json()).toEqual({ removed: true });
+    const b = await s.get(`board=${OH}`);
+    expect(b.body.top.map((r) => r.name)).toEqual(['Player 02']);
+  });
+
+  it('a health check says which store and which set of boards answers', async () => {
+    const s = server();
+    const h = await s.raw('view=health');
+    expect(await h.json()).toEqual({ ok: true, store: 'memory', boards: 't', ruleset: RANKED.ruleset });
   });
 });
 

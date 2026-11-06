@@ -8,6 +8,10 @@ export interface LeaderboardCallbacks {
   close(): void;
   fetchBoard(board: string): Promise<BoardView | null>;
   fetchMedals(): Promise<MedalView | null>;
+  /** finished runs on this device the leaderboard doesn't have yet */
+  pending(): number;
+  /** send them now (one at a time, oldest first) */
+  sendPending(): Promise<{ sent: number; left: number }>;
   /** your name now (null: none yet) */
   name(): string | null;
   /** change your name: the new name, or null if it isn't a valid one */
@@ -119,6 +123,8 @@ export class LeaderboardScreen {
       this.loadBoard(body, wb.mode, wb.pos, week.id);
     } else this.loadMedals(body);
     b.append(body);
+    const waiting = this.pendingLine();
+    if (waiting) b.append(waiting);
     b.append(this.nameLine());
     this.root.querySelector<HTMLButtonElement>('.boards-tabs .on')?.focus();
   }
@@ -158,7 +164,8 @@ export class LeaderboardScreen {
       table.setAttribute('role', 'table');
       table.append(this.headRow(['#', 'Name', 'Score', 'Medal', 'Perfect']));
       for (const r of v.top) table.append(this.boardRow(r, pos));
-      if (v.me && v.me.rank > v.top.length) {
+      // outside the top (or in it, but newer than the cached list): your line, and the players just above you
+      if (v.me && !v.top.some((r) => r.you)) {
         table.append(el('div', 'boards-gap', '···'));
         for (const r of [...v.above, v.me]) table.append(this.boardRow(r, pos));
       }
@@ -171,6 +178,7 @@ export class LeaderboardScreen {
     const req = ++this.request;
     const caption = el('div', 'boards-caption');
     caption.append(el('b', '', 'Medal table'), ` · every season board (${seasonBoards().length}), most golds first`);
+    const you = this.cb.name();
     body.append(caption, el('div', 'boards-note', 'Loading…'));
     void this.cb.fetchMedals().then((v) => {
       if (req !== this.request || !this.visible) return;
@@ -189,7 +197,8 @@ export class LeaderboardScreen {
       table.setAttribute('role', 'table');
       table.append(this.headRow(['#', 'Name', ...(coach ? ['Coach'] : []), 'Gold', 'Silver', 'Bronze']));
       for (const r of v.rows) {
-        const row = el('div', 'boards-row' + (r.you ? ' you' : ''));
+        // the table is the same for everyone (cached): your line is found by your name
+        const row = el('div', 'boards-row' + (you && r.name === you ? ' you' : ''));
         row.setAttribute('role', 'row');
         row.append(el('span', 'b-rank', String(r.rank)), el('span', 'b-name', r.name));
         if (coach) row.append(el('span', 'b-num m-coach', String(r.coach)));
@@ -201,7 +210,27 @@ export class LeaderboardScreen {
         table.append(row);
       }
       body.append(table);
+      body.append(el('div', 'boards-note small', `Counts the top ${formatPoints(v.depth)} runs of each board.`));
     });
+  }
+
+  /** runs finished on this device that the leaderboard doesn't have yet, and a way to send them */
+  private pendingLine(): HTMLElement | null {
+    const n = this.cb.pending();
+    if (!n) return null;
+    const line = el('div', 'boards-pending');
+    line.append(`${n} ${n === 1 ? 'run' : 'runs'} from this device ${n === 1 ? "isn't" : "aren't"} on the board yet. `);
+    const send = el('button', 'link-btn', 'Send now');
+    send.onclick = async () => {
+      send.disabled = true;
+      send.textContent = 'Sending…';
+      const r = await this.cb.sendPending();
+      if (this.visible) this.render();
+      if (r.left && this.visible)
+        this.box.querySelector('.boards-pending')?.append(' (the leaderboard is busy or offline: try again in a minute)');
+    };
+    line.append(send);
+    return line;
   }
 
   private headRow(cols: string[]): HTMLElement {

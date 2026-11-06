@@ -651,6 +651,94 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   what the server refuses, the board order, best-only boards, your place and who is next, the two above
   you, the per-player limit, renames, the medal table, the share card).
 
+## Leaderboard reliability (LemonPhase's review of PR #30)
+- Review (LemonPhase, at `40675a5`): save a run and its rank atomically; make retries safe and visible;
+  protect reads and suit club Wi-Fi; verify the deployed path; document the limits.
+- One step: `Store.submit` records a run in one operation. On Upstash it is a Lua script (`SUBMIT_SCRIPT`):
+  a repeat of a recorded submission id answers `repeat` and changes nothing; a new run inside the
+  player's 30 s window, or over the address's hourly count, is refused with how long to wait; otherwise
+  the run replaces the best only if it scores higher, rank score and details together, the name is
+  updated, a weekly board's expiry is renewed and the submission id is remembered (7 days). The memory
+  store does the same in one synchronous step. Accepting a run (`validateRun`) stays apart from recording
+  it (`record`), and stored runs carry `source: 'browser'` for a future server-verified source.
+- Retries: every finished run gets an id and waits on the device (`courtfeel.pending.v1`, at most 10)
+  until the leaderboard has it. The results screen tells apart no connection, can't take runs right now
+  (503), one run at a time (429, with a countdown to the server's wait) and refused (400, not retried);
+  Retry sends the same run. The leaderboard screen offers to send runs still waiting. Nothing polls; the
+  game keeps an answer 10 s.
+- Reads: the public list and the medal table are the same for everyone and cacheable at the edge
+  (`s-maxage` 10 s and 30 s, and a few seconds inside the function); your own line is a separate,
+  never-cached request. 600 reads a minute and 300 new runs an hour per address (a club on one Wi-Fi),
+  one new run per player per 30 s (`LEADERBOARD` in `config.ts`, outside the ranked ruleset).
+- Upkeep: weekly boards expire 12 weeks after their last run; `LEADERBOARD_ADMIN_TOKEN` unlocks a board
+  listing with player ids and DELETE of a bogus run; `?view=health` names the store and the set of boards.
+- Deployed path: the preview's function loads and answers its own 503 ("not set up"): the `.js` import
+  chain works on Vercel. Redis is not verified yet (no Upstash on the project). `scripts/leaderboard-check.mjs`
+  plays two browsers against a deployment (A submits, B reads, a retry counts once, the 30 s wait, a worse
+  run keeps the best, cf:dev vs cf:prod); against the local dev server every check but "store is
+  Upstash" passes.
+- Tests: +9 in `tests/leaderboard.test.ts` (a lost answer retried counts once; a store failure writes
+  nothing and the run can be sent again; runs from one player in any order leave the best run's own
+  details; 30 players behind one address; public lists cached, your line not; reads limited per
+  address; weekly expiry; admin listing and removal; the health check).
+
+## Spike Drill: a block that takes a side, and a target it leaves open
+- Report (MatusGib): with the block up the drill asks you to hit a zone the AI is blocking. Ideas: the
+  block blocks the non-target areas, or there is no target and you hit around a formed block. Chosen:
+  both (an open-side target, and a smaller bonus for any other clean kill past the block), the block
+  formed early and jumping on time, tools scored as before (a defence might still dig them), the pin
+  blocker starting as normal and moving after the set on inside balls, the double block's middle late
+  only on fast sets, the open court in green, and the same maximum as a free rep.
+- Root cause: the AI blocker moves in front of the hitter and leans to the line, and the target was
+  picked at random from all zones, ignoring it. The red shadow assumed hands 0.35 m above the net;
+  the AI blockers' hands reach `standReach + 0.04 + block jump` (`blockReach`): about 3.2 m, the hitter's
+  own contact height, so the shadow showed deep balls clearing hands that really stopped them.
+- Fix: each block rep the block takes the line or the cross (seeded in a ranked run, `spikeScript().takes`;
+  random in practice). `src/game/blockPlan.ts` plans it: on a pin set the pin blocker stands `takeShift`
+  (0.45 m) to that side of the attack, formed before the set (`BlockerBrain.holdX`) and only timing the
+  jump; on an inside set (quicks, 3 ball, attack on two, pipe) it starts at its usual spot and moves after
+  the set, misreading less (it has been told the side). A double block's middle closes 0.95 m inside it:
+  formed on high balls, 0.22 s late on fast sets (`lateBy`). The target is a zone the planned block
+  covers less than 20% of (hands 8 cm wider for margin); a new narrow **Line past the block** zone is the
+  target against a block that takes the cross. A clean kill elsewhere past a block scores AROUND THE
+  BLOCK (+50; on target is still +100). The shadow and the new green open court use the real hands
+  height (kept just under the contact when the hands reach it: a full-length shadow). Mini Rally's
+  blockers are unchanged (the new controls default off).
+- Measured (dev server, perfect bot, ranked season boards, reps 11-20): before, OH's block reps went
+  5 kills / 4 tooled / 1 blocked; after, OH 10/10, OPP 10/10 and MB 9/10 kills on target (one tooled
+  quick). At the hit the formed pin blocker stood at -4.40 (takes line) or -3.60 (takes cross); on a go
+  the middle was still on the floor at -0.8 (seam open), on a high ball it was up at -2.65. On a
+  double block taking the cross the green covered 43% of their court and the target strip lay wholly
+  on green.
+- Medals re-derived the same way (60 / 75 / 90% of the perfect bot's season run, now OH 5760, OPP 5920,
+  MB 5508, S 5006, L 3759): OH 3450 / 4300 / 5200, OPP 3550 / 4450 / 5350, MB 3300 / 4150 / 4950, S 3000
+  / 3750 / 4500, L 2250 / 2800 / 3400. Good bot: gold everywhere; sloppy bot: bronze or nothing. The
+  ruleset is still unreleased, so it stays 1 with the new hash.
+- Tests: `tests/blockPlan.test.ts` (+15): the side a block takes, formed on a pin set, moving on an
+  inside set, the middle formed on a high ball and late on a fast set, every target open, a line-taking
+  block sends the hitter cross, a cross-taking double leaves the line past the block, nothing over a
+  block whose hands reach the contact, a double closes more than a single, the line strip only with a
+  block, the script's seeded side. 227 in all.
+- Second play (MatusGib): the target zone should light up green when you hit it; on a go the middle is too
+  slow ("it looks like there is no block at all"); medals 1500 lower each.
+  - Measured first (8 go reps against a double block each, the middle's distance from its closed spot at
+    the hit): reacting 0.22 s late from the middle of the net, 1.8-2.7 m and never off the floor (the
+    report); reacting on time from the middle, 0.9-1.7 m, never up; on time from **halfway**, 0.4-0.9 m
+    and in the air every time; from 65% of the way, 0.3-0.9 m. Chosen: on time from halfway
+    (`fastStart` 0.5; `lateClose` and `BlockerBrain.lateBy` removed): a real, slightly split double block.
+  - That exposed the planner: the target was picked against a fully closed block, but the middle is still
+    arriving when you swing, about 0.6 m short, over the sharp cut the planner thought open (the perfect
+    bot was tooled on 5 of 10 goes). The plan now has the middle where it is at the hit (`at`: 40% of its
+    run still to go, `arriveShort`), so against a block taking the line on a go the target is the seam
+    between the two blockers; and a zone counts as open below 12% covered (was 20%). After: go reps
+    14/16 on target (the two misses: seams the middle got to in time), ranked block reps OH 10/10,
+    OPP 9/10, MB 9/10.
+  - The target zone lights up green (fill, edge and walls, brighter) when a kill lands in it, until the
+    next target is set (`ZoneMarker.hit`).
+  - Medals 1500 lower each: OH 1950 / 2800 / 3700, OPP 2050 / 2950 / 3850, MB 1800 / 2650 / 3450, S 1500
+    / 2250 / 3000, L 750 / 1300 / 1900.
+  - Tests: +1 (on a go the middle is still arriving: a line-taking block leaves the seam), 228 in all.
+
 ## Decisions
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,
@@ -700,6 +788,11 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   has it: timing windows, power and reach are identical for both hands, so both share one leaderboard.
 - A ranked run never writes the locked settings into the player's settings: they are read through
   `Game.locked`, so a run can't leave someone's practice aim assist, net or custom body changed.
+- A Spike Drill block takes a side and the target is on the other: a hitter's job against a block is to
+  read what it leaves, not to hit through it. Tools keep their score (timing + 50): whether a defence
+  would have dug one can't be judged.
+- The block's shadow uses the height the blockers' hands really reach, not a lower display height: a
+  shadow that shows open floor where the hands stop the ball teaches the wrong shot.
 - The leaderboard has no accounts: a random id in the browser and a nickname. It keeps the barrier to
   zero for a club; impersonation and invented runs are possible until verified runs (#18).
 - Personal bests split rep by rep (your total against your best's after the same number of reps), not

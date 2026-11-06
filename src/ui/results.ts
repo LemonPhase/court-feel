@@ -14,6 +14,8 @@ export interface ResultsCallbacks {
   leaderboard(): void;
   /** your name, typed the first time you put a run on the leaderboard */
   submitName(name: string): void;
+  /** send the run again (it is kept on this device until the leaderboard has it) */
+  retry(): void;
   /** the run as text for a group chat */
   shareText(): string;
 }
@@ -23,7 +25,14 @@ export type OnlineState =
   | { kind: 'name'; error?: string }
   | { kind: 'sending' }
   | { kind: 'done'; result: SubmitResult }
+  /** no connection: the run waits on this device */
   | { kind: 'offline' }
+  /** the leaderboard answered but can't take runs right now: the run waits on this device */
+  | { kind: 'unavailable' }
+  /** one run at a time: it can go in a few seconds */
+  | { kind: 'limited'; retryAfterS: number }
+  /** the leaderboard refused the run */
+  | { kind: 'refused'; error: string }
   | { kind: 'skipped'; why: string };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text = ''): HTMLElementTagNameMap[K] {
@@ -65,6 +74,7 @@ export class ResultsScreen {
   readonly root: HTMLDivElement;
   private box: HTMLDivElement;
   private online: HTMLDivElement | null = null;
+  private countdown = 0;
   private againBtn: HTMLButtonElement | null = null;
 
   constructor(
@@ -167,6 +177,7 @@ export class ResultsScreen {
   setOnline(s: OnlineState): void {
     const o = this.online;
     if (!o) return;
+    window.clearInterval(this.countdown);
     o.innerHTML = '';
     o.className = `res-online s-${s.kind}`;
     if (s.kind === 'name') {
@@ -188,7 +199,32 @@ export class ResultsScreen {
       return;
     }
     if (s.kind === 'sending') o.textContent = 'Putting your run on the board…';
-    else if (s.kind === 'offline') o.textContent = 'Online leaderboard unavailable: your best is kept on this device.';
+    else if (s.kind === 'offline' || s.kind === 'unavailable' || s.kind === 'limited') {
+      const what =
+        s.kind === 'offline'
+          ? "Couldn't reach the leaderboard (no connection)."
+          : s.kind === 'unavailable'
+            ? "The leaderboard can't take runs right now."
+            : 'One run at a time on the leaderboard.';
+      o.append(el('div', '', `${what} Your run is kept on this device until it's on the board.`));
+      const retry = el('button', 'ghost-btn ranked-btn res-retry', 'Retry');
+      retry.onclick = () => this.cb.retry();
+      if (s.kind === 'limited') {
+        // the leaderboard says when: count down to it rather than letting the button be pressed into a refusal
+        let left = s.retryAfterS;
+        const tick = () => {
+          retry.disabled = left > 0;
+          retry.textContent = left > 0 ? `Retry in ${left} s` : 'Retry';
+          left--;
+          if (left < -1) window.clearInterval(this.countdown);
+        };
+        tick();
+        this.countdown = window.setInterval(tick, 1000);
+      }
+      o.append(retry);
+      return;
+    } else if (s.kind === 'refused')
+      o.textContent = `The leaderboard refused this run (${s.error}). Your best on this device still counts.`;
     else if (s.kind === 'skipped') o.textContent = s.why;
     else {
       const { me, count, next, saved } = s.result;
@@ -207,6 +243,7 @@ export class ResultsScreen {
   }
 
   hide(): void {
+    window.clearInterval(this.countdown);
     this.root.style.display = 'none';
   }
 }

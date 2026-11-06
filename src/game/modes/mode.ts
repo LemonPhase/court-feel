@@ -153,9 +153,15 @@ const ZONE_GLOW = [0.5, 0.12] as const;
 /** the court floor is pulled towards the camera with a polygon offset: the zone is pulled further, or it loses the depth test at grazing angles */
 const ZONE_OFFSET = { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 };
 
+/** a target zone hit: it shows in this green (the game's "good" colour) until the next target is set */
+const ZONE_HIT = 0x7dff9b;
+
 /** a target zone on the floor: a tinted fill, a solid edge band and low light walls that fade upwards */
 export class ZoneMarker {
   readonly group = new THREE.Group();
+  private base: THREE.Color;
+  /** a ball landed in it: green, brighter, until the next `set` */
+  private lit = false;
   private fill: THREE.Mesh;
   /** edge bands: near, far, left, right */
   private edges: THREE.Mesh[] = [];
@@ -164,6 +170,7 @@ export class ZoneMarker {
   private t = 0;
 
   constructor(color = 0xffc23a) {
+    this.base = new THREE.Color(color);
     const floor = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
     this.fill = new THREE.Mesh(
       floor,
@@ -212,6 +219,8 @@ export class ZoneMarker {
     left.position.set(-w / 2 + e / 2, 0.001, 0);
     right.scale.set(e, 1, d - 2 * e);
     right.position.set(w / 2 - e / 2, 0.001, 0);
+    this.paint(this.base);
+    this.lit = false;
     const [wn, wf, wl, wr] = this.walls;
     wn.scale.set(w, ZONE_WALL, 1);
     wn.position.set(0, 0, d / 2);
@@ -226,11 +235,25 @@ export class ZoneMarker {
     this.group.visible = true;
   }
 
+  /** the ball landed in the zone: it lights up green (and stays lit until the next target) */
+  hit(): void {
+    this.lit = true;
+    this.paint(new THREE.Color(ZONE_HIT));
+  }
+
+  private paint(c: THREE.Color): void {
+    (this.fill.material as THREE.MeshBasicMaterial).color.copy(c);
+    (this.edges[0].material as THREE.MeshBasicMaterial).color.copy(c);
+    this.glow.color.copy(c);
+  }
+
   update(dt: number): void {
     this.t += dt;
     const p = Math.sin(this.t * 4);
-    (this.fill.material as THREE.MeshBasicMaterial).opacity = ZONE_FILL[0] + p * ZONE_FILL[1];
-    this.glow.opacity = ZONE_GLOW[0] + p * ZONE_GLOW[1];
+    // lit: a brighter fill and glow, the same pulse
+    const k = this.lit ? 1.6 : 1;
+    (this.fill.material as THREE.MeshBasicMaterial).opacity = (ZONE_FILL[0] + p * ZONE_FILL[1]) * k;
+    this.glow.opacity = (ZONE_GLOW[0] + p * ZONE_GLOW[1]) * k;
   }
 }
 

@@ -3,8 +3,14 @@
 import { RANKED } from '../config.js';
 import { parseBoardId, weekOf, weeklyBoard, type BoardRef } from '../game/boards.js';
 
-/** a finished ranked run, as the game submits it */
+/**
+ * A finished ranked run, as the game submits it. These are results the player's browser reports:
+ * the server checks they are possible (plausible), not that they were played. A result a match server
+ * verified would come from a different source and say so.
+ */
 export interface RunSubmission {
+  /** this run's own id, made when it finished: a retry sends the same one, so it counts once */
+  id: string;
   board: string;
   /** a random id kept in the player's browser (no accounts) */
   player: string;
@@ -35,21 +41,30 @@ export interface BoardRow {
   you?: boolean;
 }
 
-/** a board as the leaderboard screen shows it: the top, and around you if you are further down */
-export interface BoardView {
+/** the public part of a board, the same for everyone (cached for a few seconds) */
+export interface PublicBoard {
   board: string;
   count: number;
   top: BoardRow[];
+}
+
+/** your part of a board (never cached): your line and, outside the top, the players just above you */
+export interface PersonalBoard {
+  board: string;
   /** your line (null: no run on this board yet) */
   me: BoardRow | null;
-  /** the players just above you, when you are outside the top */
   above: BoardRow[];
 }
+
+/** a board as the leaderboard screen shows it */
+export type BoardView = PublicBoard & PersonalBoard;
 
 /** the answer to a submitted run */
 export interface SubmitResult {
   /** the run is your new best on the board (a worse run leaves your best as it was) */
   saved: boolean;
+  /** this run had already been received (a retry): nothing changed */
+  repeat: boolean;
   me: BoardRow;
   count: number;
   /** the player just above you (null: you are first) */
@@ -64,12 +79,20 @@ export interface MedalRow {
   gold: number;
   silver: number;
   bronze: number;
-  you?: boolean;
 }
 
+/** the medal table (public, cached): it counts the top `depth` runs of each season board */
 export interface MedalView {
   boards: string[];
+  depth: number;
   rows: MedalRow[];
+}
+
+/** why a request failed, as the server says it (the game tells these apart) */
+export interface ErrorBody {
+  error: string;
+  /** for a refused run: try again after this many seconds */
+  retryAfterS?: number;
 }
 
 /** how many lines a board shows from the top, and how many players above you */
@@ -106,6 +129,7 @@ export function validateRun(body: unknown, now: number): { ok: true; run: RunSub
     if (featured.mode !== ref.mode || featured.pos !== ref.pos) return { ok: false, error: "not that week's board" };
   }
   if (!isPlayerId(b.player)) return { ok: false, error: 'bad player id' };
+  if (!isPlayerId(b.id)) return { ok: false, error: 'bad run id' };
   const name = cleanName(b.name);
   if (!name) return { ok: false, error: 'bad name' };
   const reps = b.reps;
@@ -114,6 +138,7 @@ export function validateRun(body: unknown, now: number): { ok: true; run: RunSub
   if (!count(b.perfects, RANKED.reps) || !count(b.bestStreak, RANKED.reps)) return { ok: false, error: 'impossible counts' };
   if (typeof b.ms !== 'number' || !Number.isFinite(b.ms) || b.ms < RANKED.minRunMs) return { ok: false, error: 'too fast' };
   const run: RunSubmission = {
+    id: b.id,
     board: b.board as string,
     player: b.player,
     name,

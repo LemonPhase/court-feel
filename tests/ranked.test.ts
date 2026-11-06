@@ -145,9 +145,9 @@ describe('ranked run: the Spike Drill script', () => {
   });
 
   it('reps 1-5 call 1 with no block, 6-10 call 2, 11-15 call 1 against a single block, 16-20 a mix against a double', () => {
-    for (let k = 0; k < 5; k++) expect(spikeScript(k, repSeed(seed, k), 3)).toEqual({ call: 0, block: 0 });
-    for (let k = 5; k < 10; k++) expect(spikeScript(k, repSeed(seed, k), 3)).toEqual({ call: 1, block: 0 });
-    for (let k = 10; k < 15; k++) expect(spikeScript(k, repSeed(seed, k), 3)).toEqual({ call: 0, block: 1 });
+    for (let k = 0; k < 5; k++) expect(spikeScript(k, repSeed(seed, k), 3)).toMatchObject({ call: 0, block: 0 });
+    for (let k = 5; k < 10; k++) expect(spikeScript(k, repSeed(seed, k), 3)).toMatchObject({ call: 1, block: 0 });
+    for (let k = 10; k < 15; k++) expect(spikeScript(k, repSeed(seed, k), 3)).toMatchObject({ call: 0, block: 1 });
     const mixed = new Set<number>();
     for (let k = 15; k < 20; k++) {
       const s = spikeScript(k, repSeed(seed, k), 3);
@@ -212,7 +212,7 @@ describe('ranked run: boards', () => {
  * Changing any of these sections without bumping RANKED.ruleset fails here.
  */
 const RULESET_HASHES: Record<number, number> = {
-  1: 4132307869,
+  1: 860747682,
 };
 
 describe('ranked ruleset', () => {

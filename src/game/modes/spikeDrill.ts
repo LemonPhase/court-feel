@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COURT, SCORING, type PositionId } from '../../config';
+import { AI, COURT, SCORING, type PositionId } from '../../config';
 import { R } from '../../physics/ball';
 import { solveApex } from '../../physics/solve';
 import { SetterBrain } from '../../ai/setter';
@@ -21,21 +21,26 @@ import {
 } from '../plays';
 import { kbd, makeFloorRing, Mode, ZoneMarker } from './mode';
 import { planApproach, planQuick, planToPoint, type ApproachPlan } from '../../ai/approach';
-import { BlockerBrain } from '../../ai/blocker';
-import { blockShadowOnCourt, HANDS_WIDTH, type HandSpan } from '../blockShadow';
+import { BlockerBrain, blockReach } from '../../ai/blocker';
+import { blockShadowOnCourt, HANDS_WIDTH, type FloorPoly, type HandSpan } from '../blockShadow';
+import { blockPlan, openZone, planSpans, type BlockPlan, type BlockTakes } from '../blockPlan';
 import { spikeScript } from '../ranked';
 
 /** block practice: nobody, one blocker fronting your lane, or that blocker plus a middle closing */
 export type BlockLevel = 0 | 1 | 2;
 const BLOCK_NAMES = ['off', 'single', 'double'] as const;
-/** how far above the net top the blockers' hands are taken to reach (the shadow's wall height) */
-const HANDS_ABOVE_NET = 0.35;
+/** hands at your contact height or above: the shadow's wall is kept this far under the contact (a full-length shadow) */
+const WALL_UNDER_CONTACT = 0.1;
+/** the open-court canvas: pixels across their court (and down its length) */
+const OPEN_RES = 128;
 /** the shadow is at most two polygons (one per blocker, or one closed wall) of up to this many corners */
 const SHADOW_POLYS = 2;
 const SHADOW_CORNERS = 8;
 
-interface Zone {
+export interface Zone {
   name: string;
+  /** only a target when a block is up (the strip a cross-taking block leaves along the line) */
+  blockOnly?: boolean;
   x0: number;
   x1: number;
   z0: number;
@@ -49,10 +54,12 @@ const ZONES: Zone[] = [
   { name: 'Seam', x0: -1.5, x1: 1.5, z0: -7.5, z1: -4.5 },
   { name: 'Sharp cut', x0: 1.5, x1: 4.5, z0: -4.2, z1: -1.5 },
   { name: 'Line short', x0: -4.5, x1: -2, z0: -4.5, z1: -2 },
+  // against a block that takes the cross, the line is what is left: a strip along the sideline
+  { name: 'Line past the block', x0: -4.5, x1: -3.8, z0: -8.5, z1: -4, blockOnly: true },
 ];
 
 /** target zones for this position: mirrored for right-side attackers; a middle hits zone 1 or 5 */
-function zonesFor(pos: PositionId): Zone[] {
+export function zonesFor(pos: PositionId): Zone[] {
   if (pos === 'MB') {
     return [
       { name: 'Zone 1 (deep left)', x0: -4.5, x1: -1.5, z0: -9, z1: -5.6 },
@@ -94,7 +101,13 @@ export class SpikeDrill extends Mode {
   earlyFor: unknown = null;
   /** opposing block (key B): off / single / double */
   blockLevel: BlockLevel = 0;
+  /** the side the block takes away this rep (the target is on the other side) */
+  takes: BlockTakes = 'line';
   private blockers: { a: Athlete; brain: BlockerBrain }[] = [];
+  /** their floor the block leaves open, in green (a canvas: the court minus the shadow) */
+  private openCourt!: THREE.Mesh;
+  private openCanvas: HTMLCanvasElement | null = null;
+  private openKey = '';
   /** the block's shadow on their floor: where a straight ball from your contact cannot go */
   private shadow!: THREE.Mesh;
   private shadowEdge!: THREE.LineSegments;
@@ -120,9 +133,14 @@ export class SpikeDrill extends Mode {
     this.blockLevel = level;
     this.ensureBlockers();
     this.placeBlockers();
+    if (!this.tossed) this.pickZone();
     this.refreshScore();
     const what =
-      level === 0 ? 'Block off' : level === 1 ? 'Block: single · hit around it' : 'Block: double · line or cross, or over the top';
+      level === 0
+        ? 'Block off'
+        : level === 1
+          ? 'Block: single · it takes the line or the cross: hit the side it leaves open'
+          : 'Block: double · closed on high balls, late on fast sets: find the open side';
     this.g.hud.message(what, 1.8);
   }
 
@@ -131,9 +149,10 @@ export class SpikeDrill extends Mode {
     if (this.blockers.length || this.blockLevel === 0) return;
     const g = this.g;
     const specs: { role: PositionId; range: number; closeInside: number; seed: number }[] = [
-      // a pin blocker fronting your lane, and a middle running to close next to them
-      { role: 'OPP', range: 1.5, closeInside: 0, seed: 47 },
-      { role: 'MB', range: 4.6, closeInside: 0.95, seed: 48 },
+      // a pin blocker fronting your lane (far enough to follow an inside set from its usual spot),
+      // and a middle closing next to them
+      { role: 'OPP', range: 2.6, closeInside: 0, seed: 47 },
+      { role: 'MB', range: 4.6, closeInside: AI.drillBlock.closeGap, seed: 48 },
     ];
     for (const sp of specs) {
       const a = new Athlete(sp.role, -1);
@@ -149,19 +168,52 @@ export class SpikeDrill extends Mode {
     }
   }
 
-  /** each rep: the active blockers back at home facing you, the rest parked in the free zone */
+  /** where you will hit this rep: the call's spot along the net (a quick's is in front of the setter) */
+  private attackSpot(): { x: number; z: number; quick: boolean } {
+    const play = this.play;
+    if (play?.inFront !== undefined) {
+      const q = quickSpot(SETTER_TARGET.x, 1, play.inFront);
+      return { x: q.x, z: q.z, quick: true };
+    }
+    return { x: this.lane.x, z: this.lane.z, quick: false };
+  }
+
+  /** this rep's block: the side it takes, formed before the set on pin sets, the middle late on fast sets */
+  private planBlock(): BlockPlan | null {
+    if (!this.blockLevel) return null;
+    const spot = this.attackSpot();
+    const inside = spot.quick || Math.abs(spot.x) < AI.drillBlock.insideX;
+    const fast = spot.quick || this.lane.apexAbove < 1.0;
+    return blockPlan(spot.x, this.takes, this.blockLevel, { inside, fast, normalX: laneFor(this.position, 1).x });
+  }
+
+  /** each rep: the active blockers where the block starts (formed, or at their usual spot), the rest parked in the free zone */
   private placeBlockers(): void {
-    const laneX = this.play?.inFront !== undefined ? quickSpot(SETTER_TARGET.x, 1, this.play.inFront).x : this.lane.x;
+    const plan = this.planBlock();
     this.blockers.forEach((b, i) => {
-      const active = i < this.blockLevel;
+      const spot = i === 0 ? plan?.pin : plan?.middle;
+      const active = i < this.blockLevel && !!spot;
       b.brain.enabled = active;
       b.brain.reset();
       b.a.endAction();
-      if (active) {
-        b.brain.homeX = i === 0 ? laneX : 0;
-        b.a.place(b.brain.homeX, -0.5, Math.PI);
+      if (active && spot) {
+        b.brain.homeX = spot.start;
+        b.brain.holdX = spot.hold ? spot.end : null;
+        b.brain.takeShift = (this.takes === 'line' ? 1 : -1) * AI.drillBlock.takeShift;
+        b.a.place(spot.start, -0.5, Math.PI);
       } else b.a.place(i === 0 ? -6.3 : 6.3, -2.5, Math.PI);
     });
+  }
+
+  /**
+   * The block's wall height for its shadow: how high the active blockers' hands reach at the top of
+   * their jump. Hands as high as your contact cover the whole court behind them (a straight ball can't
+   * clear them anywhere), so the wall is then kept just under the contact.
+   */
+  private wallTop(contactY: number): number {
+    const active = this.blockers.slice(0, this.blockLevel);
+    const reach = active.length ? Math.max(...active.map((b) => blockReach(b.a))) : this.g.env.netTop;
+    return Math.min(reach, contactY - WALL_UNDER_CONTACT);
   }
 
   /** the blockers who are in play */
@@ -201,6 +253,18 @@ export class SpikeDrill extends Mode {
     this.shadowEdge.renderOrder = 3;
     this.shadowEdge.visible = false;
     this.add(this.shadowEdge);
+    // their court in green, the shadow cut out of it: what the block leaves open
+    this.openCanvas = document.createElement('canvas');
+    this.openCanvas.width = this.openCanvas.height = OPEN_RES;
+    const tex = new THREE.CanvasTexture(this.openCanvas);
+    this.openCourt = new THREE.Mesh(
+      new THREE.PlaneGeometry(COURT.halfWidth * 2, COURT.halfLength).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ map: tex, color: 0x7dff9b, transparent: true, opacity: 0.14, depthWrite: false, ...offset }),
+    );
+    this.openCourt.position.set(0, 0.0125, -COURT.halfLength / 2);
+    this.openCourt.renderOrder = 1;
+    this.openCourt.visible = false;
+    this.add(this.openCourt);
   }
 
   /** where your contact will be (the set when it is up, otherwise the lane) */
@@ -244,9 +308,11 @@ export class SpikeDrill extends Mode {
   private drawShadow(show: boolean, contact: { x: number; y: number; z: number }, handsX: number[]): void {
     this.shadow.visible = show;
     this.shadowEdge.visible = show;
+    this.openCourt.visible = show;
     if (!show) return;
     const spans: HandSpan[] = handsX.map((x) => ({ x0: x - HANDS_WIDTH / 2, x1: x + HANDS_WIDTH / 2 }));
-    const polys = blockShadowOnCourt(contact, spans, this.g.env.netTop + HANDS_ABOVE_NET, COURT.halfWidth, COURT.halfLength);
+    const polys = blockShadowOnCourt(contact, spans, this.wallTop(contact.y), COURT.halfWidth, COURT.halfLength);
+    this.drawOpenCourt(polys);
     const P = this.shadowPos;
     const I = this.shadowIdx;
     const E = this.shadowEdgePos;
@@ -285,6 +351,32 @@ export class SpikeDrill extends Mode {
     egeo.computeBoundingSphere();
   }
 
+  /** their court in green with the shadow cut out (redrawn only when the shadow has moved) */
+  private drawOpenCourt(polys: FloorPoly[]): void {
+    const c = this.openCanvas;
+    if (!c) return;
+    const key = polys.map((p) => p.map(([x, z]) => `${x.toFixed(2)},${z.toFixed(2)}`).join(' ')).join('|');
+    if (key === this.openKey) return;
+    this.openKey = key;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    // canvas x: court x from -halfWidth; canvas y: the net (z = 0) at the top, the end line at the bottom
+    const sx = OPEN_RES / (COURT.halfWidth * 2);
+    const sz = OPEN_RES / COURT.halfLength;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, OPEN_RES, OPEN_RES);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, OPEN_RES, OPEN_RES);
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const poly of polys) {
+      ctx.beginPath();
+      poly.forEach(([x, z], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, (x + COURT.halfWidth) * sx, -z * sz));
+      ctx.closePath();
+      ctx.fill();
+    }
+    ((this.openCourt.material as THREE.MeshBasicMaterial).map as THREE.Texture).needsUpdate = true;
+  }
+
   /** choose the set call for the next ball (0-based) */
   selectCall(i: number): void {
     if (!this.plays || i < 0 || i >= this.plays.length) return;
@@ -297,6 +389,7 @@ export class SpikeDrill extends Mode {
       const l = this.lane;
       if (Math.hypot(g.me.pos.x - l.sx, g.me.pos.z - l.sz) > 0.6) g.returnUser(l.sx, l.sz, 0);
       this.placeBlockers();
+      this.pickZone();
     }
   }
 
@@ -328,7 +421,13 @@ export class SpikeDrill extends Mode {
     const s = spikeScript(r.current, r.seedFor(r.current), this.plays?.length ?? 0);
     this.callIdx = s.call;
     this.blockLevel = s.block;
+    this.takes = s.takes;
     this.ensureBlockers();
+  }
+
+  /** practice: the block takes a side at random each rep (a ranked run's script picks it) */
+  private rollTakes(): void {
+    if (!this.ranked) this.takes = this.g.rng.next() < 0.5 ? 'line' : 'cross';
   }
 
   setup(): void {
@@ -338,6 +437,7 @@ export class SpikeDrill extends Mode {
     this.callIdx = 0;
     this.beginRep();
     this.followScript();
+    this.rollTakes();
     const lane = this.lane;
     g.placeUser(lane.sx, lane.sz, 0);
     // setter (unless the user is the setter: then the coach passes straight to you)
@@ -389,17 +489,28 @@ export class SpikeDrill extends Mode {
       );
   }
 
+  /** the target: any zone without a block; with one, a zone on the side it leaves open */
   private pickZone(): void {
     const prev = this.zone;
     const zones = zonesFor(this.position);
-    do this.zone = zones[Math.floor(this.g.rng.next() * zones.length)];
-    while (prev && this.zone === prev && zones.length > 2);
+    const plan = this.planBlock();
+    if (plan) {
+      const spot = this.attackSpot();
+      const contact = { x: spot.x, y: attackHeight(this.g.me), z: spot.z };
+      const spans = planSpans(plan, AI.drillBlock.handsMargin);
+      this.zone = openZone(zones, contact, spans, this.wallTop(contact.y), () => this.g.rng.next(), prev);
+    } else {
+      const free = zones.filter((z) => !z.blockOnly);
+      do this.zone = free[Math.floor(this.g.rng.next() * free.length)];
+      while (prev && this.zone === prev && free.length > 2);
+    }
     const z = this.zone;
     this.zoneMarker.set(z.x0, z.x1, z.z0, z.z1);
   }
 
   refreshScore(): void {
-    this.showScore([this.play?.name ?? this.lane.label, `block ${BLOCK_NAMES[this.blockLevel]}`, `target ${this.zone.name}`]);
+    const block = this.blockLevel ? `block ${BLOCK_NAMES[this.blockLevel]} takes ${this.takes}` : 'block off';
+    this.showScore([this.play?.name ?? this.lane.label, block, `target ${this.zone.name}`]);
   }
 
   hint(): string {
@@ -598,6 +709,11 @@ export class SpikeDrill extends Mode {
           if (inZone) {
             pts += S.onTarget;
             label = 'KILL · ON TARGET';
+            this.zoneMarker.hit();
+          } else if (this.blockLevel > 0) {
+            // not where the target was, but past a block that was up: still a hitter's shot
+            pts += S.aroundBlock;
+            label = 'KILL · AROUND THE BLOCK';
           } else label = 'KILL';
           good = ev.grade === 'Perfect' || ev.grade === 'Good';
         }
@@ -621,6 +737,7 @@ export class SpikeDrill extends Mode {
     const g = this.g;
     g.judge.disarm();
     this.followScript();
+    this.rollTakes();
     const lane = this.lane;
     const me = g.me;
     g.ball.hide();

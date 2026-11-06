@@ -12,8 +12,20 @@ import { showCrashScreen } from './ui/crashScreen';
 import { ResultsScreen } from './ui/results';
 import { LeaderboardScreen } from './ui/leaderboard';
 import { shareText } from './ui/share';
-import { fetchBoard, fetchMedals, loadPlayer, setPlayerName, submitRun, toSubmission, type Player } from './net/client';
-import type { SubmitResult } from './net/protocol';
+import {
+  fetchBoard,
+  fetchMedals,
+  keepPending,
+  loadPlayer,
+  newId,
+  pendingRuns,
+  sendPending,
+  setPlayerName,
+  submitRun,
+  toSubmission,
+  type Player,
+} from './net/client';
+import type { RunSubmission, SubmitResult } from './net/protocol';
 import type { RankedRun } from './game/ranked';
 import { TouchControls, wantsTouch } from './ui/touchControls';
 
@@ -124,6 +136,8 @@ window.__menu = menu;
 
 // the end of a ranked run: the game has paused itself; the mouse is freed for the results screen
 let finished: RankedRun | null = null;
+/** the finished run as sent to the leaderboard (made once: a retry sends the same submission) */
+let sent: RunSubmission | null = null;
 /** the online leaderboard's answer for the finished run (its place goes into the share text) */
 let placed: SubmitResult | null = null;
 const results = new ResultsScreen(app, {
@@ -143,6 +157,9 @@ const results = new ResultsScreen(app, {
     if (!p) results.setOnline({ kind: 'name', error: 'A name is 2 to 16 letters or digits (spaces, dots and dashes are fine)' });
     else if (finished) void putOnBoard(finished, p);
   },
+  retry() {
+    if (sent) void send(sent);
+  },
   shareText: () =>
     finished
       ? shareText(finished, {
@@ -155,6 +172,7 @@ game.events.on('rankedDone', (run) => {
   menu.showPause(false);
   game.input.exitLock();
   finished = run;
+  sent = null;
   placed = null;
   results.show(run);
   // unranked and autopilot runs stay off the leaderboard; your first run asks for your name
@@ -167,22 +185,33 @@ game.events.on('rankedDone', (run) => {
   }
 });
 
-/** submit a finished run to the online leaderboard and show where it landed */
-async function putOnBoard(run: RankedRun, p: Player): Promise<void> {
-  results.setOnline({ kind: 'sending' });
+/** a finished run goes on the online leaderboard: it is kept on this device until the leaderboard has it */
+function putOnBoard(run: RankedRun, p: Player): Promise<void> {
   const how = { cam: settings.firstPerson ? 'fp' : 'tp', input: touch.enabled ? 'touch' : 'mouse', hand: settings.hand } as const;
-  const r = await submitRun(toSubmission(run, p, how));
+  sent = toSubmission(run, p, how, newId());
+  keepPending(sent);
+  return send(sent);
+}
+
+/** send (or send again) the finished run and show where it landed, or why it didn't */
+async function send(s: RunSubmission): Promise<void> {
+  results.setOnline({ kind: 'sending' });
+  const r = await submitRun(s);
   // moved on to something else meanwhile
-  if (finished !== run || !results.visible) return;
-  placed = r;
-  results.setOnline(r ? { kind: 'done', result: r } : { kind: 'offline' });
+  if (sent !== s || !results.visible) return;
+  if (r.kind === 'ok') {
+    placed = r.result;
+    results.setOnline({ kind: 'done', result: r.result });
+  } else results.setOnline(r);
 }
 
 // the online boards (from the start screen or the results screen, over either)
 const leaderboard = new LeaderboardScreen(app, {
   close: () => leaderboard.hide(),
   fetchBoard: (board) => fetchBoard(board, loadPlayer().id),
-  fetchMedals: () => fetchMedals(loadPlayer().id),
+  fetchMedals: () => fetchMedals(),
+  pending: () => pendingRuns().length,
+  sendPending: () => sendPending(),
   name: () => loadPlayer().name,
   rename: (name) => setPlayerName(name)?.name ?? null,
 });
