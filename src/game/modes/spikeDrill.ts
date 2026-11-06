@@ -133,7 +133,8 @@ export class SpikeDrill extends Mode {
     this.blockLevel = level;
     this.ensureBlockers();
     this.placeBlockers();
-    if (!this.tossed) this.pickZone();
+    // a block changes which zones are open (and a block-only target makes no sense without one)
+    if (!this.tossed && (level > 0 || this.zone.blockOnly)) this.pickZone();
     this.refreshScore();
     const what =
       level === 0
@@ -389,7 +390,8 @@ export class SpikeDrill extends Mode {
       const l = this.lane;
       if (Math.hypot(g.me.pos.x - l.sx, g.me.pos.z - l.sz) > 0.6) g.returnUser(l.sx, l.sz, 0);
       this.placeBlockers();
-      this.pickZone();
+      // with a block up the new call changes which zones are open
+      if (this.blockLevel > 0) this.pickZone();
     }
   }
 
@@ -425,9 +427,10 @@ export class SpikeDrill extends Mode {
     this.ensureBlockers();
   }
 
-  /** practice: the block takes a side at random each rep (a ranked run's script picks it) */
+  /** practice: the block takes a side at random each rep it is up (a ranked run's script picks it) */
   private rollTakes(): void {
-    if (!this.ranked) this.takes = this.g.rng.next() < 0.5 ? 'line' : 'cross';
+    // no block, no draw: the drill's random sequence stays what it was without one
+    if (!this.ranked && this.blockLevel > 0) this.takes = this.g.rng.next() < 0.5 ? 'line' : 'cross';
   }
 
   setup(): void {
