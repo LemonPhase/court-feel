@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALL, PLAYER, SIM, TIMING } from '../config';
+import { BALL, PLAYER, SET_LEVELS, SIM, TIMING } from '../config';
 import { Athlete } from './athlete';
 import { AIM_DEPTH, aimPitchRange, ContactSystem } from './contact';
 import { clamp, yawFromDir } from '../core/mathx';
@@ -8,6 +8,7 @@ import type { Game } from './game';
 import { planQuick, type ApproachPlan } from '../ai/approach';
 import { quickSpot, setterTouchY } from './plays';
 import type { TeamAI } from '../ai/team';
+import { SETTER_KEYS, type SetterKey } from './setterCalls';
 
 /**
  * What the autopilots read from the current drill, when it has it: the Mini Rally's team
@@ -20,7 +21,7 @@ interface DrillView {
   zone?: { x0: number; x1: number; z0: number; z1: number };
   earlyPlan?: ApproachPlan | null;
   earlyFor?: unknown;
-  setOptions?(a: Athlete): { target: V3 }[];
+  setOptions?(a: Athlete): { target: V3; key?: SetterKey }[];
 }
 const drillView = (g: Game): DrillView | null => g.mode as unknown as DrillView | null;
 
@@ -431,16 +432,26 @@ export class BlockBot {
 
 /**
  * Pass / set autopilot: moves so the platform (or hands) meets the ball's
- * predicted path and presses E / RMB the ideal lead time before arrival.
+ * predicted path and presses E the ideal lead time before arrival. As a setter it picks a
+ * hitter with the number keys (cycling through them), catches the ball as it reaches the hands
+ * (RMB down) and releases at the top of the bar, both off by its quality's timing error.
  */
 export class TouchBot {
   private mx = 0;
   private mz = 0;
   private pressed = false;
+  private released = false;
   private b: V3 = { x: 0, y: 0, z: 0 };
   private offset = 0;
-  /** setter: which option to aim at (cycles) */
+  /** setter: the catch and the release off the ideal (s, + = late), rolled once per ball */
+  private catchOff = 0;
+  private relOff = 0;
+  private rolled = false;
+  /** setter: when the ball reaches the hands, as last seen (the frame's time can trail the sim by a step) */
+  private tCatch = -1;
+  /** setter: which option to send (cycles), and the ball it was picked for */
   private pick = 0;
+  private pickedFor: unknown = null;
 
   constructor(
     private g: Game,
@@ -462,12 +473,18 @@ export class TouchBot {
       !ball.state.rest &&
       lt &&
       lt.athlete !== me &&
-      (this.kind === 'pass' ? lt.side !== me.side || lt.kind === 'feed' : lt.side === me.side) &&
+      // a setter sets a first ball (a pass or a dig), never our own attack on its way over
+      (this.kind === 'pass'
+        ? lt.side !== me.side || lt.kind === 'feed'
+        : lt.side === me.side && (lt.kind === 'pass' || lt.kind === 'dig' || lt.kind === 'free')) &&
       (!team || (this.kind === 'pass' ? team.receiver === me : team.touches === 1));
     if (!incoming) {
-      if (this.pressed) g.input.up(key);
+      if (this.pressed && !this.released) g.input.up(key);
       this.pressed = false;
+      this.released = false;
       this.offset = 0;
+      this.rolled = false;
+      this.tCatch = -1;
       return;
     }
     const pred = ball.ensurePrediction(g.env, now);
@@ -475,8 +492,15 @@ export class TouchBot {
     if (this.kind === 'set') {
       const opts = drillView(g)?.setOptions?.(me);
       if (opts && opts.length) {
-        const o = opts[this.pick % opts.length].target;
-        yaw = yawFromDir(o.x - me.pos.x, o.z - me.pos.z);
+        const o = opts[this.pick % opts.length];
+        yaw = yawFromDir(o.target.x - me.pos.x, o.target.z - me.pos.z);
+        // pick that hitter with their key once per ball (the look picks it in drills without keys)
+        if (o.key && this.pickedFor !== lt) {
+          this.pickedFor = lt;
+          const code = 'Digit' + (SETTER_KEYS.indexOf(o.key) + 1);
+          g.input.down(code);
+          g.input.up(code);
+        }
       } else yaw = Math.PI / 2;
     }
     g.rig.yaw = yaw;
@@ -485,7 +509,32 @@ export class TouchBot {
     const fz = -Math.cos(yaw);
     const h = this.kind === 'pass' ? me.height * 0.34 + 0.05 : me.height + 0.17;
     const fwd = this.kind === 'pass' ? 0.45 : 0.14;
+    // a set loading in the hands: release at the top of the bar (+ the bot's timing error), on the
+    // frame nearest it (a frame is a lot of game time in light slow-mo; waiting for the first one
+    // past it would always be late)
+    const act = me.action?.kind === 'set' ? me.action : null;
+    const halfFrame = (0.5 * this.g.timeScale * this.g.slowmo) / 60;
+    if (this.kind === 'set' && act?.absorbing) {
+      if (this.pressed && !this.released && g.inputTime() + halfFrame >= act.arriveT + TIMING.setLoad + this.relOff - 1e-9) {
+        g.input.up(key);
+        this.released = true;
+      }
+      return;
+    }
     const tArr = pred.descendThrough(h, now);
+    if (tArr > 0) this.tCatch = tArr;
+    if (
+      this.kind === 'set' &&
+      this.rolled &&
+      !this.pressed &&
+      this.tCatch > 0 &&
+      g.inputTime() + halfFrame >= this.tCatch + this.catchOff - 1e-9
+    ) {
+      // the catch, on the frame's time
+      g.input.down(key);
+      this.pressed = true;
+      this.pick++;
+    }
     if (tArr < 0) return;
     pred.posAt(tArr, this.b);
     const sx = this.b.x - fx * fwd;
@@ -498,10 +547,22 @@ export class TouchBot {
       this.mx = (dx / d) * m;
       this.mz = (dz / d) * m;
     }
+    if (this.kind === 'set') {
+      // the catch: press as the ball reaches the hands (+ the bot's error; a sloppy one is sometimes far early)
+      const L = SET_LEVELS[g.settings.setLevel];
+      if (!this.rolled) {
+        this.rolled = true;
+        const r = () => g.rng.next() * 2 - 1;
+        const q = this.quality;
+        this.catchOff = q === 'perfect' ? 0 : q === 'good' ? r() * L.catch * 1.5 : Math.min(L.catch + 0.03, r() * (L.catch + 0.15));
+        this.relOff = q === 'perfect' ? 0 : r() * L.green[0] * (q === 'good' ? 2 : 6);
+      }
+      return;
+    }
     if (this.offset === 0 && this.quality !== 'perfect') this.offset = (g.rng.next() * 2 - 1) * (this.quality === 'good' ? 0.08 : 0.25);
     const spd = ball.speed();
     const fast = Math.min(1, Math.max(0, (spd - 12) / 10));
-    const lead = this.kind === 'pass' ? TIMING.passLead + (TIMING.digLead - TIMING.passLead) * fast : TIMING.setLead;
+    const lead = TIMING.passLead + (TIMING.digLead - TIMING.passLead) * fast;
     if (!this.pressed && now >= tArr - lead + this.offset) {
       g.input.down(key);
       this.pressed = true;

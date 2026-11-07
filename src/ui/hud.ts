@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Grade } from '../game/athlete';
 import { TIMING } from '../config';
 import { COLLAR_DEG_PER_S, collarDegrees, collarZone, CUE_NAMES, CUE_ORDER, type Cue } from '../game/tutorial';
+import type { CallSheetView } from '../game/callRuns';
 
 const GRADE_CLASS: Record<Grade, string> = {
   Perfect: 'g-perfect',
@@ -55,6 +56,8 @@ export class Hud {
   private streakBox: HTMLDivElement;
   private streakVal: HTMLSpanElement;
   private hint: HTMLDivElement;
+  private sheet: HTMLDivElement;
+  private sheetHtml = '';
   private msg: HTMLDivElement;
   private cross: HTMLDivElement;
   private fadeEl: HTMLDivElement;
@@ -117,6 +120,7 @@ export class Hud {
     el('span', 'hud-streak-label', this.streakBox, 'STREAK');
     this.streakVal = el('span', 'hud-streak-val', this.streakBox, '0');
     this.hint = el('div', 'hud-hint', this.root);
+    this.sheet = el('div', 'call-sheet', this.root);
     this.msg = el('div', 'hud-msg', this.root);
     this.skipBtn = el('button', 't-tap t-skip-kb', this.root, 'SKIP TUTORIAL');
     this.skipBtn.type = 'button';
@@ -285,6 +289,31 @@ export class Hud {
 
   private lastHint = '';
 
+  /**
+   * The call sheet when you set: each hitter's key, call and colour, the one you will set lit
+   * (picked, or looked at). Open (C) it says so; once the pass is played the calls are locked.
+   * Null hides it.
+   */
+  setCallSheet(v: CallSheetView | null): void {
+    let html = '';
+    if (v) {
+      const head = v.editing ? 'CALLS · 1-3 change' : v.locked ? 'SETTING' : 'SET TO';
+      const items = v.items
+        .map((i) => {
+          const cls = `cs-item${i.lit ? ' lit' : ''}${i.picked ? ' picked' : ''}`;
+          return `<div class="${cls}" style="--c:${i.color}"><b>${i.key}</b>${i.who}${i.call ? `<span>${i.call}</span>` : ''}</div>`;
+        })
+        .join('');
+      html = `<div class="cs-head">${head}</div>${items}`;
+      this.sheet.classList.toggle('editing', v.editing);
+    }
+    if (html !== this.sheetHtml) {
+      this.sheetHtml = html;
+      this.sheet.innerHTML = html;
+      this.sheet.style.display = html ? 'flex' : 'none';
+    }
+  }
+
   /** plain-text drill messages: key names become button names */
   private static readonly TEXT_KEYS: [RegExp, string][] = [
     [/Shift \+ W/g, 'the stick out'],
@@ -319,9 +348,10 @@ export class Hud {
     this.banner.classList.remove('show');
   }
 
-  showGrade(g: Grade, sub: string): void {
-    this.gradeText.textContent = g === 'Miss' ? 'MISS' : g.toUpperCase();
-    this.grade.className = 'hud-grade show ' + GRADE_CLASS[g];
+  /** `green`: a perfectly timed set reads GREEN, in green */
+  showGrade(g: Grade, sub: string, green = false): void {
+    this.gradeText.textContent = green ? 'GREEN' : g === 'Miss' ? 'MISS' : g.toUpperCase();
+    this.grade.className = 'hud-grade show ' + (green ? 'g-green' : GRADE_CLASS[g]);
     this.gradeSub.textContent = sub;
     // restart animation
     void this.grade.offsetWidth;

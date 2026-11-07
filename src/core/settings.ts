@@ -1,5 +1,6 @@
 import {
   DEFAULT_SETTINGS,
+  SET_LEVEL_IDS,
   SETTING_RANGES,
   TOUCH_CONTROL_MODES,
   type BooleanSettingKey,
@@ -16,6 +17,8 @@ const BOOLEAN_SETTINGS: Record<BooleanSettingKey, true> = {
   invertY: true,
   womenNet: true,
   slowmoAssist: true,
+  setSlowmo: true,
+  setRing: true,
   landingMarker: true,
   replays: true,
   firstPerson: true,
@@ -29,6 +32,7 @@ export const VALIDATED_KEYS: readonly (keyof Settings)[] = [
   'touchControls',
   'bodies',
   'hand',
+  'setLevel',
 ];
 
 /** does the OS ask for reduced motion? (false where matchMedia is unavailable) */
@@ -76,6 +80,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings = DEFAULT_SETT
   const tc = src.touchControls;
   if (TOUCH_CONTROL_MODES.includes(tc as Settings['touchControls'])) out.touchControls = tc as Settings['touchControls'];
   if (src.hand === 'left' || src.hand === 'right') out.hand = src.hand;
+  if (SET_LEVEL_IDS.includes(src.setLevel as Settings['setLevel'])) out.setLevel = src.setLevel as Settings['setLevel'];
   return out;
 }
 

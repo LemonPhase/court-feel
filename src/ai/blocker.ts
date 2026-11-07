@@ -80,6 +80,14 @@ export class BlockerBrain implements Brain {
       // a middle frozen by the quick, or just late on the read, stays with the inside
       this.commit = g.rng.next() < 0.3 + this.skill * 0.4;
       this.fooled = g.rng.next() < 0.35 - this.skill * 0.25;
+      // a green set from the user's setter: exact, at the called tempo, nothing given away early,
+      // so the block starts its read late and reads it worse (the back row can still dig it)
+      const us = g.contact.lastSetResult;
+      if (us?.green && lt.athlete === us.athlete && lt.t === us.t) {
+        this.setT = now + AI.greenSetReadDelay;
+        this.readErr *= AI.greenSetReadErr;
+        this.jumpErr += AI.greenSetJumpLate;
+      }
     }
     // the middle's whole job is the read: it reacts sooner than the wings
     const react = this.closer ? 0.08 + (1 - this.skill) * 0.15 : 0.12 + (1 - this.skill) * 0.25;

@@ -60,6 +60,10 @@ export abstract class Mode {
   }
   passTarget?(a: Athlete): { x: number; y: number; z: number; apex: number };
   setOptions?(a: Athlete): import('../contact').SetOption[];
+  /** the hitter the user setter picked with a key (null: the look picks) */
+  setPick?(a: Athlete): import('../setterCalls').SetterKey | null;
+  /** the ball in flight is the user's to set (shows where to stand for it) */
+  userSetsNext?(): boolean;
   canServe?(a: Athlete): boolean;
   /** redraw the title and the score line (the first-run lesson shortens them, and has just ended) */
   refreshHud?(): void;
@@ -67,6 +71,7 @@ export abstract class Mode {
   approachLine?(): import('../tutorial').ApproachLine | null;
 
   teardown(): void {
+    this.g.hud.setCallSheet(null);
     for (const a of this.spawned) this.g.removeAthlete(a);
     this.spawned = [];
     for (const o of this.objects) {

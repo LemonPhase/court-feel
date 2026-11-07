@@ -1,44 +1,53 @@
 import * as THREE from 'three';
+import { AI, TIMING } from '../../config';
 import { yawFromDir } from '../../core/mathx';
 import { solveApex } from '../../physics/solve';
 import { BlockerBrain } from '../../ai/blocker';
 import { HitterBrain } from '../../ai/hitter';
 import { Athlete } from '../athlete';
+import { applyCalls, CALL_COLOR, callLane, callOptions, callSheet, callSpot, startCallRuns, type CallHitters } from '../callRuns';
 import type { ContactEvent, SetOption } from '../contact';
 import { outcomeLabel, type Outcome } from '../judge';
-import { attackHeight, laneFor, quickSetFor, SETTER_SPOT, SETTER_TARGET, setterTouchY } from '../plays';
+import { SETTER_SPOT, SETTER_TARGET, setterTouchY } from '../plays';
+import { SETTER_KEYS, SetterCalls, type SetterKey } from '../setterCalls';
 import { kbd, makeFloorRing, Mode } from './mode';
 import type { Game } from '../game';
 
 type Phase = 'intro' | 'feed' | 'live' | 'result';
-type Lane = 'OH' | 'MB' | 'OPP';
 
 /**
- * Setter drill: passes come in from the back court; move under them, look at
- * the hitter you want (left = outside, at the middle = quick, behind = back
- * set) and press RMB as the ball drops. Your hitters finish against a block.
+ * Setter drill: passes come in from the back court. Pick a hitter with 1-4 (outside, middle,
+ * opposite, pipe), or just look at one; C opens the call sheet to change their calls. Get to the
+ * spot, press RMB as the ball reaches your hands, hold while the bar fills and release in the
+ * green: your touch sets how big the green is. Your hitters run their calls (the fast ones before
+ * you touch it) and finish against a block. A green set beats it.
  */
 export class SetterDrill extends Mode {
   readonly id = 'setter' as const;
   private passer!: Athlete;
-  private hitters = new Map<Lane, { a: Athlete; brain: HitterBrain }>();
+  private hitters: CallHitters = new Map();
   private blocker!: Athlete;
   private phase: Phase = 'intro';
   private t = 0;
   private set: ContactEvent | null = null;
   private setFor: Athlete | null = null;
   private attacked = false;
-  private markers = new Map<Lane, THREE.Mesh>();
+  private markers = new Map<SetterKey, THREE.Mesh>();
   private tossed = false;
+  /** your picks and calls (keys 1-4, C the call sheet) */
+  readonly calls = new SetterCalls();
+  /** this rep's pass is too far off the net for the fast calls: everything goes up high */
+  private outOfSystem = false;
 
   setup(): void {
     const g = this.g;
     g.placeUser(SETTER_SPOT.x, SETTER_SPOT.z + 0.3, Math.PI / 2);
     g.rig.pitch = 0.25;
     let seed = 41;
-    for (const pos of ['OH', 'MB', 'OPP'] as Lane[]) {
-      const lane = laneFor(pos, 1);
-      const a = new Athlete(pos, 1);
+    for (const k of SETTER_KEYS) {
+      const lane = callLane(this.calls, k, false);
+      // the pipe is hit by a back-row outside
+      const a = new Athlete(k === 'PIPE' ? 'OH' : k, 1);
       a.place(lane.sx, lane.sz, 0);
       g.addAthlete(a, seed++);
       this.spawned.push(a);
@@ -47,13 +56,12 @@ export class SetterDrill extends Mode {
       brain.blockers = () => [this.blocker];
       brain.skill = 0.82;
       // the middle goes on the pass, timed to your touch
-      if (pos === 'MB') brain.passToSetter = (gm) => this.passToMe(gm);
+      if (k === 'MB') brain.passToSetter = (gm) => this.passToMe(gm);
       g.setBrain(a, brain);
-      this.hitters.set(pos, { a, brain });
-      const m = makeFloorRing(pos === 'OH' ? 0xffc23a : pos === 'MB' ? 0x6fe3ff : 0xff6fb0, 1.0);
-      m.position.set(lane.x, 0.011, lane.z + 0.15);
+      this.hitters.set(k, { a, brain });
+      const m = makeFloorRing(CALL_COLOR[k], 1.0);
       this.add(m);
-      this.markers.set(pos, m);
+      this.markers.set(k, m);
     }
     // a passer in the back court feeding the setter target
     this.passer = new Athlete('L', 1);
@@ -71,44 +79,39 @@ export class SetterDrill extends Mode {
     g.setBrain(this.blocker, bb);
     g.hud.setTitle('Setter Drill');
     this.updateScore();
-    g.hud.message('Look at a hitter · press RMB as the ball drops onto your hands', 3.2);
+    g.hud.message('1-4 pick a hitter · RMB as the ball reaches your hands, release in the green', 3.2);
     this.toPhase('intro');
   }
 
-  /** while the pass is coming: when and where it reaches your hands */
+  /** while the pass is coming: when the ball leaves your hands (the catch plus the load) and where (none off a bad pass: no quick) */
   private passToMe(g: Game): { t: number; x: number } | null {
     const lt = g.ball.lastTouch;
-    if (!g.ball.active || lt?.athlete !== this.passer || lt.kind !== 'pass') return null;
+    if (!g.ball.active || lt?.athlete !== this.passer || lt.kind !== 'pass' || this.outOfSystem) return null;
     const pred = g.ball.ensurePrediction(g.env, g.simTime);
     const t = pred.descendThrough(setterTouchY(g.me), g.simTime);
     if (t < 0) return null;
     const p = { x: 0, y: 0, z: 0 };
     pred.posAt(t, p);
-    return { t, x: p.x };
+    return { t: t + TIMING.setLoad, x: p.x };
   }
 
   setOptions(a: Athlete): SetOption[] {
-    const out: SetOption[] = [];
-    for (const [pos, h] of this.hitters) {
-      if (pos === 'MB') {
-        // the quick is met at the top of the middle's jump when they are up with your touch
-        out.push(quickSetFor(h.a, this.g.simTime, this.g.ball.pos, h.brain.releaseAt));
-        continue;
-      }
-      const lane = laneFor(pos, a.side);
-      const y = attackHeight(h.a);
-      out.push({
-        target: { x: lane.x, y, z: lane.z },
-        apex: y + lane.apexAbove,
-        hitter: h.a,
-        label: pos === 'OH' ? 'Outside' : 'Back set',
-      });
-    }
-    return out;
+    const oos = this.outOfSystem || Math.hypot(a.pos.x - SETTER_SPOT.x, a.pos.z - SETTER_SPOT.z) > AI.outOfSystem;
+    return callOptions(this.g, this.hitters, this.calls, oos);
+  }
+
+  /** the pass is in the air until your set: the ball is yours to set */
+  userSetsNext(): boolean {
+    return this.phase === 'live' && this.g.ball.lastTouch?.athlete === this.passer;
+  }
+
+  setPick(a: Athlete): SetterKey | null {
+    return a === this.g.me ? this.calls.pick : null;
   }
 
   hint(): string {
-    return `${kbd('WASD')} get under it · look at a hitter · ${kbd('RMB')} set (press just before it lands on your hands) · ${kbd('V')} camera`;
+    if (this.calls.editing) return `CALL SHEET · ${kbd('1')}${kbd('2')}${kbd('3')} change a hitter's call · ${kbd('C')} done`;
+    return `${kbd('1')}-${kbd('4')} pick (again: high) · ${kbd('C')} calls · ${kbd('WASD')} to the spot · ${kbd('RMB')} as it reaches your hands, release in the green · ${kbd('V')} camera`;
   }
 
   private updateScore(): void {
@@ -120,30 +123,36 @@ export class SetterDrill extends Mode {
   }
 
   frame(dt: number): void {
-    // highlight the hitter the aim would choose
+    // the floor rings: each hitter's spot for their call; the picked one lit (no pick: the one you look at)
     const g = this.g;
     const me = g.me;
-    const opts = this.setOptions(me);
-    let best: Lane = 'OH';
-    let bestD = 1e9;
-    const yaw = g.rig.yaw;
-    for (const o of opts) {
-      const oy = yawFromDir(o.target.x - me.pos.x, o.target.z - me.pos.z);
-      const d = Math.abs(((oy - yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-      if (d < bestD) {
-        bestD = d;
-        best = (o.hitter?.role as Lane) ?? 'OH';
+    let lit = this.calls.pick;
+    if (!lit) {
+      let bestD = 1e9;
+      for (const o of this.setOptions(me)) {
+        const oy = yawFromDir(o.target.x - me.pos.x, o.target.z - me.pos.z);
+        const d = Math.abs(((oy - g.rig.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (d < bestD) {
+          bestD = d;
+          lit = o.key ?? null;
+        }
       }
     }
-    for (const [pos, m] of this.markers) {
+    for (const [k, m] of this.markers) {
+      const spot = callSpot(this.calls, k, this.outOfSystem);
+      m.position.set(spot.x, 0.011, spot.z + 0.15);
       const mat = m.material as THREE.MeshBasicMaterial;
-      mat.opacity += ((pos === best ? 0.95 : 0.25) - mat.opacity) * Math.min(1, dt * 10);
+      mat.opacity += ((k === lit ? 0.95 : 0.25) - mat.opacity) * Math.min(1, dt * 10);
     }
+    g.hud.setCallSheet(callSheet(this.calls, SETTER_KEYS, lit));
   }
 
   step(dt: number): void {
     const g = this.g;
     this.t += dt;
+    this.calls.readKeys(g.input);
+    // before the pass the hitters walk to the start of their call's run
+    if (!this.calls.locked) applyCalls(this.hitters, this.calls, false);
     switch (this.phase) {
       case 'intro':
         if (this.t > 1.2) this.toPhase('feed');
@@ -170,6 +179,10 @@ export class SetterDrill extends Mode {
           this.set = null;
           this.setFor = null;
           this.attacked = false;
+          // the pass is played: the tempos lock and the fast calls start running
+          this.calls.lock();
+          this.outOfSystem = startCallRuns(g, g.me, this.hitters, this.calls);
+          if (this.outOfSystem) g.hud.message('Off the net · HIGH · no middle, every call goes up high', 1.8);
           this.toPhase('live');
         }
         break;
@@ -228,9 +241,12 @@ export class SetterDrill extends Mode {
     g.judge.disarm();
     g.ball.hide();
     this.tossed = false;
-    for (const [pos, h] of this.hitters) {
+    this.outOfSystem = false;
+    this.calls.nextBall();
+    for (const [k, h] of this.hitters) {
       h.brain.reset();
-      const lane = laneFor(pos, 1);
+      const lane = callLane(this.calls, k, false);
+      h.brain.lane = lane;
       h.a.place(lane.sx, lane.sz, 0);
     }
     this.blocker.place(0, -0.5, Math.PI);

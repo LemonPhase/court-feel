@@ -322,8 +322,9 @@ export class TeamAI {
   }
 
   /**
-   * A pass on its way to our setter: when and where the setter will touch it.
-   * Null for anything else, or for a pass too far off the net to run a quick.
+   * A pass on its way to our setter: when the set will leave their hands (a user setter's ball
+   * loads in the hands first) and where. Null for anything else, or for a pass too far off the
+   * net to run a quick.
    */
   passToSetter(g: Game): { t: number; x: number } | null {
     const lt = g.ball.lastTouch;
@@ -337,7 +338,8 @@ export class TeamAI {
     if (t < 0) return null;
     pred.posAt(t, this.qp);
     if (Math.hypot(this.qp.x - SETTER_SPOT.x * s, this.qp.z - SETTER_SPOT.z * s) > 1.5) return null;
-    return { t, x: this.qp.x };
+    // the user setter's ball loads in the hands before the push (the set bar)
+    return { t: t + (setter.isUser ? TIMING.setLoad : 0), x: this.qp.x };
   }
   private qp: V3 = { x: 0, y: 0, z: 0 };
 

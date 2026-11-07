@@ -93,7 +93,9 @@ export const DRILL_INFO: Record<ModeId, DrillInfo> = {
     keys: [
       { k: 'W A S D', a: 'Get under the ball' },
       { k: 'Mouse', a: 'Look at the hitter you want' },
-      { k: 'Right mouse', a: 'Set, just before it lands on your hands' },
+      { k: '1 to 4', a: 'Pick a hitter' },
+      { k: 'C', a: 'Calls' },
+      { k: 'Right mouse', a: 'Set: press as it reaches your hands, release in the green' },
     ],
     touch: [
       { k: 'Left thumb', a: 'Get under the ball' },
@@ -131,7 +133,7 @@ export const DRILL_INFO: Record<ModeId, DrillInfo> = {
       { k: 'Shift + W', a: 'Approach when the set is yours' },
       { k: 'Space', a: 'Jump: to hit, or to block at the net' },
       { k: 'Left mouse', a: 'Hold to wind up, release to swing' },
-      { k: 'Right mouse', a: 'Block at the net, set off it' },
+      { k: 'Right mouse', a: 'Block at the net, set off it (press as it reaches your hands, release in the green)' },
       { k: '1  2  3', a: 'Call your set', hitters: true },
     ],
     touch: [
@@ -190,7 +192,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
       title: 'Defend and set',
       rows: [
         { k: 'E', a: 'Pass / dig' },
-        { k: 'Right mouse', a: 'Block at the net, set off it' },
+        { k: 'Right mouse', a: 'Block at the net, set off it (press as it reaches your hands, release in the green)' },
       ],
     },
     {
@@ -207,6 +209,8 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
       title: 'In a drill',
       rows: [
         { k: '1  2  3', a: 'Call your set (Spike Drill, Mini Rally; hitters)' },
+        { k: '1 to 4', a: 'Pick a hitter when you set (Setter Drill, Mini Rally)' },
+        { k: 'C', a: 'Calls, when you set (Setter Drill, Mini Rally)' },
         { k: 'B', a: 'Opposing block: off, single, double (Spike Drill)' },
         { k: '1 to 5', a: 'Feed type (Free Play)' },
         { k: 'F   T', a: 'Feed a ball, auto feed (Free Play)' },

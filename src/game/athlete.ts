@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { BALL, COURT, PLAYER, type Hand, type PositionId, type PositionStats } from '../config';
+import { BALL, COURT, PLAYER, TIMING, type Hand, type PositionId, type PositionStats } from '../config';
 import { standingReach } from '../character/rig';
 import { bodyStats, type CustomBody } from './body';
+import type { SetTouch } from './setTiming';
 import { angleLerp, clamp, clamp01, damp, dirFromYaw, lerp, rightFromYaw, wrapAngle } from '../core/mathx';
 
 export type AState = 'ground' | 'load' | 'air' | 'land';
@@ -38,6 +39,17 @@ export interface Action {
   idealT: number;
   idealD: number;
   idealFor: unknown;
+  /** set: caught; the ball loads in the hands (the bar fills) until the push */
+  absorbing: boolean;
+  /** set: the catch, when the bar starts (-1 before) */
+  arriveT: number;
+  /** set: the green and good half-windows (s) the touch earned, fixed at the catch */
+  green: number;
+  good: number;
+  /** set: the press against the ball reaching the hands (s, + = late) */
+  catchErr: number;
+  /** set: the touch, fixed at the catch */
+  touch: SetTouch | null;
 }
 
 export interface AthleteCmd {
@@ -104,6 +116,8 @@ export class Athlete {
   lastAction: Action | null = null;
   /** time this athlete last touched the ball */
   lastTouchT = -10;
+  /** how long (s) the feet have been still on the floor (below TIMING.setStillSpeed): a setter who beat the ball to the spot */
+  stillT = 0;
   /** 'ready' body lean */
   readyAmount = 1;
   /** look target for head IK (set by game) */
@@ -292,6 +306,7 @@ export class Athlete {
     this.prevPos.copy(this.pos);
     this.prevYaw = this.yaw;
     this.stateT += dt;
+    this.stillT = this.state === 'ground' && this.speed < TIMING.setStillSpeed ? this.stillT + dt : 0;
     const st = this.stats;
     const cmd = this.cmd;
 
@@ -445,6 +460,12 @@ export class Athlete {
       idealT: -1,
       idealD: 1e9,
       idealFor: null,
+      absorbing: false,
+      arriveT: -1,
+      green: 0,
+      good: 0,
+      catchErr: 0,
+      touch: null,
     };
     this.action = act;
     return act;

@@ -28,6 +28,7 @@ export const TOUCH_KEY_LABELS: Record<string, string> = {
   B: 'VS BLOCK',
   F: 'FEED',
   T: 'AUTO',
+  C: 'CALLS',
   W: 'stick ↑',
   A: 'stick ←',
   D: 'stick →',
@@ -318,7 +319,7 @@ export class TouchControls {
 
   private buildChips(): void {
     const g = this.g;
-    for (const id of ['feed', 'auto', 'vsblock', 'd1', 'd2', 'd3', 'd4', 'd5'] as PadButton[]) this.buttons.delete(id);
+    for (const id of ['feed', 'auto', 'vsblock', 'calls', 'd1', 'd2', 'd3', 'd4', 'd5'] as PadButton[]) this.buttons.delete(id);
     this.chips.innerHTML = '';
     const chip = (id: PadButton, label: string) => {
       const e = el('div', 't-tap t-chip', this.chips, label);
@@ -327,8 +328,18 @@ export class TouchControls {
     };
     const toss = this.buttons.get('toss')!;
     toss.style.display = g.modeId === 'free' ? '' : 'none';
-    // tutorial reps: no set-call chips and no block toggle (one Outside story, block off)
-    const calls = !g.tutorial.active && (g.modeId === 'spike' || g.modeId === 'rally') && SET_PLAYS[g.position];
+    // you set: pick a hitter (tap again for a high ball); CALLS opens the call sheet (the chips then change calls).
+    // Tutorial reps: no set-call chips and no block toggle (one Outside story, block off)
+    const setter = !g.tutorial.active && (g.modeId === 'setter' || (g.modeId === 'rally' && (g.position === 'S' || g.position === 'L')));
+    if (setter) {
+      el('span', 't-chip-l', this.chips, 'SET TO');
+      chip('d1', 'OH');
+      chip('d2', 'MB');
+      chip('d3', 'OPP');
+      chip('d4', 'PIPE');
+      if (g.modeId === 'setter' || g.position === 'S') chip('calls', 'CALLS');
+    }
+    const calls = !setter && !g.tutorial.active && (g.modeId === 'spike' || g.modeId === 'rally') && SET_PLAYS[g.position];
     if (calls) {
       el('span', 't-chip-l', this.chips, 'SET CALL');
       chip('d1', '1');

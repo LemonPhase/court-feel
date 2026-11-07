@@ -17,7 +17,10 @@ import type { BallEnv } from '../physics/ball';
 import { AthleteView } from '../character/athleteView';
 import { makeKit } from '../character/kits';
 import type { Kit } from '../character/rig';
-import { aimTargetFromLook, ContactSystem, type ContactEvent, type IdealInfo } from './contact';
+import { aimTargetFromLook, ContactSystem, type ContactEvent, type IdealInfo, type SetPreview } from './contact';
+import { SetRing } from '../fx/setRing';
+import { SetSpot } from '../fx/setSpot';
+import { SetBar } from '../ui/setBar';
 import { Judge, type Outcome } from './judge';
 import { Hud } from '../ui/hud';
 import type { Brain } from '../ai/brain';
@@ -85,7 +88,14 @@ export class Game {
   private lastRenderSimT = 0;
   private accum = 0;
   timeScale = 1;
-  private slowmo = 1;
+  /** the game speed from the slow-mo assists right now (the set bot times its frames by it) */
+  slowmo = 1;
+  /** the set coming down onto the user's hands (refreshed each frame), for the set slow-mo and the timing ring */
+  private setPrev: SetPreview | null = null;
+  private setRing!: SetRing;
+  private setBar!: SetBar;
+  private setSpot!: SetSpot;
+  private spotP = { x: 0, y: 0, z: 0 };
   /** the lesson's clock: 1 real time, slower through a taught rep, 0 while the ball waits for the player */
   tutor = 1;
   hitStop = 0;
@@ -158,6 +168,9 @@ export class Game {
     this.hud = new Hud(container);
     this.hud.camera = this.rig.camera;
     this.ball = new BallEntity(this.scene);
+    this.setRing = new SetRing(this.scene);
+    this.setSpot = new SetSpot(this.scene);
+    this.setBar = new SetBar(this.hud.root);
     this.ball.hide();
     this.gizmos = new DebugGizmos(this.scene);
 
@@ -190,6 +203,8 @@ export class Game {
       rand: () => this.rng.next(),
       passTarget: (a) => this.mode?.passTarget?.(a) ?? defaultPassTarget(a),
       setOptions: (a) => this.mode?.setOptions?.(a) ?? defaultSetOptions(a),
+      setPick: (a) => this.mode?.setPick?.(a) ?? null,
+      setLevel: () => this.settings.setLevel,
       canServe: (a) => (this.mode?.canServe ? this.mode.canServe(a) : !this.ball.active || this.ball.state.rest),
     });
     this.contact.userAimYaw = () => this.rig.yaw;
@@ -445,9 +460,12 @@ export class Game {
         const kmh = ev.speed * 3.6;
         const pw =
           ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
-        let sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+        // a set shows its release timing and what shrank the window; a perfectly timed one is a green
+        const set = ev.kind === 'set';
+        let sub =
+          ev.grade === 'Miss' || set ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
         if (this.tutorial.active) sub = this.tutorial.gradeSub(ev.grade, sub);
-        this.hud.showGrade(ev.grade, sub);
+        this.hud.showGrade(ev.grade, sub, set && ev.perfect);
       }
       if (ev.speed > 0) this.hud.setSpeed(ev.speed * 3.6);
     }
@@ -618,6 +636,9 @@ export class Game {
   }
 
   private renderReplay(dt: number, draw: boolean): void {
+    this.setRing.hide();
+    this.setBar.hide();
+    this.setSpot.hide();
     this.mode?.replayFrame();
     this.rig.update(dt, null);
     this.fx.update(dt * this.fx.replay.speed);
@@ -697,6 +718,15 @@ export class Game {
       if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4)
         slowTarget = ASSIST.slowmoScale;
     }
+    // your set (Settings: Set slow-mo): time slows for the catch, and more while the ball loads in
+    // your hands, the same on every level; only when you are under the ball or have pressed
+    const sp = this.inMenu ? null : this.contact.setPreview(this.me);
+    this.setPrev = sp && (sp.pressed || sp.absorbing || sp.centreD < this.contact.setReach(this.me) + 0.4) ? sp : null;
+    if (this.setPrev && this.settings.setSlowmo) {
+      const until = this.setPrev.tIdeal - this.simTime;
+      if (this.setPrev.absorbing) slowTarget = Math.min(slowTarget, ASSIST.setSlowmoLoad);
+      else if (until < ASSIST.setSlowmoWindow && until > -TIMING.setCatchLate) slowTarget = Math.min(slowTarget, ASSIST.setSlowmoCatch);
+    }
     this.slowmo = lerp(this.slowmo, slowTarget, damp(12, realDt));
     // the lesson's own clock never stacks on top of the assist dip. A moment the ball waits at
     // is taken at once (and never simulated past: `stopAt`); everything else eases.
@@ -738,6 +768,15 @@ export class Game {
   /** when the ball the user is jumping at is best met (sim time), or -1 with nothing to reach */
   idealT(): number {
     return this.idealValid ? this.idealCache.t : -1;
+  }
+
+  /**
+   * The sim time of the frame on screen (between the last two steps): what a press or release
+   * you make now is timed against. In heavy slow-mo a step spans several frames, so the step
+   * time alone would round your release to the step.
+   */
+  inputTime(): number {
+    return this.simTime - 1 / SIM.hz + this.accum;
   }
 
   fixedStep(dt: number): void {
@@ -844,6 +883,14 @@ export class Game {
     f.side = me.side;
     this.rig.frozen = this.hitStop > 0;
     this.rig.update(realDt, this.inMenu ? null : f);
+    const cues = this.settings.setRing && this.ball.active && this.ball.visible && !this.inMenu;
+    this.setRing.update(this.setPrev, this.ball.rpos, tr, this.rig.camera, cues);
+    const last = this.contact.lastSetResult;
+    this.setBar.update(this.setPrev, last?.athlete === me ? last : null, this.ball.rpos, this.rig.camera, tr, realDt, cues);
+    // where to stand for your set, instead of where the ball would land
+    const spot = !this.inMenu && !this.setPrev?.absorbing && this.mode?.userSetsNext?.() ? this.contact.setSpot(me, this.spotP) : null;
+    this.setSpot.update(spot, me.rpos, realDt);
+    this.ball.showMarker = this.settings.landingMarker && !spot && !this.setPrev?.absorbing;
     // fade our own body when the TP camera is very close, and anyone standing in the camera's way
     const camPos = this.rig.camera.position;
     for (const [a, v] of this.views) {

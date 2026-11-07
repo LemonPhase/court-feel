@@ -2,6 +2,8 @@ import {
   BODY,
   isPositionId,
   POSITIONS,
+  SET_LEVEL_IDS,
+  SET_LEVELS,
   SETTING_RANGES,
   type BodyOverride,
   type BooleanSettingKey,
@@ -978,7 +980,7 @@ export class Menu {
       row.append(this.rowText(label, help), b);
       return row;
     };
-    /** a choice of two or three: one chip each */
+    /** a choice of a few: one chip each */
     const seg = (label: string, options: readonly string[], at: () => number, pick: (i: number) => void, help = '') => {
       const row = h('div', 'set-row choice');
       const chips = this.chipGroup(
@@ -1054,6 +1056,14 @@ export class Menu {
         'Helps your body only: a little reach and a drift towards the ball. 0 is off.',
       ),
       sw('Slow-mo assist', 'slowmoAssist'),
+      seg(
+        'Set difficulty',
+        SET_LEVEL_IDS.map((id) => SET_LEVELS[id].label),
+        () => SET_LEVEL_IDS.indexOf(s.setLevel),
+        (i) => (s.setLevel = SET_LEVEL_IDS[i]),
+      ),
+      sw('Set slow-mo', 'setSlowmo'),
+      sw('Set ring and bar', 'setRing'),
       sw('Landing marker', 'landingMarker'),
       sw('Hints', 'showHints', 'The key hint at the bottom, and the timing collar around the charge ring.'),
     ]);

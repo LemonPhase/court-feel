@@ -1,10 +1,12 @@
 import * as THREE from 'three';
-import { ASSIST, BALL, CONTACT, COURT, TIMING } from '../config';
+import { ASSIST, BALL, CONTACT, COURT, SET_LEVELS, TIMING, type SetLevel } from '../config';
 import { clamp, clamp01, dirFromYaw, lerp, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
 import { netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
 import { Athlete, type Action, type Grade } from './athlete';
 import type { BallEntity, TouchKind } from './ballEntity';
+import type { SetterKey } from './setterCalls';
+import { gradeRelease, setMiss, setNote, setQuality, setShape, setTouch, setWindow, type SetWindow } from './setTiming';
 
 export interface ContactEvent {
   athlete: Athlete;
@@ -49,6 +51,10 @@ export interface ContactHost {
   passTarget(a: Athlete): { x: number; y: number; z: number; apex: number };
   /** set choices for a setter (the aim picks one) */
   setOptions(a: Athlete): SetOption[];
+  /** the hitter the setter picked with a key (SetOption.key), or null: the aim picks */
+  setPick?(a: Athlete): SetterKey | null;
+  /** the set difficulty (Settings: Set difficulty; default easy) */
+  setLevel?(): SetLevel;
   /** can this athlete toss a serve now */
   canServe(a: Athlete): boolean;
 }
@@ -60,6 +66,52 @@ export interface SetOption {
   label: string;
   /** fixed flight time (a quick meeting a hitter already in the air) instead of an apex */
   time?: number;
+  /** the key that picks it (1 outside, 2 middle, 3 opposite, 4 pipe) */
+  key?: SetterKey;
+  /** a quick or a second-tempo set: harder to put exactly on the spot */
+  fast?: boolean;
+}
+
+/** the set coming down onto a setter's hands, then loading in them (see ContactSystem.setPreview) */
+export interface SetPreview {
+  /** sim time the ball reaches the hands: the catch */
+  tIdeal: number;
+  /** a catch within this (s) of tIdeal is clean; the touch falls off to `catchEdge` */
+  catchClean: number;
+  catchEdge: number;
+  /** RMB pressed for this ball (one press per ball) */
+  pressed: boolean;
+  /** RMB still held */
+  held: boolean;
+  /** the ball is in the hands and the bar is filling */
+  absorbing: boolean;
+  /** how far (m, horizontally) the ball will come down from the hands point if the setter stays put */
+  centreD: number;
+  /** while it loads: the catch (bar start), the ideal push (bar top) and the windows around it */
+  bar: { start: number; target: number; green: number; good: number } | null;
+}
+
+/** the user's last set, read by the hitter it went to and by the block */
+export interface SetResult {
+  athlete: Athlete;
+  /** sim time of the push (matches ball.lastTouch.t) */
+  t: number;
+  grade: Grade;
+  green: boolean;
+  /** 0..1 (see setQuality) */
+  quality: number;
+  /** release timing error (s) against the top of the bar, + = late */
+  err: number;
+  /** the green and good half-windows it was graded in (s) */
+  window: number;
+  good: number;
+}
+
+/** a standard normal from a 0..1 source (Box-Muller) */
+function gauss(rand: () => number): number {
+  const u = Math.max(1e-9, rand());
+  const v = rand();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
 const GRADE_RANK: Record<Grade, number> = { Perfect: 3, Good: 2, Early: 1, Late: 1, Miss: 0 };
@@ -362,7 +414,8 @@ export class ContactSystem {
         for (let k = 0; k < 6; k++) {
           const c = netClearance(p0, out, w);
           if (!c || c.y > h.env.netTop + R + 0.12) break;
-          if (Math.abs(target.z) < COURT.halfLength - 0.8) target.z += side * 1.0;
+          // deeper, but never past the end line
+          if (Math.abs(target.z) < COURT.halfLength - 0.8) target.z = side * Math.min(Math.abs(target.z) + 1.0, COURT.halfLength - 0.3);
           else speed *= 0.85;
           solveSpeedToFloor(p0, target.x, target.z, speed, spin * 0.8, out, w, land);
         }
@@ -509,23 +562,71 @@ export class ContactSystem {
     const pred = ball.ensurePrediction(h.env, h.simTime);
     const handsY = a.pos.y + a.height + 0.17;
     const tc = pred.descendThrough(handsY, h.simTime);
-    if (tc < 0 || tc - h.simTime > 1.6) return false;
+    const lt = ball.lastTouch;
+    const friendly = !lt || lt.side === a.side || lt.kind === 'feed';
+    if (tc < 0) {
+      // it has just come down through the hands: still a (late) catch while it is within reach
+      const P = this.handsPoint(a, this._p);
+      const bp = ball.pos;
+      return friendly && ball.vel.y < 0 && Math.hypot(bp.x - P.x, bp.y - P.y, bp.z - P.z) < this.setReach(a);
+    }
+    if (tc - h.simTime > 1.6) return false;
     pred.posAt(tc, this._b);
     if (this._b.z * a.side < 0.2) return false; // the ball will still be on their side: block
     const near = Math.hypot(this._b.x - a.pos.x, this._b.z - a.pos.z) < 2.5;
-    const lt = ball.lastTouch;
-    const friendly = !lt || lt.side === a.side || lt.kind === 'feed';
     return near && friendly;
   }
 
-  /** RMB set: resolve when the ball drops onto the hands; aim picks the hitter */
+  /** how far from the hands point a set can still be played */
+  setReach(a: Athlete): number {
+    return CONTACT.setRadius + this.host.aimAssist(a) * 0.2;
+  }
+
+  /** the ball each athlete's set press was for (one press per ball) */
+  private setPressFor = new WeakMap<Athlete, unknown>();
+
+  /**
+   * RMB as the ball drops onto `a` (at `t`, the frame's time): the catch. One press per ball: a
+   * second press for the same ball does nothing, so your catch is your catch (no spamming).
+   */
+  pressSet(a: Athlete, t: number): void {
+    const lt = this.host.ball.lastTouch;
+    if (this.setPressFor.has(a) && this.setPressFor.get(a) === lt) return;
+    this.setPressFor.set(a, lt);
+    a.startAction('set', t);
+  }
+
+  /** the set difficulty in play */
+  setLevel(): SetLevel {
+    return this.host.setLevel?.() ?? 'easy';
+  }
+
+  /**
+   * RMB set, timed like a jump shot, one press per ball (UserActions). The press is the catch,
+   * graded against the ball reaching the hands; the ball then loads in the hands while the bar
+   * fills, and the release is the push, graded against the top of the bar (setLoad after the
+   * catch) in a window sized by the touch (feet, catch, centring, the set's difficulty) and the
+   * level. Released before the ball came, the push meets it as it arrives (far too early);
+   * never released, it goes anyway, late.
+   */
   trySet(a: Athlete, act: Action): boolean {
     const h = this.host;
-    if (!this.ballIncoming(a)) return false;
     const ball = h.ball;
+    const t = h.simTime;
+    if (act.absorbing) {
+      if (!act.held) return this.pushSet(a, act, act.releaseT);
+      if (t - act.arriveT - TIMING.setLoad >= TIMING.setHoldMax) return this.pushSet(a, act, t);
+      // the ball loads in the hands
+      ball.hit({ x: 0, y: -TIMING.setAbsorbSpeed, z: 0 }, { x: 0, y: 0, z: 0 }, 0, t);
+      return false;
+    }
+    if (!this.ballIncoming(a)) return false;
     const bp = ball.pos;
     const P = this.handsPoint(a, this._p);
-    const r = CONTACT.setRadius + h.aimAssist(a) * 0.2;
+    // the moment the ball reaches the hands, re-read while it comes down (the setter moves under it)
+    const tArr = ball.ensurePrediction(h.env, t).descendThrough(P.y, t);
+    if (tArr > 0) act.idealT = tArr;
+    const r = this.setReach(a);
     const d = Math.hypot(bp.x - P.x, bp.y - P.y, bp.z - P.z);
     if (d > r || ball.vel.y > 0.5) {
       act.minD = 1e9;
@@ -535,75 +636,170 @@ export class ContactSystem {
       act.minD = d;
       return false;
     }
-    const dBest = Math.min(d, act.minD);
-    const t = h.simTime;
-    const lead = t - act.t0;
-    const diff = lead - TIMING.setLead;
-    let grade: Grade;
-    let note = '';
-    if (lead < 0.05) {
-      grade = 'Late';
-      note = 'Hands late';
-    } else if (Math.abs(diff) <= TIMING.setPerfect) grade = 'Perfect';
-    else if (Math.abs(diff) <= TIMING.setGood) grade = 'Good';
-    else {
-      grade = diff < 0 ? 'Late' : 'Early';
-      note = diff < 0 ? 'Hands late' : 'Hands early';
-    }
-    if (dBest > r * 0.65) {
-      grade = downgrade(grade, false);
-      note = note || 'Off the hands';
-    }
-    // choose the option closest to where the user is looking (AI: aiAim)
+    // caught. Pressed late, the ball had already passed the hands' height: when, from its speed
+    if (act.idealT < 0) act.idealT = bp.y < P.y && ball.vel.y < -0.5 ? t - (P.y - bp.y) / -ball.vel.y : t;
+    act.minD = Math.min(d, act.minD);
+    act.arriveT = t;
+    act.catchErr = act.t0 - act.idealT;
+    // the touch is fixed at the catch, for the set you are giving now
+    const level = this.setLevel();
     const opts = h.setOptions(a);
-    if (!opts.length) return false;
-    const aimYaw = a.isUser ? this.userAimYaw() : yawFromDir(a.aiAim.x - bp.x, a.aiAim.z - bp.z);
+    if (opts.length) {
+      const best = this.chooseSetOption(a, opts, bp);
+      const shape = setShape(a.pos, bp, best.target, a.side, best.fast ?? false);
+      act.touch = setTouch(a.stillT, act.catchErr, act.minD, r, shape, level);
+      const w = setWindow(act.touch, level);
+      act.green = w.green;
+      act.good = w.good;
+    }
+    act.absorbing = true;
+    if (!act.held) return this.pushSet(a, act, act.releaseT);
+    ball.hit({ x: 0, y: -TIMING.setAbsorbSpeed, z: 0 }, { x: 0, y: 0, z: 0 }, 0, t);
+    return false;
+  }
+
+  /** the option the setter is sending: their pick (keys), else the one closest to where they look (AI: aiAim) */
+  private chooseSetOption(a: Athlete, opts: SetOption[], from: V3): SetOption {
+    const key = this.host.setPick?.(a);
+    const picked = key ? opts.find((o) => o.key === key) : undefined;
+    if (picked) return picked;
+    const aimYaw = a.isUser ? this.userAimYaw() : yawFromDir(a.aiAim.x - from.x, a.aiAim.z - from.z);
     let best = opts[0];
     let bestD = 1e9;
     for (const o of opts) {
-      const oy = yawFromDir(o.target.x - bp.x, o.target.z - bp.z);
+      const oy = yawFromDir(o.target.x - from.x, o.target.z - from.z);
       const dd = Math.abs(wrapAngle(oy - aimYaw));
       if (dd < bestD) {
         bestD = dd;
         best = o;
       }
     }
-    const rank = GRADE_RANK[grade];
-    const err = rank === 3 ? 0.08 : rank === 2 ? 0.3 : 0.85;
+    return best;
+  }
+
+  /** the push: grade the release `releaseT` against the top of the bar and send the set */
+  private pushSet(a: Athlete, act: Action, releaseT: number): boolean {
+    const h = this.host;
+    const ball = h.ball;
+    const t = h.simTime;
+    const bp = ball.pos;
+    const from = { x: bp.x, y: bp.y, z: bp.z };
+    const opts = h.setOptions(a);
+    if (!opts.length) {
+      a.endAction();
+      return false;
+    }
+    const best = this.chooseSetOption(a, opts, from);
+    const err = releaseT - (act.arriveT + TIMING.setLoad);
+    const level = this.setLevel();
+    const touch =
+      act.touch ??
+      setTouch(a.stillT, act.catchErr, act.minD, this.setReach(a), setShape(a.pos, from, best.target, a.side, !!best.fast), level);
+    const win: SetWindow = act.touch ? { green: act.green, good: act.good } : setWindow(touch, level);
+    const g = gradeRelease(err, win);
+    const miss = setMiss(g);
+    // along the set: early comes up short, late goes flat and long; then the spread
+    const dx = best.target.x - from.x;
+    const dz = best.target.z - from.z;
+    const len = Math.max(0.01, Math.hypot(dx, dz));
+    const n1 = gauss(h.rand);
+    const n2 = gauss(h.rand);
+    const n3 = gauss(h.rand);
     const tgt = {
-      x: best.target.x + (h.rand() * 2 - 1) * err,
-      y: best.target.y + (h.rand() * 2 - 1) * err * 0.3,
-      z: best.target.z + (h.rand() * 2 - 1) * err * 0.6,
+      x: best.target.x + (dx / len) * miss.shift + n1 * miss.spread,
+      y: best.target.y,
+      z: best.target.z + (dz / len) * miss.shift + n2 * miss.spread * 0.5,
     };
     const out = { x: 0, y: 0, z: 0 };
-    const from = { x: bp.x, y: bp.y, z: bp.z };
-    if (best.time)
-      solveFixedTime(from, tgt, Math.max(0.15, best.time * (rank === 3 ? 1 : 1 + (h.rand() - 0.5) * 0.3)), { x: 0, y: 0, z: 0 }, out);
-    else solveApex(from, tgt, best.apex + (rank === 3 ? 0 : (h.rand() - 0.5) * 0.6), { x: 0, y: 0, z: 0 }, out);
+    if (best.time) {
+      const time = best.time * (1 + n3 * miss.spread * 0.3) * (g.grade === 'Late' ? 0.9 : 1);
+      solveFixedTime(from, tgt, Math.max(0.15, time), { x: 0, y: 0, z: 0 }, out);
+    } else {
+      const apex = Math.max(tgt.y + 0.15, best.apex - miss.apexDrop + n3 * miss.spread * 0.6);
+      solveApex(from, tgt, Math.max(from.y + 0.1, apex), { x: 0, y: 0, z: 0 }, out);
+    }
     ball.hit(out, { x: 0, y: 0, z: 0 }, 0, t);
     ball.lastTouch = { athlete: a, kind: 'set', t, side: a.side };
     a.lastTouchT = t;
+    const note = setNote(err, g, touch, best.label);
     act.resolved = true;
+    act.absorbing = false;
+    act.held = false;
     act.contactT = t;
-    act.grade = grade;
-    act.note = note || best.label;
+    act.err = err;
+    act.grade = g.grade;
+    act.note = note;
     act.contactPoint.set(bp.x, bp.y, bp.z);
     this.lastSet = best;
+    const quality = setQuality(g);
+    this.lastSetResult = { athlete: a, t, grade: g.grade, green: g.grade === 'Perfect', quality, err, window: win.green, good: win.good };
     h.emitContact({
       athlete: a,
       kind: 'set',
-      grade,
-      note: note || best.label,
+      grade: g.grade,
+      note,
       speed: Math.hypot(out.x, out.y, out.z),
       point: new THREE.Vector3(bp.x, bp.y, bp.z),
-      quality: rank / 3,
-      perfect: rank === 3,
+      quality,
+      perfect: g.grade === 'Perfect',
       tip: false,
       target: new THREE.Vector3(tgt.x, tgt.y, tgt.z),
     });
     return true;
   }
+
+  /**
+   * The set coming down onto `a`'s hands, then loading in them: for the timing ring and the bar,
+   * the set slow-mo and the bot. Before the catch, when it reaches the hands; while it loads,
+   * the bar and the windows the touch earned.
+   */
+  setPreview(a: Athlete): SetPreview | null {
+    const h = this.host;
+    const act = a.action?.kind === 'set' ? a.action : null;
+    if (act?.resolved) return null;
+    const L = SET_LEVELS[this.setLevel()];
+    const t = h.simTime;
+    const base = { catchClean: L.catch, catchEdge: L.catch + TIMING.setCatchLate, pressed: !!act, held: act?.held ?? false };
+    if (act?.absorbing)
+      return {
+        ...base,
+        tIdeal: act.idealT,
+        absorbing: true,
+        centreD: 0,
+        bar: { start: act.arriveT, target: act.arriveT + TIMING.setLoad, green: act.green, good: act.good },
+      };
+    if (!this.wantsSet(a)) return null;
+    const P = this.handsPoint(a, this._p);
+    const pred = h.ball.ensurePrediction(h.env, t);
+    const tIdeal = pred.descendThrough(P.y, t);
+    if (tIdeal < 0) return null;
+    pred.posAt(tIdeal, this._b);
+    return { ...base, tIdeal, absorbing: false, centreD: Math.hypot(this._b.x - P.x, this._b.z - P.z), bar: null };
+  }
+
+  /**
+   * Where `a` should stand to set the ball now in flight: their feet, with the ball dropping onto
+   * the hands (null if it never comes down through hands height on their side).
+   */
+  setSpot(a: Athlete, out: V3): V3 | null {
+    const h = this.host;
+    if (!h.ball.active || h.ball.state.rest) return null;
+    const pred = h.ball.ensurePrediction(h.env, h.simTime);
+    const tc = pred.descendThrough(a.pos.y + a.height + 0.17, h.simTime);
+    if (tc < 0) return null;
+    pred.posAt(tc, this._b);
+    if (this._b.z * a.side < 0.2) return null;
+    // the hands are 0.14 m in front of the feet (handsPoint)
+    const f = dirFromYaw(a.yaw, _f);
+    out.x = this._b.x - f.x * 0.14;
+    out.y = 0;
+    out.z = this._b.z - f.z * 0.14;
+    return out;
+  }
+
   lastSet: SetOption | null = null;
+  /** the last set the user pushed: hitters swing better off a good one, and a green beats the block */
+  lastSetResult: SetResult | null = null;
   userAimYaw: () => number = () => 0;
 
   /** RMB block: hands volume above / over the net */
