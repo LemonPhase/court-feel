@@ -189,14 +189,16 @@ export class HitterBrain implements Brain {
         // where does the line from the hitter to the target cross the net?
         const f = Math.abs(a.pos.z) / (Math.abs(a.pos.z) + Math.abs(o.z));
         const cx = hitX + (o.x - hitX) * f;
-        if (Math.abs(cx - b.pos.x) < CONTACT.blockHalfWidth + BALL.radius + 0.3) o.w *= 0.15;
+        if (Math.abs(cx - (b.pos.x + b.reachX)) < CONTACT.blockHalfWidth + BALL.radius + 0.3) o.w *= 0.15;
       }
     }
     // a double block that did not close: hit through the seam
     if (!this.lane.quick) {
       for (let i = 0; i + 1 < up.length; i++) {
-        const gap = up[i + 1].pos.x - up[i].pos.x - 2 * CONTACT.blockHalfWidth;
-        const gx = (up[i].pos.x + up[i + 1].pos.x) / 2;
+        const xa = up[i].pos.x + up[i].reachX;
+        const xb = up[i + 1].pos.x + up[i + 1].reachX;
+        const gap = xb - xa - 2 * CONTACT.blockHalfWidth;
+        const gx = (xa + xb) / 2;
         if (gap < 0.3 || Math.abs(gx - hitX) > 2.5) continue;
         // extend the line from the contact through the seam to a deep spot on their court
         const dz = Math.abs(a.pos.z);

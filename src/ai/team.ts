@@ -19,7 +19,7 @@ import {
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 import { attackKind, readSpots } from './defence';
-import { giveWay, type Mate } from './giveWay';
+import { giveWay, shoulderToShoulder, type Mate } from './giveWay';
 import { HitterBrain } from './hitter';
 import { MiddleBlocker } from './middle';
 import { BallRead } from './read';
@@ -48,7 +48,7 @@ const FORM: Record<'receive' | 'defense' | 'offense', Record<Slot, Spot>> = {
     OH1: { x: -3.0, z: 0.7 },
     MB: { x: 0.0, z: 0.7 },
     OPP: { x: 3.0, z: 0.7 },
-    OH2: { x: 0.0, z: 7.3 },
+    OH2: { x: 0.0, z: 8.5 },
     L: { x: -2.9, z: 6.2 },
   },
   offense: {
@@ -57,7 +57,9 @@ const FORM: Record<'receive' | 'defense' | 'offense', Record<Slot, Spot>> = {
     MB: { x: 0.35, z: 2.8 },
     OPP: { x: 4.7, z: 3.4 },
     OH2: { x: -0.4, z: 6.4 },
-    L: { x: 1.2, z: 6.0 },
+    // the libero plays left back in defence, so it waits on that side while we attack (it no longer
+    // runs across the back-row outside's path on every transition)
+    L: { x: -2.4, z: 6.0 },
   },
 };
 
@@ -118,7 +120,12 @@ export class TeamPlayer implements Brain {
     }
     this.blocker =
       slot === 'MB'
-        ? new MiddleBlocker(athlete, FORM.defense.MB.x * s, () => team.opponents?.players.get('MB') ?? null)
+        ? new MiddleBlocker(
+            athlete,
+            FORM.defense.MB.x * s,
+            () => team.opponents?.players.get('MB') ?? null,
+            () => team.frontRow().filter((w) => w !== athlete),
+          )
         : new BlockerBrain(athlete, FORM.defense[slot].x * s, 1.3);
     this.server = new ServerBrain(athlete);
   }
@@ -559,6 +566,8 @@ export class TeamAI {
     const ball = g.ball;
     const now = g.simTime;
     this.trackTouches();
+    // team-mates at the net meet shoulder to shoulder, never through each other
+    shoulderToShoulder([...this.players.values()]);
     const live = ball.active && !ball.state.rest && g.ballLive;
     const lt = ball.lastTouch;
     const jobs = new Map<Athlete, { job: Job; spot: Spot }>();

@@ -102,7 +102,7 @@ Real frames from the game: no paint-overs, no staged cameras.
   <tr>
     <td width="50%" valign="top">
       <img src="docs/screenshots/mini-rally-perimeter-defence.jpg" alt="Mini Rally from behind the libero at left back: the left front pulled off the net, two blockers up at the right of the net, the back-row outside deep in the middle, the setter on the right line">
-      <b>The defence reads the set.</b> Perimeter defence as their outside swings: the line, the cross, deep on the seam, and the off-blocker off the net for tips.
+      <b>The defence reads the set.</b> Perimeter defence as their outside swings: the line, the cross, deep at the end line, and the off-blocker off the net for tips.
     </td>
     <td width="50%" valign="top">
       <img src="docs/screenshots/mini-rally-early-transition.jpg" alt="Mini Rally from behind the libero on their passing spot, the ball high off a soft block, the setter running for the net and the front row leaving it">
@@ -349,13 +349,14 @@ screen show them. Only your player uses them; AI players keep the defaults.
 
    The call is the decision, not a guess: the set always follows it.
 
-   **Their middle blocker reads you.** Before the set it lines up across from your
-   middle. Off a good pass it sometimes guesses: it commits on your quick (jumps with
-   your middle) or cheats towards a pin; otherwise it reads the set and runs to close
-   the block next to the pin blocker. A high ball gives it time, so out of system
-   expect a double block. A fast set or a wrong guess leaves it late, and it goes up
-   anyway with a gap between it and the pin blocker: hit the seam. Your own middle
-   blocks the same way.
+   **Their middle blocker reads you.** Before the set it stands near the middle of
+   the net, shading towards your middle. Now and then it guesses: it commits on your
+   quick (jumps with your middle) or cheats towards a pin; otherwise it reads the
+   setter's hands and runs to close the block on the pin blocker, hands to hands. Out
+   of system the block is closed: no seam. On a fast set or after a wrong guess it is
+   late: it drifts into the seam on its jump (stopping at the pin blocker's shoulder)
+   and stretches its hands sideways, lower and softer, so a seam can open. Your own
+   middle blocks the same way.
 
    **Your team-mates give way.** Whoever is playing the ball keeps their line and the
    others step around them, and your team-mates step around you. As their hitter
@@ -363,8 +364,9 @@ screen show them. Only your player uses them; AI players keep the defaults.
 
    **The defence reads the set.** Perimeter defence: as their set flies, the line
    digger goes to the line, the cross digger (the libero, at left back) cross court
-   outside your block, the back-row outside deep on the seam of the block, and the
-   front-row player who isn't blocking pulls off the net for tips. Nobody chases a hit
+   outside your block, the back-row outside deep at the end line beside the block
+   (on its seam if it leaves one), and the front-row player who isn't blocking pulls
+   off the net for tips. Nobody chases a hit
    before a reaction time after it, so a well-placed shot beats them. On an easy ball
    (their free ball, or your soft block that the passer gets to in time) the setter
    runs to the net and the front row leaves it before the pass is even made.
@@ -443,16 +445,16 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 |---|---|
 | `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
 | `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
-| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade |
+| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade, how much lower a block reaching sideways is (`blockReachDrop`) |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
-| `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning |
+| `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`) |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how far it closes inside the attack, how late it still jumps); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); how often the setter goes to the pipe (`pipe`); perimeter defence read spots and reaction times (`defence`) and early transition (`transition`); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); how often the setter goes to the pipe (`pipe`); perimeter defence read spots and reaction times (`defence`) and early transition (`transition`); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, your

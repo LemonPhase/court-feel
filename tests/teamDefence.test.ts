@@ -156,15 +156,20 @@ describe('the defence reads their set (Mini Rally, perimeter)', () => {
     const lane = laneFor('OH', -1);
     t.spike({ x: lane.x, y: 3.25, z: lane.z }, { x: -1.0, y: 0.1, z: 7.0 }, 20);
     const hitT = t.g.simTime;
-    let firstMove = -1;
+    // the moment the digger steers for the ball (it may still be moving from its read when the hit comes)
+    let steers = -1;
     let receiver: Athlete | null = null;
+    let ticksSince = 0;
     t.run(0.6, () => {
+      // (the players step before the coordinator picks the digger: judge from the tick after)
+      if (receiver) ticksSince++;
       receiver ??= t.team.receiver;
-      if (receiver && firstMove < 0 && receiver.speed > 0.5) firstMove = t.g.simTime - hitT;
+      if (receiver && ticksSince > 0 && steers < 0 && Math.hypot(receiver.cmd.moveX, receiver.cmd.moveZ) > 0.05)
+        steers = t.g.simTime - hitT;
     });
     expect(receiver).not.toBeNull();
-    expect(firstMove).toBeGreaterThan(D.hitReact - 3 * D.hitReactSd);
-    expect(firstMove).toBeLessThan(D.hitReact + 0.2);
+    expect(steers).toBeGreaterThan(D.hitReact - 3 * D.hitReactSd);
+    expect(steers).toBeLessThan(D.hitReact + 0.2);
   });
 });
 

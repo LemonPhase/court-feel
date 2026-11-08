@@ -104,6 +104,8 @@ export class Athlete {
   lastAction: Action | null = null;
   /** time this athlete last touched the ball */
   lastTouchT = -10;
+  /** a block's hands reaching sideways from the body (m along the net, world x): a late blocker stretching for the seam */
+  reachX = 0;
   /** when the last split step started (the animator hops and lands into a deeper stance; no effect on movement) */
   splitT = -10;
   /** 'ready' body lean */
@@ -171,6 +173,7 @@ export class Athlete {
     this.action = null;
     this.lastAction = null;
     this.airNudge.set(0, 0, 0);
+    this.reachX = 0;
   }
 
   get grounded(): boolean {

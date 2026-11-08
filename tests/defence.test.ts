@@ -23,18 +23,23 @@ describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
     expect(s.L!.x).toBeLessThan(0);
     expect(s.L!.x).toBeGreaterThanOrEqual(-(W - D.sideIn) - 1e-9);
     // outside the inside blocker's shadow: the line from the hitter past the inside hand misses the libero
-    const insideHand = 4.05 - AI.middle.closeGap - D.handHalf;
+    const insideHand = 4.05 + D.shade - AI.middle.closeGap - D.handHalf;
     const shadowX = 4.05 + (insideHand - 4.05) * ((0.9 + D.digDepth) / 0.9);
     expect(s.L!.x).toBeLessThanOrEqual(Math.max(shadowX, -(W - D.sideIn)) + 1e-9);
   });
 
-  it('the back-row outside plays middle back: deep, lined up on the seam of the block', () => {
+  it('the back-row outside plays middle back: at the end line, beside a closed block on the cross side', () => {
     const s = readSpots({ x: 4.05, off: 0.9, kind: 'pin' });
+    // about 9 m off the net: on the end line, feet just inside
     expect(s.OH2!.z).toBeCloseTo(D.middleBack, 6);
-    // the seam is between the middle's outer hand and the pin blocker's inner hand
-    const seam = (4.05 - AI.middle.closeGap + D.handHalf + (4.05 + D.shade - D.handHalf)) / 2;
-    const onSeam = 4.05 + (seam - 4.05) * ((0.9 + D.middleBack) / 0.9);
-    expect(s.OH2!.x).toBeCloseTo(Math.max(-D.middleBackMaxX, Math.min(D.middleBackMaxX, onSeam)), 6);
+    expect(s.OH2!.z).toBeGreaterThan(8.5);
+    // the double block closes hands to hands (no seam to stand behind): beside its inside edge, towards the cross
+    const insideHand = 4.05 + D.shade - AI.middle.closeGap - D.handHalf;
+    expect(s.OH2!.x).toBeCloseTo(insideHand - D.middleBackCross, 6);
+    expect(s.OH2!.x).toBeLessThan(insideHand);
+    // and the same on the other side
+    const o = readSpots({ x: -4.0, off: 0.9, kind: 'pin' });
+    expect(o.OH2!.x).toBeCloseTo(-(4.0 + D.shade - AI.middle.closeGap - D.handHalf) + D.middleBackCross, 6);
   });
 
   it('the off-blocker (left front) pulls off the net to ~3 m, ~3 m in from the sideline; the right front blocks', () => {

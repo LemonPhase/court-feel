@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, BALL, TIMING } from '../config';
+import { AI, BALL, CONTACT, TIMING } from '../config';
 import { clamp, clamp01, damp, easeOutCubic, lerp, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import { orientBone, twoBoneIK } from './ik';
@@ -411,6 +411,8 @@ export class AthleteView {
       chestX = lerp(chestX, 0.0, p);
       chestY = lerp(chestY, 0, p);
       hipsY = lerp(hipsY, 0, p);
+      // leaning into a sideways reach
+      chestZ = lerp(chestZ, clamp(-a.reachX * Math.cos(a.ryaw) * 0.4, -0.16, 0.16), p);
       if (st !== 'air' && st !== 'load') drop = lerp(drop, 0.05 * H, p);
       bodyRate = 25;
     }
@@ -821,6 +823,9 @@ export class AthleteView {
         this.key('block', _a, _b);
         if (st === 'air') _a.z += 0.06 * H * smooth01((tr - act.t0) / 0.18); // press over the net
         _a.x += 0.012 * H;
+        // a late blocker stretches sideways for the seam: both hands go that way, a little lower
+        _a.x += a.reachX * Math.cos(a.ryaw) * s;
+        _a.y -= Math.abs(a.reachX) * CONTACT.blockReachDrop;
         w.lerp(_a, p);
         pole.lerp(_b, p);
         rate = 30;

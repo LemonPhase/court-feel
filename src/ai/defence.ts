@@ -47,7 +47,7 @@ export function readSpots(a: Attack): ReadSpots {
   // a pin attack on our right (r = 1) or left (r = -1): the pin blocker shades the line, the middle closes inside
   const r = a.x >= 0 ? 1 : -1;
   const pinBlocker = a.x + r * D.shade;
-  const middle = a.x - r * AI.middle.closeGap;
+  const middle = pinBlocker - r * AI.middle.closeGap;
   const insideHand = middle - r * D.handHalf;
   const seam = (middle + r * D.handHalf + pinBlocker - r * D.handHalf) / 2;
   // where a straight ball from the hitter past `xNet` (at the net) is, `depth` m into our court
@@ -55,7 +55,11 @@ export function readSpots(a: Attack): ReadSpots {
   const line: Spot = { x: r * (W - D.lineIn), z: D.digDepth };
   const crossX = clamp(along(insideHand, D.digDepth) - r * D.crossOutside, -(W - D.sideIn), W - D.sideIn);
   const cross: Spot = { x: crossX, z: D.digDepth };
-  const middleBack: Spot = { x: clamp(along(seam, D.middleBack), -D.middleBackMaxX, D.middleBackMaxX), z: D.middleBack };
+  // the middle back plays deep, at the end line: on the seam if the block leaves one, else beside the
+  // block's inside edge, towards the cross (a closed block's shadow is no place to stand)
+  const seamWidth = Math.abs(pinBlocker - middle) - 2 * D.handHalf;
+  const mbX = seamWidth > 0 ? along(seam, D.middleBack) : insideHand - r * D.middleBackCross;
+  const middleBack: Spot = { x: clamp(mbX, -D.middleBackMaxX, D.middleBackMaxX), z: D.middleBack };
   const off: Spot = { x: -r * (W - D.offIn), z: D.offOff };
   return {
     S: r > 0 ? line : cross,

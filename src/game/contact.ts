@@ -70,6 +70,14 @@ const GRADE_RANK: Record<Grade, number> = { Perfect: 3, Good: 2, Early: 1, Late:
  * predicted best moment, clamped to what a real arm swing can stretch to, and
  * graded on how far the click was from ideal (plus jump timing and reach).
  */
+/**
+ * Where a blocker's hands are: over the body, or reaching sideways (`Athlete.reachX`); a reach
+ * costs height (`CONTACT.blockReachDrop` per metre), so a stretched block is lower and softer.
+ */
+export function blockHands(a: Athlete): { x: number; top: number } {
+  return { x: a.pos.x + a.reachX, top: a.pos.y + a.standReach + 0.04 - Math.abs(a.reachX) * CONTACT.blockReachDrop };
+}
+
 export class ContactSystem {
   constructor(private host: ContactHost) {}
 
@@ -622,7 +630,8 @@ export class ContactSystem {
     const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
     const assist = h.aimAssist(a);
     const halfW = CONTACT.blockHalfWidth + assist * 0.12;
-    const top = a.pos.y + a.standReach + 0.04;
+    const hands = blockHands(a);
+    const top = hands.top;
     const bottom = top - CONTACT.blockHeight;
     // hands reach over the net: from our side up to 0.3m into theirs
     const pen = (a.state === 'air' ? 0.32 : 0.12) * ext;
@@ -631,7 +640,7 @@ export class ContactSystem {
     const zmin = Math.min(zNear, zFar) - R;
     const zmax = Math.max(zNear, zFar) + R;
     if (bp.y < bottom - R || bp.y > top + R) return false;
-    if (Math.abs(bp.x - a.pos.x) > halfW + R) return false;
+    if (Math.abs(bp.x - hands.x) > halfW + R) return false;
     if (bp.z < zmin || bp.z > zmax) return false;
     if (ext < 0.35) return false;
     // ---- grade

@@ -1,4 +1,4 @@
-import { AI } from '../config';
+import { AI, PLAYER } from '../config';
 import { clamp } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 
@@ -78,13 +78,13 @@ export function giveWay(a: Athlete, mates: readonly Mate[]): void {
   const keep = Math.max(0, 1 - 2 * wsum);
   let mx = a.cmd.moveX * keep + sx * G.push;
   let mz = a.cmd.moveZ * keep + sz * G.push;
-  // and never walk into someone already close: drop the part of the step that heads at them
+  // and never walk into someone at arm's length: drop the part of the step that heads at them
   for (const m of mates) {
     const o = m.athlete;
     const rx = o.pos.x - a.pos.x;
     const rz = o.pos.z - a.pos.z;
     const dn = Math.hypot(rx, rz);
-    if (o === a || dn >= G.room || dn < 1e-6) continue;
+    if (o === a || dn >= G.touch || dn < 1e-6) continue;
     const at = (mx * rx + mz * rz) / dn;
     if (at <= 0) continue;
     mx -= (rx / dn) * at;
@@ -97,4 +97,32 @@ export function giveWay(a: Athlete, mates: readonly Mate[]): void {
   }
   a.cmd.moveX = mx;
   a.cmd.moveZ = mz;
+}
+
+/**
+ * Team-mates at the net (one of them in the air: a block, a quick) don't pass through each other:
+ * a player moving into another stops at their shoulder (`PLAYER.shoulder`), the other holds. A
+ * closing middle drifts into the seam and stops against its pin blocker. Applies to the user too.
+ */
+export function shoulderToShoulder(players: readonly Athlete[]): void {
+  const S = PLAYER.shoulder;
+  for (let i = 0; i < players.length; i++)
+    for (let j = i + 1; j < players.length; j++) {
+      const a = players[i];
+      const b = players[j];
+      if (Math.abs(a.pos.z) > 1.5 || Math.abs(b.pos.z) > 1.5) continue;
+      if (a.state !== 'air' && b.state !== 'air') continue;
+      const dx = b.pos.x - a.pos.x;
+      if (Math.abs(dx) >= S || Math.abs(a.pos.z - b.pos.z) >= S) continue;
+      const dir = dx >= 0 ? 1 : -1;
+      // who is closing: the one moving towards the other faster stops at the shoulder
+      const va = a.vel.x * dir;
+      const vb = -b.vel.x * dir;
+      const mover = va >= vb ? a : b;
+      const other = mover === a ? b : a;
+      const side = mover === a ? -dir : dir;
+      mover.pos.x = other.pos.x + side * S;
+      // still moving into them: it moves with them now (no further)
+      if ((other.vel.x - mover.vel.x) * side > 0) mover.vel.x = other.vel.x;
+    }
 }

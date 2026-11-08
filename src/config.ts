@@ -189,6 +189,8 @@ export const PLAYER = {
   airControl: 0.6,
   /** fraction of horizontal approach speed kept through the plant */
   plantCarry: 0.38,
+  /** two players meet at this distance (m, centre to centre) when their shoulders touch: team-mates at the net (a closing middle drifting into its pin blocker) stop there */
+  shoulder: 0.5,
   /** jump load (Space hold) */
   loadMin: 0.09,
   loadMax: 0.3,
@@ -268,6 +270,8 @@ export const CONTACT = {
    */
   blockHalfWidth: 0.22,
   blockHeight: 0.55,
+  /** a blocker reaching sideways (`Athlete.reachX`) gets its hands this much (m) lower per metre of reach */
+  blockReachDrop: 0.5,
   /** speeds (m/s) */
   spikePerfect: 30,
   spikeGood: 26,
@@ -473,10 +477,10 @@ export const AI = {
   /**
    * Mini Rally team-mates give way (`src/ai/giveWay.ts`): a player walking to a spot keeps `room` m
    * (centre to centre) from the others, looking `ahead` s along both paths, steering off with up to
-   * `push` times its own command. Whoever plays the ball (or the user) keeps their line; two walkers
-   * share it, passing on the right.
+   * `push` times its own command, and never steps towards a team-mate closer than `touch` m. Whoever
+   * plays the ball (or the user) keeps their line; two walkers share it, passing on the right.
    */
-  giveWay: { room: 0.9, ahead: 0.5, push: 1.5 },
+  giveWay: { room: 0.9, ahead: 0.5, push: 1.5, touch: 0.6 },
   /**
    * Mini Rally defenders split-step on the other team's set: a `dip` s load, then `air` s off the floor
    * (0.2 s is a ~5 cm hop), landing on their hitter's contact into a deeper stance for `settle` s
@@ -506,8 +510,13 @@ export const AI = {
     /** cross digger: this far outside the inside blocker's shadow, and at least `sideIn` inside the sideline */
     crossOutside: 0.5,
     sideIn: 1.0,
-    /** middle back: this deep, on the block's seam, no further than `middleBackMaxX` from the middle */
-    middleBack: 7.75,
+    /**
+     * Middle back: this deep (the end line is 9 m: feet just inside), on the block's seam if it leaves
+     * one, else `middleBackCross` m to the cross side of the block's inside edge; no further than
+     * `middleBackMaxX` from the middle. MatusGib: deeper, around 9 m, beside a closed block
+     */
+    middleBack: 8.8,
+    middleBackCross: 1.0,
     middleBackMaxX: 3.0,
     /** off-blocker: this far off the net, this far in from its sideline */
     offOff: 3.0,
@@ -515,12 +524,12 @@ export const AI = {
     /** our blockers on a pin set: the pin blocker shades this far outside the attack (the middle closes `AI.middle.closeGap` inside it); a blocker's hands reach this far either side */
     shade: 0.25,
     handHalf: 0.325,
-    /** against the quick: the middle back cheats up to this depth */
-    quickMiddleBack: 6.0,
+    /** against the quick: the middle back cheats up a little, to this depth */
+    quickMiddleBack: 7.5,
     /** against a pipe: the corners step in and forward to here (x from the middle, depth), the middle back to this depth */
     pipeCornerX: 2.2,
     pipeCornerZ: 5.3,
-    pipeMiddleBack: 7.0,
+    pipeMiddleBack: 8.0,
   },
   /**
    * Early transition: on an easy first ball (their free ball over, or our block softening their
@@ -535,25 +544,33 @@ export const AI = {
    * The Mini Rally middle blocker (`src/ai/middle.ts`). It acts on a touch (their pass, their set)
    * `react` s after it (± `reactSd`, 1 sd). Its read of where the set is going is `readErr` m off
    * along the net at the setter's touch (1 sd), an error that shrinks to nothing as the ball gets to
-   * the hitter. A club middle's read: a faster, sharper one (0.17 s, 0.6 m) measured the same in the
-   * all-AI rally, since a high ball gives either one time; it shows on fast sets and wrong guesses.
+   * the hitter. It watches the setter's hands (coaching: the middle's eyes are on the setter), so it is
+   * off 0.12 s after the touch: at 0.24 s an in-system high ball left a 0.12-0.65 m seam 11 times in
+   * 12, at 0.12 s 2 times in 12, 1-5 cm wide (PROGRESS, AI movement 4).
    */
   middle: {
-    react: 0.24,
+    react: 0.12,
     reactSd: 0.04,
     readErr: 0.9,
     /** on a good pass with their middle coming in: how often it commits on the quick (jumps with their middle), or cheats towards a pin */
-    commit: 0.25,
-    cheat: 0.2,
+    commit: 0.1,
+    cheat: 0.1,
     /** how far (m) a cheat leans towards the guessed pin before the set */
     cheatShift: 0.8,
-    /** lines up across from their middle, no further than this (m) from the middle of the net */
-    lineUpMax: 2.5,
-    /** an attack further than this (m) from the middle of the net is a pin set: the middle closes the block this far (m) inside it, next to the pin blocker */
+    /** lines up across from their middle, no further than this (m) from the middle of the net (a spread block: both pins in reach) */
+    lineUpMax: 0.3,
+    /**
+     * An attack further than this (m) from the middle of the net is a pin set: the middle closes on
+     * our pin blocker, `closeGap` m inside it (centre to centre). A blocker's hands stop a ball within
+     * `AI.defence.handHalf` (0.325 m) of them, so 0.6 leaves no seam: a seam is the middle being late.
+     */
     pinX: 1.6,
-    closeGap: 1.1,
+    closeGap: 0.6,
     /** late, it still jumps from up to this far (m) from where it wanted to be (a block with a gap); further away it stays down */
-    lateReach: 1.5,
+    lateReach: 2.2,
+    /** in the air its hands stretch towards where it wanted to block, up to this far (m) to the side of the body, getting there in about `reachTime` s */
+    reach: 0.4,
+    reachTime: 0.12,
   },
   defenderSkill: 0.7,
   setterAccuracy: 0.15,

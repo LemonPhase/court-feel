@@ -5,7 +5,7 @@ import type { Touch } from '../game/ballEntity';
 import type { Game } from '../game/game';
 import { laneFor, SETTER_SPOT } from '../game/plays';
 import type { V3 } from '../physics/ball';
-import { predictJump, riseTime } from './approach';
+import { predictJump } from './approach';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 import { BallRead } from './read';
 
@@ -42,12 +42,16 @@ export class MiddleBlocker implements Brain {
   /** the attack the set is heading for: when and where the hitter meets it (tc < 0: not known yet) */
   private tc = -1;
   private attackX = 0;
+  /** where the hands go in the air: the spot it was running for (null: straight up) */
+  private handsTo: number | null = null;
   private readonly b: V3 = { x: 0, y: 0, z: 0 };
 
   constructor(
     public athlete: Athlete,
     public homeX: number,
     private theirMiddle: () => Athlete | null,
+    /** our wing blockers: on a pin set the middle closes on the one there */
+    private ourWings: () => Athlete[] = () => [],
   ) {
     this.targetX = homeX;
   }
@@ -59,9 +63,10 @@ export class MiddleBlocker implements Brain {
     this.guess = 'read';
     this.targetX = this.homeX;
     this.tc = -1;
+    this.handsTo = null;
   }
 
-  step(_dt: number, g: Game): void {
+  step(dt: number, g: Game): void {
     const a = this.athlete;
     const now = g.simTime;
     const face = netYaw(a.side);
@@ -80,10 +85,19 @@ export class MiddleBlocker implements Brain {
     else this.targetX = this.homeX;
     // a commit block goes up with their middle, whatever the setter does
     if (theirs && (lt.kind === 'pass' || lt.kind === 'dig' || lt.kind === 'set') && this.guess === 'quick') this.commit(g);
+    // in the air the hands keep going for the spot: a late middle stretches sideways for the seam
+    // (a block on the quick it didn't read, a wrong guess still going for the pin); on time it is over the spot already
+    const want =
+      a.state === 'air' && a.action?.kind === 'block' && this.handsTo !== null
+        ? clamp(this.handsTo - a.pos.x, -AI.middle.reach, AI.middle.reach)
+        : 0;
+    a.reachX += (want - a.reachX) * Math.min(1, dt / AI.middle.reachTime);
     if (a.state === 'ground' || a.state === 'land') {
       // a long way along the net is run (hips turned: a crossover), squaring up to the net to jump
       const d = Math.abs(this.targetX - a.pos.x);
-      moveTo(a, this.targetX, a.side * 0.45, { face: d > 1.2 ? undefined : face, arrive: 0.3, sprintDist: 1.0 });
+      // brake from the stopping distance, so a run along the net ends on the spot, not in the pin blocker
+      const arrive = Math.max(0.3, (a.speed * a.speed) / (2 * PLAYER.decel));
+      moveTo(a, this.targetX, a.side * 0.45, { face: d > 1.2 ? undefined : face, arrive, sprintDist: 1.0 });
     } else stop(a, face);
   }
 
@@ -139,6 +153,7 @@ export class MiddleBlocker implements Brain {
     const release = them.state === 'load' ? now + Math.max(0, PLAYER.loadMax - 0.02 - them.loadT) : now;
     const top = predictJump(them, now, release);
     if (!top || now < this.pressFor(top.t + 0.05)) return;
+    this.handsTo = them.pos.x;
     this.jump(now);
     this.committedFor = this.guessFor;
   }
@@ -166,12 +181,17 @@ export class MiddleBlocker implements Brain {
     if (this.tc < 0) return;
     const M = AI.middle;
     const bx = this.setRead.x(this.attackX, now, this.tc);
-    // a pin set: close the block next to the pin blocker; an inside attack: block it in front.
-    // A jump off the run drifts on (the plant keeps PLAYER.plantCarry of it): aim short by the drift
-    // up to the hitter's contact, so the hands are on the spot then (a swing block)
-    const spot = Math.abs(bx) > M.pinX ? bx - Math.sign(bx) * M.closeGap : bx;
-    const toContact = Math.max(0, riseTime(blockJump(a)) - 0.12);
-    this.targetX = spot - a.vel.x * (PLAYER.loadMin + PLAYER.plantCarry * toContact);
+    // a pin set: close the block next to the pin blocker; an inside attack: block it in front
+    let spot = bx;
+    if (Math.abs(bx) > M.pinX) {
+      // close on our pin blocker, hands to hands: on the wing itself when it is at the net on that
+      // side (wherever it read the set to), else where a pin blocker shading the line would be
+      const r = Math.sign(bx);
+      const wing = this.ourWings().find((w) => Math.sign(w.pos.x) === r && Math.abs(w.pos.z) < 1.5);
+      spot = (wing ? wing.pos.x : bx + r * AI.defence.shade) - r * M.closeGap;
+    }
+    this.targetX = spot;
+    this.handsTo = spot;
     if (this.blockedFor === lt || !a.canJump()) return;
     // on time it goes up where it is meant to be; late, from wherever it got to, if that is near enough
     if (now >= this.pressFor(this.tc + 0.12) && now <= this.tc && Math.abs(a.pos.x - spot) <= M.lateReach) {
