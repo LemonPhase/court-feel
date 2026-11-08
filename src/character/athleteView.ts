@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TIMING } from '../config';
+import { AI, BALL, TIMING } from '../config';
 import { clamp, clamp01, damp, easeOutCubic, lerp, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import { orientBone, twoBoneIK } from './ik';
@@ -115,6 +115,8 @@ export class AthleteView {
   private gaitW = 0;
   private lastPos = v3();
   private velS = v3();
+  /** the split step's hop this frame (m): the body and the feet leave the floor together */
+  private hop = 0;
   private body = { drop: 0, spineX: 0, chestX: 0, chestY: 0, hipsY: 0, hipsX: 0, chestZ: 0 };
   private headYaw = 0;
   private headPitch = 0;
@@ -223,6 +225,12 @@ export class AthleteView {
     const B = rig.bones;
     this.root.position.copy(a.rpos);
     this.root.rotation.y = a.ryaw;
+    // split step: after a short load the whole body leaves the floor, a ballistic hop that lands on
+    // their hitter's contact (the feet go up with it, below)
+    const SS = AI.splitStep;
+    const ssT = tr - a.splitT - SS.dip;
+    this.hop = a.state === 'ground' && ssT > 0 && ssT < SS.air ? 0.5 * BALL.gravity * ssT * (SS.air - ssT) : 0;
+    this.root.position.y += this.hop;
     if (!this.initialized || this.lastPos.distanceToSquared(a.rpos) > 4) {
       this.initialized = true;
       this.resetFeet();
@@ -296,11 +304,13 @@ export class AthleteView {
       hipsY = twist;
       chestY = -twist * 1.4;
       chestZ = clamp(-vLocal.x / 12, -0.12, 0.12) * g;
-      // split step: up onto the toes as their hitter swings, landing into a deeper stance on the contact
-      const ss = tr - a.splitT;
-      if (ss >= 0 && ss < 0.45) {
-        drop += ss < 0.12 ? -0.035 * H * Math.sin((Math.PI * ss) / 0.12) : 0.03 * H * Math.sin((Math.PI * (ss - 0.12)) / 0.33);
-        spineX -= ss >= 0.12 ? 0.08 * Math.sin((Math.PI * (ss - 0.12)) / 0.33) : 0;
+      // split step: a quick load before the hop, then landing into a deeper stance on the contact
+      if (ssT > -SS.dip && ssT < 0) drop += 0.025 * H * Math.sin((Math.PI * (ssT + SS.dip)) / SS.dip);
+      const settle = ssT - SS.air;
+      if (settle > 0 && settle < SS.settle) {
+        const k = Math.sin((Math.PI * settle) / SS.settle);
+        drop += 0.045 * H * k;
+        spineX -= 0.1 * k;
       }
     }
     // land absorb
@@ -575,7 +585,7 @@ export class AthleteView {
             f.t += dt;
             const p = smooth01(f.t / f.dur);
             f.cur.lerpVectors(f.from, f.to, p);
-            f.cur.y = ankleY + Math.sin(Math.PI * p) * 0.045 * H;
+            f.cur.y = ankleY + Math.sin(Math.PI * p) * 0.045 * H + this.hop;
             if (p >= 1) {
               f.stepping = false;
               f.plant.copy(f.to);
@@ -583,7 +593,7 @@ export class AthleteView {
             }
           } else {
             f.cur.lerp(f.plant, damp(25, dt));
-            f.cur.y = ankleY;
+            f.cur.y = ankleY + this.hop;
           }
           f.pitch = lerp(f.pitch, 0, damp(10, dt));
         } else {
@@ -606,7 +616,7 @@ export class AthleteView {
           const lat = baseLat + dirLat * along;
           const fwd = dirFwd * along + 0.02 * H;
           this.bodyToWorld(lat, 0, fwd, _t3);
-          _t4.set(a.rpos.x + _t3.x, ankleY + lift, a.rpos.z + _t3.z);
+          _t4.set(a.rpos.x + _t3.x, ankleY + lift + this.hop, a.rpos.z + _t3.z);
           f.cur.lerp(_t4, damp(lerp(12, 40, g), dt));
           f.pitch = lerp(f.pitch, pitch * clamp01(speed / 2.5), damp(15, dt));
           f.plant.set(f.cur.x, ankleY, f.cur.z);

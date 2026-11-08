@@ -687,7 +687,7 @@ export class TeamAI {
     let tc = pred.descendThrough(3.25, g.simTime);
     if (tc < 0) tc = pred.apex().t;
     const front = this.frontRow();
-    for (const a of this.players.values()) if (!a.isUser && !front.includes(a)) a.splitT = tc - AI.splitStep.lead;
+    for (const a of this.players.values()) if (!a.isUser && !front.includes(a)) a.splitT = tc - AI.splitStep.dip - AI.splitStep.air;
   }
   private splitFor: unknown = null;
 

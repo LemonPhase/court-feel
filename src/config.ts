@@ -478,11 +478,12 @@ export const AI = {
    */
   giveWay: { room: 0.9, ahead: 0.5, push: 1.5 },
   /**
-   * Mini Rally defenders split-step on the other team's set: a small hop that starts `lead` s before
-   * their hitter meets the ball, landing in a deeper stance on the contact (tennis players reached a
-   * ball ~0.1 s sooner with one). For now it is only the body's movement, not a faster reaction.
+   * Mini Rally defenders split-step on the other team's set: a `dip` s load, then `air` s off the floor
+   * (0.2 s is a ~5 cm hop), landing on their hitter's contact into a deeper stance for `settle` s
+   * (tennis players reached a ball ~0.1 s sooner with one). For now it is only the body's movement,
+   * not a faster reaction.
    */
-  splitStep: { lead: 0.12 },
+  splitStep: { dip: 0.08, air: 0.2, settle: 0.3 },
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
   blockerSkill: 0.5,

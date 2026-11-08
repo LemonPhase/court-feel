@@ -154,7 +154,7 @@ describe('the split step (Mini Rally)', () => {
     for (const slot of SLOTS) {
       const a = team.players.get(slot)!;
       if (team.frontRow().includes(a)) expect(a.splitT, slot).toBeLessThan(0);
-      else expect(a.splitT, slot).toBeCloseTo(tc - AI.splitStep.lead, 6);
+      else expect(a.splitT, slot).toBeCloseTo(tc - AI.splitStep.dip - AI.splitStep.air, 6);
     }
   });
 });
