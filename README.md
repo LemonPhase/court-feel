@@ -351,6 +351,14 @@ screen show them. Only your player uses them; AI players keep the defaults.
    others step around them, and your team-mates step around you. As their hitter
    swings, the defence split-steps: a small hop, landing on the contact.
 
+   **The defence reads the set.** Perimeter defence: as their set flies, the line
+   digger goes to the line, the cross digger (the libero, at left back) cross court
+   outside your block, the back-row outside deep on the seam of the block, and the
+   front-row player who isn't blocking pulls off the net for tips. Nobody chases a hit
+   before a reaction time after it, so a well-placed shot beats them. On an easy ball
+   (their free ball, or your soft block that the passer gets to in time) the setter
+   runs to the net and the front row leaves it before the pass is even made.
+
    **When the setter digs.** If your setter plays the first ball, he digs it high
    to the middle of the court, just behind the 3 m line, and goes back to defend.
    The libero sets the second ball, and it is always out of system (**HIGH!**, from
@@ -434,7 +442,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how far it closes inside the attack, how late it still jumps); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); how often the setter goes to the pipe (`pipe`); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how far it closes inside the attack, how late it still jumps); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); how often the setter goes to the pipe (`pipe`); perimeter defence read spots and reaction times (`defence`) and early transition (`transition`); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, your

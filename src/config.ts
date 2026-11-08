@@ -484,6 +484,50 @@ export const AI = {
    * not a faster reaction.
    */
   splitStep: { dip: 0.08, air: 0.2, settle: 0.3 },
+  /**
+   * Mini Rally perimeter defence (`src/ai/defence.ts`): where each defender reads to as their set
+   * flies, in metres. Coaching sources give the line digger ~1 m inside the sideline and ~6 m deep,
+   * and the off-blocker "10 x 10 ft" (~3 m off the net, ~3 m in); the rest is inferred (AI-movement
+   * notes, section 9). Defenders act on the set `react` s after it (± `reactSd`), with a read of
+   * where it goes that starts `readErr` m off, and on a hit `hitReact` s after it (± `hitReactSd`).
+   */
+  defence: {
+    react: 0.25,
+    reactSd: 0.05,
+    readErr: 0.9,
+    hitReact: 0.22,
+    hitReactSd: 0.04,
+    /** a pin attack is further than this from the middle of the net; a back-row one further than `backOff` off the net */
+    pinX: 1.6,
+    backOff: 1.6,
+    /** line digger: this far inside the sideline, this deep */
+    lineIn: 1.0,
+    digDepth: 5.75,
+    /** cross digger: this far outside the inside blocker's shadow, and at least `sideIn` inside the sideline */
+    crossOutside: 0.5,
+    sideIn: 1.0,
+    /** middle back: this deep, on the block's seam, no further than `middleBackMaxX` from the middle */
+    middleBack: 7.75,
+    middleBackMaxX: 3.0,
+    /** off-blocker: this far off the net, this far in from its sideline */
+    offOff: 3.0,
+    offIn: 3.0,
+    /** our blockers on a pin set: the pin blocker shades this far outside the attack (the middle closes `AI.middle.closeGap` inside it); a blocker's hands reach this far either side */
+    shade: 0.25,
+    handHalf: 0.325,
+    /** against the quick: the middle back cheats up to this depth */
+    quickMiddleBack: 6.0,
+    /** against a pipe: the corners step in and forward to here (x from the middle, depth), the middle back to this depth */
+    pipeCornerX: 2.2,
+    pipeCornerZ: 5.3,
+    pipeMiddleBack: 7.0,
+  },
+  /**
+   * Early transition: on an easy first ball (their free ball over, or our block softening their
+   * attack to under `softSpeed` m/s) that our passer reaches with `spare` s to spare, the setter
+   * releases to the net and the front row leaves it to approach, `read` s after the touch.
+   */
+  transition: { read: 0.3, softSpeed: 10, spare: 0.3 },
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
   blockerSkill: 0.5,
