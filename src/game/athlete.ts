@@ -104,6 +104,8 @@ export class Athlete {
   lastAction: Action | null = null;
   /** time this athlete last touched the ball */
   lastTouchT = -10;
+  /** when the last split step started (the animator hops and lands into a deeper stance; no effect on movement) */
+  splitT = -10;
   /** 'ready' body lean */
   readyAmount = 1;
   /** look target for head IK (set by game) */

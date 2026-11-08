@@ -470,6 +470,19 @@ export const AUDIO = {
 
 export const AI = {
   reactionTime: 0.18,
+  /**
+   * Mini Rally team-mates give way (`src/ai/giveWay.ts`): a player walking to a spot keeps `room` m
+   * (centre to centre) from the others, looking `ahead` s along both paths, steering off with up to
+   * `push` times its own command. Whoever plays the ball (or the user) keeps their line; two walkers
+   * share it, passing on the right.
+   */
+  giveWay: { room: 0.9, ahead: 0.5, push: 1.5 },
+  /**
+   * Mini Rally defenders split-step on the other team's set: a small hop that starts `lead` s before
+   * their hitter meets the ball, landing in a deeper stance on the contact (tennis players reached a
+   * ball ~0.1 s sooner with one). For now it is only the body's movement, not a faster reaction.
+   */
+  splitStep: { lead: 0.12 },
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
   blockerSkill: 0.5,

@@ -296,6 +296,12 @@ export class AthleteView {
       hipsY = twist;
       chestY = -twist * 1.4;
       chestZ = clamp(-vLocal.x / 12, -0.12, 0.12) * g;
+      // split step: up onto the toes as their hitter swings, landing into a deeper stance on the contact
+      const ss = tr - a.splitT;
+      if (ss >= 0 && ss < 0.45) {
+        drop += ss < 0.12 ? -0.035 * H * Math.sin((Math.PI * ss) / 0.12) : 0.03 * H * Math.sin((Math.PI * (ss - 0.12)) / 0.33);
+        spineX -= ss >= 0.12 ? 0.08 * Math.sin((Math.PI * (ss - 0.12)) / 0.33) : 0;
+      }
     }
     // land absorb
     if (st === 'land' || (st === 'ground' && tSinceLand < 0.45)) {

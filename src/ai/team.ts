@@ -18,6 +18,7 @@ import {
 } from '../game/plays';
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop, type Brain } from './brain';
+import { giveWay, type Mate } from './giveWay';
 import { HitterBrain } from './hitter';
 import { MiddleBlocker } from './middle';
 import { ServerBrain } from './server';
@@ -122,7 +123,21 @@ export class TeamPlayer implements Brain {
     this.pressT = -1;
   }
 
+  /** playing the ball, or in a move that must not be bent (an approach, a jump): keeps its line */
+  get firm(): boolean {
+    const a = this.athlete;
+    if (a.state !== 'ground' && a.state !== 'land') return true;
+    if (this.job === 'receive' || this.job === 'free' || this.job === 'set' || this.job === 'serve' || this.job === 'block') return true;
+    return !!this.hitter && this.hitter.phase !== 'ready' && this.hitter.phase !== 'recover';
+  }
+
   step(dt: number, g: Game): void {
+    this.act(dt, g);
+    // anyone just walking to a spot gives way to the others
+    if (!this.firm) giveWay(this.athlete, this.team.mates(this.athlete));
+  }
+
+  private act(dt: number, g: Game): void {
     const a = this.athlete;
     const face = netYaw(a.side);
     // an attack in progress always finishes, whatever the coordinator says
@@ -280,6 +295,13 @@ export class TeamAI {
       this.brains.set(a, b);
       this.g.setBrain(a, b);
     }
+  }
+
+  /** `a`'s team-mates, and who keeps their line (the user always does) */
+  mates(a: Athlete): Mate[] {
+    const out: Mate[] = [];
+    for (const m of this.players.values()) if (m !== a) out.push({ athlete: m, firm: m.isUser || (this.brains.get(m)?.firm ?? true) });
+    return out;
   }
 
   frontRow(): Athlete[] {
@@ -566,6 +588,7 @@ export class TeamAI {
         // blockers read their set
         if (lt?.kind === 'set' && !onOurSide) {
           for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
+          if (this.splitFor !== lt) this.splitStep(lt);
         } else if ((lt?.kind === 'pass' || lt?.kind === 'dig') && !onOurSide && !comingToUs) {
           // their first ball: our middle is already at work (lines up on their middle, guesses)
           const mb = this.players.get('MB');
@@ -654,6 +677,19 @@ export class TeamAI {
       b.spot = j.spot;
     }
   }
+
+  /** the defenders (not the front row, it blocks) split-step to land as their hitter meets this set */
+  private splitStep(set: Touch): void {
+    this.splitFor = set;
+    const g = this.g;
+    const pred = g.ball.ensurePrediction(g.env, g.simTime);
+    // met around 3.2 m on the way down; a quick at the top of its arc
+    let tc = pred.descendThrough(3.25, g.simTime);
+    if (tc < 0) tc = pred.apex().t;
+    const front = this.frontRow();
+    for (const a of this.players.values()) if (!a.isUser && !front.includes(a)) a.splitT = tc - AI.splitStep.lead;
+  }
+  private splitFor: unknown = null;
 
   slotOf(a: Athlete): Slot {
     for (const [s, x] of this.players) if (x === a) return s;
