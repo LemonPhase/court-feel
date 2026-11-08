@@ -101,6 +101,16 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
+      <img src="docs/screenshots/mini-rally-perimeter-defence.jpg" alt="Mini Rally from behind the libero at left back: the left front pulled off the net, two blockers up at the right of the net, the back-row outside deep in the middle, the setter on the right line">
+      <b>The defence reads the set.</b> Perimeter defence as their outside swings: the line, the cross, deep on the seam, and the off-blocker off the net for tips.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/mini-rally-early-transition.jpg" alt="Mini Rally from behind the libero on their passing spot, the ball high off a soft block, the setter running for the net and the front row leaving it">
+      <b>Early transition.</b> A soft block the libero will pass easily: the setter is already running to the net and the hitters are off it before the pass.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
       <img src="docs/screenshots/phone-touch-controls.jpg" alt="Phone in landscape: joystick on the left, PASS, BLOCK, JUMP and HIT buttons on the right, set call chips at the top">
       <b>On your phone.</b> A joystick for your feet, drag to aim, hold to jump and hold to swing. The timing windows are the same as on a keyboard.
     </td>
