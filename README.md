@@ -81,8 +81,8 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/mini-rally-double-block.jpg" alt="Mini Rally from behind the user's outside hitter in the air at the pin: their pin blocker just behind and their middle closing in, both up, a seam between them">
-      <b>Their middle closes.</b> Off a bad pass the other middle has the time of a high ball: a double block, with a seam when it gets there late.
+      <img src="docs/screenshots/mini-rally-closed-block.jpg" alt="Mini Rally from behind the user's outside hitter in the air at the pin: their middle and pin blocker up together, shoulder to shoulder, no seam between the hands">
+      <b>Their middle closes.</b> It reads the set and closes on its pin blocker, hands to hands. Late, it drifts in to their shoulder and stretches for the seam.
     </td>
     <td width="50%" valign="top">
       <img src="docs/screenshots/mini-rally-commit-block.jpg" alt="Mini Rally from behind the user's middle in the air on a quick, their middle up in front of them across the net, the setter just after the touch">
