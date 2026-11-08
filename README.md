@@ -81,6 +81,26 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
+      <img src="docs/screenshots/mini-rally-double-block.jpg" alt="Mini Rally from behind the user's outside hitter in the air at the pin: their pin blocker just behind and their middle closing in, both up, a seam between them">
+      <b>Their middle closes.</b> Off a bad pass the other middle has the time of a high ball: a double block, with a seam when it gets there late.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/mini-rally-commit-block.jpg" alt="Mini Rally from behind the user's middle in the air on a quick, their middle up in front of them across the net, the setter just after the touch">
+      <b>Guessing on the quick.</b> Off a good pass their middle sometimes commits: up with your middle as the setter touches it. Set the pin and they're caught.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/mini-rally-split-step.jpg" alt="Mini Rally from behind the libero: the three back-row defenders just off the floor in a split step as the other team's hitter rises, two blockers up at the net">
+      <b>The split step.</b> As their hitter swings, the defence hops and lands on the contact. Team-mates give way to whoever plays the ball.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/spike-drill-pipe.jpg" alt="Spike Drill from the side: the libero in the air in front of the 3 m line on a pipe, the setter at the net">
+      <b>The pipe.</b> In system it's met 2 m off the net: take off behind the 3 m line and broad-jump in.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
       <img src="docs/screenshots/phone-touch-controls.jpg" alt="Phone in landscape: joystick on the left, PASS, BLOCK, JUMP and HIT buttons on the right, set call chips at the top">
       <b>On your phone.</b> A joystick for your feet, drag to aim, hold to jump and hold to swing. The timing windows are the same as on a keyboard.
     </td>
