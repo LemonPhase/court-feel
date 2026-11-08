@@ -319,6 +319,14 @@ screen show them. Only your player uses them; AI players keep the defaults.
 
    The call is the decision, not a guess: the set always follows it.
 
+   **Their middle blocker reads you.** Before the set it lines up across from your
+   middle. Off a good pass it sometimes guesses: it commits on your quick (jumps with
+   your middle) or cheats towards a pin; otherwise it reads the set and runs to close
+   the block next to the pin blocker. A high ball gives it time, so out of system
+   expect a double block. A fast set or a wrong guess leaves it late, and it goes up
+   anyway with a gap between it and the pin blocker: hit the seam. Your own middle
+   blocks the same way.
+
    **When the setter digs.** If your setter plays the first ball, he digs it high
    to the middle of the court, just behind the 3 m line, and goes back to defend.
    The libero sets the second ball, and it is always out of system (**HIGH!**, from
@@ -402,7 +410,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how far it closes inside the attack, how late it still jumps); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, your

@@ -9,6 +9,7 @@ import { attackHeight, BACKUP_TARGET, laneFor, quickSetFor, SETTER_SPOT, SETTER_
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 import { HitterBrain } from './hitter';
+import { MiddleBlocker } from './middle';
 import { ServerBrain } from './server';
 import { SetterBrain } from './setter';
 
@@ -72,7 +73,7 @@ export class TeamPlayer implements Brain {
   spot: Spot = { x: 0, z: 0 };
   readonly setter: SetterBrain;
   readonly hitter: HitterBrain | null;
-  readonly blocker: BlockerBrain;
+  readonly blocker: BlockerBrain | MiddleBlocker;
   readonly server: ServerBrain;
   private pressT = -1;
   private err = 0;
@@ -97,7 +98,10 @@ export class TeamPlayer implements Brain {
       this.hitter.blockers = () => team.opponents?.frontRow() ?? [];
       if (slot === 'MB') this.hitter.passToSetter = (g) => team.passToSetter(g);
     }
-    this.blocker = new BlockerBrain(athlete, FORM.defense[slot].x * s, slot === 'MB' ? 3.4 : 1.3, slot === 'MB');
+    this.blocker =
+      slot === 'MB'
+        ? new MiddleBlocker(athlete, FORM.defense.MB.x * s, () => team.opponents?.players.get('MB') ?? null)
+        : new BlockerBrain(athlete, FORM.defense[slot].x * s, 1.3);
     this.server = new ServerBrain(athlete);
   }
 
@@ -550,6 +554,10 @@ export class TeamAI {
         // blockers read their set
         if (lt?.kind === 'set' && !onOurSide) {
           for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
+        } else if ((lt?.kind === 'pass' || lt?.kind === 'dig') && !onOurSide && !comingToUs) {
+          // their first ball: our middle is already at work (lines up on their middle, guesses)
+          const mb = this.players.get('MB');
+          if (mb && !jobs.has(mb)) setJob(mb, 'block', this.formSpot('defense', 'MB'));
         }
       } else if (lt?.kind === 'serve') {
         // our own serve on its way over: not one of our touches, and nobody plays it. The team

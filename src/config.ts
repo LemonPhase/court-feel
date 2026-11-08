@@ -473,6 +473,30 @@ export const AI = {
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
   blockerSkill: 0.5,
+  /**
+   * The Mini Rally middle blocker (`src/ai/middle.ts`). It acts on a touch (their pass, their set)
+   * `react` s after it (± `reactSd`, 1 sd). Its read of where the set is going is `readErr` m off
+   * along the net at the setter's touch (1 sd), an error that shrinks to nothing as the ball gets to
+   * the hitter. A club middle's read: a faster, sharper one (0.17 s, 0.6 m) measured the same in the
+   * all-AI rally, since a high ball gives either one time; it shows on fast sets and wrong guesses.
+   */
+  middle: {
+    react: 0.24,
+    reactSd: 0.04,
+    readErr: 0.9,
+    /** on a good pass with their middle coming in: how often it commits on the quick (jumps with their middle), or cheats towards a pin */
+    commit: 0.25,
+    cheat: 0.2,
+    /** how far (m) a cheat leans towards the guessed pin before the set */
+    cheatShift: 0.8,
+    /** lines up across from their middle, no further than this (m) from the middle of the net */
+    lineUpMax: 2.5,
+    /** an attack further than this (m) from the middle of the net is a pin set: the middle closes the block this far (m) inside it, next to the pin blocker */
+    pinX: 1.6,
+    closeGap: 1.1,
+    /** late, it still jumps from up to this far (m) from where it wanted to be (a block with a gap); further away it stays down */
+    lateReach: 1.5,
+  },
   defenderSkill: 0.7,
   setterAccuracy: 0.15,
   /**
