@@ -33,8 +33,13 @@ export const LANES: Record<PositionId, AttackLane> = {
   // hitter (see QUICK). A quick timed off the set is unhittable at real tempo. (x is a default; see quickSpot)
   MB: { x: 0.2, z: 0.75, apexAbove: 0.5, sx: 0.35, sz: 2.8, label: 'Middle quick (1)', quick: true },
   S: { x: 1.05, z: 0.55, apexAbove: 0.75, sx: 1.2, sz: 1.3, label: 'Setter attack on two' },
-  L: { x: -0.4, z: 3.75, apexAbove: 1.45, sx: -0.4, sz: 6.4, label: 'Back-row pipe' },
+  // in system the pipe is met 2 m off the net: the hitter takes off just behind the 3 m line and
+  // broad-jumps in (the approach starts close enough to make it at the set's tempo)
+  L: { x: -0.4, z: 2.0, apexAbove: 1.45, sx: -0.4, sz: 5.5, label: 'Back-row pipe' },
 };
+
+/** out of system a back-row set stays well behind the 3 m line, this far (m) off the net */
+export const PIPE_HIGH_Z = 3.75;
 
 /** the setter's home spot (right of centre, close to the net) */
 export const SETTER_SPOT = { x: 1.1, z: 0.65 };

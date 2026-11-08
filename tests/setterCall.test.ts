@@ -4,7 +4,8 @@ import { Rng } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import type { Touch } from '../src/game/ballEntity';
 import type { Game } from '../src/game/game';
-import { attackHeight, handSetAllowed, LANES, needsGoodPass, SET_PLAYS, SETTER_SPOT, SETTER_TARGET } from '../src/game/plays';
+import { attackHeight, handSetAllowed, laneFor, LANES, needsGoodPass, SET_PLAYS, SETTER_SPOT, SETTER_TARGET } from '../src/game/plays';
+import { planApproach } from '../src/ai/approach';
 import { makeBall, stepBall, type BallEnv, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { solveApex } from '../src/physics/solve';
@@ -238,5 +239,57 @@ describe('when our setter plays the first ball (Mini Rally)', () => {
       expect(b.job).not.toBe('set');
       expect(b.job).not.toBe('free');
     }
+  });
+});
+
+describe('the pipe (back-row attack, Mini Rally and the libero in the Spike Drill)', () => {
+  it('in system it is met 2 m off the net, and the hitter leaves the floor behind the 3 m line', () => {
+    const lane = laneFor('L', 1);
+    const hitter = new Athlete('OH', 1);
+    hitter.place(lane.sx, lane.sz, 0);
+    // the setter's set from their spot, as `callSet` makes it in system
+    const y = attackHeight(hitter);
+    const from = { x: SETTER_SPOT.x, y: 2.6, z: SETTER_SPOT.z };
+    const v = { x: 0, y: 0, z: 0 };
+    solveApex(from, { x: lane.x, y, z: lane.z }, y + lane.apexAbove, { x: 0, y: 0, z: 0 }, v);
+    const state = makeBall();
+    Object.assign(state.p, from);
+    Object.assign(state.v, v);
+    const env: BallEnv = { netTop: COURT.netHeightMen };
+    const pred = new BallPredictor(DT, SIM.predictHorizon);
+    pred.compute(state, env, 0);
+    // the AI hitter's approach, run on the athlete's own kinematics (as HitterBrain does)
+    const plan = planApproach(hitter, pred, 0, 0, 0)!;
+    expect(plan).not.toBeNull();
+    let takeoffZ = -1;
+    hitter.onTakeoff = (a) => (takeoffZ = a.pos.z);
+    for (let t = 0; t < plan.tc;) {
+      const running = t >= plan.tStart && t < plan.tPress;
+      hitter.cmd = { moveX: running ? plan.dir.x : 0, moveZ: running ? plan.dir.z : 0, sprint: running, faceYaw: plan.runYaw };
+      if (t >= plan.tPress && hitter.state === 'ground') hitter.jumpPress();
+      if (t >= plan.tPress + plan.hold) hitter.jumpRelease();
+      t += DT;
+      hitter.step(DT, t);
+    }
+    expect(plan.contact.z).toBeCloseTo(2.0, 1);
+    expect(plan.error).toBeLessThan(0.3);
+    expect(takeoffZ).toBeGreaterThan(COURT.attackLine);
+  });
+
+  it('out of system the back-row set stays behind the 3 m line', () => {
+    const { g, team, pass, flight } = homeTeam('L');
+    pass(SETTER_SPOT.x + 0.4, SETTER_SPOT.z + 2.6);
+    flight();
+    expect(team.read!.call).toBe('out');
+    const setter = team.players.get('S')!;
+    const pipe = team.players.get('OH2')!;
+    let seen = 0;
+    for (let i = 0; i < 60; i++) {
+      const set = team.callSet(g as unknown as Game, setter);
+      if (set.hitter !== pipe) continue;
+      seen++;
+      expect(set.target.z).toBeGreaterThan(COURT.attackLine + 0.5);
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 });

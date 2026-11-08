@@ -5,7 +5,17 @@ import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
 import type { Game } from '../game/game';
-import { attackHeight, BACKUP_TARGET, laneFor, quickSetFor, SETTER_SPOT, SETTER_TARGET, setterTouchY, type SetPlay } from '../game/plays';
+import {
+  attackHeight,
+  BACKUP_TARGET,
+  laneFor,
+  PIPE_HIGH_Z,
+  quickSetFor,
+  SETTER_SPOT,
+  SETTER_TARGET,
+  setterTouchY,
+  type SetPlay,
+} from '../game/plays';
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 import { HitterBrain } from './hitter';
@@ -432,7 +442,9 @@ export class TeamAI {
     // off a bad pass the setter can only put up a high ball
     const apexBoost = outOfSystem ? AI.outOfSystemApex : 0;
     const apexAbove = outOfSystem && call ? Math.max(call.apexAbove, laneFor(pick.lane, s).apexAbove) : lane.apexAbove;
-    return { target: { x: lane.x, y, z: lane.z }, apex: y + apexAbove + apexBoost, hitter: pick.a };
+    // a back-row set off a bad pass stays well behind the 3 m line
+    const z = outOfSystem && pick.lane === 'L' ? PIPE_HIGH_Z * s : lane.z;
+    return { target: { x: lane.x, y, z }, apex: y + apexAbove + apexBoost, hitter: pick.a };
   }
 
   onSet(hitter: Athlete | null): void {
