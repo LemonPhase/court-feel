@@ -1,14 +1,15 @@
 import * as THREE from 'three';
-import { AI, BALL, CONTACT, COURT } from '../config';
+import { AI, BALL, CONTACT, COURT, PLAYER } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
 import { quickSpot, type AttackLane } from '../game/plays';
-import { planApproach, planQuick, type ApproachPlan } from './approach';
+import { planApproach, planQuick, planToPoint, riseTime, type ApproachPlan } from './approach';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 import { ContactSystem, type SetResult } from '../game/contact';
 import { solveSpeedToFloor } from '../physics/solve';
 import type { V3 } from '../physics/ball';
+import { openShot, type BlockHands, type Digger } from './openShot';
 
 /**
  * AI attacker: waits at its approach start, reads a set meant for it, plans a
@@ -24,6 +25,8 @@ export class HitterBrain implements Brain {
   isMySet: (g: Game) => boolean = () => false;
   /** opposing blockers to read */
   blockers: () => Athlete[] = () => [];
+  /** everyone on the other side who could dig it (off your green set the hitter finds the open spot) */
+  defenders: () => Athlete[] = () => [];
   tipChance = 0.08;
   private swung = false;
   private err = 0;
@@ -52,6 +55,7 @@ export class HitterBrain implements Brain {
     this.plan = null;
     this.swung = false;
     this.quickFor = null;
+    this.pendingRun = null;
   }
 
   /** when this hitter will release its plant (for the setter's read), if planned */
@@ -65,6 +69,24 @@ export class HitterBrain implements Brain {
     this.phase = 'approach';
     this.swung = false;
     this.err = g.rng.gauss() * (0.012 + (1 - this.skill) * 0.06);
+  }
+
+  /** a called tempo run to make: meet the set at `contact` at `tc` (planned once off the net) */
+  private pendingRun: { contact: THREE.Vector3; tc: number } | null = null;
+
+  /**
+   * Run a called tempo (a set not yet made): to meet it at `contact` at time `tc`. From the
+   * approach start: a hitter still at the net (blocking a moment ago) backs off to it first,
+   * and goes from wherever they are once their takeoff is near (AI.transitionLatest).
+   */
+  runTo(contact: THREE.Vector3, tc: number): void {
+    this.pendingRun = { contact, tc };
+  }
+
+  /** off the net and at the approach start (AI.transitionReady), or out of time to get there before taking off at `tTakeoff` */
+  private readyToRun(spot: { x: number; z: number }, now: number, tTakeoff: number): boolean {
+    const a = this.athlete;
+    return Math.hypot(a.pos.x - spot.x, a.pos.z - spot.z) < AI.transitionReady || tTakeoff - now < AI.transitionLatest;
   }
 
   /** the user's set this ball came from, if it is one (ContactSystem.lastSetResult) */
@@ -84,9 +106,22 @@ export class HitterBrain implements Brain {
         const spot = this.holdSpot ?? { x: this.lane.sx, z: this.lane.sz };
         moveTo(a, spot.x, spot.z, { face, arrive: 0.5 });
         const lt = g.ball.lastTouch;
+        // a called run: off the net first, then the approach
+        const run = this.pendingRun;
+        // (a ball that went somewhere else, or a run there is no longer time for, is dropped)
+        if (run && (!g.ball.active || run.tc - now < 0.3)) this.pendingRun = null;
+        else if (run && a.state === 'ground' && this.readyToRun(spot, now, run.tc - riseTime(a.jumpMax))) {
+          this.pendingRun = null;
+          const plan = planToPoint(a, now, run.contact, run.tc, face, face);
+          if (plan && plan.error < 0.6) {
+            this.runPlan(plan, g);
+            break;
+          }
+        }
         if (this.lane.quick && this.passToSetter && g.ball.active && a.state === 'ground' && lt !== this.quickFor && lt?.athlete !== a) {
           const ps = this.passToSetter(g);
-          if (ps && ps.t - now > 0.3) {
+          // the middle backs off the net to its approach start before the quick (ps.t: its takeoff)
+          if (ps && ps.t - now > 0.3 && this.readyToRun(spot, now, ps.t)) {
             this.quickFor = lt;
             const plan = planQuick(a, now, quickSpot(ps.x, a.side, this.inFront), ps.t, face, face);
             if (plan && plan.error < 0.6) {
@@ -150,7 +185,9 @@ export class HitterBrain implements Brain {
           const err = us?.green ? 0 : us ? this.err * (1 + (AI.badSetErr - 1) * (1 - us.quality)) : this.err;
           const tipChance = us?.green ? 0 : us ? this.tipChance * (1 + (AI.badSetTip - 1) * (1 - us.quality)) : this.tipChance;
           if (info && now >= info.t - lead + err - 1e-4) {
-            const aim = this.chooseAim(g, info.ball.x, us?.green ?? false, info.ball);
+            // off your green set the hitter sees the whole court; off a good one, a defence reading it as usual
+            const read = us?.green ? AI.greenSetDigDelay : us?.grade === 'Good' ? AI.reactionTime : null;
+            const aim = this.chooseAim(g, info.ball.x, us?.green ?? false, info.ball, info.t, read);
             a.aiAim.copy(aim);
             const tip = g.rng.next() < tipChance;
             if (tip) {
@@ -180,13 +217,63 @@ export class HitterBrain implements Brain {
   }
 
   /**
-   * Pick a shot: line, cross or seam (a middle: zone 1 or 5), steering away from where the block
-   * is. Off a green set the hitter never swings through the block's hands.
+   * The open spot for a full-speed spike from `from` (see openShot), against the defence as it
+   * stands: they can move `read` s after the hit (a late start off a green set, their reaction
+   * off a good one).
    */
-  chooseAim(g: Game, hitX: number, green = false, from?: V3): THREE.Vector3 {
+  private openSpot(g: Game, from: V3, tHit: number, read: number) {
+    const a = this.athlete;
+    const diggers: Digger[] = this.defenders().map((d) => {
+      // a blocker in the air comes down first
+      let down = 0;
+      if (d.state === 'air') {
+        const vy = d.vel.y;
+        down = (vy + Math.sqrt(Math.max(0, vy * vy + 2 * BALL.gravity * d.pos.y))) / BALL.gravity + PLAYER.landRecover;
+      } else if (d.state === 'land') down = Math.max(0, PLAYER.landRecover - d.stateT);
+      return { x: d.pos.x, z: d.pos.z, ready: Math.max(read, down), speed: d.stats.approachSpeed };
+    });
+    // each blocker at the net: where their hands will be as the ball crosses, and how high: in the
+    // air, the top of this jump; still on the floor, rising from a jump taken right now
+    const blocks: BlockHands[] = this.blockers()
+      .filter((b) => Math.abs(b.pos.z) < 1.4)
+      .map((b) => {
+        const hands = b.standReach + 0.04;
+        const x = b.pos.x + b.vel.x * (0.05 + Math.abs(a.pos.z) / 20);
+        if (b.state === 'air') {
+          const top = hands + (b.vel.y > 0 ? b.pos.y + (b.vel.y * b.vel.y) / (2 * BALL.gravity) : b.pos.y);
+          return { x, top: () => top };
+        }
+        // (they may take off while the hitter swings, so count from now, after the jump's load
+        // unless they are loading already; past the top of a jump taken then they could time one
+        // to be at its top)
+        const lead = Math.max(0, tHit - g.simTime) - (b.state === 'load' ? 0 : PLAYER.loadMin);
+        const v0 = Math.sqrt(2 * BALL.gravity * b.jumpMax);
+        const rise = (tau: number) => (tau <= 0 ? 0 : tau >= v0 / BALL.gravity ? b.jumpMax : v0 * tau - 0.5 * BALL.gravity * tau * tau);
+        return { x, top: (t: number) => hands + rise(t + lead) };
+      });
+    const opp = -a.side as 1 | -1;
+    return openShot(from, CONTACT.spikePerfect * a.stats.power, CONTACT.spikeSpinPerfect, opp, g.env, diggers, blocks, () => g.rng.next());
+  }
+
+  /**
+   * Pick a shot: line, cross or seam (a middle: zone 1 or 5), steering away from where the block
+   * is. Off your set (`read`: when their defence can move) the hitter looks for the open spot
+   * first: off a green set every one is open; off a good one, often none is. Off a green set the
+   * hitter never swings through the block's hands.
+   */
+  chooseAim(g: Game, hitX: number, green = false, from?: V3, tHit = g.simTime, read: number | null = null): THREE.Vector3 {
     const a = this.athlete;
     const opp = -a.side; // the other court
     const hw = COURT.halfWidth;
+    // off your set the hitter looks for the open spot, round the block or over it
+    if (read !== null && from) {
+      const open = this.openSpot(g, from, tHit, read);
+      // (off a good set, only one that is open: otherwise their usual shots)
+      if (open && (green || open.margin >= AI.openShotMargin)) {
+        this.lastShot = 'open';
+        return new THREE.Vector3(open.x, 0, open.z);
+      }
+    }
     // line = straight down our sideline; cross = to the far corner
     const lineX = clamp(hitX, -hw + 0.6, hw - 0.6);
     const crossX = -Math.sign(hitX || 1) * (hw - 1.0);

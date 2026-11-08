@@ -422,7 +422,11 @@ export class ContactSystem {
       }
       ball.hit(out, w, 0, h.simTime);
     }
-    ball.lastTouch = { athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', t: h.simTime, side: a.side };
+    // an attack straight off your green set
+    const prev = ball.lastTouch;
+    const us = this.lastSetResult;
+    const green = !serve && !!us?.green && prev?.kind === 'set' && prev.t === us.t && prev.athlete === us.athlete;
+    ball.lastTouch = { athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', t: h.simTime, side: a.side, green };
     a.lastTouchT = h.simTime;
     // FX intensity follows timing and power; the full Perfect package needs a real wind-up
     const quality = (rank === 3 ? 1 : rank === 2 ? 0.6 : 0.3) * lerp(0.55, 1, charge);

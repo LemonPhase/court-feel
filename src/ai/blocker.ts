@@ -28,6 +28,10 @@ export class BlockerBrain implements Brain {
   private commit = true;
   /** a middle fooled by the quick: hesitates, and that is too late */
   private fooled = false;
+  /** a middle on the user's green set: guesses wrong and commits a lane away (AI.greenBlockGuess) */
+  private wrongGuess = false;
+  /** reads the middle: on the user's green set this blocker guesses wrong (a team's middle; a drill's lone blocker) */
+  guessOnGreen: boolean;
   /** when false the brain only blocks (no base movement) */
   active = true;
   /** also read a `feed` from the other side as the ball to block (drills where the user attacks a coach's toss) */
@@ -46,6 +50,7 @@ export class BlockerBrain implements Brain {
     public closer = false,
   ) {
     this.homeX = homeX;
+    this.guessOnGreen = closer;
   }
 
   reset(): void {
@@ -80,10 +85,12 @@ export class BlockerBrain implements Brain {
       // a middle frozen by the quick, or just late on the read, stays with the inside
       this.commit = g.rng.next() < 0.3 + this.skill * 0.4;
       this.fooled = g.rng.next() < 0.35 - this.skill * 0.25;
-      // a green set from the user's setter: exact, at the called tempo, nothing given away early,
-      // so the block starts its read late and reads it worse (the back row can still dig it)
+      // a green set from the user's setter: exact, at the called tempo, nothing given away early.
+      // The middle guesses wrong and commits a lane away; a wing starts its read late and reads it worse
       const us = g.contact.lastSetResult;
-      if (us?.green && lt.athlete === us.athlete && lt.t === us.t) {
+      const green = !!us?.green && lt.athlete === us.athlete && lt.t === us.t;
+      this.wrongGuess = green && this.guessOnGreen;
+      if (green && !this.guessOnGreen) {
         this.setT = now + AI.greenSetReadDelay;
         this.readErr *= AI.greenSetReadErr;
         this.jumpErr += AI.greenSetJumpLate;
@@ -116,11 +123,16 @@ export class BlockerBrain implements Brain {
         // A middle also goes with pin sets, to close the block next to the wing.
         const inZone = away < this.lateralRange + 0.4;
         // a quick fools the middle now and then: hesitate and it is too late
-        const fooled = quick && this.closer && this.fooled;
-        if (Math.abs(this.b.z) < 4.5 && !fooled && (inZone || (this.closer && this.commit))) {
+        const fooled = quick && this.closer && this.fooled && !this.wrongGuess;
+        if (Math.abs(this.b.z) < 4.5 && !fooled && (inZone || (this.closer && this.commit) || this.wrongGuess)) {
           const reach = this.lateralRange;
           let want: number;
-          if (this.closer && away > 1.6) {
+          if (this.wrongGuess) {
+            // fooled by an exact set: committed to another hitter. A pin set: stayed home for the
+            // quick; a set in the middle (the quick, the pipe): went with a pin
+            if (away > AI.greenBlockGuess / 2) want = this.homeX;
+            else want = this.homeX + (this.b.x >= this.homeX ? -1 : 1) * AI.greenBlockGuess;
+          } else if (this.closer && away > 1.6) {
             // close next to the wing blocker, who takes the line; a middle arriving on the
             // run rarely seals the seam perfectly
             want = this.b.x - Math.sign(this.b.x) * 1.1 + this.readErr;

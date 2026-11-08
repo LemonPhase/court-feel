@@ -304,8 +304,9 @@ screen show them. Only your player uses them; AI players keep the defaults.
    back quick, opposite back / fast / back 2); the fast calls run before you
    touch it. Get to the spot on the floor, press right mouse as the ball
    reaches your hands, release in the green. Your hitters attack against a
-   live blocker; a **green** set always beats it. One pass in four comes off
-   the net: then there is no middle and every call goes up high.
+   live blocker and a back row of three diggers: a **green** set is a point, a
+   good one often is, and an early or late one very rarely (DUG). One pass in
+   four comes off the net: then there is no middle and every call goes up high.
 6. **Mini Rally** — 6 v 6 with you in your position. The AI receives, sets
    (often to you), attacks, blocks and digs. Win or lose the point. "Your ball!"
    and a green landing marker tell you when the ball is yours. As a hitter
@@ -342,9 +343,10 @@ screen show them. Only your player uses them; AI players keep the defaults.
    screen: **C** opens it to change your hitters' calls between points or
    while the other team has the ball, like calling plays in NBA 2K, and your
    AI hitters run what you call (a go, a shoot, a back 2...); leave it alone
-   and they keep their calls. Once the pass is up, a ring on the floor in the
-   hitter's colour shows the spot you are setting to. Off a pass far off the
-   net there is no middle and everything goes up high.
+   and they keep their calls. After blocking, they back off the net to the
+   start of their run before they go. Once the pass is up, a ring on the floor
+   in the hitter's colour shows the spot you are setting to. Off a pass far off
+   the net there is no middle and everything goes up high.
 
 The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 
@@ -364,13 +366,18 @@ Setting works like a jump shot in NBA 2K, with one press per ball:
    game slows down while it does. Release in the green band at the top of the
    bar. Held too long, it goes anyway, late.
 
-Inside the **green** it is a perfect set: it goes exactly to your hitter at the
-called tempo, your hitter swings perfectly, and it always beats the block (the
-block reads it late and the hitter goes round it). It can still be dug. A
-**good** set (the white band) is a little off its spot (up to about 0.4 m);
-**early** and **late** pushes miss in their own way (early comes up short, late
-goes flat and long, by up to 1.3 m), and your hitter times them worse and tips
-or rolls them more often.
+Inside the **green** it is a perfect set, and a point. It goes exactly to your
+hitter at the called tempo, so the block gets nothing early: their middle guesses
+wrong (on a set to a pin it stays home for the quick; on the quick or the pipe it
+goes with a pin) and the wings read it late. Your hitter swings perfectly, round
+the block or over it, into an open spot, a different one each time, where nobody
+can get a platform under it: a perfect set lets them hide the shot until the
+hand, so the diggers start late. A **good** set (the white band) is a little off
+its spot (up to about 0.4 m): your hitter still looks for an open spot, but the
+defence reads it as usual and often there is none. **Early** and **late** pushes
+miss in their own way (early comes up short, late goes flat and long, by up to
+1.3 m); your hitter times them worse, tips or rolls them more often, and they
+very rarely score.
 
 How big the green is depends on your touch, the way a coach grades a setter:
 your **feet** stopped on the spot (about 0.3 s before the ball arrives), a
@@ -471,7 +478,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | The set's catch ring, bar and floor spot, hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); how a green set beats the block and how much harder a bad set is to hit |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); a green set as a point (their middle's wrong guess, the wings' late read, the diggers' late start; the open spot: how far a block's hands and a digger's platform reach) and how much harder a bad set is to hit; the transition off the net before a tempo run |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, set difficulty, set slow-mo, set ring and bar, landing marker, replays, camera shake, volume, hints, your
@@ -505,7 +512,12 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   top of the bar, Elite still
   never luck at 60 fps; green at the top of the bar; early short, late flat and
   long; a key picks the hitter wherever you look; where to stand puts the ball
-  on your hands), the setter's keys and call sheet, hold-to-charge power, the set calls
+  on your hands), the setter's keys and call sheet, a green set is a point (the
+  open spot is out of every digger's reach, in different zones, round a single
+  block, the pipe too; their middle stays home on a green set to a pin and goes
+  with it on a normal one), the transition (a middle at the net backs off to its
+  approach start before the quick, or goes from where it is when there is no
+  time), hold-to-charge power, the set calls
   (pins inside the antennae, shoot / back quick geometry, a back quick meeting
   the hitter), middles hitting zone 1 / 5, hit-sound power, the impact
   camera punch and kick, the spike animation (hand on the ball at contact,

@@ -95,6 +95,7 @@ export class TeamPlayer implements Brain {
     if (this.hitter) {
       this.hitter.isMySet = (g) => team.setFor === athlete && g.ball.lastTouch?.kind === 'set' && g.ball.lastTouch.side === s;
       this.hitter.blockers = () => team.opponents?.frontRow() ?? [];
+      this.hitter.defenders = () => [...(team.opponents?.players.values() ?? [])];
       if (slot === 'MB') this.hitter.passToSetter = (g) => team.passToSetter(g);
     }
     this.blocker = new BlockerBrain(athlete, FORM.defense[slot].x * s, slot === 'MB' ? 3.4 : 1.3, slot === 'MB');
@@ -163,6 +164,12 @@ export class TeamPlayer implements Brain {
     const ball = g.ball;
     const now = g.simTime;
     if (!ball.active || ball.lastTouch?.athlete === a) {
+      stop(a, netYaw(a.side));
+      return;
+    }
+    // an attack off a green set: the hitter hid the shot until the hand, so the dig starts late
+    const lt = ball.lastTouch;
+    if (lt?.green && lt.side !== a.side && now - lt.t < AI.greenSetDigDelay) {
       stop(a, netYaw(a.side));
       return;
     }

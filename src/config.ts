@@ -573,17 +573,41 @@ export const AI = {
   setterRead: 0.2,
   /** a pass the setter takes further than this (m) from their spot is out of system: high balls only, no quick */
   outOfSystem: 1.6,
+  /**
+   * Transition: a hitter still at the net when their team digs (they were blocking) backs off to
+   * their approach start before a tempo run (the quick, a called go / 3 / fast back / back 2).
+   * Within `transitionReady` m of it they are ready to run; with less than `transitionLatest` s to
+   * their takeoff left they go from wherever they are.
+   */
+  transitionReady: 0.5,
+  transitionLatest: 0.95,
   /** an out-of-system set (and a backup's set, when the setter played the first ball) goes this much (m) higher */
   outOfSystemApex: 0.4,
   /**
-   * Your green set beats the block: their block starts its read this much (s) later, misreads
-   * this many times more and jumps this much (s) late (an exact set at the called tempo gives the
-   * block nothing early), and your hitter swings perfectly, never through the block's hands and
-   * never out. The back row can still dig it.
+   * Your green set is a point. An exact set at the called tempo gives the block nothing early:
+   * their middle guesses wrong (on a pin set it stays home for the quick; on the quick or the pipe
+   * it goes `greenBlockGuess` m to the other side, with a pin), and the wings start their read `greenSetReadDelay` s late, misread `greenSetReadErr` times
+   * more and jump `greenSetJumpLate` s late. Their diggers start `greenSetDigDelay` s late (the
+   * hitter hid the shot until the hand), and your hitter swings perfectly at an open spot.
    */
+  greenBlockGuess: 2.2,
   greenSetReadDelay: 0.3,
   greenSetReadErr: 2.5,
   greenSetJumpLate: 0.12,
+  greenSetDigDelay: 0.5,
+  /**
+   * The open spot (ai/openShot.ts) off your green set: round the block or over its hands (with
+   * `openShotBlockGap` m to spare, wherever they reach: `blockReachBand` m either side of the
+   * net), where nobody gets a platform under it in time. A defender digs a ball within `digReach`
+   * m of their feet (they turn to it: the platform 0.45 m in front, CONTACT.passRadius and the
+   * AI's 0.3 m lunge at a hard-driven ball) once it is below `digTop` m. A spot is open when the
+   * quickest of them is `openShotMargin` s late; the hitter takes any open one.
+   */
+  openShotBlockGap: 0.25,
+  blockReachBand: 0.45,
+  digReach: 1.3,
+  digTop: 1.45,
+  openShotMargin: 0.05,
   /**
    * A bad set (your early / late push) is harder to hit: your hitter's timing error grows by up
    * to this factor and they tip or roll it this many times more often.

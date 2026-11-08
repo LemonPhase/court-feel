@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { AI, TIMING } from '../config';
-import { planToPoint } from '../ai/approach';
 import type { HitterBrain } from '../ai/hitter';
 import { solveApex } from '../physics/solve';
 import type { Athlete } from './athlete';
@@ -66,8 +65,9 @@ export function applyCalls(hitters: CallHitters, calls: SetterCalls, oos: boolea
 /**
  * The pass to `setter` is played: read it (in or out of system) and start the second-tempo runs
  * (go, 3, fast back, back 2), timed so the hitter is on the last steps as the ball leaves the
- * setter's hands: the catch plus the load (TIMING.setLoad). The quick goes from the middle's own
- * read of the pass. Returns whether the pass is out of system.
+ * setter's hands: the catch plus the load (TIMING.setLoad). A hitter still at the net backs off
+ * to their approach start first (HitterBrain.runTo). The quick goes from the middle's own read
+ * of the pass. Returns whether the pass is out of system.
  */
 export function startCallRuns(g: Game, setter: Athlete, hitters: CallHitters, calls: SetterCalls): boolean {
   const pred = g.ball.ensurePrediction(g.env, g.simTime);
@@ -85,8 +85,7 @@ export function startCallRuns(g: Game, setter: Athlete, hitters: CallHitters, ca
     const contact = new THREE.Vector3(lane.x, y, lane.z);
     const v = { x: 0, y: 0, z: 0 };
     const arc = solveApex({ ...at }, contact, y + lane.apexAbove, { x: 0, y: 0, z: 0 }, v);
-    const plan = planToPoint(h.a, g.simTime, contact, tSet + arc.T, 0, 0);
-    if (plan && plan.error < 0.6) h.brain.runPlan(plan, g);
+    h.brain.runTo(contact, tSet + arc.T);
   }
   return false;
 }

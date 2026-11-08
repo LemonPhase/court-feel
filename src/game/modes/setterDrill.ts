@@ -4,6 +4,7 @@ import { yawFromDir } from '../../core/mathx';
 import { solveApex } from '../../physics/solve';
 import { BlockerBrain } from '../../ai/blocker';
 import { HitterBrain } from '../../ai/hitter';
+import { SLOT_ROLE, TeamAI, type Slot } from '../../ai/team';
 import { Athlete } from '../athlete';
 import { applyCalls, CALL_COLOR, callLane, callOptions, callSheet, callSpot, startCallRuns, type CallHitters } from '../callRuns';
 import type { ContactEvent, SetOption } from '../contact';
@@ -20,13 +21,16 @@ type Phase = 'intro' | 'feed' | 'live' | 'result';
  * opposite, pipe), or just look at one; C opens the call sheet to change their calls. Get to the
  * spot, press RMB as the ball reaches your hands, hold while the bar fills and release in the
  * green: your touch sets how big the green is. Your hitters run their calls (the fast ones before
- * you touch it) and finish against a block. A green set beats it.
+ * you touch it) and finish against a block and a back row of three diggers. Off a green set your
+ * hitter finds the open spot; off a bad one they roll it or swing into the defence.
  */
 export class SetterDrill extends Mode {
   readonly id = 'setter' as const;
   private passer!: Athlete;
   private hitters: CallHitters = new Map();
   private blocker!: Athlete;
+  /** their back row (zone 1, 6, 5, as the Mini Rally's defence): digs what your hitter puts in play */
+  private defence!: TeamAI;
   private phase: Phase = 'intro';
   private t = 0;
   private set: ContactEvent | null = null;
@@ -54,6 +58,7 @@ export class SetterDrill extends Mode {
       const brain = new HitterBrain(a, lane);
       brain.isMySet = () => this.setFor === a && this.g.ball.lastTouch?.kind === 'set';
       brain.blockers = () => [this.blocker];
+      brain.defenders = () => [this.blocker, ...this.defence.players.values()];
       brain.skill = 0.82;
       // the middle goes on the pass, timed to your touch
       if (k === 'MB') brain.passToSetter = (gm) => this.passToMe(gm);
@@ -76,7 +81,20 @@ export class SetterDrill extends Mode {
     this.spawned.push(this.blocker);
     const bb = new BlockerBrain(this.blocker, 0, 3.6);
     bb.skill = 0.55;
+    // the lone blocker reads the middle: on your green set they guess wrong
+    bb.guessOnGreen = true;
     g.setBrain(this.blocker, bb);
+    this.defence = new TeamAI(-1, g);
+    // between points they stand in base defence
+    this.defence.serving = true;
+    let dseed = 51;
+    for (const slot of ['S', 'L', 'OH2'] as Slot[]) {
+      const d = new Athlete(SLOT_ROLE[slot], -1);
+      g.addAthlete(d, dseed++);
+      this.spawned.push(d);
+      this.defence.add(slot, d, false);
+    }
+    this.defence.place('defense');
     g.hud.setTitle('Setter Drill');
     this.updateScore();
     g.hud.message('1-4 pick a hitter · RMB as the ball reaches your hands, release in the green', 3.2);
@@ -176,6 +194,7 @@ export class SetterDrill extends Mode {
           solveApex(from, tgt, 4.2 + g.rng.next() * 0.6, { x: 0, y: 0, z: 0 }, v);
           g.ball.launch(from, v, { x: 2, y: 0, z: 0 }, 0, g.simTime);
           g.ball.lastTouch = { athlete: this.passer, kind: 'pass', t: g.simTime, side: 1 };
+          g.ballLive = true;
           this.set = null;
           this.setFor = null;
           this.attacked = false;
@@ -187,6 +206,7 @@ export class SetterDrill extends Mode {
         }
         break;
       case 'live':
+        this.defence.step();
         if (g.ball.state.rest || this.t > 9) this.finish(null);
         break;
       case 'result':
@@ -203,6 +223,9 @@ export class SetterDrill extends Mode {
       this.setFor = g.contact.lastSet?.hitter ?? null;
     }
     if (ev.kind === 'spike' || ev.kind === 'tip') this.attacked = true;
+    // their back row got a platform under your attack: no kill
+    if (this.phase === 'live' && this.attacked && ev.athlete.side === -1 && (ev.kind === 'pass' || ev.kind === 'dig'))
+      this.finish(null, true);
   }
 
   onOutcome(o: Outcome): void {
@@ -210,10 +233,11 @@ export class SetterDrill extends Mode {
     if (!this.set || this.attacked || o.side === 1) this.finish(o);
   }
 
-  private finish(o: Outcome | null): void {
+  private finish(o: Outcome | null, dug = false): void {
     const g = this.g;
     if (this.phase === 'result') return;
     this.toPhase('result');
+    g.ballLive = false;
     this.reps++;
     let pts = 0;
     let label = 'NO SET';
@@ -228,7 +252,7 @@ export class SetterDrill extends Mode {
           good = this.set.grade === 'Perfect' || this.set.grade === 'Good';
           g.crowd(0.7);
         } else label = r === 'DOWN' ? 'BLOCKED' : r;
-      } else label = 'SET';
+      } else label = dug ? 'DUG' : 'SET';
     }
     this.score += pts;
     this.bumpStreak(good);
@@ -250,6 +274,7 @@ export class SetterDrill extends Mode {
       h.a.place(lane.sx, lane.sz, 0);
     }
     this.blocker.place(0, -0.5, Math.PI);
+    this.defence.place('defense');
     const me = g.me;
     if (Math.hypot(me.pos.x - SETTER_SPOT.x, me.pos.z - SETTER_SPOT.z - 0.3) > 1.0 || me.state !== 'ground')
       g.returnUser(SETTER_SPOT.x, SETTER_SPOT.z + 0.3, Math.PI / 2);
