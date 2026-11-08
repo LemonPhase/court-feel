@@ -519,6 +519,11 @@ export const AI = {
    * know about a second ahead.
    */
   setterRead: 0.2,
+  /**
+   * How much the Mini Rally setter likes the pipe, against 1.2 for the outside, 1.0 for the opposite
+   * and 0.75 for the quick: about one in five balls in system, fewer off a bad pass.
+   */
+  pipe: { inSystem: 0.6, outOfSystem: 0.35 },
   /** a pass the setter takes further than this (m) from their spot is out of system: high balls only, no quick */
   outOfSystem: 1.6,
   /** an out-of-system set (and a backup's set, when the setter played the first ball) goes this much (m) higher */

@@ -276,6 +276,25 @@ describe('the pipe (back-row attack, Mini Rally and the libero in the Spike Dril
     expect(takeoffZ).toBeGreaterThan(COURT.attackLine);
   });
 
+  it('in system about one ball in five goes to the pipe; out of system fewer', () => {
+    const share = (inSystem: boolean) => {
+      const { g, team, pass, flight } = homeTeam('L');
+      if (inSystem) pass(SETTER_TARGET.x, SETTER_TARGET.z);
+      else pass(SETTER_SPOT.x + 0.4, SETTER_SPOT.z + 2.6);
+      flight();
+      const setter = team.players.get('S')!;
+      const pipe = team.players.get('OH2')!;
+      let n = 0;
+      for (let i = 0; i < 2000; i++) if (team.callSet(g as unknown as Game, setter).hitter === pipe) n++;
+      return n / 2000;
+    };
+    const inSys = share(true);
+    const out = share(false);
+    expect(inSys).toBeGreaterThan(0.15);
+    expect(inSys).toBeLessThan(0.25);
+    expect(out).toBeLessThan(inSys);
+  });
+
   it('out of system the back-row set stays behind the 3 m line', () => {
     const { g, team, pass, flight } = homeTeam('L');
     pass(SETTER_SPOT.x + 0.4, SETTER_SPOT.z + 2.6);

@@ -414,7 +414,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how far it closes inside the attack, how late it still jumps); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how far it closes inside the attack, how late it still jumps); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); how often the setter goes to the pipe (`pipe`); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, your

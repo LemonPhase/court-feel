@@ -428,15 +428,15 @@ export class TeamAI {
     };
     // a backup (the setter played the first ball) puts up a high ball to a pin: always out of system
     const backup = setter !== this.players.get('S');
-    add('OH1', 'OH', 1.2);
-    add('OPP', 'OPP', 1.0);
-    if (!backup) add('OH2', 'L', 0.35);
     // out of system is what the setter called on the pass (the hitters heard it, so the set
     // must agree); without a read (none was made for this ball) judge it from where the setter is
     const read = this.read && this.read.touch === g.ball.lastTouch && this.read.setter === setter ? this.read : null;
     const outOfSystem =
       backup ||
       (read ? read.call !== 'in' : Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s) > AI.outOfSystem);
+    add('OH1', 'OH', 1.2);
+    add('OPP', 'OPP', 1.0);
+    if (!backup) add('OH2', 'L', outOfSystem ? AI.pipe.outOfSystem : AI.pipe.inSystem);
     // the quick only goes off a good pass, and only if the middle is up with the setter's touch
     const mb = this.players.get('MB');
     const quick = mb && mb !== setter && !outOfSystem ? this.quickFor(mb) : null;
