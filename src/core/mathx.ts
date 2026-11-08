@@ -43,6 +43,10 @@ export class Rng {
   constructor(seed = 1234567) {
     this.s = seed >>> 0;
   }
+  /** start the sequence again from a new seed (a ranked rep) */
+  reseed(seed: number): void {
+    this.s = seed >>> 0;
+  }
   next(): number {
     let t = (this.s += 0x6d2b79f5);
     t = Math.imul(t ^ (t >>> 15), t | 1);

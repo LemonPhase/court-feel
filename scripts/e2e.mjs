@@ -263,6 +263,9 @@ await page.evaluate(() => {
   };
   window.start = (mode, pos, fp, bot = 'perfect', call = 0) => {
     g.settings.firstPerson = fp;
+    // every run starts from the same random state: what a run does can't depend on how long the
+    // menu's autopilot ran before the test took over (machine speed) or on the drills run before it
+    g.rng.reseed(2024);
     g.startMode(mode, pos);
     window.__menu.showStart(false);
     if (call) g.mode.selectCall?.(call);
