@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Grade } from '../game/athlete';
 import { TIMING } from '../config';
-import { COLLAR_DEG_PER_S, collarDegrees, collarZone } from '../game/tutorial';
+import { COLLAR_DEG_PER_S, collarDegrees, collarZone, CUE_NAMES, CUE_ORDER, type Cue } from '../game/tutorial';
 
 const GRADE_CLASS: Record<Grade, string> = {
   Perfect: 'g-perfect',
@@ -78,7 +78,13 @@ export class Hud {
   private collarMarker!: SVGCircleElement;
   private collarZones: { el: SVGPathElement; name: string }[] = [];
   private freezeVeil!: HTMLDivElement;
-  private freezeTag!: HTMLDivElement;
+  /** the lesson: the four parts of a spike, and the one to do now with its key */
+  private coachStrip!: HTMLDivElement;
+  private coachSteps: HTMLSpanElement[] = [];
+  private coachCue!: HTMLDivElement;
+  private coachKeys!: HTMLSpanElement;
+  private coachText!: HTMLSpanElement;
+  private coachShown = '';
   private callAnchor: ((out: THREE.Vector3) => THREE.Vector3) | null = null;
   private callP = new THREE.Vector3();
   private callV = new THREE.Vector3();
@@ -123,7 +129,14 @@ export class Hud {
     this.chargeRing = el('div', 'charge-ring', this.root);
     this.collar = this.buildCollar();
     this.freezeVeil = el('div', 't-freeze', this.root);
-    this.freezeTag = el('div', 't-freeze-tag', this.root, 'FROZEN · YOUR MOVE');
+    this.coachStrip = el('div', 'coach-strip', this.root);
+    CUE_ORDER.forEach((id, i) => {
+      if (i) el('span', 'coach-sep', this.coachStrip, '›');
+      this.coachSteps.push(el('span', 'coach-step', this.coachStrip, CUE_NAMES[id]));
+    });
+    this.coachCue = el('div', 'coach-cue', this.root);
+    this.coachKeys = el('span', 'coach-keys', this.coachCue);
+    this.coachText = el('span', 'coach-text', this.coachCue);
     this.goCue = el('div', 'go-cue', this.root, 'GO');
     this.callout = el('div', 'callout', this.root);
     const bubble = el('div', 'callout-bubble', this.callout);
@@ -160,22 +173,41 @@ export class Hud {
     this.root.classList.toggle('tutoring', on);
   }
 
-  /** freeze feel: desaturated court, vignette, FROZEN · YOUR MOVE */
+  /** the ball is waiting for the player: the court cools a little, the HUD stays */
   setFrozen(on: boolean): void {
+    if (this.root.classList.contains('frozen') === on) return;
     this.root.classList.toggle('frozen', on);
     document.body.classList.toggle('frozen', on);
     this.freezeVeil.setAttribute('aria-hidden', on ? 'false' : 'true');
-    this.freezeTag.setAttribute('aria-hidden', on ? 'false' : 'true');
   }
 
-  /** anti-stuck: pulse the hint key and brighten Skip, once */
+  /**
+   * The lesson's cues. The strip names the four parts of a spike (the ones behind you ticked,
+   * the current one lit); the cue under the crosshair is the one thing to do now, with its key.
+   * It pulses while the ball waits for it. Null hides both.
+   */
+  setCoach(c: { stage: number; cue: Cue | null } | null): void {
+    this.coachStrip.classList.toggle('show', !!c);
+    const cue = c?.cue ?? null;
+    this.coachCue.classList.toggle('show', !!cue);
+    this.coachCue.classList.toggle('waiting', !!cue?.waiting);
+    if (!c) return;
+    this.coachSteps.forEach((e, i) => {
+      e.classList.toggle('done', i < c.stage);
+      e.classList.toggle('now', i === c.stage);
+    });
+    if (!cue) return;
+    const key = cue.keys + '|' + cue.text;
+    if (key === this.coachShown) return;
+    this.coachShown = key;
+    this.coachKeys.innerHTML = this.keyLabels ? translateKeyMarkup(cue.keys, this.keyLabels) : cue.keys;
+    this.coachText.innerHTML = this.keyLabels ? translateKeyMarkup(cue.text, this.keyLabels) : cue.text;
+  }
+
+  /** the ball has waited a while on the same cue: the cue calls harder and Skip lights up */
   setNudge(on: boolean): void {
-    this.hint.classList.toggle('nudge', on);
+    this.coachCue.classList.toggle('nudge', on);
     this.skipBtn.classList.toggle('nudge', on);
-  }
-
-  nudgeTutorial(): void {
-    this.setNudge(true);
   }
 
   /**
@@ -303,7 +335,7 @@ export class Hud {
     this.bannerTimer = dur;
   }
 
-  /** step title that stays until cleared (the tutorial's STEP 2 · JUMP line) */
+  /** a title that stays until cleared (the lesson's `1 / 3 · TOGETHER` line) */
   pinMessage(text: string | null): void {
     if (!text) {
       this.msgPinned = false;

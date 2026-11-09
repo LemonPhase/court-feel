@@ -339,7 +339,61 @@ export const TOUCH = {
   blockJumps: true,
 };
 
+/**
+ * The first-run lesson (game/tutorial.ts). Three reps of the Outside high ball, with less help
+ * each time: together (the ball waits for you), slow motion (you drive, nothing waits), full
+ * speed. Speeds are fractions of real time. None of this touches the grading windows.
+ */
+export const TUTORIAL = {
+  /** the welcome line, before the first toss (s, real time; any key moves on) */
+  welcome: 2.2,
+  /** the coach's line after a rep (s, real time; any key moves on after `resultMin`) */
+  result: 3.6,
+  resultMin: 1,
+  /** the hand-off line (s, real time) */
+  handoff: 2.6,
+  /** together: the set in flight before your run, your run, the plant, and in the air */
+  watchScale: 0.6,
+  runScale: 0.7,
+  plantScale: 0.5,
+  airScale: 0.35,
+  /** together: time eases down over this long (s, game time) into a moment you have not acted on yet, to no slower than `crawl` of the speed */
+  easeLead: 0.16,
+  crawl: 0.25,
+  /** a cue shows this long (s, game time) before its moment */
+  cueLead: 0.45,
+  /** when you drive, a cue shows a reaction time (s, game time) before its moment, so acting on it is on time */
+  reactLead: 0.12,
+  /** together: you rise this long (s, game time) before the arm cue */
+  drawDelay: 0.07,
+  /** together: the ball is held this late (s) in the Perfect window for your release */
+  sweetErr: 0.015,
+  /** together: the coach aims your swing this deep (m) into their court, straight down your line */
+  aimDepth: 6.5,
+  /** slow motion rep: the speed from the set to your landing */
+  slowScale: 0.6,
+  /** tries at the together rep, the slow rep and the full-speed rep before the lesson moves on anyway */
+  tries: 2,
+  /** back from a pause, a release of the attack button within this long (s, real time) is the click that took the pointer back, not a swing */
+  resumeGrace: 0.4,
+  /** nothing pressed for this long (s, real time) while the ball waits: the cue pulses harder and Skip lights up */
+  nudge: 6,
+  /** a rep where you moved less than this (m) from the start never ran */
+  ranDist: 1,
+};
+
 export const FX = {
+  /** where your feet go (the plant spot of an approach): ring radius (m), and the lesson's arrows towards it */
+  floorSpot: {
+    radius: 0.36,
+    /** feet within this far (m) of the spot light it green */
+    on: 0.45,
+    /** the lesson's arrows from the start of the run to the spot */
+    arrows: 5,
+    arrowSize: 0.42,
+    /** the line to jump from: its size (m), and how close the feet are (m) when it lights green */
+    line: { width: 1.1, depth: 0.11, on: 0.4 },
+  },
   hitStopPerfect: 0.07,
   /** extra hit-stop for a Perfect at full power (scaled by the ball speed) */
   hitStopPower: 0.035,

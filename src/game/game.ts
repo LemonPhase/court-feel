@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, type PositionId, type Settings } from '../config';
+import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings } from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
@@ -28,7 +28,7 @@ import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
 import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
-import { Tutorial, type TutorialBegin } from './tutorial';
+import { reached, Tutorial, type TutorialBegin } from './tutorial';
 
 /** consecutive frames that throw before the game stops and shows the crash screen */
 const MAX_FAILED_FRAMES = 10;
@@ -86,7 +86,7 @@ export class Game {
   private accum = 0;
   timeScale = 1;
   private slowmo = 1;
-  /** tutorial clock: 1 normal, 0.35 between gates, 0 while a gate is frozen */
+  /** the lesson's clock: 1 real time, slower through a taught rep, 0 while the ball waits for the player */
   tutor = 1;
   hitStop = 0;
   paused = false;
@@ -426,6 +426,8 @@ export class Game {
   // ------------------------------------------------------------ contacts
   aimTargetFor(a: Athlete, out: THREE.Vector3): THREE.Vector3 {
     if (a.isUser) {
+      // the lesson's together rep: the coach aims it too (deep, down the hitter's line). Aiming comes later.
+      if (this.tutorial.ownsButtons()) return out.set(a.pos.x, 0, -a.side * TUTORIAL.aimDepth);
       const from = a.action && a.action.kind === 'swing' ? a.action.contactPoint : a.pos;
       return aimTargetFromLook(from.x, from.z, this.rig.yaw, this.rig.pitch, this.rig.mode === 'fp', a.side, out);
     }
@@ -651,11 +653,8 @@ export class Game {
     if (this.input.consumePress('KeyR')) this.fx.startReplay();
     this.user.frame(dt);
     this.bot?.after();
-    if (this.tutorial.ignoreMovement()) {
-      this.me.cmd.moveX = 0;
-      this.me.cmd.moveZ = 0;
-      this.me.cmd.sprint = false;
-    }
+    // the lesson's together rep: the coach holds your line (what you hold decides whether time runs)
+    this.tutorial.drive(this.me);
     this.stepReturn(dt);
   }
 
@@ -694,10 +693,11 @@ export class Game {
         slowTarget = ASSIST.slowmoScale;
     }
     this.slowmo = lerp(this.slowmo, slowTarget, damp(12, realDt));
-    // tutorial slow/freeze never stacks on top of the assist dip
-    const tutorTarget = this.tutorial.tutorTarget();
-    this.tutor = lerp(this.tutor, tutorTarget, damp(8, realDt));
-    if (tutorTarget === 0 && this.tutor < 0.015) this.tutor = 0;
+    // the lesson's own clock never stacks on top of the assist dip. A moment the ball waits at
+    // is taken at once (and never simulated past: `stopAt`); everything else eases.
+    const tutorTarget = this.tutorial.timeScale();
+    this.tutor = this.tutorial.snapScale() ? tutorTarget : lerp(this.tutor, tutorTarget, damp(10, realDt));
+    const stopAt = this.tutorial.stopAt();
     const scale = Math.min(this.slowmo, this.tutor);
     let simDt = realDt * this.timeScale * scale;
     if (this.hitStop > 0) {
@@ -709,6 +709,10 @@ export class Game {
     const ts = performance.now();
     let n = 0;
     while (this.accum >= step) {
+      if (reached(this.simTime, stopAt)) {
+        this.accum = 0;
+        break;
+      }
       this.fixedStep(step);
       this.accum -= step;
       n++;
@@ -723,30 +727,12 @@ export class Game {
     }
     this.stepsThisFrame = n;
     if (n) this.stepMs = (performance.now() - ts) / n;
-    if (this.tutorial.active && !this.fx.replaying) this.pumpTutorial(realDt);
+    if (this.tutorial.active && !this.fx.replaying) this.tutorial.frame(realDt);
   }
 
-  /** real-time meters and gate checks. Runs even when the sim is frozen. */
-  private pumpTutorial(realDt: number): void {
-    const me = this.me;
-    const wind = me.action?.kind === 'windup' ? me.action : null;
-    const fill = this.tutorial.fillKind();
-    const jumpHeld = this.input.isDown('Space');
-    const attackHeld = this.input.isDown('Mouse0');
-    // stay under loadMax so a frozen hold cannot auto-takeoff; the release is the takeoff
-    if (fill === 'load' && me.state === 'load' && jumpHeld) me.loadT = Math.min(PLAYER.loadMax - 0.02, me.loadT + realDt);
-    if (fill === 'charge' && wind && attackHeld) wind.t0 -= realDt;
-    const loadFrac = me.state === 'load' ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : 0;
-    this.tutorial.noteLoad(loadFrac, jumpHeld && me.state === 'load');
-    if (this.idealValid && me.state === 'air') {
-      const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : 0;
-      const lead = ContactSystem.swingLead(charge);
-      const releaseIn = this.idealCache.t - this.simTime - lead;
-      const releaseErr = this.simTime + lead - this.idealCache.t;
-      this.tutorial.noteSwingWindow(releaseIn, releaseErr, true, charge);
-    }
-    const moving = me.speed > 0.8 || me.state === 'load';
-    this.tutorial.tick(realDt, moving);
+  /** when the ball the user is jumping at is best met (sim time), or -1 with nothing to reach */
+  idealT(): number {
+    return this.idealValid ? this.idealCache.t : -1;
   }
 
   fixedStep(dt: number): void {
@@ -871,6 +857,8 @@ export class Game {
       v.setOpacity(inBody ? clamp01((d - 0.35) / 0.5) * 0.8 + 0.2 : 1);
     }
     this.arena.update(realDt);
+    // the lesson shows where your feet go: the ball's landing ring beside it would be a second ring to read
+    this.ball.showMarker = this.settings.landingMarker && !this.tutorial.teaching;
     this.updateAimReticle(realDt);
     this.hud.update(realDt);
     this.onFrame?.();

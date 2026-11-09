@@ -155,7 +155,11 @@ export class Menu {
     replay.type = 'button';
     replay.onclick = () => this.cb.replayTutorial();
     bottom.append(camSel, replay, setBtn, play);
-    this.tutNote = h('div', 'tut-note', 'PLAY walks you through one spike. Tutorial uses Outside. Double-click any drill to start it.');
+    this.tutNote = h(
+      'div',
+      'tut-note',
+      'PLAY teaches you one spike in three balls (Outside, about a minute). Double-click any drill to start it.',
+    );
     left.append(this.tutNote, bottom);
     left.append(
       h(

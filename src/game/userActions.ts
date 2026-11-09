@@ -8,48 +8,25 @@ import type { Game } from './game';
 export class UserActions {
   constructor(private g: Game) {
     const u = g.user;
+    // the lesson's together rep reads jump and attack as held buttons (a button already down
+    // when its moment comes counts), so their edges do nothing there
     u.handlers.jump = () => {
-      if (this.g.tutorial.onJumpPress() === 'block') return true;
+      if (this.g.tutorial.ownsButtons()) return true;
       return this.g.me.jumpPress();
     };
     u.releaseHandlers.jump = () => {
-      const how = this.g.tutorial.onJumpRelease();
-      if (how === 'cancel') {
-        const me = this.g.me;
-        if (me.state === 'load') {
-          me.state = 'ground';
-          me.loadT = 0;
-          me.loadRelease = false;
-        }
-        return;
-      }
-      if (how === 'block') return;
+      if (this.g.tutorial.ownsButtons()) return;
       this.g.me.jumpRelease();
     };
-    u.handlers.attack = () => this.attack();
-    // release the wind-up: the swing goes now (tap = tip, longer hold = more power).
-    // During the tutorial gates an early release is swallowed so it never becomes a tip.
+    u.handlers.attack = () => (this.g.tutorial.ownsButtons() ? true : this.attack());
+    // release the wind-up: the swing goes now (tap = tip, longer hold = more power)
     u.releaseHandlers.attack = () => {
       const g = this.g;
-      const how = g.tutorial.onAttackRelease();
-      const act = g.me.action;
-      if (how === 'cancel') {
-        if (act?.kind === 'windup') g.me.endAction();
-        return;
-      }
-      if (how === 'keep') {
-        if (act?.kind === 'windup') act.held = false;
-        return;
-      }
-      if (how === 'block') return;
+      if (g.tutorial.ownsButtons()) return;
       const swing = g.contact.releaseWindup(g.me);
       if (swing) g.notePress(swing.err, swing.contactT);
     };
-    u.handlers.block = () => {
-      const t = this.g.tutorial;
-      if (t.active && t.step > 0 && t.step < 5) return true;
-      return this.rightButton();
-    };
+    u.handlers.block = () => (this.g.tutorial.quiet() ? true : this.rightButton());
     u.releaseHandlers.block = () => {
       const act = this.g.me.action;
       if (act && (act.kind === 'block' || act.kind === 'set') && act.held) {
@@ -57,11 +34,7 @@ export class UserActions {
         act.releaseT = this.g.simTime;
       }
     };
-    u.handlers.pass = () => {
-      const t = this.g.tutorial;
-      if (t.active && t.step > 0 && t.step < 5) return true;
-      return this.pass();
-    };
+    u.handlers.pass = () => (this.g.tutorial.quiet() ? true : this.pass());
     u.releaseHandlers.pass = () => {
       const act = this.g.me.action;
       if (act && act.kind === 'pass' && act.held) {
@@ -80,11 +53,7 @@ export class UserActions {
     // already mid-swing: buffer the press
     if (act && act.kind === 'swing' && !act.resolved) return false;
     if (act && act.kind === 'swing' && g.simTime - act.contactT < 0.25) return false;
-    if (g.tutorial.onAttackPress() === 'block') return true;
-    if (act && act.kind === 'windup') {
-      act.held = true;
-      return true;
-    }
+    if (act && act.kind === 'windup') return true;
     g.contact.beginWindup(me);
     return true;
   }

@@ -111,16 +111,33 @@ npm run format     # format the code with Prettier
 Click **PLAY** (or press Enter) on the start screen; the game captures the
 mouse (pointer lock). **Esc** pauses and opens settings.
 
-The first PLAY on a browser walks you through one Outside spike. The world
-slows, then stops at each decision — plant, load the jump, take off, draw
-the arm, release through the gold — and waits until you do that one thing.
+The first PLAY on a browser teaches one Outside spike in three balls, with
+less help each time. A strip names the four parts (**RUN › JUMP › DRAW ›
+HIT**) and a cue under the action shows the one key to hold now.
+
+1. **Together: the ball waits for you.** At each moment (run, jump, draw the
+   arm, hit) time eases down and stops until you do it. Do it on time and
+   nothing stops. A button you are already holding when its moment comes
+   counts, so you never have to let go and press again. The coach holds your
+   line to the spot and aims the ball; you hold the keys.
+2. **Slow motion: you drive.** The same cues, slowed down. Nothing waits and
+   the result is real.
+3. **Full speed.** The drill as it is played.
+
+After each ball the coach says one thing about it: the first thing that went
+wrong, or that it was right. A rep that didn't come off is taken once more,
+then the lesson moves on anyway. On the floor, arrows lead from your start
+down the run, a line marks where to plant (the jump carries you forward from
+it), and a spot marks where you hit from. The line and the spot turn green
+under your feet.
+
 **Skip tutorial** is in the corner the whole time (and in the pause menu),
-including while the mouse is locked. The drill cards stay open — double-click
+including while the mouse is locked. The drill cards stay open: double-click
 one to start that drill instead. It is remembered in this browser
 (`courtFeel.tutorial.v1`: `done`, `skipped`, or `in_progress:` plus the step).
 **Replay tutorial** is on the start screen and in Settings. The lesson does
-not teach the tip (a tap of the attack button). First and third person both
-stay available (V).
+not teach the tip (a tap of the attack button) or aiming. First and third
+person both stay available (V).
 
 In the air, a collar around the charge ring shows where a release *now*
 would land: gold is Perfect, cyan is Good, wood is early or late. It follows
@@ -221,7 +238,8 @@ screen show them. Only your player uses them; AI players keep the defaults.
    mouse (jump for a topspin jump serve) at a target zone.
 2. **Spike Drill** — a coach tosses to the setter, the setter sets your lane.
    Score = timing grade + power (km/h) + kill + hitting the highlighted target
-   zone. A cyan ring shows where your feet should be at contact. As the middle
+   zone. A spot on the floor shows where your feet should be at contact (it
+   turns green when you are on it). As the middle
    you hit a real quick: run in as the pass goes up and leave the floor as the
    setter touches the ball — the set is sent to where your hand will be at the
    top of your jump (jump late and the quick comes to the usual spot, too fast).
@@ -340,6 +358,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
 | `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
+| `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Settings → Your athlete) |
@@ -406,8 +425,8 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,
   sloppy, tip; `&hand=left` plays as a lefty). Unknown values are ignored: an
   unknown mode opens the menu, an unknown position falls back to OH.
-  `?tutorial=0` starts the first-run lesson at the welcome (0 welcome, 1 feet,
-  2 jump, 3 swing, 4 grade, 5 one alone, 6 hand-off). `cam=fp` and `touch=1`
+  `?tutorial=0` starts the first-run lesson at the welcome (0 welcome,
+  1 together, 2 slow motion, 3 full speed, 4 hand-off). `cam=fp` and `touch=1`
   still apply.
 
 ## Errors and bug reports

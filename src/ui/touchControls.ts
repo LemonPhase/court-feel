@@ -281,12 +281,10 @@ export class TouchControls {
     this.buttons.get('hit')!.classList.toggle('sweet', g.hud.collarSweet);
     this.skipBtn.classList.toggle('nudge', g.tutorial.stuck());
     // tutorial: the chip left of pause, and the buttons the current step is not teaching go quiet
-    const tutoring = g.tutorial.active && g.tutorial.step < 6;
-    const skipDisplay = tutoring ? 'flex' : 'none';
+    const skipDisplay = g.tutorial.teaching ? 'flex' : 'none';
     if (this.skipBtn.style.display !== skipDisplay) this.skipBtn.style.display = skipDisplay;
     const dim = new Set<string>();
-    if (g.tutorial.step === 2 && g.tutorial.active) for (const id of ['hit', 'block', 'pass', 'toss']) dim.add(id);
-    if (g.tutorial.step === 3 && g.tutorial.active) for (const id of ['jump', 'block', 'pass', 'toss']) dim.add(id);
+    if (g.tutorial.quiet()) for (const id of ['block', 'pass', 'toss']) dim.add(id);
     for (const [id, e] of this.buttons) if (e.classList.contains('t-btn')) e.classList.toggle('dim', dim.has(id));
     // BLOCK reads SET when a press would set
     const blockLabel = this.buttons.get('block')!.querySelector('.t-label')!;

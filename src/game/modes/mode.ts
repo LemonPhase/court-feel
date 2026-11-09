@@ -53,6 +53,8 @@ export abstract class Mode {
   passTarget?(a: Athlete): { x: number; y: number; z: number; apex: number };
   setOptions?(a: Athlete): import('../contact').SetOption[];
   canServe?(a: Athlete): boolean;
+  /** the approach for the set in the air: where the feet go and when (the first-run lesson reads it) */
+  approachLine?(): import('../tutorial').ApproachLine | null;
 
   teardown(): void {
     for (const a of this.spawned) this.g.removeAthlete(a);
@@ -125,7 +127,17 @@ export class ZoneMarker {
 export function makeFloorRing(color: number, size: number): THREE.Mesh {
   const m = new THREE.Mesh(
     new THREE.PlaneGeometry(size, size),
-    new THREE.MeshBasicMaterial({ map: makeRingTexture(0.18), color, transparent: true, opacity: 0.7, depthWrite: false }),
+    // the court is pulled towards the camera with a polygon offset: pull the ring further, or the court draws over it
+    new THREE.MeshBasicMaterial({
+      map: makeRingTexture(0.18),
+      color,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4,
+    }),
   );
   m.rotation.x = -Math.PI / 2;
   m.position.y = 0.011;
