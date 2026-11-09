@@ -52,7 +52,7 @@ const KEYS: Record<CueId, string> = {
 };
 
 export const TEXT = {
-  welcome: "We'll hit one ball together.",
+  welcome: "Three balls. We'll hit the first one together.",
   watch: 'Watch the set go up. The ball waits for you.',
   run: 'Hold to run in',
   sprint: `Hold ${kbd('Shift')} as well: an approach is a sprint`,
@@ -265,6 +265,8 @@ export class TutorialDirector {
   private tries = 0;
   private next: TutorialStep = 0;
   private rep: RepStats = freshRep();
+  /** this rep's ball has been tossed (until then the last rep's ball may still be lying there) */
+  private live = false;
 
   begin(step: TutorialStep): void {
     this.active = true;
@@ -274,6 +276,7 @@ export class TutorialDirector {
     this.swallowFor = 0;
     this.stepT = 0;
     this.resetRep();
+    this.live = false;
   }
 
   skip(): void {
@@ -307,6 +310,7 @@ export class TutorialDirector {
   noteFeed(): void {
     if (!this.active) return;
     this.resetRep();
+    this.live = true;
   }
 
   noteContact(grade: Grade, note = ''): void {
@@ -364,7 +368,7 @@ export class TutorialDirector {
   guide(f: GuideFacts): GuideOut {
     const out = idleOut();
     this.cue = null;
-    if (!this.active || this.step < 1 || this.step > 3 || this.beat === 'result') {
+    if (!this.active || !this.live || this.step < 1 || this.step > 3 || this.beat === 'result') {
       this.waiting = false;
       return out;
     }
@@ -694,6 +698,7 @@ export class TutorialDirector {
     this.stepT = 0;
     if (changed) this.tries = 0;
     this.resetRep();
+    this.live = false;
     if (changed) this.onStep?.(step);
   }
 }
