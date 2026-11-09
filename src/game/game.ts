@@ -28,6 +28,7 @@ import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
 import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
+import { Tutorial, type TutorialBegin } from './tutorial';
 
 /** consecutive frames that throw before the game stops and shows the crash screen */
 const MAX_FAILED_FRAMES = 10;
@@ -85,6 +86,8 @@ export class Game {
   private accum = 0;
   timeScale = 1;
   private slowmo = 1;
+  /** tutorial clock: 1 normal, 0.35 between gates, 0 while a gate is frozen */
+  tutor = 1;
   hitStop = 0;
   paused = false;
   private last = 0;
@@ -98,6 +101,9 @@ export class Game {
   manual = false;
   /** called once per render frame after the HUD (the touch overlay draws itself here) */
   onFrame: (() => void) | null = null;
+  /** Skip tutorial: 'menu' from the welcome, 'drill' once a rep is underway */
+  onTutorialSkipped: ((where: 'menu' | 'drill') => void) | null = null;
+  tutorial!: Tutorial;
   /** test hook: stop the RAF loop from rendering (screenshots render on demand) */
   holdRender = false;
   /** in the menu: attract camera, no user control */
@@ -196,6 +202,7 @@ export class Game {
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
     this.resize();
+    this.tutorial = new Tutorial(this);
   }
 
   // ------------------------------------------------------------ athletes
@@ -358,6 +365,23 @@ export class Game {
     this.hud.setCam(this.settings.firstPerson);
   }
 
+  /**
+   * Guided first session: Spike Drill, Outside, block off. Camera stays whatever
+   * the player picked (FP and TP both stay available). `replay` starts at the welcome.
+   */
+  beginTutorial(opts: TutorialBegin = {}): void {
+    this.hud.setVisible(true);
+    this.paused = false;
+    this.tutorial.begin(opts);
+    this.startMode('spike', 'OH');
+    this.tutorial.present();
+  }
+
+  /** Skip: don't stay frozen for a frame after the lesson ends */
+  snapTutor(): void {
+    this.tutor = 1;
+  }
+
   stopMode(): void {
     this.mode?.teardown();
     this.mode = null;
@@ -414,7 +438,8 @@ export class Game {
         const kmh = ev.speed * 3.6;
         const pw =
           ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
-        const sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+        let sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+        if (this.tutorial.active) sub = this.tutorial.gradeSub(ev.grade, sub);
         this.hud.showGrade(ev.grade, sub);
       }
       if (ev.speed > 0) this.hud.setSpeed(ev.speed * 3.6);
@@ -626,6 +651,11 @@ export class Game {
     if (this.input.consumePress('KeyR')) this.fx.startReplay();
     this.user.frame(dt);
     this.bot?.after();
+    if (this.tutorial.ignoreMovement()) {
+      this.me.cmd.moveX = 0;
+      this.me.cmd.moveZ = 0;
+      this.me.cmd.sprint = false;
+    }
     this.stepReturn(dt);
   }
 
@@ -657,17 +687,23 @@ export class Game {
     const step = 1 / SIM.hz;
     // slow-mo assist while lining up a contact
     let slowTarget = 1;
-    if (this.settings.slowmoAssist && this.me.state === 'air' && this.idealValid) {
+    const dip = (this.settings.slowmoAssist || this.tutorial.wantsContactDip()) && this.me.state === 'air' && this.idealValid;
+    if (dip) {
       const until = this.idealCache.t - this.simTime;
       if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4)
         slowTarget = ASSIST.slowmoScale;
     }
     this.slowmo = lerp(this.slowmo, slowTarget, damp(12, realDt));
-    let simDt = realDt * this.timeScale * this.slowmo;
+    // tutorial slow/freeze never stacks on top of the assist dip
+    const tutorTarget = this.tutorial.tutorTarget();
+    this.tutor = lerp(this.tutor, tutorTarget, damp(8, realDt));
+    if (tutorTarget === 0 && this.tutor < 0.015) this.tutor = 0;
+    const scale = Math.min(this.slowmo, this.tutor);
+    let simDt = realDt * this.timeScale * scale;
     if (this.hitStop > 0) {
       const used = Math.min(this.hitStop, realDt);
       this.hitStop -= used;
-      simDt = (realDt - used) * this.timeScale * this.slowmo;
+      simDt = (realDt - used) * this.timeScale * scale;
     }
     this.accum += simDt;
     const ts = performance.now();
@@ -687,6 +723,30 @@ export class Game {
     }
     this.stepsThisFrame = n;
     if (n) this.stepMs = (performance.now() - ts) / n;
+    if (this.tutorial.active && !this.fx.replaying) this.pumpTutorial(realDt);
+  }
+
+  /** real-time meters and gate checks. Runs even when the sim is frozen. */
+  private pumpTutorial(realDt: number): void {
+    const me = this.me;
+    const wind = me.action?.kind === 'windup' ? me.action : null;
+    const fill = this.tutorial.fillKind();
+    const jumpHeld = this.input.isDown('Space');
+    const attackHeld = this.input.isDown('Mouse0');
+    // stay under loadMax so a frozen hold cannot auto-takeoff; the release is the takeoff
+    if (fill === 'load' && me.state === 'load' && jumpHeld) me.loadT = Math.min(PLAYER.loadMax - 0.02, me.loadT + realDt);
+    if (fill === 'charge' && wind && attackHeld) wind.t0 -= realDt;
+    const loadFrac = me.state === 'load' ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : 0;
+    this.tutorial.noteLoad(loadFrac, jumpHeld && me.state === 'load');
+    if (this.idealValid && me.state === 'air') {
+      const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : 0;
+      const lead = ContactSystem.swingLead(charge);
+      const releaseIn = this.idealCache.t - this.simTime - lead;
+      const releaseErr = this.simTime + lead - this.idealCache.t;
+      this.tutorial.noteSwingWindow(releaseIn, releaseErr, true, charge);
+    }
+    const moving = me.speed > 0.8 || me.state === 'load';
+    this.tutorial.tick(realDt, moving);
   }
 
   fixedStep(dt: number): void {
@@ -814,7 +874,12 @@ export class Game {
     this.updateAimReticle(realDt);
     this.hud.update(realDt);
     this.onFrame?.();
-    if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint() + (this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : ''));
+    if (this.mode && !this.inMenu) {
+      const tutoring = this.tutorial.active;
+      const base = tutoring ? this.tutorial.hint() : this.mode.hint();
+      const replay = !tutoring && this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : '';
+      this.hud.setHint(base + replay, tutoring);
+    }
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
     this.hud.setLoad(
       me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null,
@@ -823,6 +888,11 @@ export class Game {
     const wind = me.action?.kind === 'windup' ? me.action : null;
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;
     this.hud.setCharge(wind && !this.inMenu ? charge : null);
+    const collarErr =
+      this.idealValid && me.state === 'air' && !this.inMenu
+        ? this.simTime + ContactSystem.swingLead(wind ? charge : 0) - this.idealCache.t
+        : null;
+    this.hud.setTiming(collarErr !== null && (this.tutorial.active || this.settings.showHints) ? collarErr : null);
     if (charge >= 1 && this.lastCharge < 1) this.fx?.audio.chargeFull();
     if (!wind && me.action?.kind === 'swing' && me.action !== this.swished) {
       this.swished = me.action;
