@@ -350,8 +350,6 @@ export const TUTORIAL = {
   /** the coach's line after a rep (s, real time; any key moves on after `resultMin`) */
   result: 3.6,
   resultMin: 1,
-  /** the hand-off line (s, real time) */
-  handoff: 2.6,
   /** together: the set in flight before your run, your run, the plant, and in the air */
   watchScale: 0.6,
   runScale: 0.7,

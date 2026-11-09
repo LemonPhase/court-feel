@@ -101,6 +101,8 @@ export class Game {
   manual = false;
   /** called once per render frame after the HUD (the touch overlay draws itself here) */
   onFrame: (() => void) | null = null;
+  /** the lesson's three balls are done (`clean`: the last one was a Perfect or a Good): offer what to do next */
+  onTutorialDone: ((clean: boolean) => void) | null = null;
   /** Skip tutorial: 'menu' from the welcome, 'drill' once a rep is underway */
   onTutorialSkipped: ((where: 'menu' | 'drill') => void) | null = null;
   tutorial!: Tutorial;

@@ -23,7 +23,7 @@ import { kbd } from './modes/mode';
 
 export const TUTORIAL_KEY = 'courtFeel.tutorial.v1';
 
-/** 0 welcome, 1 together, 2 slow motion, 3 full speed, 4 hand-off */
+/** 0 welcome, 1 together, 2 slow motion, 3 full speed, 4 done (the lesson is over: the game offers what to do next) */
 export type TutorialStep = 0 | 1 | 2 | 3 | 4;
 export const LAST_STEP = 4;
 
@@ -70,7 +70,6 @@ export const TEXT = {
   soloIntro: 'Full speed. Run when you see GO.',
   again: "Let's take that one again.",
   aim: 'You aim with where you look: higher is deeper.',
-  handoff: "You're on the court.",
 };
 
 const STEP = 1 / SIM.hz;
@@ -179,7 +178,8 @@ export function resumeStep(flag: string | null): TutorialStep {
 }
 
 function clampStep(n: number): TutorialStep {
-  if (!Number.isInteger(n) || n < 0 || n > LAST_STEP) return 0;
+  // (the last step is the end of the lesson, not a place to start it)
+  if (!Number.isInteger(n) || n < 0 || n >= LAST_STEP) return 0;
   return n as TutorialStep;
 }
 
@@ -264,8 +264,10 @@ export class TutorialDirector {
   swallowFor = 0;
   /** touch controls: there is no Shift and no click */
   touch = false;
-  /** fired when the step changes (not on the initial begin) */
+  /** fired when the step changes (not on the initial begin). The last step ends the lesson: `active` is already false. */
   onStep: ((step: TutorialStep) => void) | null = null;
+  /** the last rep played was a clean hit (Perfect or Good) */
+  clean = false;
   onStuck: (() => void) | null = null;
 
   private stepT = 0;
@@ -284,6 +286,7 @@ export class TutorialDirector {
     this.active = true;
     this.step = step;
     this.tries = 0;
+    this.clean = false;
     this.stuck = false;
     this.swallowFor = 0;
     this.stepT = 0;
@@ -344,6 +347,7 @@ export class TutorialDirector {
     // together: any ball over the net is the point of it. After that the timing has to be there.
     const ok = this.step === 1 ? r.swung && r.grade !== 'Miss' : clean;
     this.tries += 1;
+    this.clean = clean;
     this.next = ok || this.tries >= T.tries ? ((this.step + 1) as TutorialStep) : this.step;
     this.line = this.verdict(kill) + (this.next === this.step && this.step !== 1 ? ' One more.' : '');
     this.beat = 'result';
@@ -359,8 +363,6 @@ export class TutorialDirector {
     this.swallowFor = Math.max(0, this.swallowFor - dt);
     if (this.step === 0) {
       if (this.stepT >= T.welcome || (anyKey && this.stepT > 0.3)) this.enter(1);
-    } else if (this.step === LAST_STEP) {
-      if (this.stepT >= T.handoff) this.active = false;
     } else if (this.beat === 'result') {
       if (this.stepT >= T.result || (anyKey && this.stepT > T.resultMin)) this.enter(this.next);
     }
@@ -406,7 +408,6 @@ export class TutorialDirector {
   hint(): string {
     if (!this.active) return '';
     if (this.step === 0) return TEXT.welcome;
-    if (this.step === LAST_STEP) return '';
     if (this.beat === 'result') return this.line;
     if (this.nudge) return this.nudge;
     if (this.stage === 0 && !this.cue) return this.step === 1 ? TEXT.watch : this.step === 2 ? TEXT.slowIntro : TEXT.soloIntro;
@@ -422,8 +423,6 @@ export class TutorialDirector {
         return '2 / 3 · SLOW MOTION';
       case 3:
         return '3 / 3 · FULL SPEED';
-      case LAST_STEP:
-        return TEXT.handoff;
       default:
         return null;
     }
@@ -711,6 +710,8 @@ export class TutorialDirector {
     if (changed) this.tries = 0;
     this.resetRep();
     this.live = false;
+    // the three balls are done: the lesson is over, and the game offers what to do next
+    if (step >= LAST_STEP) this.active = false;
     if (changed) this.onStep?.(step);
   }
 }
@@ -745,7 +746,13 @@ export class Tutorial {
   constructor(private g: Game) {
     this.director.onStep = (step) => {
       this.save(step);
-      this.applyChrome();
+      if (step < LAST_STEP) {
+        this.applyChrome();
+        return;
+      }
+      this.out = idleOut();
+      this.clearChrome();
+      this.g.onTutorialDone?.(this.director.clean);
     };
     this.director.onStuck = () => this.g.hud.setNudge(true);
     g.hud.onSkip = () => this.requestSkip();
@@ -764,9 +771,9 @@ export class Tutorial {
     return this.director.active && this.director.waiting;
   }
 
-  /** the lesson is on screen (not yet the hand-off line) */
+  /** the lesson is on screen */
   get teaching(): boolean {
-    return this.director.active && this.director.step < LAST_STEP;
+    return this.director.active;
   }
 
   holdingFeed(): boolean {
@@ -997,6 +1004,8 @@ export class Tutorial {
   }
 
   private clearChrome(): void {
+    // the drill's own title and score line come back (the lesson shortened them)
+    this.g.mode?.refreshHud?.();
     this.g.hud.setTutorialChrome(false);
     this.g.hud.suppressCalls = false;
     this.g.hud.setFrozen(false);

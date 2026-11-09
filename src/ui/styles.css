@@ -126,6 +126,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   padding: 24px 28px; display: flex; flex-direction: column; gap: 10px; min-width: 300px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
 .settings-box { min-width: 520px; max-height: 94vh; overflow-y: auto; }
 .pause-t { font-weight: 900; font-style: italic; font-size: 30px; margin-bottom: 6px; }
+/* the end of the lesson, in the pause dialog: one line about it, and where to find things again */
+.pause-b { font-size: 15px; line-height: 1.45; opacity: 0.88; max-width: 22em; margin-bottom: 6px; }
+.pause-n { font-size: 12px; line-height: 1.4; opacity: 0.65; max-width: 26em; margin-top: 4px; }
 .set-grid { display: grid; gap: 8px; }
 .set-row { display: grid; grid-template-columns: 170px 1fr 70px; align-items: center; gap: 10px; font-size: 13px; }
 .set-row .chip { grid-column: 2 / span 2; justify-self: start; }

@@ -191,21 +191,26 @@ export class Menu {
     this.pause.setAttribute('role', 'dialog');
     this.pause.setAttribute('aria-label', 'Paused');
     const box = h('div', 'pause-box');
-    box.append(h('div', 'pause-t', 'Paused'));
+    this.pauseTitle = h('div', 'pause-t', 'Paused');
+    this.pauseBody = h('div', 'pause-b');
+    this.pauseNote = h('div', 'pause-n', 'The <b>Spike Drill</b> and the <b>Tutorial</b> are always on the start screen.');
+    box.append(this.pauseTitle, this.pauseBody);
     const resume = h('button', 'play-btn', 'RESUME');
     this.resumeBtn = resume;
     resume.onclick = () => this.cb.resume();
     const restart = h('button', 'ghost-btn', 'Restart drill');
     restart.onclick = () => this.cb.restart();
     const quit = h('button', 'ghost-btn', 'Quit to menu');
+    this.quitBtn = quit;
     quit.onclick = () => this.cb.quit();
     const sett = h('button', 'ghost-btn', 'Settings');
     sett.onclick = () => this.openSettings(sett);
+    this.pauseOnly = [sett, restart];
     this.skipTutorialBtn = h('button', 'ghost-btn', 'Skip tutorial');
     this.skipTutorialBtn.type = 'button';
     this.skipTutorialBtn.style.display = 'none';
     this.skipTutorialBtn.onclick = () => this.cb.skipTutorial();
-    box.append(resume, sett, restart, this.skipTutorialBtn, quit, buildTag());
+    box.append(resume, sett, restart, this.skipTutorialBtn, quit, this.pauseNote, buildTag());
     this.pause.append(box);
     parent.append(this.pause);
 
@@ -246,6 +251,14 @@ export class Menu {
 
   private settingsOpen = false;
   private resumeBtn: HTMLButtonElement | null = null;
+  private quitBtn!: HTMLElement;
+  private pauseTitle!: HTMLElement;
+  private pauseBody!: HTMLElement;
+  private pauseNote!: HTMLElement;
+  /** the pause menu's buttons that the end of the lesson leaves out */
+  private pauseOnly: HTMLElement[] = [];
+  /** the pause dialog is showing the end of the lesson (null: it is the pause menu) */
+  private finished: 'clean' | 'done' | null = null;
   /** the button that opened the settings: focus returns there when they close */
   private settingsOpener: HTMLElement | null = null;
 
@@ -345,11 +358,41 @@ export class Menu {
   showPause(v: boolean): void {
     const was = this.pauseVisible;
     this.pause.style.display = v ? 'flex' : 'none';
-    if (!v) this.closeSettings();
-    else {
+    if (!v) {
+      this.closeSettings();
+      this.finished = null;
+    } else {
       if (!was) this.resumeBtn?.focus();
       this.syncTutorial();
     }
+    this.syncPause();
+  }
+
+  /**
+   * The lesson's three balls are done. The same dialog as the pause menu (so Esc, the pointer
+   * and touch behave as they do there), saying so and offering what to do next: carry on in
+   * the Spike Drill you are standing in, or go and choose another drill. `clean`: the last
+   * ball was a Perfect or a Good.
+   */
+  showFinished(clean: boolean): void {
+    this.finished = clean ? 'clean' : 'done';
+    this.showPause(true);
+  }
+
+  private syncPause(): void {
+    const f = this.finished;
+    this.pause.setAttribute('aria-label', f ? 'Tutorial complete' : 'Paused');
+    this.pauseTitle.textContent = f ? "You're on the court." : 'Paused';
+    this.pauseBody.textContent = !f
+      ? ''
+      : f === 'clean'
+        ? 'That is the spike: run, jump, draw, hit. The tutorial is done.'
+        : 'That is the tutorial. The timing comes with reps.';
+    this.pauseBody.style.display = f ? '' : 'none';
+    this.pauseNote.style.display = f ? '' : 'none';
+    if (this.resumeBtn) this.resumeBtn.textContent = f ? 'KEEP HITTING' : 'RESUME';
+    this.quitBtn.textContent = f ? 'Choose another drill' : 'Quit to menu';
+    for (const b of this.pauseOnly) b.style.display = f ? 'none' : '';
   }
 
   /** the welcome or the drills on the start screen, and the pause-menu skip, from the stored flag and the live session */

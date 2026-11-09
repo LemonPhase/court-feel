@@ -503,10 +503,22 @@ describe('the lesson moves on', () => {
     rep(d, 'Perfect');
     rep(d, 'Good');
     rep(d, 'Perfect');
+    // the lesson is over the moment the last coach's line is done: the game takes it from there
     expect(steps).toEqual([1, 2, 3, 4]);
-    expect(d.label()).toBe(TEXT.handoff);
-    d.tick(T.handoff + 0.01);
     expect(d.active).toBe(false);
+    expect(d.clean).toBe(true);
+  });
+
+  it('the lesson ends after the full-speed rep whether or not it came off, and says which', () => {
+    const d = new TutorialDirector();
+    let done = -1;
+    d.onStep = (s) => (done = s);
+    d.begin(3);
+    rep(d, 'Late');
+    rep(d, 'Miss');
+    expect(done).toBe(4);
+    expect(d.active).toBe(false);
+    expect(d.clean).toBe(false);
   });
 
   it('a rep that did not come off is taken once more, then the lesson moves on anyway', () => {
@@ -518,8 +530,6 @@ describe('the lesson moves on', () => {
     expect(d.step).toBe(3);
     rep(d, 'Miss');
     expect(d.step).toBe(3);
-    rep(d, 'Early');
-    expect(d.step).toBe(4);
   });
 
   it('the next toss waits while the coach is talking, and any key moves on once the line has had a second', () => {

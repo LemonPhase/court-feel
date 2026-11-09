@@ -520,6 +520,11 @@ export class SpikeDrill extends Mode {
     this.updateShadow();
   }
 
+  refreshHud(): void {
+    this.setTitle();
+    this.updateScore();
+  }
+
   /** the approach for the set in the air (the first-run lesson reads it) */
   approachLine(): ApproachLine {
     return this.line;

@@ -221,6 +221,15 @@ game.onTutorialSkipped = (where) => {
   menu.syncTutorial();
 };
 
+// the lesson's three balls are done: say so and offer what to do next (carry on here, or choose a drill).
+// The drill underneath is paused, with the mouse free for the buttons.
+game.onTutorialDone = (clean) => {
+  if (game.stopped) return;
+  game.paused = true;
+  menu.showFinished(clean);
+  game.input.exitLock();
+};
+
 game.input.onPointerLockChange = (locked) => {
   if (!locked && !game.inMenu && !game.input.dragLook && !game.stopped) {
     if (performance.now() - skipNavAt < 500) return;

@@ -568,6 +568,20 @@ unit tests + a Playwright e2e that plays every drill through the real input path
 - Checked in headless Chrome with a clean profile: welcome → Enter → lesson; quit → "Welcome back", Continue; Skip → drills,
   flag `skipped`, then Mini Rally as libero plays Mini Rally as libero; a `done` profile opens on the drills.
 
+## Tutorial end: the game says it is done and offers what next (#25)
+- Report (Jack): after the third ball the player is just left in the Spike Drill. Say the tutorial is finished, offer to keep
+  trying or go elsewhere, and say that the Spike Drill and the tutorial can always be found again.
+- Before: a title, "You're on the court.", for 2.6 s, then the drill carried on with no word about what had happened or where
+  anything was.
+- Fix: when the coach's line about the third ball is done, the drill pauses and the pause dialog comes up as the end of the
+  lesson (`Menu.showFinished`, from `Game.onTutorialDone`): one line about it (clean hit, or "the timing comes with reps"),
+  **Keep hitting** (the Spike Drill you are standing in), **Choose another drill** (the start screen), and a note that the Spike
+  Drill and the Tutorial are always on the start screen. It is the pause dialog, so Esc, the pointer lock and touch behave as
+  they do there. The lesson ends at that moment (no hand-off timer), and the drill's own title and score line come back.
+- Checked in headless Chrome: a clean third ball → the prompt → Keep hitting → the next rep plays as the plain drill; two
+  third balls that did not come off → the prompt → Choose another drill → the start screen with the drills; the ordinary pause
+  menu afterwards is unchanged.
+
 ## Left-handed players (settings: hitting hand, #19)
 - Report (a player): "I'm a lefty and my athlete always hits with the right hand." Everything one-handed
   assumed a right hand: the contact point (`Athlete.idealContact`), the hitting arm in the animator, the
@@ -610,7 +624,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   beside the head with the left shoulder turned away; the stored hand is sanitised.
 
 ## Decisions
-- First-run tutorial v3 (issue #25) is a coach layer on Spike Drill, not a seventh mode: Outside, block off, three balls with less help each time. **Together:** the ball waits for you. At each moment (run, jump, draw, hit) time eases down and stops until you do it; on time, nothing stops. Buttons are read as held, never as fresh presses, so a button already down when its moment comes counts. The coach runs the hitter down the planned line and aims the ball: what you hold decides whether time runs. **Slow motion:** you drive at 0.6 speed with the same cues, nothing waits, the result is real. **Full speed:** the drill, with the contact dip. After each ball the coach says one thing (the first thing that went wrong); a rep is retried once, then the lesson moves on. A timing collar around the charge ring (gold / cyan / wood from the real spike windows) is on in the lesson and, after it, whenever Settings → Hints is on. This replaces v2's hard freezes (below, "Tutorial v3") and the tip stays out of the lesson.
+- First-run tutorial v3 (issue #25) is a coach layer on Spike Drill, not a seventh mode: Outside, block off, three balls with less help each time. **Together:** the ball waits for you. At each moment (run, jump, draw, hit) time eases down and stops until you do it; on time, nothing stops. Buttons are read as held, never as fresh presses, so a button already down when its moment comes counts. The coach runs the hitter down the planned line and aims the ball: what you hold decides whether time runs. **Slow motion:** you drive at 0.6 speed with the same cues, nothing waits, the result is real. **Full speed:** the drill, with the contact dip. After each ball the coach says one thing (the first thing that went wrong); a rep is retried once, then the lesson moves on. After the third ball the game says the tutorial is done and offers to keep hitting or choose another drill. A timing collar around the charge ring (gold / cyan / wood from the real spike windows) is on in the lesson and, after it, whenever Settings → Hints is on. This replaces v2's hard freezes (below, "Tutorial v3") and the tip stays out of the lesson.
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,
   and no CC0 pack ships volleyball-specific motions anyway, so the athlete is a procedurally

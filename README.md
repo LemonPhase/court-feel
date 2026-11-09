@@ -131,7 +131,10 @@ HIT**) and a cue under the action shows the one key to hold now.
 
 After each ball the coach says one thing about it: the first thing that went
 wrong, or that it was right. A rep that didn't come off is taken once more,
-then the lesson moves on anyway. On the floor, arrows lead from your start
+then the lesson moves on anyway. After the third ball the game stops and says
+the tutorial is done: **Keep hitting** carries on in the Spike Drill you are
+standing in, **Choose another drill** goes to the start screen, where the
+Spike Drill and the Tutorial always are. On the floor, arrows lead from your start
 down the run, a line marks where to plant (the jump carries you forward from
 it), and a spot marks where you hit from. The line and the spot turn green
 under your feet.
@@ -431,7 +434,7 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   sloppy, tip; `&hand=left` plays as a lefty). Unknown values are ignored: an
   unknown mode opens the menu, an unknown position falls back to OH.
   `?tutorial=0` starts the first-run lesson at the welcome (0 welcome,
-  1 together, 2 slow motion, 3 full speed, 4 hand-off). `cam=fp` and `touch=1`
+  1 together, 2 slow motion, 3 full speed). `cam=fp` and `touch=1`
   still apply.
 
 ## Errors and bug reports
