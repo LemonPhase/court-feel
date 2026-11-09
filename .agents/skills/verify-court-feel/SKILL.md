@@ -32,7 +32,7 @@ Start a session:
 
 Isolation:
 
-- One session per checkout. A second `launch` refuses while one runs.
+- One session per checkout. A second `launch` refuses while one runs. If two launches overlap, the later one gets the session and the earlier one fails and cleans up after itself.
 - Never drive a session you did not start. If `launch` says one is already running and it is not yours, start your own: prefix every command with `COURT_SESSION=<name>`. Sessions do not share ports, profiles or evidence.
 - A desktop and a touch session can run side by side the same way: `COURT_SESSION=phone .agents/skills/verify-court-feel/court.mjs launch --touch`.
 - A developer's own `npm run dev` on port 5173 is not touched and is not what you drive.
@@ -49,6 +49,7 @@ Read-only. Run it first, and again whenever a result looks off. It exits 0 when 
 |---|---|
 | `no session` | `launch` |
 | `supervisor pid ... is gone` | `stop` (clears what it left), then `launch` |
+| `the page did not answer`, or `a command has been running for N s` | The page is stuck, usually in an endless loop in the code under test or in an `eval`. `stop`, then `launch`. |
 | `dependencies missing` / `Chromium missing` | the command it names |
 | `the page reloaded since your last open` | You or someone edited a source file. Game state and the clock were reset. `open` again. |
 | `still loading or has no game` | Wait 3 seconds, then `open` |
@@ -72,6 +73,8 @@ Read-only. Run it first, and again whenever a result looks off. It exits 0 when 
 | `clock <manual\|real>`, `step <sec> [--until <js>]`, `wait <js>` | Time. See below. |
 | `state`, `events`, `errors`, `shot <name>`, `eval <js>` | Observation. |
 | `bot <perfect\|good\|sloppy\|tip\|off>` | Autopilot. A test hook. See below. |
+
+A command that gets no answer from the page fails after 60 seconds (`open` 150, `shot` 120, `step` 900, `wait` its `--timeout` plus 10), so one stuck command cannot block the session. `doctor` and `stop` never wait behind a running command.
 
 Every action command prints its result and one `state` line: the screen (`start`, `play`, `paused`, `settings`, `replay`, `crash`), the HUD title and score, and any grade, banner, message or call on screen. `state unchanged` means the same as after the previous command. A failed command prints `FAILED` and exits 1.
 
@@ -157,7 +160,7 @@ Proof standards:
 .agents/skills/verify-court-feel/court.mjs stop
 ```
 
-`stop` shuts down the supervisor and the dev server that `launch` recorded, by their process ids, and the browser with them. It removes the scratch state in `shots/verify/.sessions/<session>/` (browser profile, logs) and prints the evidence directory, which it never deletes. Run it when you are done, and after a failed run too. Stop each named session with the same `COURT_SESSION` it was launched with. After `stop`, list the evidence directory to confirm the proof is there.
+`stop` shuts down the supervisor and the dev server that `launch` recorded, and the browser with them. It identifies each by process id and start time, so a recycled pid from a dead session is never signalled. It removes the scratch state in `shots/verify/.sessions/<session>/` (browser profile, logs) and prints the evidence directory, which it never deletes. Run it when you are done, and after a failed run too. Stop each named session with the same `COURT_SESSION` it was launched with. After `stop`, list the evidence directory to confirm the proof is there.
 
 Do not kill `vite`, `node` or `chrome` by name: a developer's own dev server and browser may be running.
 
@@ -175,6 +178,7 @@ Do not kill `vite`, `node` or `chrome` by name: a developer's own dev server and
 
 ## Gotchas
 
+- Deleting `shots/verify/` or a session's folder under `shots/verify/.sessions/` ends that session: its supervisor notices within a few seconds and shuts everything down.
 - Editing a file under `src/` while a session runs reloads the page a few seconds later. The game goes back to wherever the URL puts it and the clock goes back to real. `open` again after every edit. Doctor warns when this happened.
 - A drill opened by link does not hold the pointer, because no click happened. `look` fails until you `click '#app > canvas'`. Keys and mouse buttons work without it.
 - The start screen plays a spike drill in the background. While `screen` is `start`, `game.mode` in `state` is that background drill, not a selection. Read `start.position` and `start.drill`.

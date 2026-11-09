@@ -105,8 +105,46 @@ const cwdOf = (pid) => {
     return null;
   }
 };
-/** a pid we recorded that is still ours: alive and, where /proc can tell, running from this checkout (not a recycled pid) */
-const ours = (pid) => !!pid && alive(pid) && (!fs.existsSync('/proc/self/cwd') || cwdOf(pid) === REAL_ROOT);
+/**
+ * When a process started, as an opaque string: clock ticks since boot from /proc, or the start date from ps
+ * where there is no /proc (macOS). A pid is reused after a reboot or a long uptime; a pid with its start time is not.
+ */
+const startOf = (pid) => {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    // the fields after "(command name)": the 20th of them is the start time
+    const ticks = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
+    if (ticks) return 'ticks:' + ticks;
+  } catch {
+    /* no /proc here, or the process is gone */
+  }
+  try {
+    const s = execFileSync('ps', ['-o', 'lstart=', '-p', String(pid)], { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+    return s ? 'ps:' + s : null;
+  } catch {
+    return null;
+  }
+};
+/** a process we recorded ({ pid, start }) that is still that same process, not a later one that got its pid */
+const ours = (proc) => !!proc?.pid && !!proc.start && alive(proc.pid) && startOf(proc.pid) === proc.start;
+const supervisorOf = (st) => ({ pid: st.pid, start: st.pidStart });
+const viteOf = (st) => ({ pid: st.vitePid, start: st.viteStart });
+/** each launch writes its token here; whoever wrote last owns the session (a supervisor that lost it exits) */
+const OWNER_FILE = path.join(SESSION_DIR, 'owner');
+const owns = (token) => {
+  try {
+    return fs.readFileSync(OWNER_FILE, 'utf8') === token;
+  } catch {
+    return false;
+  }
+};
+/** reject with `what` if `p` has not settled after `ms` */
+const withTimeout = (p, ms, what) => {
+  let t;
+  return Promise.race([p, new Promise((_, rej) => (t = setTimeout(() => rej(new Error(what)), ms)))]).finally(() => clearTimeout(t));
+};
 const git = (...args) => {
   try {
     return execFileSync('git', args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] })
@@ -341,7 +379,8 @@ async function supervisor() {
     closing = true;
     log('shutting down');
     try {
-      await context?.close();
+      // a stuck page can keep close() waiting: leaving the process ends the browser anyway
+      await withTimeout(Promise.resolve(context?.close()), 5000, 'the browser did not close within 5 s');
     } catch (e) {
       log('browser close:', String(e));
     }
@@ -353,6 +392,14 @@ async function supervisor() {
   };
   process.on('SIGTERM', () => shutdown(0));
   process.on('SIGINT', () => shutdown(0));
+  // The session record is the only way anyone can find and stop this process. If it is gone (deleted, or a
+  // later launch took the session over), leave: a supervisor nobody can reach must not keep running.
+  setInterval(() => {
+    if (!closing && !owns(opts.token)) {
+      log('the session record is gone or belongs to a later launch: exiting');
+      shutdown(1);
+    }
+  }, 2000);
 
   try {
     // 1. the dev server: this checkout's sources, loopback only, a port nobody else has
@@ -420,6 +467,8 @@ async function supervisor() {
     const clockIs = () => page.evaluate(() => (window.__court.manual ? 'manual' : 'real'));
     const touches = new Map();
     let shots = 0;
+    /** the command being run right now (doctor reports it when it has been running for long) */
+    let running = null;
 
     const cmds = {
       async ping() {
@@ -428,7 +477,7 @@ async function supervisor() {
       async health() {
         let page_;
         try {
-          page_ = await snap();
+          page_ = await withTimeout(snap(), 5000, 'the page did not answer within 5 s (it is busy or stuck)');
         } catch (e) {
           page_ = { error: String(e).split('\n')[0] };
         }
@@ -437,6 +486,7 @@ async function supervisor() {
           pageUrl: page.url(),
           page: page_,
           consoleProblems: consoleEntries.length,
+          busy: running ? { cmd: running.cmd, seconds: Math.round((Date.now() - running.since) / 1000) } : null,
           opens,
           reloadedSinceOpen: loads > loadsAtOpen,
         };
@@ -677,22 +727,31 @@ async function supervisor() {
     // 3. commands arrive one at a time over loopback HTTP
     let queue = Promise.resolve();
     let lastDigest = '';
+    // No command may hold the queue for ever: an endless loop in the page (in the game under test, or in an
+    // eval) would otherwise block every later command. Seconds; step and wait are long by nature.
+    const LIMITS = { step: 900, open: 150, shot: 120 };
     const handle = async ({ cmd, args = [], flags = {} }) => {
-      if (cmd === 'stop') return { ok: true, result: { stopping: true } };
       const fn = cmds[cmd];
       if (!fn) return { ok: false, error: `unknown command "${cmd}" (try: court.mjs help)` };
       const entry = { at: new Date().toISOString(), cmd, args, flags };
+      const limit = cmd === 'wait' ? Math.ceil(Number(flags.timeout ?? 30000) / 1000) + 10 : (LIMITS[cmd] ?? 60);
       let res;
+      running = { cmd: [cmd, ...args].join(' ').slice(0, 120), since: Date.now() };
       try {
-        const result = await fn(args, flags);
+        const result = await withTimeout(
+          fn(args, flags),
+          limit * 1000,
+          `no answer after ${limit} s. The page is probably stuck (an endless loop?). \`doctor\` shows its state; \`stop\` then \`launch\` gives a fresh page`,
+        );
         res = { ok: true, result };
       } catch (e) {
         res = { ok: false, error: String(e.message ?? e).split('\nCall log:')[0], ...(e.result ? { result: e.result } : {}) };
       }
+      running = null;
       if (!QUIET.has(cmd)) {
         let full = null;
         try {
-          full = await snap();
+          full = await withTimeout(snap(), 10000, 'the page did not answer within 10 s');
           const d = digest(full);
           const key = JSON.stringify({ ...d, simTime: 0 });
           // a page load always prints where it landed
@@ -719,11 +778,21 @@ async function supervisor() {
           resp.writeHead(403).end();
           return;
         }
-        queue = queue.then(async () => {
-          const out = await handle(msg).catch((e) => ({ ok: false, error: String(e) }));
-          resp.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out));
-          if (msg.cmd === 'stop') await shutdown(0);
-        });
+        const reply = (out) => resp.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out));
+        // stop and the health checks never wait behind a running command: they are how a stuck session is seen and ended
+        if (msg.cmd === 'stop') {
+          reply({ ok: true, result: { stopping: true } });
+          shutdown(0);
+          return;
+        }
+        if (msg.cmd === 'ping' || msg.cmd === 'health') {
+          cmds[msg.cmd]().then(
+            (result) => reply({ ok: true, result }),
+            (e) => reply({ ok: false, error: String(e.message ?? e) }),
+          );
+          return;
+        }
+        queue = queue.then(async () => reply(await handle(msg).catch((e) => ({ ok: false, error: String(e) }))));
       });
     });
     await new Promise((res) => server.listen(0, '127.0.0.1', res));
@@ -732,14 +801,21 @@ async function supervisor() {
     await cmds.open([''], { fresh: true });
     const first = await snap();
     if (first.screen !== 'start') throw new Error(`the app did not reach its start screen: ${JSON.stringify(first)}`);
+    const pidStart = startOf(process.pid);
+    const viteStart = startOf(vite.pid);
+    if (!pidStart || !viteStart)
+      throw new Error('cannot read process start times (neither /proc nor ps works here), so the session could not be stopped safely');
+    if (!owns(opts.token)) throw new Error('another launch took this session over while this one was starting');
     const state = {
       session: SESSION,
       pid: process.pid,
+      pidStart,
       port: server.address().port,
       token: opts.token,
       root: ROOT,
       base,
       vitePid: vite.pid,
+      viteStart,
       evidence,
       touch: !!opts.touch,
       build: first.build,
@@ -757,7 +833,7 @@ async function supervisor() {
 }
 
 // ---------------------------------------------------------------- the command line
-function send(state, cmd, args = [], flags = {}) {
+function send(state, cmd, args = [], flags = {}, timeoutMs = 0) {
   return new Promise((res, rej) => {
     const body = JSON.stringify({ token: state.token, cmd, args, flags });
     const req = http.request(
@@ -780,6 +856,7 @@ function send(state, cmd, args = [], flags = {}) {
         });
       },
     );
+    if (timeoutMs) req.setTimeout(timeoutMs, () => req.destroy(new Error(`no answer within ${timeoutMs / 1000} s`)));
     req.on('error', rej);
     req.end(body);
   });
@@ -824,23 +901,21 @@ async function doctor() {
   if (!st) {
     lines.push(['FAIL', `no session "${SESSION}" for this checkout: run \`${rel(SELF)} launch\``]);
   } else {
-    const up = alive(st.pid);
+    const up = ours(supervisorOf(st));
     lines.push(
       up
-        ? ['ok', `session "${SESSION}" supervisor pid ${st.pid}, started ${st.startedAt}`]
-        : ['FAIL', `supervisor pid ${st.pid} is gone (the session died): run stop to clear what it left, then launch`],
+        ? ['ok', `session "${SESSION}" supervisor pid ${st.pid}, started ${st.startedAt}, is the process launch started`]
+        : [
+            'FAIL',
+            `supervisor pid ${st.pid} is gone${alive(st.pid) ? ' (that pid now belongs to another process)' : ''}: the session died. Run stop to clear what it left, then launch`,
+          ],
     );
     if (up) {
       const cwd = cwdOf(st.pid);
-      if (cwd)
-        lines.push(
-          cwd === REAL_ROOT
-            ? ['ok', `it runs from this checkout (${ROOT})`]
-            : ['FAIL', `pid ${st.pid} runs from ${cwd}, not this checkout: not our session`],
-        );
+      if (cwd && cwd !== REAL_ROOT) lines.push(['FAIL', `pid ${st.pid} runs from ${cwd}, not this checkout: not our session`]);
       let h = null;
       try {
-        const r = await send(st, 'health');
+        const r = await send(st, 'health', [], {}, 15000);
         if (r.ok) h = r.result;
         else lines.push(['FAIL', `supervisor error: ${r.error}`]);
       } catch (e) {
@@ -853,12 +928,16 @@ async function doctor() {
             : ['FAIL', `port ${st.port} is answered by someone else (${JSON.stringify({ pid: h.pid, root: h.root })})`],
         );
         const web = await httpGet(h.base);
-        const viteCwd = cwdOf(h.vitePid);
         lines.push(
-          web.status === 200 && web.body.includes('<title>Court Feel</title>') && h.viteAlive && (!viteCwd || viteCwd === REAL_ROOT)
-            ? ['ok', `dev server ${h.base} (pid ${h.vitePid}) serves Court Feel from this checkout`]
-            : ['FAIL', `dev server ${h.base} (pid ${h.vitePid}) is not serving Court Feel from this checkout (HTTP ${web.status})`],
+          web.status === 200 && web.body.includes('<title>Court Feel</title>') && ours(viteOf(st))
+            ? ['ok', `dev server ${h.base} (pid ${h.vitePid}) serves Court Feel and is the process launch started`]
+            : ['FAIL', `dev server ${h.base} (pid ${h.vitePid}) is not serving Court Feel (HTTP ${web.status}), or is not our process`],
         );
+        if (h.busy && h.busy.seconds >= 30)
+          lines.push([
+            'WARN',
+            `a command has been running for ${h.busy.seconds} s: "${h.busy.cmd}". If the page is stuck, stop and launch again`,
+          ]);
         const head = git('rev-parse', '--short=7', 'HEAD');
         const dirty = (git('status', '--porcelain') ?? '').split('\n').filter(Boolean).length;
         const p = h.page ?? {};
@@ -905,7 +984,7 @@ async function doctor() {
 
 async function launch(flags) {
   const st = readState();
-  if (st && ours(st.pid))
+  if (st && ours(supervisorOf(st)))
     fail(
       `session "${SESSION}" is already running for this checkout (pid ${st.pid}, started ${st.startedAt}).\n` +
         `If you started it, keep using it (doctor tells you its state). If you did not, leave it alone and use your own:\n` +
@@ -914,11 +993,14 @@ async function launch(flags) {
   const pre = prerequisites();
   for (const [lvl, text] of pre) if (lvl !== 'ok') console.error(`${lvl} ${text}`);
   if (pre.some((l) => l[0] === 'FAIL')) process.exit(1);
-  if (!/^[\w-]+$/.test(SESSION)) fail('COURT_SESSION may only contain letters, digits, _ and -');
   // a dead session's leftovers (a crash, a reboot): stop whatever it left running, then start clean
   if (st) await stop(true);
   fs.rmSync(SESSION_DIR, { recursive: true, force: true });
   fs.mkdirSync(SESSION_DIR, { recursive: true });
+  // From here this launch owns the session. If another launch starts before this one is ready, it writes its own
+  // token and owns it instead: this one then fails, and its supervisor sees the change and exits by itself.
+  const token = crypto.randomBytes(16).toString('hex');
+  fs.writeFileSync(OWNER_FILE, token);
   const evidence = path.join(VERIFY_DIR, `${stamp()}-${SESSION}`);
   fs.mkdirSync(evidence, { recursive: true });
   const logFile = path.join(SESSION_DIR, 'supervisor.log');
@@ -930,16 +1012,21 @@ async function launch(flags) {
     env: {
       ...process.env,
       COURT_SESSION: SESSION,
-      COURT_SUPERVISOR: JSON.stringify({ evidence, touch: !!flags.touch, token: crypto.randomBytes(16).toString('hex') }),
+      COURT_SUPERVISOR: JSON.stringify({ evidence, touch: !!flags.touch, token }),
     },
   });
   let exited = null;
   child.on('exit', (code) => (exited = code ?? 1));
   child.unref();
   const t0 = Date.now();
-  while (Date.now() - t0 < 120000 && exited === null && !readState()) await sleep(200);
+  while (Date.now() - t0 < 120000 && exited === null && owns(token) && readState()?.token !== token) await sleep(200);
+  if (!owns(token))
+    fail(
+      `another launch of session "${SESSION}" started while this one was starting, and took the session over.\n` +
+        `This launch has stopped itself. Run doctor to see the session that is running.`,
+    );
   const ready = readState();
-  if (!ready) {
+  if (ready?.token !== token) {
     if (exited === null) {
       try {
         process.kill(-child.pid, 'SIGTERM');
@@ -965,17 +1052,19 @@ async function stop(quiet = false) {
     if (!quiet) console.log(`no session "${SESSION}" is running for this checkout`);
     return;
   }
-  // exactly the two processes launch recorded (the browser belongs to the supervisor and goes with it), never by name
-  const pids = [st.pid, st.vitePid];
-  const left = () => pids.filter(ours);
+  // Exactly the two processes launch recorded, each checked by pid and start time, so a pid that was reused by
+  // another program is never signalled. The browser belongs to the supervisor and goes with it.
+  const procs = [supervisorOf(st), viteOf(st)];
+  const left = () => procs.filter(ours).map((p) => p.pid);
+  const wasRunning = left().length > 0;
   const gone = async (ms) => {
     const t0 = Date.now();
     while (Date.now() - t0 < ms && left().length) await sleep(100);
     return !left().length;
   };
-  if (ours(st.pid)) {
+  if (ours(supervisorOf(st))) {
     try {
-      await send(st, 'stop');
+      await send(st, 'stop', [], {}, 5000);
     } catch {
       /* not answering: signal it below */
     }
@@ -1008,7 +1097,11 @@ async function stop(quiet = false) {
   }
   if (quiet) return;
   const files = fs.existsSync(st.evidence) ? fs.readdirSync(st.evidence) : [];
-  console.log(`stopped   session ${SESSION} (supervisor ${st.pid}, dev server ${st.vitePid})`);
+  console.log(
+    wasRunning
+      ? `stopped   session ${SESSION} (supervisor ${st.pid}, dev server ${st.vitePid})`
+      : `cleared   the record of session ${SESSION}: its processes were already gone, nothing was signalled`,
+  );
   console.log(`evidence  ${rel(st.evidence)}/ (${files.length} files, ${files.filter((f) => f.endsWith('.png')).length} screenshots)`);
 }
 
@@ -1021,12 +1114,14 @@ async function main() {
     JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).name !== 'court-feel'
   )
     fail(`${ROOT} is not a court-feel checkout (this helper must live in <checkout>/.agents/skills/verify-court-feel/)`);
+  // the session name becomes a directory that stop removes: nothing but a plain name
+  if (!/^[\w-]+$/.test(SESSION)) fail('COURT_SESSION may only contain letters, digits, _ and -');
   const { args, flags } = parseArgs(rest);
   if (cmd === 'launch') return launch(flags);
   if (cmd === 'doctor') return doctor();
   if (cmd === 'stop') return stop();
   const st = readState();
-  if (!st || !ours(st.pid)) fail(`no running session "${SESSION}" for this checkout: run \`${rel(SELF)} launch\` (or doctor)`);
+  if (!st || !ours(supervisorOf(st))) fail(`no running session "${SESSION}" for this checkout: run \`${rel(SELF)} launch\` (or doctor)`);
   let res;
   try {
     res = await send(st, cmd, args, flags);
