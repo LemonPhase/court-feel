@@ -111,8 +111,13 @@ npm run format     # format the code with Prettier
 Click **PLAY** (or press Enter) on the start screen; the game captures the
 mouse (pointer lock). **Esc** pauses and opens settings.
 
-The first PLAY on a browser teaches one Outside spike in three balls, with
-less help each time. A strip names the four parts (**RUN › JUMP › DRAW ›
+A first visit opens on a welcome, not the menu: **Start the tutorial**, or
+**Skip to the drills**. (Someone who left part-way is offered the rest:
+**Continue the tutorial**.) After that the start screen is the positions and
+drills, PLAY always plays the drill you picked, and **Tutorial** runs the
+lesson again.
+
+The lesson teaches one Outside spike in three balls, with less help each time. A strip names the four parts (**RUN › JUMP › DRAW ›
 HIT**) and a cue under the action shows the one key to hold now.
 
 1. **Together: the ball waits for you.** At each moment (run, jump, draw the
@@ -132,10 +137,10 @@ it), and a spot marks where you hit from. The line and the spot turn green
 under your feet.
 
 **Skip tutorial** is in the corner the whole time (and in the pause menu),
-including while the mouse is locked. The drill cards stay open: double-click
-one to start that drill instead. It is remembered in this browser
-(`courtFeel.tutorial.v1`: `done`, `skipped`, or `in_progress:` plus the step).
-**Replay tutorial** is on the start screen and in Settings. The lesson does
+including while the mouse is locked. It is remembered in this browser
+(`courtFeel.tutorial.v1`: `done`, `skipped`, or `in_progress:` plus the step);
+taking it again once it is done or skipped changes nothing. **Tutorial** is
+on the start screen, and **Replay tutorial** in Settings. The lesson does
 not teach the tip (a tap of the attack button) or aiming. First and third
 person both stay available (V).
 

@@ -383,6 +383,8 @@ export class Game {
   }
 
   stopMode(): void {
+    // quitting to the menu part-way through the lesson leaves it (it is offered again from where it stopped)
+    this.tutorial.leave();
     this.mode?.teardown();
     this.mode = null;
     this.judge.disarm();

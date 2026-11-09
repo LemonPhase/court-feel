@@ -154,9 +154,21 @@ export function writeTutorialFlag(value: string, storage?: TutorialStorage | nul
   }
 }
 
-/** PLAY offers the tutorial until this browser finished or skipped it */
+/** the lesson has not been finished or skipped in this browser */
 export function tutorialPending(flag: string | null): boolean {
   return flag !== 'done' && flag !== 'skipped';
+}
+
+/**
+ * What the start screen offers a visitor: the lesson to someone who has never been here
+ * ('new'), the rest of it to someone who left part-way ('resume'), nothing once it has been
+ * finished or skipped.
+ */
+export type TutorialOffer = 'new' | 'resume' | null;
+
+export function tutorialOffer(flag: string | null): TutorialOffer {
+  if (!tutorialPending(flag)) return null;
+  return resumeStep(flag) >= 1 ? 'resume' : 'new';
 }
 
 /** a saved lesson resumes at its rep (an older build saved steps up to 6: those were past the guided swing) */
@@ -727,10 +739,12 @@ export class Tutorial {
   private out: GuideOut = idleOut();
   private runHeld = false;
   private moveHeld = false;
+  /** this browser already finished or skipped the lesson: taking it again leaves that as it is */
+  private settled = false;
 
   constructor(private g: Game) {
     this.director.onStep = (step) => {
-      writeTutorialFlag(step >= LAST_STEP ? 'done' : `in_progress:${step}`);
+      this.save(step);
       this.applyChrome();
     };
     this.director.onStuck = () => this.g.hud.setNudge(true);
@@ -806,7 +820,14 @@ export class Tutorial {
   begin(opts: TutorialBegin = {}): void {
     const step = clampStep(opts.step !== undefined ? opts.step : opts.replay ? 0 : resumeStep(readTutorialFlag()));
     this.out = idleOut();
+    this.settled = !tutorialPending(readTutorialFlag());
     this.director.begin(step);
+    this.save(step);
+  }
+
+  /** remember how far the lesson has got (a lesson taken again by someone who is done with it changes nothing) */
+  private save(step: TutorialStep): void {
+    if (this.settled) return;
     writeTutorialFlag(step >= LAST_STEP ? 'done' : `in_progress:${step}`);
   }
 
@@ -829,12 +850,25 @@ export class Tutorial {
     this.out = idleOut();
     this.g.snapTutor();
     this.director.skip();
-    writeTutorialFlag('skipped');
+    if (!this.settled) writeTutorialFlag('skipped');
     this.clearChrome();
     if (where === 'drill') this.g.mode?.restartRep(true);
     this.g.hud.dip();
     this.g.onTutorialSkipped?.(where);
     return where;
+  }
+
+  /**
+   * Leave the lesson without finishing or skipping it (quit to the menu): it stops here, and the
+   * saved step stays, so the start screen offers the rest of it next time.
+   */
+  leave(): void {
+    if (!this.director.active) return;
+    this.cancelAction();
+    this.out = idleOut();
+    this.g.snapTutor();
+    this.director.skip();
+    this.clearChrome();
   }
 
   /**

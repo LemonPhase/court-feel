@@ -553,6 +553,21 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   - The whole lesson with a scripted player on the real controls: together Perfect → slow Perfect → full speed Good (it ran
     straight at the net instead of down the arrows: "reaching"), flag `done`.
 
+## Tutorial entry: a first visit opens on a welcome (#25)
+- Report (Jack): "I'm not sure this is offered to people who have never visited this website, because I have."
+- What a new visitor got: the full start screen (five positions, six drills, the controls), one 12 px line saying PLAY teaches a
+  spike, and a PLAY that started the lesson whatever position and drill they had picked (Mini Rally as libero → the Outside
+  spike lesson). "Replay tutorial" was offered to people who had never taken it. Quitting to the menu part-way left the lesson
+  running: the next drill started with its HUD and its rules.
+- Fix:
+  - While the lesson is still on offer (`tutorialOffer`: never visited, or left part-way) the start screen is a welcome with two
+    buttons, **Start the tutorial** (Enter) and **Skip to the drills**. Skipping is remembered. Left part-way: **Continue**.
+  - PLAY always plays what you picked. The start screen's button is **Tutorial**.
+  - Quit to menu leaves the lesson (`Tutorial.leave`), keeping the saved step; Restart drill in the lesson restarts its rep.
+  - Taking the lesson again once it is done or skipped does not write the flag, so quitting a replay does not bring the welcome back.
+- Checked in headless Chrome with a clean profile: welcome → Enter → lesson; quit → "Welcome back", Continue; Skip → drills,
+  flag `skipped`, then Mini Rally as libero plays Mini Rally as libero; a `done` profile opens on the drills.
+
 ## Left-handed players (settings: hitting hand, #19)
 - Report (a player): "I'm a lefty and my athlete always hits with the right hand." Everything one-handed
   assumed a right hand: the contact point (`Athlete.idealContact`), the hitting arm in the animator, the

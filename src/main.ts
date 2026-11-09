@@ -9,7 +9,7 @@ import type { ModeId } from './game/modes/mode';
 import type { PositionId } from './config';
 import { showCrashScreen } from './ui/crashScreen';
 import { TouchControls, wantsTouch } from './ui/touchControls';
-import { readTutorialFlag, tutorialPending } from './game/tutorial';
+import { readTutorialFlag, tutorialOffer, writeTutorialFlag } from './game/tutorial';
 
 const app = document.getElementById('app')!;
 
@@ -113,8 +113,11 @@ const menu = new Menu(app, settings, {
   skipTutorial() {
     game.tutorial.requestSkip();
   },
-  tutorialPending() {
-    return tutorialPending(readTutorialFlag());
+  tutorialOffer() {
+    return tutorialOffer(readTutorialFlag());
+  },
+  declineTutorial() {
+    writeTutorialFlag('skipped');
   },
   tutorialActive() {
     return game.tutorial.active;
@@ -123,7 +126,9 @@ const menu = new Menu(app, settings, {
   restart() {
     if (game.stopped) return;
     menu.showPause(false);
-    game.startMode(lastPlay.mode, lastPlay.pos);
+    // restarting during the lesson restarts the rep it is on
+    if (game.tutorial.active) game.beginTutorial({ step: game.tutorial.step });
+    else game.startMode(lastPlay.mode, lastPlay.pos);
     game.input.clearEdges();
     game.paused = false;
     game.input.requestLock();

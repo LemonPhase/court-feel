@@ -13,6 +13,7 @@ import {
   reached,
   readTutorialFlag,
   resumeStep,
+  tutorialOffer,
   tutorialPending,
   writeTutorialFlag,
   type GuideFacts,
@@ -178,6 +179,17 @@ describe('tutorial flag', () => {
     expect(tutorialPending('skipped')).toBe(false);
     expect(resumeStep('nope')).toBe(0);
     expect(resumeStep('in_progress:9')).toBe(0);
+  });
+
+  it('the start screen offers the lesson to a new visitor, the rest of it to one who left part-way, and nothing after that', () => {
+    expect(tutorialOffer(null)).toBe('new');
+    // left during the welcome line: nothing has been played yet
+    expect(tutorialOffer('in_progress:0')).toBe('new');
+    expect(tutorialOffer('in_progress:2')).toBe('resume');
+    expect(tutorialOffer('done')).toBeNull();
+    expect(tutorialOffer('skipped')).toBeNull();
+    // a value this build does not know is a visitor it has not met
+    expect(tutorialOffer('nope')).toBe('new');
   });
 
   it('a lesson saved by the older build past its guided swing resumes at the full-speed rep', () => {
