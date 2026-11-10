@@ -427,7 +427,8 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   geometries, textures or shader programs grow over the soak. Frame time, draw calls and heap are reported,
   not asserted. Screenshots and `report.json` go to `scripts/out/` (in CI:
   the `e2e-report` artifact). The dev server uses port 5199 (`E2E_PORT`
-  changes it; `SOAK` sets the soak length in seconds). First time: `npx
+  changes it; `SOAK` sets the soak length in seconds and `PERF_FRAMES` the
+  frames the perf numbers are taken over, 120 each; CI runs 30 of both). First time: `npx
   playwright install chromium`.
 * URL shortcuts for quick testing: `?mode=spike&pos=OH&cam=fp&bot=perfect`
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,
