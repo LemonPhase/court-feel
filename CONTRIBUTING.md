@@ -136,21 +136,51 @@ each rule of the principle. Answer them in the pull request template.
 
 ## Pull requests
 
-1. Branch from `main` and keep each pull request to one change.
+1. Branch from `main` and keep each pull request to one change. Name the
+   branch **`<type>/<short-description>`**, in lowercase with hyphens, with
+   a type from the table below: `feat/setter-calls-the-pass`,
+   `fix/crash-screen-input`, `docs/pr-conventions`.
 2. Write commit messages and the pull request title as
-   **`Area: what the player notices`**, in plain words. The area is a drill,
-   a system or a screen. Examples from the history:
-   * `Mini Rally: the setter calls the pass (HIGH! when out of system)`
-   * `Replay: record the spike drill's block (spawned on B) and replay the touch`
-   * `Start screen: compact layout for portrait phones`
+   [Conventional Commits](https://www.conventionalcommits.org/):
+   **`type(area): what the player notices`**, in plain words. The area is a
+   drill, a system or a screen, in lowercase. Leave it out when the change
+   has no single area.
+
+   | Type       | Use it for                                              |
+   | ---------- | ------------------------------------------------------- |
+   | `feat`     | something new the player can do, see, hear or feel      |
+   | `fix`      | something that was wrong and is now right               |
+   | `perf`     | the same behaviour, running faster or smoother          |
+   | `refactor` | code reshaped, with nothing changed for the player      |
+   | `test`     | unit tests or the end-to-end run only                   |
+   | `docs`     | the README, PROGRESS.md, this guide, screenshots        |
+   | `ci`       | the GitHub workflows                                    |
+   | `chore`    | tooling, dependencies, agent files and other housework |
+
+   Examples, from the history, in this format:
+   * `feat(rally): the setter calls the pass (HIGH! when out of system)`
+   * `feat(start): compact layout for portrait phones`
+   * `fix(crash): input stays with the crash screen, and the game goes silent`
+   * `test(e2e): fresh pages no longer wait for frames an earlier phase left queued`
+
+   For `feat`, `fix` and `perf` the description says what the player
+   notices. For the other types it says what changes for the next
+   contributor. Commits from before this rule start with `Area:` and have
+   no type. Leave them as they are.
 3. Fill in the [pull request template](.github/pull_request_template.md).
-4. CI runs typecheck, tests and the build on every pull request, and it must
+4. Keep the branch up to date by rebasing it on `main`: `git fetch origin`,
+   `git rebase origin/main`, then `git push --force-with-lease`. Merge `main`
+   into the branch only when a rebase is not possible, for example when
+   someone else has built on your branch or you cannot force-push.
+5. CI runs typecheck, tests and the build on every pull request, and it must
    be green. Never skip or delete a test to get there.
-5. Vercel builds a **preview deployment** for every pull request. Share the
+6. Vercel builds a **preview deployment** for every pull request. Share the
    link with someone who plays: it's the quickest way to find out whether it
    feels like the court.
-6. A pull request is merged once CI is green, it has been reviewed and, for
-   changes to the feel, someone has played the preview.
+7. A pull request is merged once CI is green, it has been reviewed and, for
+   changes to the feel, someone has played the preview. GitHub deletes the
+   branch when the pull request is merged, so start the next change on a new
+   branch from `main`.
 
 ## License
 

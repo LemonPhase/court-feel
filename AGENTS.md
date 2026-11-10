@@ -42,7 +42,10 @@ Read the **Decisions** list at the end of [PROGRESS.md](PROGRESS.md) and search 
 ## Git
 
 - Branch from `main`. One change per pull request. Fill in `.github/pull_request_template.md`.
-- Commit and pull request titles are `Area: what the player notices`, in plain words: `Mini Rally: the setter calls the pass (HIGH! when out of system)`.
+- Name the branch `<type>/<short-description>`, in lowercase with hyphens: `feat/setter-calls-the-pass`, `fix/crash-screen-input`. If your tool will only push to a branch it named itself (`claude/…`, `cursor/…`), keep that name.
+- Commit and pull request titles are Conventional Commits, `type(area): what the player notices`, in plain words: `feat(rally): the setter calls the pass (HIGH! when out of system)`. The types are `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `ci` and `chore`. [CONTRIBUTING.md](CONTRIBUTING.md#pull-requests) says when to use each.
+- Update a branch by rebasing it on `origin/main` and pushing with `--force-with-lease`. If the rebase or the force-push is not possible, merge `main` in and say so in the pull request.
+- GitHub deletes a branch when its pull request is merged. Start the next change on a new branch from `main`.
 
 ## Boundaries
 
