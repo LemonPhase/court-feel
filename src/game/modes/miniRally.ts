@@ -1,6 +1,6 @@
-import * as THREE from 'three';
-import { COURT } from '../../config';
+import { AI } from '../../config';
 import { netYaw } from '../../ai/brain';
+import { serveAim } from '../../ai/server';
 import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
@@ -259,12 +259,16 @@ export class MiniRally extends Mode {
           this.phase = 'serve';
           this.t = 0;
           const recv = this.servingSide === 1 ? this.away : this.home;
-          // aim the serve at a random receiver, sometimes at the user
+          // a jump serve or a float, at the seams, the deep corners, short or at a passer (the user too)
           const passers = (['OH1', 'OH2', 'L'] as const).map((s) => recv.players.get(s)).filter((a) => a !== undefined);
-          const tgt = passers[Math.floor(g.rng.next() * passers.length)];
-          const aim = new THREE.Vector3(tgt.pos.x + g.rng.gauss() * 0.9, 0, tgt.pos.z + g.rng.gauss() * 0.9);
-          aim.x = Math.max(-COURT.halfWidth + 0.4, Math.min(COURT.halfWidth - 0.4, aim.x));
-          (this.servingSide === 1 ? this.home : this.away).serve(aim);
+          const jump = g.rng.next() < AI.serve.jump;
+          const aim = serveAim(
+            passers.map((a) => a.pos),
+            recv.side,
+            g.rng,
+            jump,
+          );
+          (this.servingSide === 1 ? this.home : this.away).serve(aim, jump);
         }
         break;
       case 'serve':

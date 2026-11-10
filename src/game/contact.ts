@@ -473,7 +473,10 @@ export class ContactSystem {
     if (dig && grade === 'Good' && incoming > 22) grade = 'Late';
     const skill = a.stats.ballControl;
     const errBase = grade === 'Perfect' ? CONTACT.passErrPerfect : grade === 'Good' ? CONTACT.passErrGood : CONTACT.passErrOk;
-    const err = errBase * (1.3 - skill * 0.5) * (dig ? 1.3 : 1);
+    // a hard serve or spike, or a passer still on the move, comes off the arms with less control
+    const moving = clamp01(Math.hypot(a.vel.x, a.vel.z) / a.stats.approachSpeed);
+    const pressure = 1 + CONTACT.passSpeedErr * fast + CONTACT.passMoveErr * moving;
+    const err = errBase * (1.3 - skill * 0.5) * (dig ? 1.3 : 1) * pressure;
     const T = h.passTarget(a);
     const ang = h.rand() * Math.PI * 2;
     const rad = err * Math.sqrt(h.rand());
@@ -713,8 +716,11 @@ export class ContactSystem {
     return true;
   }
 
-  /** Q: toss for a serve (ball appears in the tossing hand) */
-  serveToss(a: Athlete): boolean {
+  /**
+   * Q: toss for a serve (ball appears in the tossing hand), `above` m over the standing reach and
+   * `forward` m ahead by the time it is back at the hand
+   */
+  serveToss(a: Athlete, forward = 0.25, above = 1.15): boolean {
     const h = this.host;
     if (!h.canServe(a)) return false;
     if (a.state !== 'ground') return false;
@@ -723,10 +729,10 @@ export class ContactSystem {
     const r = a.hitSide(_r);
     const p = { x: a.pos.x + f.x * 0.3 + r.x * 0.12, y: a.pos.y + a.height * 0.82, z: a.pos.z + f.z * 0.3 + r.z * 0.12 };
     // toss to ~1.1 m above standing reach, drifting forward for a jump serve approach
-    const apex = a.standReach + 1.15;
+    const apex = a.standReach + above;
     const vy = Math.sqrt(2 * BALL.gravity * (apex - p.y));
     const tUp = vy / BALL.gravity;
-    const fwd = 0.25 / (tUp * 2);
+    const fwd = forward / (tUp * 2);
     h.ball.launch(p, { x: f.x * fwd + r.x * 0.05, y: vy, z: f.z * fwd + r.z * 0.05 }, { x: 0, y: 0, z: 0 }, 0, h.simTime);
     h.ball.lastTouch = { athlete: a, kind: 'feed', t: h.simTime - 1, side: a.side };
     a.startAction('toss', h.simTime);

@@ -252,7 +252,7 @@ export class TeamPlayer implements Brain {
     const needSpeed = left > 0.05 ? dist / left : 1e9;
     const d = moveTo(a, sx, sz, { face: dist < 1.1 ? face : undefined, arrive: 0.35, sprintDist: 1e9 });
     a.cmd.sprint = dist > 0.9 && needSpeed > a.stats.shuffleSpeed * 0.75;
-    if (this.pressT < 0) this.err = g.rng.gauss() * (0.03 + (1 - this.skill) * 0.12) - (d > 0.8 ? 0.1 : 0);
+    if (this.pressT < 0) this.err = g.rng.gauss() * (0.03 + (1 - this.skill) * 0.12) * (1 + AI.passPressure * fast) - (d > 0.8 ? 0.1 : 0);
     // anything that is not actually in progress (a block that is over, a set that never
     // got its ball, a finished swing) gives way to the pass
     const act = a.action;
@@ -593,7 +593,9 @@ export class TeamAI {
       const theirBall = lt && lt.side !== this.side && lt.kind !== 'block';
       const ourBall = lt && lt.side === this.side && lt.kind !== 'block';
       const ourBlock = lt && lt.side === this.side && lt.kind === 'block';
-      const inBounds = Math.abs(p.x) < COURT.halfWidth + 0.3 && Math.abs(p.z) < COURT.halfLength + 0.3;
+      // a ball that will land clearly out is let go (judged where it lands, not where it is played)
+      const land = pred.land;
+      const inBounds = Math.abs(land.x) < COURT.halfWidth + AI.outJudge && Math.abs(land.z) < COURT.halfLength + AI.outJudge;
       // the receiver sticks to one ball, unless the ball is no longer going where they were sent
       const strayed = comingToUs && tDown > 0 && Math.hypot(p.x - this.receiverAt.x, p.z - this.receiverAt.z) > 1.5;
       const receive = (serve: boolean, exclude: Athlete | null) => {
@@ -842,11 +844,11 @@ export class TeamAI {
   }
 
   /** begin a serve by this team's server */
-  serve(target: THREE.Vector3): Athlete {
+  serve(target: THREE.Vector3, jump = false): Athlete {
     const server = this.players.get(this.userSlot === 'OH2' ? 'OPP' : 'OH2')!;
     const b = this.brains.get(server)!;
     b.job = 'serve';
-    b.server.serve(target, this.side * -2.5);
+    b.server.serve(target, this.side * -2.5, jump);
     return server;
   }
 }

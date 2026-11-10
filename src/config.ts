@@ -290,6 +290,13 @@ export const CONTACT = {
   passErrPerfect: 0.15,
   passErrGood: 0.6,
   passErrOk: 1.6,
+  /**
+   * The pass error grows with the ball's speed (x (1 + `passSpeedErr`) for a ball arriving at 22 m/s
+   * or more, from 12 m/s up) and with the passer still moving (x (1 + `passMoveErr`) at a full run):
+   * faster jump serves give clearly worse receptions (pro men, Masaryk University 2024).
+   */
+  passSpeedErr: 1.5,
+  passMoveErr: 1.0,
 };
 
 export const ASSIST = {
@@ -595,6 +602,35 @@ export const AI = {
    * and 0.75 for the quick: about one in five balls in system, fewer off a bad pass.
    */
   pipe: { inSystem: 0.6, outOfSystem: 0.35 },
+  /**
+   * Mini Rally serves (`src/ai/server.ts`). `jump` of the serves are jump serves: the server starts
+   * `jumpBack` m behind the end line, tosses the ball `jumpTossHigh` m over their standing reach and
+   * `jumpToss` m forward, and meets it at the top of a run-up and jump; the rest are standing floats. The target is the seam between two passers,
+   * deep in zone 1 or 5 (`deepIn` m inside the corner), short (`shortZ` m off the net, floats only)
+   * or at a passer, weighted `seam` / `deep` / `short` / `body`, `spread` m (1 sd) around it before
+   * the server's own error: their swing timing is off by `floatErr` / `jumpErr` s (1 sd). The jump
+   * serve is the riskiest serve: it misses most (FIVB beach: over 20% of jump serves are errors;
+   * men's indoor studies: the jump serve has the highest error rate).
+   */
+  serve: {
+    jump: 0.6,
+    jumpBack: 3.0,
+    jumpToss: 1.4,
+    jumpTossHigh: 2.6,
+    floatErr: 0.07,
+    jumpErr: 0.16,
+    seam: 0.45,
+    deep: 0.25,
+    short: 0.1,
+    body: 0.2,
+    deepIn: 1.0,
+    shortZ: 3.5,
+    spread: 0.6,
+  },
+  /** an AI player lets a ball go that will land more than this (m) out; closer to the line it is too close to call and played */
+  outJudge: 0.2,
+  /** an AI passer's platform timing error grows by this factor at a ball arriving at 22 m/s or more (from 12 m/s up): less time to read it */
+  passPressure: 1.0,
   /** a pass the setter takes further than this (m) from their spot is out of system: high balls only, no quick */
   outOfSystem: 1.6,
   /** an out-of-system set (and a backup's set, when the setter played the first ball) goes this much (m) higher */
