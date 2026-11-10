@@ -15,6 +15,8 @@ const GRADE_CLASS: Record<Grade, string> = {
 export function translateKeyMarkup(t: string, m: Record<string, string>): string {
   t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
   t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
+  // the REPLAY button names itself: "REPLAY last attempt", not "REPLAY replay last attempt"
+  t = t.replace(/(<kbd>REPLAY<\/kbd>) replay /g, '$1 ');
   return t.replace(/with the mouse/g, 'by dragging');
 }
 

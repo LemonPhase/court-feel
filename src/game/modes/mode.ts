@@ -5,6 +5,7 @@ import type { ContactEvent } from '../contact';
 import type { Game } from '../game';
 import type { Outcome } from '../judge';
 import { makeRingTexture } from '../../world/textures';
+import { drillBall } from '../attempt';
 
 export type ModeId = 'free' | 'spike' | 'block' | 'receive' | 'setter' | 'rally';
 
@@ -49,6 +50,13 @@ export abstract class Mode {
   ballDead(): boolean {
     const b = this.g.ball;
     return !b.active || b.state.rest;
+  }
+  /**
+   * The ball in the air is the user's to play: if it comes down in their court with no attempt at
+   * it, that is the rep they review (R). Drills with teammates who play the ball on narrow it down.
+   */
+  userBall(): boolean {
+    return drillBall(this.g.ball.lastTouch, this.g.me.side);
   }
   passTarget?(a: Athlete): { x: number; y: number; z: number; apex: number };
   setOptions?(a: Athlete): import('../contact').SetOption[];

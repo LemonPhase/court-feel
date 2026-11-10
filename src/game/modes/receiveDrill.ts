@@ -215,6 +215,12 @@ export class ReceiveDrill extends Mode {
     this.coach.cmd.faceYaw = yawFromDir(-SETTER_TARGET.x - this.coach.pos.x, -SETTER_TARGET.z - this.coach.pos.z);
   }
 
+  /** only the serve or the attack is the user's: what their setter and hitter do with the pass is not */
+  userBall(): boolean {
+    const lt = this.g.ball.lastTouch;
+    return !!lt && lt.side === -1 && lt.kind !== 'block';
+  }
+
   onContact(ev: ContactEvent): void {
     const g = this.g;
     if (ev.athlete === g.me && (ev.kind === 'pass' || ev.kind === 'dig')) {

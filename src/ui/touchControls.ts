@@ -291,7 +291,7 @@ export class TouchControls {
     const wantsSet = g.contact.wantsSet(me);
     const want = wantsSet ? 'SET' : 'BLOCK';
     if (blockLabel.textContent !== want) blockLabel.textContent = want;
-    // the last highlight can be replayed once the ball is dead
+    // the last attempt can be replayed once the ball is dead
     const replay = g.replayAvailable() && !g.fx.replaying;
     const rd = replay ? '' : 'none';
     if (this.replayBtn.style.display !== rd) this.replayBtn.style.display = rd;
