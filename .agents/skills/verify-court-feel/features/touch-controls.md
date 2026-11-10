@@ -27,7 +27,7 @@ Preconditions:
 - `court doctor` ends with `HEALTHY` and its page line says `touch session`.
 - The recipe uses the manual clock (a test hook). Name it in the proof.
 
-- **Start by tapping.** Open the app as a new player and start the Spike Drill with taps. Run `court open --fresh`, `court tap '.mode-card:has(.mode-t:text-is("Spike Drill"))'` and `court tap 'role=button[name="PLAY"]'`. The state line shows `"screen":"play"` and `"message":"Approach: the stick out · plant: JUMP · hold HIT, release to hit · 1-3 set call"`. Run `court state`: `game.touchControls` is `true`, `game.pointerLocked` is `false` and `hud.hint` names buttons (`JUMP`, `CAM`, `RESET`), not keys.
+- **Start by tapping.** Open the app as a new player and start the Spike Drill with taps. Run `court open --fresh`, `court tap 'role=button[name="Skip to the drills"]'`, `court tap '.mode-card:has(.mode-t:text-is("Spike Drill"))'` and `court tap 'role=button[name="PLAY"]'`. The state line shows `"screen":"play"` and `"message":"Approach: the stick out · plant: JUMP · hold HIT, release to hit · 1-3 set call"`. Run `court state`: `game.touchControls` is `true`, `game.pointerLocked` is `false` and `hud.hint` names buttons (`JUMP`, `CAM`, `RESET`), not keys.
 - **Freeze the clock.** Run `court clock manual` and `court shot touch-layout`: the stick ring at the bottom left, PASS, BLOCK, JUMP and HIT at the bottom right, set-call chips `1 2 3` and `VS BLOCK` at the top left, pause, `CAM` and `RESET` at the top right.
 - **Call a set.** Tap chip `2`. Run `court touch start 4 '.touch [data-btn="d2"]'`, `court touch end 4` and `court step 0.05`. The state line shows `"title":"Spike Drill · Outside go"`.
 - **Stick.** Put the left thumb down and push it up to the ring. Run `court touch start 1 160 300`, `court touch move 1 160 210`, `court step 0.3` and `court state`. `game.stick` is `{"x":0,"y":1,"sprint":true}` and `game.me.z` is lower than before: the athlete is running at the net.
@@ -43,6 +43,7 @@ Preconditions:
 ## Gotchas
 
 - `court tap` works on menu controls only. The pad's buttons take no pointer events of their own (the pad reads every touch by position), so `court tap .t-jump` times out. Use `court touch start <id> <selector>` and `court touch end <id>`.
+- The set-call chips and the other top-row buttons for a drill are built on the first frame after it starts. On the manual clock, run the recipe's `court shot` (or a `court step`) before touching them, or `court touch start` finds no chip.
 - Touch ids are fingers. A finger stays down across commands until its `end`. `court open` lifts them all. Reuse an id only after its `end`.
 - Coordinates in the recipe are for the 844x390 session. Selectors do not depend on the size.
 - The stick reads the thumb's movement on the next `court step`, like a key.

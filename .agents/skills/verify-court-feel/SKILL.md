@@ -28,7 +28,7 @@ Start a session:
 .agents/skills/verify-court-feel/court.mjs launch --touch    # phone, 844x390, touch screen
 ```
 
-`launch` starts a supervisor process that runs `vite` on a free loopback port (this checkout's working tree, never port 5173) and a headless Chromium with a new, empty profile. It then loads the app and returns only when the start screen is up. It takes about 5 seconds. It prints the URL, the build label and the evidence directory. Ready means the last line starts with `ready`. On failure it prints the supervisor log and leaves nothing running.
+`launch` starts a supervisor process that runs `vite` on a free loopback port (this checkout's working tree, never port 5173) and a headless Chromium with a new, empty profile. It then loads the app and returns only when the start screen is up. A new profile is a first visit, so that screen is the welcome (`First time here?`). It takes 10 to 20 seconds. It prints the URL, the build label and the evidence directory. Ready means the last line starts with `ready`. On failure it prints the supervisor log and leaves nothing running.
 
 Isolation:
 
@@ -62,7 +62,7 @@ Read-only. Run it first, and again whenever a result looks off. It exits 0 when 
 
 | Command | What it does |
 |---|---|
-| `open [query] [--fresh] [--manual]` | Load the app. `open '?mode=spike&pos=OH'` uses a quick-start link. `--fresh` clears saved settings (a first visit). `--manual` starts on the manual clock. |
+| `open [query] [--fresh] [--manual]` | Load the app. `open '?mode=spike&pos=OH'` uses a quick-start link. `--fresh` clears everything the app saved, so it is a first visit: without a link the app opens on its welcome. `--manual` starts on the manual clock. On the real clock a load takes 5 to 20 seconds, and the result's `took` says where the time went. |
 | `click <selector>`, `dblclick <selector>` | Real mouse click. Playwright selectors: CSS, `text=`, `role=button[name="PLAY"]`. |
 | `key <Key>`, `keydown <Key>`, `keyup <Key>` | Real key events. `Enter`, `Escape`, `Space`, `Tab`, `F3`, `Shift`, `ArrowRight`, letters `v`, digits `1`. |
 | `mouse <down\|up> [left\|right]` | Attack (left) and block or set (right) buttons. |
@@ -74,14 +74,15 @@ Read-only. Run it first, and again whenever a result looks off. It exits 0 when 
 | `state`, `events`, `errors`, `shot <name>`, `eval <js>` | Observation. |
 | `bot <perfect\|good\|sloppy\|tip\|off>` | Autopilot. A test hook. See below. |
 
-A command that gets no answer from the page fails after 60 seconds (`open` 150, `shot` 120, `step` 900, `wait` its `--timeout` plus 10), so one stuck command cannot block the session. `doctor` and `stop` never wait behind a running command.
+A command that gets no answer from the page fails after 60 seconds (`open` 330, `shot` 120, `step` 900, `wait` its `--timeout` plus 10), so one stuck command cannot block the session. `doctor` and `stop` never wait behind a running command.
 
-Every action command prints its result and one `state` line: the screen (`start`, `play`, `paused`, `settings`, `replay`, `crash`), the HUD title and score, and any grade, banner, message or call on screen. `state unchanged` means the same as after the previous command. A failed command prints `FAILED` and exits 1.
+Every action command prints its result and one `state` line: the screen (`welcome`, `start`, `play`, `paused`, `settings`, `replay`, `crash`), the HUD title and score, and any grade, banner, message or call on screen. `state unchanged` means the same as after the previous command. A failed command prints `FAILED` and exits 1.
 
 A minimal run:
 
 ```bash
 .agents/skills/verify-court-feel/court.mjs open --fresh
+.agents/skills/verify-court-feel/court.mjs click 'role=button[name="Skip to the drills"]'
 .agents/skills/verify-court-feel/court.mjs click '.mode-card:has(.mode-t:text-is("Block Drill"))'
 .agents/skills/verify-court-feel/court.mjs click 'role=button[name="PLAY"]'
 .agents/skills/verify-court-feel/court.mjs shot block-drill-started
@@ -91,6 +92,8 @@ A minimal run:
 ### Time: use the manual clock for anything that plays
 
 Headless Chromium renders with software WebGL, at about 10 to 30 frames a second. On the real clock the game then runs well below real speed (about a quarter when this was written), the speed varies with the machine, and after a few seconds the game lowers its render quality by itself. Menus and settings are fine on the real clock. Anything with a ball is not.
+
+On the real clock the page can also fall seconds behind the software GPU, because WebGL does not wait for it. A click or a page load then takes 5 to 15 seconds to answer. That is the renderer, not the game hanging: the helper waits up to 30 seconds for a click, and `open` first lets the GPU finish the old page's frames.
 
 - `open ... --manual` or `clock manual` freezes the game. Nothing moves until you `step`.
 - `step 0.05` advances 0.05 s of game time at a fixed 60 Hz. A key you pressed is read on the next step, so every `key` in play needs a `step` after it.
@@ -106,7 +109,7 @@ Real input, the path a player's hardware takes: `click`, `dblclick`, `key`, `key
 Stand-ins for what headless Chromium lacks. They are faithful, but name them in the proof:
 
 - `look` sends the relative mouse movement as a DOM `mousemove`. Headless Chromium reports garbage movement while the game holds the pointer, so the helper drops the browser's own `mousemove` events in that state.
-- `esc` releases the pointer the way Chrome does when you press Esc in play. A plain `key Escape` does nothing while the game holds the pointer. When the pointer is free (menus, pause, a drill opened by link), `esc` sends the real key.
+- `esc` releases the pointer the way Chrome does when you press Esc in play, then waits 1.5 seconds, because Chromium will not hand the pointer back sooner than that. A plain `key Escape` does nothing while the game holds the pointer. When the pointer is free (menus, pause, a drill opened by link), `esc` sends the real key.
 - `set` writes a slider's value and fires its `input` event. The keyboard path is `click` on the slider, then `key ArrowRight`.
 
 Test hooks. They are not user input. Say so when a proof uses one:
@@ -119,10 +122,11 @@ Test hooks. They are not user input. Say so when a proof uses one:
 
 | What | Selector or key |
 |---|---|
+| Welcome (first visit) | `role=button[name="Skip to the drills"]`, `role=button[name="START THE TUTORIAL"]` |
 | Position card | `.pos-card:has(.pos-short:text-is("MB"))` with `OH`, `OPP`, `MB`, `S`, `L` |
 | Drill card | `.mode-card:has(.mode-t:text-is("Spike Drill"))`, or keys `1` to `6` on the start screen |
 | Camera choice | `role=button[name="First person"]`, `role=button[name="Third person"]` |
-| Play, settings | `role=button[name="PLAY"]`, `role=button[name="Settings"]` |
+| Play, settings, tutorial | `role=button[name="PLAY"]`, `role=button[name="Settings"]`, `role=button[name="Tutorial"]` |
 | Pause menu | `role=button[name="RESUME"]`, `role=button[name="Restart drill"]`, `role=button[name="Quit to menu"]` |
 | Settings row | `.set-row:has-text("Field of view") input` for a slider, `.set-row:has-text("Net height") .chip` for a switch, `role=button[name="DONE"]` |
 | Your athlete | `.body-tab:text-is("MB")`, `.body-set input[data-body="height"]` with `height`, `jump`, `power` |
@@ -186,3 +190,4 @@ Do not kill `vite`, `node` or `chrome` by name: a developer's own dev server and
 - The first `shot` after `open --manual` takes a few seconds, because it draws the first frame and compiles the shaders.
 - The autopilot is reliable in the drills. In Mini Rally it sometimes misses. Assert on what `events` shows, not on a kill.
 - Saved settings persist across `open` inside a session. Start a recipe with `open --fresh` unless it is about persistence.
+- After `open --fresh` with no link the app shows the welcome, not the positions and drills. Click `Skip to the drills` to get to them. `state` then shows `saved.tutorial` as `skipped`, and later loads without `--fresh` go straight to the start screen. A quick-start link starts its drill directly, welcome or not.

@@ -219,6 +219,8 @@ const INIT_SCRIPT = `(() => {
     set: (g) => {
       game = g;
       try {
+        // a page loaded by the open command draws nothing until it is up; --manual also stops the clock
+        if (window.__verifyHold) g.holdRender = true;
         if (window.__verifyManual) g.manual = true;
         const who = (a) => (a.isUser ? 'me' : a.role + (a.side === 1 ? ' (home)' : ' (away)'));
         const t = () => +g.simTime.toFixed(3);
@@ -267,7 +269,9 @@ function snapshot() {
         : disp('.pause')
           ? 'paused'
           : disp('.menu')
-            ? 'start'
+            ? disp('.welcome')
+              ? 'welcome'
+              : 'start'
             : g.fx.replaying
               ? 'replay'
               : 'play';
@@ -275,13 +279,25 @@ function snapshot() {
   if (crash) out.crash = { title: txt('#crash-title'), body: txt('#crash-body'), details: q('.crash-details')?.value ?? null };
   if (q('.ctx-lost')) out.contextLost = true;
   if (!g) return out;
-  out.start = disp('.menu')
+  // a first visit (or a lesson left part-way) gets the welcome in place of the positions and drills
+  out.welcome = screen === 'welcome' ? { title: txt('.welcome-t'), button: txt('.welcome .play-btn') } : null;
+  out.pauseMenu = disp('.pause')
     ? {
-        position: txt('.pos-card[aria-pressed="true"] .pos-short'),
-        drill: txt('.mode-card[aria-pressed="true"] .mode-t'),
-        camera: txt('.cam-sel .chip[aria-pressed="true"]'),
+        name: q('.pause')?.getAttribute('aria-label') ?? null,
+        title: txt('.pause .pause-t'),
+        buttons: [...document.querySelectorAll('.pause-box button')]
+          .filter((b) => getComputedStyle(b).display !== 'none')
+          .map((b) => b.textContent.trim()),
       }
     : null;
+  out.start =
+    disp('.menu') && screen !== 'welcome'
+      ? {
+          position: txt('.pos-card[aria-pressed="true"] .pos-short'),
+          drill: txt('.mode-card[aria-pressed="true"] .mode-t'),
+          camera: txt('.cam-sel .chip[aria-pressed="true"]'),
+        }
+      : null;
   out.settingsPanel = disp('.settings')
     ? {
         rows: Object.fromEntries(
@@ -341,7 +357,21 @@ function snapshot() {
     ball: g.ball.active ? { x: r2(g.ball.state.p.x), y: r2(g.ball.state.p.y), z: r2(g.ball.state.p.z) } : null,
     athletes: g.athletes.length,
   };
-  out.saved = { settings: stored('courtfeel.settings.v1'), menu: stored('courtfeel.menu') };
+  // the first-run lesson, while it runs: its step (1 together, 2 slow motion, 3 full speed) and the cue on screen
+  out.tutorial = g.tutorial?.active
+    ? {
+        step: g.tutorial.step,
+        strip: [...document.querySelectorAll('.coach-step')].map(
+          (e) => e.textContent + (e.classList.contains('now') ? ' (now)' : e.classList.contains('done') ? ' (done)' : ''),
+        ),
+        cue: shown('.coach-cue') ? txt('.coach-cue') : null,
+      }
+    : null;
+  out.saved = {
+    settings: stored('courtfeel.settings.v1'),
+    menu: stored('courtfeel.menu'),
+    tutorial: localStorage.getItem('courtFeel.tutorial.v1'),
+  };
   out.recorded = { events: window.__verify?.events.length ?? null };
   return out;
 }
@@ -350,7 +380,10 @@ function snapshot() {
 function digest(s) {
   const d = { screen: s.screen };
   if (s.crash) d.crash = s.crash.title;
+  if (s.welcome) d.welcome = s.welcome;
+  if (s.pauseMenu && s.pauseMenu.name !== 'Paused') d.dialog = s.pauseMenu.name;
   if (s.start) d.start = s.start;
+  if (s.tutorial) d.tutorial = { step: s.tutorial.step, cue: s.tutorial.cue };
   if (s.hud) {
     d.title = s.hud.title;
     d.score = s.hud.score;
@@ -464,7 +497,28 @@ async function supervisor() {
       if (!(await page.evaluate(() => !!window.__court && !document.querySelector('.crash'))))
         throw new Error('the game is not running on this page (run `open` first; `state` shows a crash screen if there is one)');
     };
+    /** resolves once the GPU has drawn everything the page has sent it (a WebGL fence, polled; gl.finish() does not wait) */
+    const gpuIdle = (ms) =>
+      withTimeout(
+        page.evaluate(async () => {
+          const gl = window.__court?.renderer.getContext();
+          if (!gl || gl.isContextLost()) return;
+          const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+          gl.flush();
+          while (!gl.isContextLost() && gl.getSyncParameter(fence, gl.SYNC_STATUS) !== gl.SIGNALED) {
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          gl.deleteSync(fence);
+        }),
+        ms,
+        `the GPU had not drawn the queued frames after ${ms / 1000} s`,
+      );
     const clockIs = () => page.evaluate(() => (window.__court.manual ? 'manual' : 'real'));
+    /**
+     * for a click to land and be answered. On the real clock the page can be seconds behind the software GPU
+     * (a drill starting, a panel opening), and the element is found long before the page answers.
+     */
+    const ACTION_MS = 30000;
     const touches = new Map();
     let shots = 0;
     /** the command being run right now (doctor reports it when it has been running for long) */
@@ -493,50 +547,70 @@ async function supervisor() {
       },
       async open([query = ''], flags) {
         const url = base + (query && !query.startsWith('?') ? '?' + query : query);
+        const took = {};
+        let mark = Date.now();
+        const lap = (name) => {
+          took[name] = Date.now() - mark;
+          mark = Date.now();
+        };
+        // WebGL does not wait for the software GPU: frames the old page queued are still being drawn, and a new
+        // page's first frame (and so every answer from it) waits behind them. Stop the old page drawing and let
+        // the GPU catch up first, as scripts/e2e.mjs does, so the load is not charged for the old page's frames.
+        await page
+          .evaluate(() => window.__court && (window.__court.holdRender = true))
+          .then(() => gpuIdle(60000))
+          .catch(() => {});
+        lap('oldPageGpuMs');
         if (flags.fresh) await cdp.send('Storage.clearDataForOrigin', { origin: new URL(base).origin, storageTypes: 'local_storage' });
-        let manualScript = null;
-        if (flags.manual)
-          manualScript = (await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__verifyManual = true;' })).identifier;
+        // the new page holds rendering until the game is up; --manual keeps it held and stops the clock too
+        const setup = await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+          source: `window.__verifyHold = true; window.__verifyManual = ${!!flags.manual};`,
+        });
         consoleEntries = [];
         touches.clear();
         try {
-          await page.goto(url, { waitUntil: 'load', timeout: 30000 });
+          await page.goto(url, { waitUntil: 'load', timeout: 120000 });
         } finally {
-          if (manualScript) await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: manualScript });
+          await cdp.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: setup.identifier });
         }
         // ready = the game and the menus exist, or the app has put up its crash screen
         await page.waitForFunction(() => (window.__court && window.__menu) || document.querySelector('.crash'), null, {
-          timeout: 60000,
+          timeout: 120000,
           polling: 100,
         });
-        // the first frames compile every shader (seconds on a software GPU): wait until frames are flowing
-        await page.evaluate(
-          () =>
-            new Promise((res) => {
-              let n = 0;
-              const f = () => (++n >= 3 ? res() : requestAnimationFrame(f));
-              requestAnimationFrame(f);
-            }),
-        );
-        if (flags.manual) await page.evaluate(() => window.__court && (window.__court.holdRender = true));
+        lap('loadMs');
+        if (!flags.manual) {
+          // start drawing: the first frame compiles every shader (seconds on a software GPU). Wait for two frames
+          // and for the GPU to have drawn them, so the next command meets a page that answers.
+          await page.evaluate(
+            () =>
+              new Promise((res) => {
+                if (window.__court) window.__court.holdRender = false;
+                requestAnimationFrame(() => requestAnimationFrame(res));
+              }),
+          );
+          lap('firstFramesMs');
+          await gpuIdle(120000).catch(() => {});
+          lap('gpuMs');
+        }
         opens++;
         loadsAtOpen = loads;
-        return { opened: url };
+        return { opened: url, took };
       },
       async click([selector]) {
         if (!selector) throw new Error('usage: click <selector>');
-        await page.locator(selector).click({ timeout: 10000 });
+        await page.locator(selector).click({ timeout: ACTION_MS });
         return { clicked: selector };
       },
       async dblclick([selector]) {
         if (!selector) throw new Error('usage: dblclick <selector>');
-        await page.locator(selector).dblclick({ timeout: 10000 });
+        await page.locator(selector).dblclick({ timeout: ACTION_MS });
         return { doubleClicked: selector };
       },
       async tap([selector]) {
         if (!opts.touch) throw new Error('tap needs a touch session: stop, then launch --touch');
         if (!selector) throw new Error('usage: tap <selector>');
-        await page.locator(selector).tap({ timeout: 10000 });
+        await page.locator(selector).tap({ timeout: ACTION_MS });
         return { tapped: selector };
       },
       async touch([type, id, x, y]) {
@@ -616,7 +690,12 @@ async function supervisor() {
           return true;
         });
         if (!locked) await page.keyboard.press('Escape');
-        else await page.waitForFunction(() => !document.pointerLockElement, null, { timeout: 5000 });
+        else {
+          await page.waitForFunction(() => !document.pointerLockElement, null, { timeout: 5000 });
+          // Chromium refuses to hand the pointer back for about 1.25 s after it was released. A click on RESUME
+          // inside that window leaves the pause menu up, so wait it out here, as a person's hand does.
+          await sleep(1500);
+        }
         return { esc: locked ? 'released the pointer (what Chrome does with Esc in play)' : 'Escape key' };
       },
       async set([selector, value]) {
@@ -729,7 +808,7 @@ async function supervisor() {
     let lastDigest = '';
     // No command may hold the queue for ever: an endless loop in the page (in the game under test, or in an
     // eval) would otherwise block every later command. Seconds; step and wait are long by nature.
-    const LIMITS = { step: 900, open: 150, shot: 120 };
+    const LIMITS = { step: 900, open: 330, shot: 120 };
     const handle = async ({ cmd, args = [], flags = {} }) => {
       const fn = cmds[cmd];
       if (!fn) return { ok: false, error: `unknown command "${cmd}" (try: court.mjs help)` };
@@ -751,7 +830,7 @@ async function supervisor() {
       if (!QUIET.has(cmd)) {
         let full = null;
         try {
-          full = await withTimeout(snap(), 10000, 'the page did not answer within 10 s');
+          full = await withTimeout(snap(), 30000, 'the page did not answer within 30 s');
           const d = digest(full);
           const key = JSON.stringify({ ...d, simTime: 0 });
           // a page load always prints where it landed
@@ -800,7 +879,9 @@ async function supervisor() {
     // 4. usable = the start screen is up in the browser
     await cmds.open([''], { fresh: true });
     const first = await snap();
-    if (first.screen !== 'start') throw new Error(`the app did not reach its start screen: ${JSON.stringify(first)}`);
+    // a new profile is a first visit: the start screen comes up on its welcome
+    if (first.screen !== 'welcome' && first.screen !== 'start')
+      throw new Error(`the app did not reach its start screen: ${JSON.stringify(first)}`);
     const pidStart = startOf(process.pid);
     const viteStart = startOf(vite.pid);
     if (!pidStart || !viteStart)
@@ -1042,7 +1123,7 @@ async function launch(flags) {
   console.log(`session   ${SESSION} (supervisor pid ${ready.pid})`);
   console.log(`app       ${ready.base}  build "${ready.build}"${ready.touch ? '  (phone, touch)' : ''}`);
   console.log(`evidence  ${rel(ready.evidence)}/`);
-  console.log(`ready     the start screen is up. Next: ${rel(SELF)} doctor`);
+  console.log(`ready     the start screen is up (a first visit: the welcome). Next: ${rel(SELF)} doctor`);
 }
 
 async function stop(quiet = false) {

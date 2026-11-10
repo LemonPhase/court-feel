@@ -8,7 +8,7 @@ This directory is the maintained source for verifying the user-facing behaviour 
 - A session you launched is running and `court doctor` ends with `HEALTHY`.
 - Desktop recipes need a session from `court launch`. Touch recipes need one from `court launch --touch`. A recipe says which.
 - Never drive a session that this verification run did not start.
-- Every recipe starts with its own `court open ...`. Recipes that do not test persistence open with `--fresh`, which is a first visit: Outside Hitter, Spike Drill, third person, default settings.
+- Every recipe starts with its own `court open ...`. Recipes that do not test persistence open with `--fresh`, which is a first visit with default settings. Without a link, a first visit shows the welcome. Recipes that need the positions and drills click `Skip to the drills` first, which leaves Outside Hitter, Spike Drill and third person selected.
 
 ## Driving conventions
 
@@ -44,7 +44,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
-- [Start screen](./start-screen.md) covers choosing a position, a drill and a camera, the three ways to start, and the remembered selection.
+- [Start screen](./start-screen.md) covers the first-visit welcome and skipping it, choosing a position, a drill and a camera, the three ways to start, and the remembered selection.
 - [Spike Drill](./spike-drill.md) covers a scored rep, set calls, the opposing block, replays, the camera toggle and resetting a rep.
 - [Pause and settings](./pause-settings.md) covers pausing, resuming, restarting, quitting, changing settings, your athlete, and persistence.
 - [Quick-start links](./quick-start-links.md) covers the URL parameters and their fallbacks for bad values.
@@ -55,6 +55,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 These are user-facing and have no feature file. A proof that touches one must say the map does not cover it, and should add the file.
 
+- The first-run tutorial: `START THE TUTORIAL` on the welcome, the three guided balls (together, slow motion, full speed), `Skip tutorial`, the `Tutorial` button on the start screen, `Replay tutorial` in Settings, the end dialog (`KEEP HITTING`, `Choose another drill`) and `?tutorial=N` links. `court state` reports it under `tutorial` and `saved.tutorial`, but no recipe drives it yet.
 - Free Play: feed types `1` to `5`, `f` feed now, `t` auto-feed, serve practice with `q`.
 - Block Drill: reading the set, the block jump, stuff and touch scoring.
 - Serve Receive / Dig: pass ratings 0 to 3, the setter and hitter finishing a good pass.
