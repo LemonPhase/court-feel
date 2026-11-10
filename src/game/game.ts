@@ -6,6 +6,7 @@ import { saveSettings } from '../core/settings';
 import { clamp01, damp, lerp, Rng } from '../core/mathx';
 import { CameraRig, type FollowTarget } from '../camera/cameraRig';
 import { Arena } from '../world/arena';
+import { REFLECT_LAYER } from '../world/floorReflection';
 import { Post } from '../fx/post';
 import { Athlete, handSign } from './athlete';
 import { bodyStats } from './body';
@@ -152,12 +153,14 @@ export class Game {
     this.arena = new Arena(this.renderer, this.scene);
     this.rig.blockers = this.arena.cameraBlockers;
     this.post = new Post(this.renderer, this.scene, this.rig.camera);
+    this.post.preRender = () => this.arena.reflection.render(this.rig.camera);
     this.input = new Input(this.renderer.domElement);
     this.user = new UserController(this.input, this.rig);
     this.debug = new DebugOverlay(container);
     this.hud = new Hud(container);
     this.hud.camera = this.rig.camera;
     this.ball = new BallEntity(this.scene);
+    this.ball.mesh.layers.enable(REFLECT_LAYER);
     this.ball.hide();
     this.gizmos = new DebugGizmos(this.scene);
 
@@ -215,6 +218,7 @@ export class Game {
     if (kitKind === 'coach') kit = { ...kit, jersey: 0x4a4f5c, jerseyTrim: 0x9aa0ad, shorts: 0x2a2d35, socks: 0x2a2d35, pads: 0x2a2d35 };
     const v = new AthleteView(a, kit);
     this.views.set(a, v);
+    v.rig.mesh.layers.enable(REFLECT_LAYER);
     this.scene.add(v.root);
     // spawned mid-drill (the spike drill's block): the replay records it too, from now on
     this.fx?.replay.addView(v);
@@ -336,6 +340,7 @@ export class Game {
     this.disposeView(old);
     const v = new AthleteView(a, old.kit);
     v.onFootstep = old.onFootstep;
+    v.rig.mesh.layers.enable(REFLECT_LAYER);
     this.views.set(a, v);
     this.scene.add(v.root);
     this.eyeInit = false;
@@ -423,6 +428,8 @@ export class Game {
     const h = this.container.clientHeight;
     this.renderer.setSize(w, h);
     this.post.setSize(w, h);
+    const pr = this.renderer.getPixelRatio();
+    this.arena.reflection.setSize(w * pr, h * pr);
     this.rig.resize(w / h);
   }
 
@@ -520,7 +527,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------ quality governor
-  /** 0 = full (MSAA, 1.5x DPR cap), 1 = no MSAA + 1x DPR, 2 = 0.8x scale + 1024 shadows */
+  /** 0 = full (MSAA, 1.5x DPR cap), 1 = no MSAA + 1x DPR, 2 = 0.8x scale + 1024 shadows + no floor mirror */
   quality = 0;
   private qAcc = 0;
   private qFrames = 0;
@@ -550,6 +557,7 @@ export class Game {
     this.qCooldown = 4;
     const dpr = window.devicePixelRatio || 1;
     this.post.setSamples(this.quality === 0 ? 4 : 0);
+    this.arena.reflection.setEnabled(this.quality < 2);
     this.renderer.setPixelRatio(this.quality === 0 ? Math.min(dpr, 1.5) : this.quality === 1 ? Math.min(dpr, 1) : 0.8);
     this.post.composer.setPixelRatio(this.renderer.getPixelRatio());
     const sm = this.arena.keyLight.shadow;

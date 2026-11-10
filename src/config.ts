@@ -500,10 +500,72 @@ export const TUTORIAL = {
   ranDist: 1,
 };
 
+/** how the arena is drawn and lit (never how the game plays) */
+export const ARENA = {
+  /** the floor mirrors the players, the net and the boards */
+  reflection: {
+    /** size of the mirror image relative to the view */
+    scale: 0.5,
+    /** how bright the mirror image is at a grazing angle, and the fraction of that seen straight down */
+    strength: 0.8,
+    facing: 0.09,
+    /** blur of the mirror image (mip levels): on the glossiest board, and extra per unit of roughness */
+    blur: 0.6,
+    blurRough: 2.4,
+    /** nothing in the mirror image counts as brighter than this (a white shirt is about 1) */
+    max: 1.1,
+    /** a board this rough (as 1 / roughness) shows no mirror image at all */
+    roughFade: 0.9,
+  },
+  /** the stands: a lower tier behind the boards, a walkway, an upper tier on a balcony (metres) */
+  bowl: {
+    /** from the edge of the free zone to the front wall of the stands */
+    setback: 2.2,
+    /** rows, how deep each is, how much higher than the one in front, and the height of the front row */
+    lower: { rows: 9, depth: 0.85, rise: 0.46, base: 1.05 },
+    walkway: 2.4,
+    /** `lift`: from the walkway up to the first row of the balcony */
+    upper: { rows: 7, depth: 0.85, rise: 0.58, lift: 2.9 },
+    /** how far the balcony's front hangs over the walkway */
+    overhang: 1.2,
+    seatPitch: 0.52,
+    /** seats between two aisles, and how many seats wide an aisle is */
+    aisleEvery: 16,
+    aisleSeats: 2,
+    /** fraction of seats left empty */
+    empty: 0.08,
+    seatColor: 0x1d2c52,
+    /** how brightly the crowd is lit, from the front row to the back of each tier (the court is 1) */
+    light: { front: 0.78, back: 0.5, upperFront: 0.4, upperBack: 0.24 },
+    /** the cool cast of the hall on the crowd */
+    crowdTint: 0xdfe6ff,
+    /** brightness of the balcony's LED ribbon, the doorway glow and the lamps under the roof (1 = white; above 1 blooms) */
+    ribbon: 0.62,
+    doorGlow: 0.36,
+    lamp: 1.08,
+    doorEvery: 9,
+  },
+  /** the finished picture: darker corners (0 = none), an S-curve of contrast (0 = none), saturation (1 = as rendered) */
+  grade: { vignette: 0.32, contrast: 0.16, saturation: 1.06 },
+  /** light on the court: sky and floor-bounce fill, the key from the roof, and two soft fills from the long sides */
+  light: {
+    hemi: 0.5,
+    key: 2.0,
+    fill: 0.5,
+    /** how strongly the hall's reflection lights everything */
+    env: 0.5,
+  },
+};
+
 /** how the athletes are drawn (never how they play) */
 export const CHARACTER = {
   /** soft light on the edges of a figure that face up and away from the camera (0 = off) */
   rim: 0.55,
+  /**
+   * light from the sides of the hall (boards, stands, the floor's bounce) on upright surfaces: it is what
+   * reaches a face under roof lighting. Part of the athletes' own shading, so it puts no glare on the floor.
+   */
+  sideFill: 0.2,
   /** how strongly the arena reflects in skin, cloth and shoes */
   envIntensity: 0.7,
   /** finger curl at the knuckles (rad): loose hand, cupped for a set, flat on the ball, closed for a pass */

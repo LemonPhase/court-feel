@@ -103,15 +103,15 @@ export function makeWoodTextures(tileMetres = 4): { map: THREE.CanvasTexture; ro
   return { map, rough, gray };
 }
 
-/** Net mesh: 10cm squares of dark cord. Tile covers 1m x 1m. */
+/** Net mesh: 10cm squares of dark cord, knotted at the crossings. Tile covers 1m x 1m. */
 export function makeNetTexture(): THREE.CanvasTexture {
-  const size = 256;
+  const size = 512;
   const [c, ctx] = canvas(size, size);
   ctx.clearRect(0, 0, size, size);
-  ctx.strokeStyle = 'rgba(20,20,24,1)';
-  ctx.lineWidth = 3.2;
   const cells = 10;
   const step = size / cells;
+  ctx.strokeStyle = 'rgba(26,24,26,1)';
+  ctx.lineWidth = 3.4;
   for (let i = 0; i <= cells; i++) {
     ctx.beginPath();
     ctx.moveTo(i * step, 0);
@@ -122,6 +122,8 @@ export function makeNetTexture(): THREE.CanvasTexture {
     ctx.lineTo(size, i * step);
     ctx.stroke();
   }
+  ctx.fillStyle = 'rgba(26,24,26,1)';
+  for (let i = 0; i <= cells; i++) for (let k = 0; k <= cells; k++) ctx.fillRect(i * step - 3.2, k * step - 3.2, 6.4, 6.4);
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = 8;
@@ -326,112 +328,238 @@ export function makeCrackTexture(seed = 7): THREE.CanvasTexture {
   return t;
 }
 
-/** Crowd sprite atlas: 8 x 4 seated fans. Returns the texture and grid size. */
+/** Crowd sprite atlas: 8 x 4 fans from the waist up, lit from above. Returns the texture and grid size. */
 export function makeCrowdAtlas(): { tex: THREE.CanvasTexture; cols: number; rows: number } {
   const cols = 8;
   const rows = 4;
-  const cw = 64;
-  const ch = 96;
+  const cw = 96;
+  const ch = 144;
   const [c, ctx] = canvas(cols * cw, rows * ch);
   const rng = new Rng(99);
-  const shirts = [
-    '#d8342c',
-    '#f2f2f2',
-    '#1f5fbf',
-    '#f2b632',
-    '#2a2a2e',
-    '#2b9a5a',
-    '#e86a1f',
-    '#7a3fb0',
-    '#ffffff',
-    '#c41e3a',
-    '#0d2f6e',
-    '#ffd34d',
-  ];
-  const skins = ['#f1c6a0', '#d9a77b', '#b47d55', '#8a5a3a', '#5f3b24', '#e7b892'];
-  const hairs = ['#1b1209', '#3a2416', '#6b4a2a', '#c9a35b', '#111111', '#7d2e12', '#9a9a9a'];
+  // mostly everyday clothes, with the two teams' colours through them
+  const neutral = ['#2b2f38', '#3c4350', '#59606c', '#8b8f96', '#c9c6bd', '#23324d', '#3d4f6e', '#4a3b32', '#6b5a48', '#1d1f24'];
+  const home = ['#c9342c', '#e9e6df', '#b02a25'];
+  const away = ['#2259b0', '#dfe4ec', '#1b3f86'];
+  const other = ['#d9a52a', '#2f8a56', '#c9631f', '#6a3f9a'];
+  const skins = ['#f0c6a2', '#dba87e', '#b98058', '#8d5c3c', '#623d27', '#e6b78f'];
+  const hairs = ['#1b1209', '#3a2416', '#6b4a2a', '#c2a05c', '#111111', '#7d2e12', '#9c9c9c'];
+  const shadeHex = (hex: string, k: number) => {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (v: number) => Math.max(0, Math.min(255, Math.round(v * k)));
+    return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+  };
   for (let r = 0; r < rows; r++) {
     for (let k = 0; k < cols; k++) {
       const x0 = k * cw;
       const y0 = r * ch;
       const cx = x0 + cw / 2;
-      const shirt = rng.pick(shirts);
+      const pick = rng.next();
+      const shirt = pick < 0.46 ? rng.pick(neutral) : pick < 0.72 ? rng.pick(home) : pick < 0.86 ? rng.pick(away) : rng.pick(other);
       const skin = rng.pick(skins);
       const hair = rng.pick(hairs);
-      const arms = rng.next() < 0.35; // arms raised
-      ctx.fillStyle = shirt;
-      // torso
+      const pose = rng.next(); // < 0.3 arms up, < 0.45 clapping, else sitting
+      const sw = rng.range(27, 32); // half shoulder width
+      const hy = y0 + 50; // head centre
+      ctx.save();
       ctx.beginPath();
-      ctx.moveTo(cx - 20, y0 + ch);
-      ctx.lineTo(cx - 19, y0 + 52);
-      ctx.quadraticCurveTo(cx, y0 + 42, cx + 19, y0 + 52);
-      ctx.lineTo(cx + 20, y0 + ch);
-      ctx.fill();
-      // arms
-      ctx.strokeStyle = shirt;
-      ctx.lineWidth = 8;
-      ctx.lineCap = 'round';
-      if (arms) {
+      ctx.rect(x0, y0, cw, ch);
+      ctx.clip();
+      const body = () => {
         ctx.beginPath();
-        ctx.moveTo(cx - 16, y0 + 56);
-        ctx.lineTo(cx - 24, y0 + 22);
-        ctx.moveTo(cx + 16, y0 + 56);
-        ctx.lineTo(cx + 24, y0 + 22);
+        ctx.moveTo(cx - sw - 2, y0 + ch);
+        ctx.lineTo(cx - sw, y0 + 88);
+        ctx.quadraticCurveTo(cx - sw + 2, y0 + 72, cx - 12, y0 + 68);
+        ctx.lineTo(cx + 12, y0 + 68);
+        ctx.quadraticCurveTo(cx + sw - 2, y0 + 72, cx + sw, y0 + 88);
+        ctx.lineTo(cx + sw + 2, y0 + ch);
+        ctx.closePath();
+      };
+      const arm = (s: number, width: number) => {
+        ctx.lineWidth = width;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        if (pose < 0.3) {
+          ctx.moveTo(cx + s * (sw - 5), y0 + 84);
+          ctx.quadraticCurveTo(cx + s * (sw + 6), y0 + 56, cx + s * (sw + 2), y0 + 26);
+        } else {
+          ctx.moveTo(cx + s * (sw - 5), y0 + 84);
+          ctx.quadraticCurveTo(cx + s * (sw - 2), y0 + 112, cx + s * 7, y0 + 104);
+        }
         ctx.stroke();
-        ctx.fillStyle = skin;
-        ctx.beginPath();
-        ctx.arc(cx - 25, y0 + 18, 4.5, 0, Math.PI * 2);
-        ctx.arc(cx + 25, y0 + 18, 4.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // neck + head
-      ctx.fillStyle = skin;
-      ctx.fillRect(cx - 4, y0 + 40, 8, 8);
-      ctx.beginPath();
-      ctx.ellipse(cx, y0 + 32, 10, 12, 0, 0, Math.PI * 2);
+      };
+      // a dark edge all round, so neighbours separate
+      ctx.fillStyle = 'rgba(8,9,13,1)';
+      ctx.strokeStyle = 'rgba(8,9,13,1)';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 5;
+      body();
       ctx.fill();
+      ctx.stroke();
+      if (pose < 0.45) for (const s of [-1, 1]) arm(s, 17);
+      ctx.beginPath();
+      ctx.ellipse(cx, hy, 17.5, 21, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // torso: lit on the shoulders, falling off downwards
+      const tg = ctx.createLinearGradient(0, y0 + 66, 0, y0 + ch);
+      tg.addColorStop(0, shadeHex(shirt, 1.18));
+      tg.addColorStop(0.35, shirt);
+      tg.addColorStop(1, shadeHex(shirt, 0.55));
+      ctx.fillStyle = tg;
+      body();
+      ctx.fill();
+      // neck
+      ctx.fillStyle = shadeHex(skin, 0.72);
+      ctx.fillRect(cx - 6.5, y0 + 62, 13, 12);
+      // arms
+      if (pose < 0.45) {
+        for (const s of [-1, 1]) {
+          ctx.strokeStyle = shadeHex(shirt, 0.9);
+          arm(s, 12);
+          ctx.fillStyle = skin;
+          ctx.beginPath();
+          if (pose < 0.3) ctx.arc(cx + s * (sw + 2), y0 + 21, 6.5, 0, Math.PI * 2);
+          else ctx.arc(cx + s * 5, y0 + 104, 6.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // head: brighter on top
+      const hg = ctx.createRadialGradient(cx - 3, hy - 9, 2, cx, hy, 21);
+      hg.addColorStop(0, shadeHex(skin, 1.08));
+      hg.addColorStop(0.65, skin);
+      hg.addColorStop(1, shadeHex(skin, 0.66));
+      ctx.fillStyle = hg;
+      ctx.beginPath();
+      ctx.ellipse(cx, hy, 14.5, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // eyes and mouth: a couple of marks are enough at this size
+      ctx.fillStyle = 'rgba(20,12,8,0.75)';
+      ctx.fillRect(cx - 7, hy - 1, 3.5, 2.5);
+      ctx.fillRect(cx + 3.5, hy - 1, 3.5, 2.5);
+      ctx.fillStyle = 'rgba(60,20,16,0.5)';
+      ctx.fillRect(cx - 3.5, hy + 8.5, 7, pose < 0.3 ? 3 : 1.6);
+      // hair, or a cap
+      const style = rng.next();
       ctx.fillStyle = hair;
-      ctx.beginPath();
-      ctx.ellipse(cx, y0 + 26, 10.5, 7.5, 0, Math.PI, Math.PI * 2);
-      ctx.fill();
-      if (rng.next() < 0.3) {
-        // long hair
-        ctx.fillRect(cx - 10.5, y0 + 26, 4, 16);
-        ctx.fillRect(cx + 6.5, y0 + 26, 4, 16);
+      if (style < 0.14) {
+        ctx.fillStyle = shadeHex(rng.pick(neutral.concat(home)), 1);
+        ctx.beginPath();
+        ctx.ellipse(cx, hy - 9, 15.5, 11, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(cx - 16, hy - 10, 32, 4);
+      } else if (style < 0.22) {
+        // bald or cropped: a shadow of hair
+        ctx.globalAlpha = 0.35;
+        ctx.beginPath();
+        ctx.ellipse(cx, hy - 8, 14.5, 10, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.beginPath();
+        ctx.ellipse(cx, hy - 7, 15.5, 12.5, 0, Math.PI, Math.PI * 2);
+        ctx.fill();
+        if (style > 0.68) {
+          // long hair to the shoulders
+          ctx.fillRect(cx - 16, hy - 8, 5.5, 26);
+          ctx.fillRect(cx + 10.5, hy - 8, 5.5, 26);
+        }
       }
+      ctx.restore();
     }
   }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.anisotropy = 4;
   return { tex, cols, rows };
 }
 
-/** LED board strip texture: abstract gradient panels with chevrons (no real brands). */
-export function makeBoardTexture(): THREE.CanvasTexture {
+/** The LED ribbon round the balcony and the scoreboard screens: slow colour bands and the wordmark. Tiles every 16 m. */
+export function makeRibbonTexture(): THREE.CanvasTexture {
   const [c, ctx] = canvas(1024, 64);
-  const palettes = [
-    ['#0b2a6b', '#1e64d8'],
-    ['#7a0d1a', '#e0333d'],
-    ['#0d4d3a', '#22b07a'],
-    ['#3b1466', '#8a3ee0'],
-  ];
-  for (let i = 0; i < 8; i++) {
-    const p = palettes[i % palettes.length];
-    const g = ctx.createLinearGradient(i * 128, 0, i * 128 + 128, 64);
-    g.addColorStop(0, p[0]);
-    g.addColorStop(1, p[1]);
-    ctx.fillStyle = g;
-    ctx.fillRect(i * 128, 0, 128, 64);
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = 'bold 30px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(['COURT', 'FEEL', 'SPIKE', 'BLOCK'][i % 4], i * 128 + 64, 33);
-  }
+  const g = ctx.createLinearGradient(0, 0, 1024, 0);
+  const stops = ['#0d2a6e', '#1e64d8', '#0d2a6e', '#7a1020', '#d8343c', '#7a1020', '#0d2a6e'];
+  stops.forEach((s, i) => g.addColorStop(i / (stops.length - 1), s));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 1024, 64);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.font = '800 32px system-ui, "Helvetica Neue", Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('COURT FEEL', 256, 34);
+  ctx.fillText('TRUE TO THE COURT', 768, 34);
+  // the pixel grid of an LED panel
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  for (let y = 0; y < 64; y += 4) ctx.fillRect(0, y, 1024, 1);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  return t;
+}
+
+/** Hall walls: dark, with the glow of the court lights fading up them, and a faint panel grid. */
+export function makeWallTexture(): THREE.CanvasTexture {
+  const [c, ctx] = canvas(256, 256);
+  const g = ctx.createLinearGradient(0, 256, 0, 0);
+  g.addColorStop(0, '#1a2233');
+  g.addColorStop(0.45, '#141b2a');
+  g.addColorStop(0.8, '#0c111b');
+  g.addColorStop(1, '#070a11');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= 256; x += 32) {
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, 256);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= 256; y += 64) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(256, y + 0.5);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** LED boards round the free zone: dark panels with the wordmark and the drills, in the two teams' colours (no real brands). Tiles every 8 m. */
+export function makeBoardTexture(): THREE.CanvasTexture {
+  const [c, ctx] = canvas(1024, 96);
+  const panels: [string, string, string, string][] = [
+    ['#0a1c4a', '#16408f', 'COURT FEEL', '#ffffff'],
+    ['#8f141c', '#d8343c', 'SPIKE', '#ffffff'],
+    ['#0a1c4a', '#16408f', 'TRUE TO THE COURT', '#ffd45c'],
+    ['#0e1626', '#1c2740', 'BLOCK', '#7fb4ff'],
+  ];
+  const w = 1024 / panels.length;
+  panels.forEach(([a, b, text, fg], i) => {
+    const g = ctx.createLinearGradient(i * w, 0, i * w + w, 96);
+    g.addColorStop(0, a);
+    g.addColorStop(1, b);
+    ctx.fillStyle = g;
+    ctx.fillRect(i * w, 0, w, 96);
+    ctx.fillStyle = fg;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let px = 46;
+    ctx.font = `800 ${px}px system-ui, "Helvetica Neue", Arial, sans-serif`;
+    while (ctx.measureText(text).width > w - 28 && px > 12) ctx.font = `800 ${--px}px system-ui, "Helvetica Neue", Arial, sans-serif`;
+    ctx.fillText(text, i * w + w / 2, 50);
+    // panel joint
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(i * w, 0, 2, 96);
+  });
+  // the pixel rows of an LED panel
+  ctx.fillStyle = 'rgba(0,0,0,0.14)';
+  for (let y = 0; y < 96; y += 4) ctx.fillRect(0, y, 1024, 1);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  t.anisotropy = 8;
   return t;
 }
