@@ -10,6 +10,7 @@
 //   - GPU resources (geometries, textures, shader programs) do not grow over a soak
 // Frame time, draw calls and heap are reported, not asserted (software rendering here).
 // The simulation is stepped manually at a fixed dt, so results do not depend on machine speed.
+// Wall-clock limits do depend on it: see "fresh pages on a software GPU" below before adding a page or a limit.
 // Exit code 1 on any failed check. Output: scripts/out/*.png and scripts/out/report.json
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -54,20 +55,117 @@ const browser = await chromium.launch({
     '--js-flags=--expose-gc',
   ],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+
+// ---- fresh pages on a software GPU
+// SwiftShader draws a frame in 0.6 s on a good machine and 2 s on a slow CI runner, and WebGL does not wait
+// for it: draw calls only queue work for the browser's GPU process. Two things then wait for that queue to
+// empty, however long it is:
+//   - a page's first drawn frame, which compiles every shader and blocks the page's main thread (and with
+//     it every evaluate and all requestAnimationFrame polling) until the GPU has caught up;
+//   - closing a browser context, which blocks the browser's own main thread until the GPU has drawn all it
+//     was sent, by any page. Nothing that goes through the browser moves meanwhile: a new context, a
+//     navigation, an answer from another page.
+// So a page opened or closed right after a phase that queued frames used to spend its own time limit on
+// those frames. At 2 s a frame the perf phase leaves 43 s of them and the soak 66 s (it never waits for a
+// render), against limits of 30 and 60 s. The rules that keep a limit about the thing it names:
+//   - a fresh page holds rendering until it is up (`newHeldPage` + `comeUp`), then draws (`startRendering`);
+//   - after a phase that queued frames, and before a context is closed, wait for the GPU (`gpuIdle`,
+//     `closeIdle`). Those waits sit in evaluates, which have no limit of their own, under a generous one.
+/** for a fresh page to load and construct the game with rendering held: 1 to 4 s here, 23 s on a single core */
+const FRESH_PAGE_MS = 120000;
+/** for the GPU to draw what it was sent: the default 120 s soak leaves 128 renders, over 4 min at 2 s a frame */
+const GPU_MS = 600000;
+/** `promise`, or an error naming `what` after `ms` (for waits that have no limit of their own) */
+const within = (promise, ms, what) => {
+  let timer;
+  const late = new Promise((_, rej) => {
+    timer = setTimeout(() => rej(new Error(`${what}: not done after ${ms / 1000} s`)), ms);
+  });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+};
+/** runs in the page before its scripts: the game holds rendering from its very first frame */
+const holdRendering = () => {
+  let game;
+  Object.defineProperty(window, '__court', {
+    configurable: true,
+    get: () => game,
+    set: (g) => {
+      game = g;
+      g.holdRender = true;
+    },
+  });
+};
+/** a page in its own context whose game will hold rendering; `init` runs in the page before its scripts */
+const newHeldPage = async (contextOptions, init) => {
+  const ctx = await browser.newContext(contextOptions);
+  await ctx.addInitScript(holdRendering);
+  if (init) await ctx.addInitScript(init);
+  return { ctx, p: await ctx.newPage() };
+};
+/** load `url` and wait until `ready` holds in the page (timer polling: animation frames stall behind the GPU) */
+const comeUp = async (p, url, ready) => {
+  await p.goto(`http://localhost:${PORT}/${url}`, { timeout: FRESH_PAGE_MS });
+  await p.waitForFunction(ready, null, { timeout: FRESH_PAGE_MS, polling: 250 });
+};
+/**
+ * resolves once the GPU has drawn everything this page's game has sent it so far (a fence, polled).
+ * With `after`, the wait is printed: in a CI log it tells how much work that phase had left queued.
+ */
+const gpuIdle = async (p, after) => {
+  const t0 = Date.now();
+  await within(
+    p.evaluate(async () => {
+      const gl = window.__court?.renderer.getContext();
+      if (!gl || gl.isContextLost()) return;
+      const fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      gl.flush();
+      while (!gl.isContextLost() && gl.getSyncParameter(fence, gl.SYNC_STATUS) !== gl.SIGNALED) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      gl.deleteSync(fence);
+    }),
+    GPU_MS,
+    'waiting for the GPU to draw the queued frames',
+  );
+  if (after) console.log(`gpu queue after ${after}: ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+};
+/** release a held page and wait until its first two frames (the first compiles every shader) are drawn */
+const startRendering = async (p) => {
+  await within(
+    p.evaluate(async () => {
+      window.__court.holdRender = false;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }),
+    GPU_MS,
+    "waiting for a fresh page's first frames",
+  );
+  await gpuIdle(p);
+};
+/** close a page's context once its game has stopped drawing and the GPU has drawn what it sent */
+const closeIdle = async (ctx, p) => {
+  const hold = p.evaluate(() => {
+    if (window.__court) window.__court.holdRender = true;
+  });
+  await within(hold, GPU_MS, 'waiting for a page to stop drawing');
+  await gpuIdle(p);
+  await ctx.close();
+};
+
+const { p: page } = await newHeldPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 page.on('console', (m) => {
   if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text()}`);
 });
 page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message));
-await page.goto(`http://localhost:${PORT}/`);
-await page.waitForFunction(() => window.__court && window.__menu, null, { timeout: 30000 });
+await comeUp(page, '', () => window.__court && window.__menu);
 // let the RAF loop render for a while so every shader compiles before we start capturing
+await startRendering(page);
 await page.waitForTimeout(6000);
 // render on demand only: continuous SwiftShader frames starve screenshot capture
 await page.evaluate(() => {
   window.__court.holdRender = true;
 });
+await gpuIdle(page, 'the warm-up');
 const failures = [];
 /** record a failed expectation (the run continues so one report shows every failure) */
 const check = (ok, what, detail) => {
@@ -302,11 +400,17 @@ const perf = await page.evaluate(async () => {
 });
 report.perf.frame = perf;
 console.log('perf', JSON.stringify(perf));
+// the frames still queued behind the last one measured: the touch page below must not wait for them
+await gpuIdle(page, 'the perf frames');
 
 // ---- touch controls: a phone-sized touch context drives the stick, JUMP and HIT with real touch events
 {
-  const tctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-  const tp = await tctx.newPage();
+  const { ctx: tctx, p: tp } = await newHeldPage({
+    viewport: { width: 844, height: 390 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
   tp.on('console', (m) => {
     if (m.type() === 'error' || m.type() === 'warning') errors.push(`[touch ${m.type()}] ${m.text()}`);
   });
@@ -323,14 +427,17 @@ console.log('perf', JSON.stringify(perf));
     return cdp.send('Input.dispatchTouchEvent', { type, touchPoints: [...pts.entries()].map(([id, p]) => ({ x: p.x, y: p.y, id })) });
   };
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  await tp.goto(`http://localhost:${PORT}/?mode=spike&pos=OH&touch=1`);
-  await tp.waitForFunction(() => window.__court && window.__touch?.enabled, null, { timeout: 30000 });
-  await wait(2500);
+  await comeUp(tp, '?mode=spike&pos=OH&touch=1', () => window.__court && window.__touch?.enabled);
+  // from here the page draws by itself, as on a phone: the touches below go through its real frame loop
+  // (its first two frames are drawn when this returns, which is what a fixed 2.5 s wait here stood in for)
+  await startRendering(tp);
   const tshot = async (name) => {
     await tp.evaluate(() => {
       window.__court.holdRender = true;
       window.__court.renderNow(1 / 60);
     });
+    // the capture's limit is for capturing, not for the frames the free-running loop had queued
+    await gpuIdle(tp);
     await tp.screenshot({ path: path.join(out, name + '.png'), timeout: 90000 });
     report.shots.push(name);
     await tp.evaluate(() => (window.__court.holdRender = false));
@@ -394,7 +501,7 @@ console.log('perf', JSON.stringify(perf));
   report.touch = t;
   console.log('touch', t.ok ? 'ok' : 'FAILED', JSON.stringify(s));
   check(t.ok, 'touch controls drive run, load, jump, wind-up and swing', s);
-  await tctx.close();
+  await closeIdle(tctx, tp);
 }
 
 // ---- soak: memory and GPU resources must not grow
@@ -439,43 +546,30 @@ const soak = await page.evaluate(async (secs) => {
 }, soakSeconds);
 report.perf.soak = soak;
 console.log('soak', JSON.stringify(soak));
+// the soak's renders are only queued when it returns (it never waits for a frame): let the GPU draw them
+// before the probes open and close their contexts
+await gpuIdle(page, 'the soak');
 for (const k of ['geometries', 'textures', 'programs']) {
   check(soak.after[k] <= soak.before[k], `soak: ${k} do not grow across mode switches`, { before: soak.before[k], after: soak.after[k] });
 }
 
 // ---- robustness: what players actually do (share links, old saved settings, keyboard-only menus)
 {
-  // These probes check loading, settings and keys, not drawing, so rendering is held from the very first
-  // frame: a fresh page's first frame compiles every shader at once, which on a CI runner's software GPU
-  // blocks the page's main thread (and every evaluate) for more than 30 s.
-  const holdRendering = () => {
-    let game;
-    Object.defineProperty(window, '__court', {
-      configurable: true,
-      get: () => game,
-      set: (g) => {
-        game = g;
-        g.holdRender = true;
-      },
-    });
-  };
+  // These probes check loading, settings and keys, not drawing, so rendering stays held: a fresh page's
+  // first frame compiles every shader at once, which on a CI runner's software GPU blocks the page's main
+  // thread (and every evaluate) for more than 30 s.
   const probe = async (label, url, init) => {
-    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
-    await ctx.addInitScript(holdRendering);
-    if (init) await ctx.addInitScript(init);
-    const p = await ctx.newPage();
+    const { ctx, p } = await newHeldPage({ viewport: { width: 1280, height: 720 } }, init);
     const errs = [];
     p.on('pageerror', (e) => errs.push(e.message));
     p.on('console', (m) => {
       if (m.type() === 'error') errs.push('console: ' + m.text());
     });
     try {
-      await p.goto(`http://localhost:${PORT}/${url}`);
       // ready, or on the crash screen (which never sets __menu)
-      await p.waitForFunction(() => (window.__court && window.__menu) || document.querySelector('.crash'), null, {
-        timeout: 60000,
-        polling: 250,
-      });
+      await comeUp(p, url, () => (window.__court && window.__menu) || document.querySelector('.crash'));
+      // building the game queued GPU work too (the environment map): done with it before the probe's own waits
+      await gpuIdle(p);
       // rendering is held, so the loop never ticks: step the simulation and the drill for a second by hand
       // (no drawing), so an error in the game loop fails the probe instead of hiding behind the hold
       await p.evaluate(() => {
@@ -489,24 +583,25 @@ for (const k of ['geometries', 'textures', 'programs']) {
         crash: !!document.querySelector('.crash'),
       }));
       check(errs.length === 0 && !st.crash, `${label}: loads and plays a second without errors`, { errs, st });
-      return { p, ctx, st };
+      return { p, ctx, st, close: () => closeIdle(ctx, p) };
     } catch (e) {
       // record it and carry on, so the report still lists every other check
       check(false, `${label}: the page comes up`, { error: String(e).split('\n')[0], errs });
-      return { p, ctx, st: {} };
+      // a page that never came up may never answer either: close it without asking it anything
+      return { p, ctx, st: {}, close: () => ctx.close() };
     }
   };
   let r = await probe('mistyped position in a link', '?mode=spike&pos=OHH');
   check(r.st.mode === 'spike' && r.st.pos === 'OH' && !r.st.inMenu, 'a mistyped position falls back to OH and starts the drill', r.st);
-  await r.ctx.close();
+  await r.close();
   r = await probe('unknown mode in a link', '?mode=spikey');
   check(r.st.inMenu, 'an unknown mode opens the menu', r.st);
-  await r.ctx.close();
+  await r.close();
   r = await probe('corrupted saved settings', '', () =>
     localStorage.setItem('courtfeel.settings.v1', JSON.stringify({ fov: 'wide', volume: null })),
   );
   check(typeof r.st.fov === 'number', 'a stored setting of the wrong type falls back to its default', r.st);
-  await r.ctx.close();
+  await r.close();
   // keyboard: game keys are left to the browser in the menu, captured in play
   r = await probe('keyboard', '');
   const keys = await r.p.evaluate(() => {
@@ -525,7 +620,7 @@ for (const k of ['geometries', 'textures', 'programs']) {
   });
   check(!keys.inMenu.tab && !keys.inMenu.space, 'menus: Tab and Space keep their browser meaning', keys);
   check(keys.inGame.tab && keys.inGame.space, 'in play: Tab and Space are captured by the game', keys);
-  await r.ctx.close();
+  await r.close();
   // a crash in play: the crash screen keeps the keyboard and mouse (no pause menu or pointer lock behind it)
   r = await probe('crash screen', '?mode=spike&pos=OH');
   try {
@@ -552,7 +647,7 @@ for (const k of ['geometries', 'textures', 'programs']) {
   } catch (e) {
     check(false, 'crash screen: shows after repeated frame errors', String(e).split('\n')[0]);
   }
-  await r.ctx.close();
+  await r.close();
 }
 
 fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));

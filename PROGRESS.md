@@ -623,6 +623,56 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   same timing serves just as well; the plant is left-right; in first person the left hand is drawn back
   beside the head with the left shoulder turned away; the stored hand is sanitised.
 
+## The e2e on a slow CI runner: fresh pages and the GPU queue
+The "End-to-end (headless Chromium)" job failed on slow GitHub runners (9-10 Nov 2026: PR #27 twice
+at the touch page's `waitForFunction`, 30 s; PR #35 three times at the first robustness probe's, 60 s)
+and passed on a re-run with no change. It was the script, not the game.
+- **Why the first fresh page after a heavy phase is slow.** WebGL does not wait for the software GPU:
+  a draw call only queues work for the browser's GPU process, which draws a frame in 0.6 s on a good
+  machine and 2 s on a slow runner. The perf phase stops with frames still queued, and the soak's
+  renders (38 with CI's `SOAK=30`) are all still queued when it returns: it takes a few seconds, its
+  frames take 25 s to draw here and 66 to 100 s at a slow runner's speed. Two things then wait for
+  the whole queue, whoever filled it:
+  - a page's first drawn frame: it compiles every shader, and the page's main thread is blocked
+    until the GPU has caught up. No evaluate is answered meanwhile, and a wait that polls on
+    animation frames needs the first frame *and* the second.
+  - closing a browser context: the browser's own main thread waits for the GPU process to tear the
+    page's window down (`Compositor::destructor` → `DestroyCompositorFrameSink` in a trace: 73 s and
+    173 s on one core), and that waits for everything queued. Until then nothing that goes through
+    the browser moves: a new context, a navigation, an answer from any page.
+  So the first page opened (or the first context closed) after such a phase paid for that phase's
+  frames out of its own limit, and the pages after it found the queue empty. That is why only the
+  first probe timed out and the later ones took ~13 s.
+- **Reproduced locally** by taking CPU away, which a 2-core pin alone does not do: two cores shared
+  with two busy loops each (`taskset -c 1,2`, plus `while :; do :; done` twice per core) gives
+  `swiftshaderWallMsPerFrame` 2009, the failing runs' number, and the old script fails at the touch
+  page with the same `Timeout 30000ms exceeded`. With that limit lifted, the soak's queue landed on
+  the second probe's `browser.newContext()`: 100 s. In CI it landed on the first probe's wait instead;
+  which call is the victim depends on timing, the queue is the same. (That last step, the exact
+  victim in CI, is inferred, not observed.)
+- **What the script does now** (`scripts/e2e.mjs`, "fresh pages on a software GPU"):
+  - every fresh page (main, touch, probes) holds rendering until it is up, and is waited for with
+    timer polling and one generous limit (`FRESH_PAGE_MS`, 120 s, for the navigation too); pages that
+    draw are then released and waited for until their first two frames are drawn;
+  - after the warm-up, the perf frames and the soak, once a probe's page is up, and before any
+    context is closed, the script waits for the GPU to finish (`gpuIdle`: a WebGL fence, polled; `gl.finish()` returns at once
+    here, with 40 s of frames still queued). The wait is printed (`gpu queue after the soak: 66 s`), so a slow run's log says where
+    its time went;
+  - the touch page's screenshots wait for the GPU before capturing, so their 90 s limit covers the
+    capture (it was at 60 s of it at CI's slow speed).
+  No check was removed or loosened: the predicates are the same, only where the waiting happens and
+  how long it may take changed. Throttled as above the whole suite now passes, at 1.9 s a
+  frame in 10.6 min and at 2.6 s a frame in 15.9 min, with every fresh page up in under a second after
+  its navigation. On a good machine it costs about a tenth (264 to 287 s over three runs, against
+  244 s for the old script on the same machine, `SOAK=30`).
+- Found on the way, not fixed: with the default 120 s soak (`npm run e2e` without CI's `SOAK=30`) two
+  soak checks fail, geometries 113 → 115 and textures 49 → 50, on the old script and the new one alike.
+  The longer soak reaches block, receive, setter and free play for 20 s each, the 30 s one only rally
+  and spike. Whether that is a leak or something built once and kept has not been looked at.
+- Not covered: a runner about three times slower than the slowest seen runs into the job's own
+  30-minute limit first. On a single core (about 5 s a frame) the old script also ran out of its
+  screenshots' 90 s limit; that was not looked into.
+
 ## Decisions
 - First-run tutorial v3 (issue #25) is a coach layer on Spike Drill, not a seventh mode: Outside, block off, three balls with less help each time. **Together:** the ball waits for you. At each moment (run, jump, draw, hit) time eases down and stops until you do it; on time, nothing stops. Buttons are read as held, never as fresh presses, so a button already down when its moment comes counts. The coach runs the hitter down the planned line and aims the ball: what you hold decides whether time runs. **Slow motion:** you drive at 0.6 speed with the same cues, nothing waits, the result is real. **Full speed:** the drill, with the contact dip. After each ball the coach says one thing (the first thing that went wrong); a rep is retried once, then the lesson moves on. After the third ball the game says the tutorial is done and offers to keep hitting or choose another drill. A timing collar around the charge ring (gold / cyan / wood from the real spike windows) is on in the lesson and, after it, whenever Settings → Hints is on. This replaces v2's hard freezes (below, "Tutorial v3") and the tip stays out of the lesson.
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
