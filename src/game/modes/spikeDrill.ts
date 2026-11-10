@@ -18,8 +18,10 @@ import {
   type AttackLane,
   type SetPlay,
 } from '../plays';
-import { kbd, makeFloorRing, Mode, ZoneMarker } from './mode';
-import { planApproach, planQuick, planToPoint, type ApproachPlan } from '../../ai/approach';
+import type { ApproachLine } from '../tutorial';
+import { ApproachGuide } from '../../fx/approachGuide';
+import { kbd, Mode, ZoneMarker } from './mode';
+import { planApproach, planQuick, planToPoint, simulateApproach, type ApproachPlan } from '../../ai/approach';
 import { BlockerBrain } from '../../ai/blocker';
 import { blockShadowOnCourt, HANDS_WIDTH, type HandSpan } from '../blockShadow';
 
@@ -75,7 +77,19 @@ export class SpikeDrill extends Mode {
   private t = 0;
   private zone!: Zone;
   private zoneMarker = new ZoneMarker();
-  private approachRing!: THREE.Mesh;
+  /** where your feet go: the plant spot (and, in the first-run lesson, the arrows to it) */
+  private guide!: ApproachGuide;
+  private line: ApproachLine = {
+    tGo: -1,
+    tPlant: -1,
+    hold: 0,
+    dirX: 0,
+    dirZ: -1,
+    yaw: 0,
+    spot: { x: 0, z: 0 },
+    start: { x: 0, z: 0 },
+    plant: null,
+  };
   private lastGrade: ContactEvent | null = null;
   private userTouched = false;
   private tossed = false;
@@ -110,6 +124,10 @@ export class SpikeDrill extends Mode {
   }
 
   private setTitle(): void {
+    if (this.g.tutorial.active) {
+      this.g.hud.setTitle('Spike Drill · Outside');
+      return;
+    }
     const block = this.blockLevel ? ` · block: ${BLOCK_NAMES[this.blockLevel]}` : '';
     this.g.hud.setTitle('Spike Drill · ' + this.lane.label + block);
   }
@@ -339,22 +357,25 @@ export class SpikeDrill extends Mode {
     this.coach.airIntent = 'neutral';
 
     this.add(this.zoneMarker.group);
-    this.approachRing = makeFloorRing(0x6fe3ff, 0.9);
-    this.add(this.approachRing);
+    this.guide = new ApproachGuide();
+    this.add(this.guide.group);
     this.buildShadow();
     this.pickZone();
     this.setTitle();
     this.updateScore();
     this.phase = 'intro';
     this.t = 0;
-    g.hud.message(
-      this.position === 'MB'
-        ? 'Quick: run on the pass · jump as the setter touches it · hold LMB, release to hit · 1-3 set call'
-        : this.plays
-          ? 'Approach: Shift + W · plant: Space · hold LMB, release to hit · 1-3 set call'
-          : 'Approach: Shift + W · plant: Space · hold LMB to wind up, release to hit',
-      3.6,
-    );
+    // the tutorial speaks through the coach line; the drill's own intro (and its tip mention) stays down
+    if (!g.tutorial.active) {
+      g.hud.message(
+        this.position === 'MB'
+          ? 'Quick: run on the pass · jump as the setter touches it · hold LMB, release to hit · 1-3 set call'
+          : this.plays
+            ? 'Approach: Shift + W · plant: Space · hold LMB, release to hit · 1-3 set call'
+            : 'Approach: Shift + W · plant: Space · hold LMB to wind up, release to hit',
+        3.6,
+      );
+    }
   }
 
   private pickZone(): void {
@@ -367,6 +388,12 @@ export class SpikeDrill extends Mode {
   }
 
   private updateScore(): void {
+    if (this.g.tutorial.active) {
+      // the mocks leave off the set call, the block and the target: one story
+      const rep = this.phase === 'result' ? this.reps : this.reps + 1;
+      this.g.hud.setScore(`${this.score} pts · rep ${rep}`);
+      return;
+    }
     const call = this.play ? ` · set ${this.callIdx + 1}: ${this.play.name}` : '';
     const block = this.blockLevel ? ` · block: ${BLOCK_NAMES[this.blockLevel]}` : '';
     this.g.hud.setScore(`${this.score} pts · rep ${this.reps}${call}${block} · target: ${this.zone.name}`);
@@ -384,8 +411,8 @@ export class SpikeDrill extends Mode {
     return `${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} plant & jump${calls}${block} · ${kbd('V')} camera · ${kbd('N')} reset rep`;
   }
 
-  restartRep(): void {
-    this.endRep(null, true);
+  restartRep(snap = false): void {
+    this.endRep(null, true, snap);
   }
 
   step(dt: number): void {
@@ -395,7 +422,12 @@ export class SpikeDrill extends Mode {
     this.coach.cmd.faceYaw = Math.atan2(-(SETTER_TARGET.x - this.coach.pos.x), -(SETTER_TARGET.z - this.coach.pos.z));
     switch (this.phase) {
       case 'intro':
-        if (this.t > 1.2) this.toPhase('feed');
+        // the lesson's welcome: no toss yet
+        if (g.tutorial.holdingFeed()) {
+          this.t = 0;
+          break;
+        }
+        if (this.t > (g.tutorial.active ? 0.45 : 1.2)) this.toPhase('feed');
         break;
       case 'feed': {
         if (g.userReturning) {
@@ -419,6 +451,8 @@ export class SpikeDrill extends Mode {
         break;
       }
       case 'result':
+        // the lesson: the next toss waits until the coach's line about this rep has been read
+        if (g.tutorial.holdingResult()) break;
         if (this.t > 1.9) this.nextRep();
         break;
     }
@@ -432,7 +466,10 @@ export class SpikeDrill extends Mode {
     const off = new THREE.Vector3();
     me.idealContact(off, new THREE.Vector3(0, 0, 0)).setY(0);
     const spot = quick ? quickSpot(SETTER_TARGET.x, 1, play!.inFront) : lane;
-    this.approachRing.position.set(spot.x - off.x, 0.011, spot.z - off.z);
+    this.line.spot.x = spot.x - off.x;
+    this.line.spot.z = spot.z - off.z;
+    this.line.start.x = lane.sx;
+    this.line.start.z = lane.sz;
     // GO cue: when a perfect approach would start
     const lt = g.ball.lastTouch;
     const setUp = g.ball.active && lt && (early ? lt.kind === 'feed' : lt.kind === 'set' || (this.position === 'S' && lt.kind === 'feed'));
@@ -458,23 +495,62 @@ export class SpikeDrill extends Mode {
         this.earlyFor = lt;
       } else plan = planApproach(me, pred, g.simTime, 0, 0);
       this.goAt = plan && plan.error < 0.6 ? plan.tStart : -1;
+      if (plan) {
+        const l = this.line;
+        l.tGo = plan.tStart;
+        l.tPlant = plan.tPress;
+        l.hold = plan.hold;
+        l.dirX = plan.dir.x;
+        l.dirZ = plan.dir.z;
+        l.yaw = plan.runYaw;
+        // where that run plants: the line to jump from (the jump carries on to the spot)
+        const at = simulateApproach(me, g.simTime, plan.tStart, plan.tPress, plan.hold, plan.dir, plan.runYaw, plan.airYaw, plan.tPress);
+        l.plant = { x: at.pos.x, z: at.pos.z };
+      }
     }
+    const showRing = g.settings.landingMarker || g.tutorial.active;
     if (this.goAt > 0 && g.simTime >= this.goAt) {
       this.goAt = -1;
-      if (g.settings.landingMarker) {
+      if (showRing) {
         g.hud.go();
         this.ringPulse = 1;
       }
     }
     this.ringPulse = Math.max(0, this.ringPulse - dt * 2.5);
-    const mat = this.approachRing.material as THREE.MeshBasicMaterial;
-    mat.opacity = g.settings.landingMarker ? 0.45 + this.ringPulse * 0.55 : 0;
-    this.approachRing.scale.setScalar(1 + this.ringPulse * 0.6);
     this.updateShadow();
+  }
+
+  refreshHud(): void {
+    this.setTitle();
+    this.updateScore();
+  }
+
+  /** the approach for the set in the air (the first-run lesson reads it) */
+  approachLine(): ApproachLine {
+    return this.line;
   }
 
   frame(dt: number): void {
     this.zoneMarker.update(dt);
+    const g = this.g;
+    const teach = g.tutorial.active;
+    this.guide.update(
+      {
+        spot: g.settings.landingMarker || teach ? this.line.spot : null,
+        from: teach && g.tutorial.showPath() ? this.line.start : null,
+        plant: this.line.plant,
+        feet: g.me.rpos,
+        pulse: this.ringPulse,
+        urge: g.tutorial.urgeRun(),
+      },
+      dt,
+    );
+    // one Outside set, block off: swallow the call and block keys until the lesson ends
+    if (this.g.tutorial.active) {
+      if (this.plays) for (let i = 0; i < this.plays.length; i++) this.g.input.consumePress('Digit' + (i + 1));
+      this.g.input.consumePress('KeyB');
+      return;
+    }
     if (this.plays) {
       for (let i = 0; i < this.plays.length; i++) if (this.g.input.consumePress('Digit' + (i + 1))) this.selectCall(i);
     }
@@ -509,6 +585,7 @@ export class SpikeDrill extends Mode {
     if (ev.athlete !== this.g.me) return;
     this.userTouched = true;
     this.lastGrade = ev;
+    if (ev.grade) this.g.tutorial.noteContact(ev.grade, ev.note ?? '');
     if (ev.grade === 'Miss') {
       this.score += 0;
     }
@@ -519,10 +596,10 @@ export class SpikeDrill extends Mode {
     this.endRep(o);
   }
 
-  private endRep(o: Outcome | null, silent = false): void {
+  private endRep(o: Outcome | null, silent = false, snap = false): void {
     const g = this.g;
     if (silent) {
-      this.nextRep();
+      this.nextRep(snap);
       return;
     }
     this.toPhase('result');
@@ -571,9 +648,10 @@ export class SpikeDrill extends Mode {
     );
     g.crowd(good ? (ev?.perfect ? 1 : 0.6) : 0.1, good);
     this.updateScore();
+    g.tutorial.noteRepEnd(!!o && o.kind === 'in' && o.side === -1);
   }
 
-  private nextRep(): void {
+  private nextRep(snap = false): void {
     const g = this.g;
     g.judge.disarm();
     const lane = this.lane;
@@ -583,15 +661,22 @@ export class SpikeDrill extends Mode {
     this.placeBlockers();
     this.pickZone();
     this.updateScore();
-    // jog back to the approach start; the next toss waits for you
-    if (Math.hypot(me.pos.x - lane.sx, me.pos.z - lane.sz) > 0.6 || me.state !== 'ground') g.returnUser(lane.sx, lane.sz, 0);
-    this.toPhase('feed');
+    // Skip puts them on the ground at the start. N jogs back, including after a landing.
+    if (snap) g.placeUser(lane.sx, lane.sz, 0);
+    else if (Math.hypot(me.pos.x - lane.sx, me.pos.z - lane.sz) > 0.6 || me.state !== 'ground') g.returnUser(lane.sx, lane.sz, 0);
+    // N during the lesson's welcome must not toss the ball early
+    if (g.tutorial.holdingFeed()) this.toPhase('intro');
+    else this.toPhase('feed');
   }
 
   private toPhase(p: Phase): void {
     this.phase = p;
     this.t = 0;
-    if (p === 'feed') this.tossed = false;
+    if (p === 'feed') {
+      this.tossed = false;
+      this.line.tGo = this.line.tPlant = -1;
+      this.g.tutorial.noteFeed();
+    }
   }
 }
 

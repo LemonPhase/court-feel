@@ -517,6 +517,71 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   it existed, and shown again when the replay ends, is skipped or the buffer is reset). Browser check:
   replayed blocker positions within 0.08 m of the live ones over the whole replay (was 3.9 m).
 
+## Tutorial v3: the ball waits for you (first-run lesson, #25)
+- Report (Jack, playing v2): "If I hold jump first at the indication, I'm not supposed to jump. I have to re-click again, and the
+  entire experience is not very smooth." And: "the indicator on the floor is not present."
+- Causes, measured in headless Chrome through the real input path:
+  - **The re-click.** v2 froze the world at each decision and waited for a fresh *press*. A press before the freeze was swallowed
+    (`onJumpPress` returned `block`), so Space held 0.6 s early left the world frozen for good (2 s later: still `jump-load`, sim
+    time unchanged) until it was released and pressed again. The attack button had the same hole.
+  - **Back-to-back stops.** v2 stopped four times in about 0.6 s of game time; the arm freeze came 3 cm after takeoff.
+  - **The floor ring.** `makeFloorRing` had no polygon offset. The court is pulled towards the camera (offset -2), so it drew over
+    the ring: only the half over the blue free zone showed. The Spike Drill's own ring had the same cut on `main`.
+  - **Where to plant.** The ring marks where your feet are at *contact*. The plant starts about 1.5 m before it (1 m of run, then the
+    plant slides 0.9 m and the jump drifts 0.6 m: a broad jump), so "stop on the ring, then jump" taught a standing jump, and the
+    one solo rep after it was the first time the approach appeared, at full speed.
+  - **First person.** Looking level, a Perfect goes into the net (the look aims: level is a 2.5 m deep shot).
+- Fix:
+  - **Held, not pressed.** In the together rep the lesson reads the buttons as held state (`UserActions` leaves the edges alone while
+    `tutorial.ownsButtons()`), and does the plant, the wind-up and the swing itself at their moments.
+  - **Waits only if you are late.** Time eases down into a moment you have not acted on yet (`TUTORIAL.easeLead`, `crawl`) and stops
+    there. The game never simulates past a moment the ball waits at (`Tutorial.stopAt`, checked per fixed step with the same
+    `reached()` the director uses), so the plant and the release land on the same step at 12 fps and at 144.
+  - **Run and jump are separate beats.** Time runs while you hold the sprint, then while you hold Space; the load fills in game time
+    and the jump leaves the floor at the planned hold. Letting go half way stops time instead of jumping early.
+  - **Early release costs nothing in rep 1.** The arm stays drawn, the coach says "not yet", and a click at the gold swings.
+  - **Help fades.** Together (waits) → slow motion (cues, nothing waits) → full speed (strip only). One tip after each ball.
+  - **Floor guide** (`fx/approachGuide.ts`): the spot uses the look of the Setter Drill's stand-here spot from #33 (MatusGib): white
+    ring and disc over a dark outline, polygon offset -4, green under your feet. The lesson adds arrows down the run and a line
+    where to plant. The Spike Drill uses the same spot now, and `makeFloorRing` (Serve Receive, Setter Drill) has the offset too.
+  - The ball's landing ring is hidden during the lesson (two rings side by side on the floor), and in the together rep the coach
+    aims the swing 6.5 m deep down your line. If good timing misses their court later, the tip is about the aim.
+- Measured (headless Chrome, manual stepping at 60 fps unless said):
+  - Everything held from before the set: 0 frames waited before the gold; release there: **Perfect**, KILL.
+  - A first-timer who acts 0.4 s after each stop: four stops (run, jump, draw, hit), **Perfect**, in first and third person.
+  - Real time under software rendering (12 fps): the together rep is still **Perfect**.
+  - The whole lesson with a scripted player on the real controls: together Perfect → slow Perfect → full speed Good (it ran
+    straight at the net instead of down the arrows: "reaching"), flag `done`.
+
+## Tutorial entry: a first visit opens on a welcome (#25)
+- Report (Jack): "I'm not sure this is offered to people who have never visited this website, because I have."
+- What a new visitor got: the full start screen (five positions, six drills, the controls), one 12 px line saying PLAY teaches a
+  spike, and a PLAY that started the lesson whatever position and drill they had picked (Mini Rally as libero → the Outside
+  spike lesson). "Replay tutorial" was offered to people who had never taken it. Quitting to the menu part-way left the lesson
+  running: the next drill started with its HUD and its rules.
+- Fix:
+  - While the lesson is still on offer (`tutorialOffer`: never visited, or left part-way) the start screen is a welcome with two
+    buttons, **Start the tutorial** (Enter) and **Skip to the drills**. Skipping is remembered. Left part-way: **Continue**.
+  - PLAY always plays what you picked. The start screen's button is **Tutorial**.
+  - Quit to menu leaves the lesson (`Tutorial.leave`), keeping the saved step; Restart drill in the lesson restarts its rep.
+  - Taking the lesson again once it is done or skipped does not write the flag, so quitting a replay does not bring the welcome back.
+- Checked in headless Chrome with a clean profile: welcome → Enter → lesson; quit → "Welcome back", Continue; Skip → drills,
+  flag `skipped`, then Mini Rally as libero plays Mini Rally as libero; a `done` profile opens on the drills.
+
+## Tutorial end: the game says it is done and offers what next (#25)
+- Report (Jack): after the third ball the player is just left in the Spike Drill. Say the tutorial is finished, offer to keep
+  trying or go elsewhere, and say that the Spike Drill and the tutorial can always be found again.
+- Before: a title, "You're on the court.", for 2.6 s, then the drill carried on with no word about what had happened or where
+  anything was.
+- Fix: when the coach's line about the third ball is done, the drill pauses and the pause dialog comes up as the end of the
+  lesson (`Menu.showFinished`, from `Game.onTutorialDone`): one line about it (clean hit, or "the timing comes with reps"),
+  **Keep hitting** (the Spike Drill you are standing in), **Choose another drill** (the start screen), and a note that the Spike
+  Drill and the Tutorial are always on the start screen. It is the pause dialog, so Esc, the pointer lock and touch behave as
+  they do there. The lesson ends at that moment (no hand-off timer), and the drill's own title and score line come back.
+- Checked in headless Chrome: a clean third ball → the prompt → Keep hitting → the next rep plays as the plain drill; two
+  third balls that did not come off → the prompt → Choose another drill → the start screen with the drills; the ordinary pause
+  menu afterwards is unchanged.
+
 ## Left-handed players (settings: hitting hand, #19)
 - Report (a player): "I'm a lefty and my athlete always hits with the right hand." Everything one-handed
   assumed a right hand: the contact point (`Athlete.idealContact`), the hitting arm in the animator, the
@@ -559,6 +624,7 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   beside the head with the left shoulder turned away; the stored hand is sanitised.
 
 ## Decisions
+- First-run tutorial v3 (issue #25) is a coach layer on Spike Drill, not a seventh mode: Outside, block off, three balls with less help each time. **Together:** the ball waits for you. At each moment (run, jump, draw, hit) time eases down and stops until you do it; on time, nothing stops. Buttons are read as held, never as fresh presses, so a button already down when its moment comes counts. The coach runs the hitter down the planned line and aims the ball: what you hold decides whether time runs. **Slow motion:** you drive at 0.6 speed with the same cues, nothing waits, the result is real. **Full speed:** the drill, with the contact dip. After each ball the coach says one thing (the first thing that went wrong); a rep is retried once, then the lesson moves on. After the third ball the game says the tutorial is done and offers to keep hitting or choose another drill. A timing collar around the charge ring (gold / cyan / wood from the real spike windows) is on in the lesson and, after it, whenever Settings → Hints is on. This replaces v2's hard freezes (below, "Tutorial v3") and the tip stays out of the lesson.
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,
   and no CC0 pack ships volleyball-specific motions anyway, so the athlete is a procedurally

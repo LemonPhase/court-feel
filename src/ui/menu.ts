@@ -55,6 +55,16 @@ function buildTag(): HTMLElement {
 
 export interface MenuCallbacks {
   play(mode: ModeId, pos: PositionId): void;
+  /** the welcome's main button: start the lesson, or carry on from where it was left */
+  playTutorial(): void;
+  /** the start screen's Tutorial button: the lesson from the top */
+  replayTutorial(): void;
+  skipTutorial(): void;
+  /** what the start screen offers this visitor: the lesson, the rest of it, or nothing (it is done or skipped) */
+  tutorialOffer(): 'new' | 'resume' | null;
+  /** the visitor chose the drills over the lesson: don't offer it again */
+  declineTutorial(): void;
+  tutorialActive(): boolean;
   resume(): void;
   restart(): void;
   quit(): void;
@@ -72,6 +82,12 @@ export class Menu {
   private posCards = new Map<PositionId, HTMLElement>();
   /** which position the "Your athlete" settings edit (follows the selected position when the settings open) */
   private bodyTab: PositionId = 'OH';
+  /** the first visit: the lesson offered on its own, before the positions and drills */
+  private welcome!: HTMLElement;
+  private welcomeTitle!: HTMLElement;
+  private welcomeGo!: HTMLButtonElement;
+  private menuLeft!: HTMLElement;
+  private skipTutorialBtn!: HTMLButtonElement;
 
   constructor(
     parent: HTMLElement,
@@ -87,7 +103,9 @@ export class Menu {
     }
     // ------------------------------------------------------------ start screen
     this.start = h('div', 'menu');
+    this.buildWelcome();
     const left = h('div', 'menu-left');
+    this.menuLeft = left;
     left.append(h('div', 'logo', '<span>COURT</span><b>FEEL</b>'), h('div', 'tagline', 'Approach. Plant. Explode. Feel every contact.'));
     left.append(h('div', 'menu-h', '1 · Choose your position'));
     const posRow = h('div', 'pos-row');
@@ -143,7 +161,11 @@ export class Menu {
     play.onclick = () => this.go();
     const setBtn = h('button', 'ghost-btn', 'Settings');
     setBtn.onclick = () => this.openSettings(setBtn);
-    bottom.append(camSel, setBtn, play);
+    const replay = h('button', 'ghost-btn', 'Tutorial');
+    replay.type = 'button';
+    replay.title = 'Learn the spike in three balls';
+    replay.onclick = () => this.cb.replayTutorial();
+    bottom.append(camSel, replay, setBtn, play);
     left.append(bottom);
     left.append(
       h(
@@ -169,17 +191,26 @@ export class Menu {
     this.pause.setAttribute('role', 'dialog');
     this.pause.setAttribute('aria-label', 'Paused');
     const box = h('div', 'pause-box');
-    box.append(h('div', 'pause-t', 'Paused'));
+    this.pauseTitle = h('div', 'pause-t', 'Paused');
+    this.pauseBody = h('div', 'pause-b');
+    this.pauseNote = h('div', 'pause-n', 'The <b>Spike Drill</b> and the <b>Tutorial</b> are always on the start screen.');
+    box.append(this.pauseTitle, this.pauseBody);
     const resume = h('button', 'play-btn', 'RESUME');
     this.resumeBtn = resume;
     resume.onclick = () => this.cb.resume();
     const restart = h('button', 'ghost-btn', 'Restart drill');
     restart.onclick = () => this.cb.restart();
     const quit = h('button', 'ghost-btn', 'Quit to menu');
+    this.quitBtn = quit;
     quit.onclick = () => this.cb.quit();
     const sett = h('button', 'ghost-btn', 'Settings');
     sett.onclick = () => this.openSettings(sett);
-    box.append(resume, sett, restart, quit, buildTag());
+    this.pauseOnly = [sett, restart];
+    this.skipTutorialBtn = h('button', 'ghost-btn', 'Skip tutorial');
+    this.skipTutorialBtn.type = 'button';
+    this.skipTutorialBtn.style.display = 'none';
+    this.skipTutorialBtn.onclick = () => this.cb.skipTutorial();
+    box.append(resume, sett, restart, this.skipTutorialBtn, quit, this.pauseNote, buildTag());
     this.pause.append(box);
     parent.append(this.pause);
 
@@ -198,14 +229,16 @@ export class Menu {
       if (this.start.style.display !== 'none' && !this.settingsOpen) {
         const n = parseInt(e.key, 10);
         const ids = Object.keys(MODE_INFO) as ModeId[];
-        if (n >= 1 && n <= ids.length && !isTextEntry(e.target)) this.selectMode(ids[n - 1]);
+        if (n >= 1 && n <= ids.length && !isTextEntry(e.target) && !this.welcomeVisible) this.selectMode(ids[n - 1]);
         if (e.key === 'Enter') {
           // Enter plays from anywhere on the start screen, including a focused position or drill card
           // (Space or a click selects a card). Other focused controls handle Enter themselves.
           const control = (e.target as HTMLElement | null)?.closest?.('button, input, textarea, select');
           if (control && !control.matches('.pos-card, .mode-card')) return;
           e.preventDefault();
-          this.go();
+          // on the welcome, Enter takes the lesson
+          if (this.welcomeVisible) this.cb.playTutorial();
+          else this.go();
         }
       }
       if (e.key === 'Escape' && this.settingsOpen) {
@@ -218,6 +251,14 @@ export class Menu {
 
   private settingsOpen = false;
   private resumeBtn: HTMLButtonElement | null = null;
+  private quitBtn!: HTMLElement;
+  private pauseTitle!: HTMLElement;
+  private pauseBody!: HTMLElement;
+  private pauseNote!: HTMLElement;
+  /** the pause menu's buttons that the end of the lesson leaves out */
+  private pauseOnly: HTMLElement[] = [];
+  /** the pause dialog is showing the end of the lesson (null: it is the pause menu) */
+  private finished: 'clean' | 'done' | null = null;
   /** the button that opened the settings: focus returns there when they close */
   private settingsOpener: HTMLElement | null = null;
 
@@ -235,6 +276,56 @@ export class Menu {
         ${bar('Power', b.power, STAT_MAX.power)}${bar('Control', p.ballControl, STAT_MAX.control)}
         <div class="pos-h">${b.height.toFixed(2)} m${isCustomBody(id, custom) ? ' · <b>custom</b>' : ''}${this.settings.hand === 'left' ? ' · <b>lefty</b>' : ''}</div>`;
     }
+  }
+
+  /**
+   * The first visit. Someone who has never been here gets the lesson offered on its own, with
+   * one way past it: the positions and drills come after. PLAY always plays the drill you picked.
+   */
+  private buildWelcome(): void {
+    const w = h('div', 'welcome');
+    w.setAttribute('role', 'group');
+    w.setAttribute('aria-label', 'Welcome');
+    this.welcomeTitle = h('div', 'welcome-t');
+    const body = h(
+      'div',
+      'welcome-b',
+      'Learn the spike in three balls, about a minute. We hit the first one together: the ball waits for you.',
+    );
+    const steps = h('div', 'welcome-steps');
+    ['RUN', 'JUMP', 'DRAW', 'HIT'].forEach((s, i) => {
+      if (i) steps.append(h('span', 'welcome-sep', '›'));
+      steps.append(h('span', 'welcome-step', s));
+    });
+    this.welcomeGo = h('button', 'play-btn') as HTMLButtonElement;
+    this.welcomeGo.type = 'button';
+    this.welcomeGo.onclick = () => this.cb.playTutorial();
+    const skip = h('button', 'ghost-btn', 'Skip to the drills');
+    skip.type = 'button';
+    skip.onclick = () => {
+      this.cb.declineTutorial();
+      this.syncTutorial();
+      document.getElementById('play')?.focus();
+    };
+    const row = h('div', 'welcome-row');
+    row.append(this.welcomeGo, skip);
+    w.append(
+      h('div', 'logo', '<span>COURT</span><b>FEEL</b>'),
+      h('div', 'tagline', 'Approach. Plant. Explode. Feel every contact.'),
+      this.welcomeTitle,
+      body,
+      steps,
+      row,
+      h('div', 'welcome-n', 'You can take it again any time: <b>Tutorial</b>, on the start screen.'),
+      buildTag(),
+    );
+    w.style.display = 'none';
+    this.welcome = w;
+    this.start.append(w);
+  }
+
+  private get welcomeVisible(): boolean {
+    return this.welcome.style.display !== 'none';
   }
 
   private go(): void {
@@ -258,13 +349,62 @@ export class Menu {
 
   showStart(v: boolean): void {
     this.start.style.display = v ? 'flex' : 'none';
+    if (!v) return;
+    this.syncTutorial();
+    // the welcome's main button takes the keyboard when it comes up
+    if (this.welcomeVisible) this.welcomeGo.focus({ preventScroll: true });
   }
 
   showPause(v: boolean): void {
     const was = this.pauseVisible;
     this.pause.style.display = v ? 'flex' : 'none';
-    if (!v) this.closeSettings();
-    else if (!was) this.resumeBtn?.focus();
+    if (!v) {
+      this.closeSettings();
+      this.finished = null;
+    } else {
+      if (!was) this.resumeBtn?.focus();
+      this.syncTutorial();
+    }
+    this.syncPause();
+  }
+
+  /**
+   * The lesson's three balls are done. The same dialog as the pause menu (so Esc, the pointer
+   * and touch behave as they do there), saying so and offering what to do next: carry on in
+   * the Spike Drill you are standing in, or go and choose another drill. `clean`: the last
+   * ball was a Perfect or a Good.
+   */
+  showFinished(clean: boolean): void {
+    this.finished = clean ? 'clean' : 'done';
+    this.showPause(true);
+  }
+
+  private syncPause(): void {
+    const f = this.finished;
+    this.pause.setAttribute('aria-label', f ? 'Tutorial complete' : 'Paused');
+    this.pauseTitle.textContent = f ? "You're on the court." : 'Paused';
+    this.pauseBody.textContent = !f
+      ? ''
+      : f === 'clean'
+        ? 'That is the spike: run, jump, draw, hit. The tutorial is done.'
+        : 'That is the tutorial. The timing comes with reps.';
+    this.pauseBody.style.display = f ? '' : 'none';
+    this.pauseNote.style.display = f ? '' : 'none';
+    if (this.resumeBtn) this.resumeBtn.textContent = f ? 'KEEP HITTING' : 'RESUME';
+    this.quitBtn.textContent = f ? 'Choose another drill' : 'Quit to menu';
+    for (const b of this.pauseOnly) b.style.display = f ? 'none' : '';
+  }
+
+  /** the welcome or the drills on the start screen, and the pause-menu skip, from the stored flag and the live session */
+  syncTutorial(): void {
+    const offer = this.cb.tutorialOffer();
+    this.welcome.style.display = offer ? '' : 'none';
+    this.menuLeft.style.display = offer ? 'none' : '';
+    if (offer) {
+      this.welcomeTitle.textContent = offer === 'resume' ? 'Welcome back.' : 'First time here?';
+      this.welcomeGo.textContent = offer === 'resume' ? 'CONTINUE THE TUTORIAL' : 'START THE TUTORIAL';
+    }
+    this.skipTutorialBtn.style.display = this.cb.tutorialActive() ? '' : 'none';
   }
 
   get pauseVisible(): boolean {
@@ -380,7 +520,17 @@ export class Menu {
     toggle('Perfect-spike replays', 'replays');
     slider('Camera shake', 'shake', (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`));
     slider('Volume', 'volume', (v) => `${Math.round(v * 100)}%`);
-    toggle('Key hints', 'showHints');
+    toggle('Hints', 'showHints');
+    const replayRow = h('label', 'set-row');
+    const replayBtn = h('button', 'chip', 'Replay tutorial');
+    replayBtn.type = 'button';
+    replayBtn.onclick = (e) => {
+      e.preventDefault();
+      this.closeSettings();
+      this.cb.replayTutorial();
+    };
+    replayRow.append(h('span', 'set-l', 'Tutorial'), replayBtn);
+    grid.append(replayRow);
     const cols = h('div', 'settings-cols');
     cols.append(grid, this.buildBodySettings(changed));
     box.append(cols);

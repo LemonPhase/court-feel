@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { Grade } from '../game/athlete';
+import { TIMING } from '../config';
+import { COLLAR_DEG_PER_S, collarDegrees, collarZone, CUE_NAMES, CUE_ORDER, type Cue } from '../game/tutorial';
 
 const GRADE_CLASS: Record<Grade, string> = {
   Perfect: 'g-perfect',
@@ -8,6 +10,27 @@ const GRADE_CLASS: Record<Grade, string> = {
   Late: 'g-late',
   Miss: 'g-miss',
 };
+
+/** hint `<kbd>` names → touch button names. Combined approach keys first. */
+export function translateKeyMarkup(t: string, m: Record<string, string>): string {
+  t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
+  t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
+  return t.replace(/with the mouse/g, 'by dragging');
+}
+
+/** annular sector. Degrees are collar degrees: 0 at 12 o'clock, positive (late) to the right. */
+function ringSector(a0: number, a1: number, r0: number, r1: number): string {
+  const p = (deg: number, r: number) => {
+    const a = ((deg - 90) * Math.PI) / 180;
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  };
+  const large = a1 - a0 > 180 ? 1 : 0;
+  const [x0, y0] = p(a0, r1);
+  const [x1, y1] = p(a1, r1);
+  const [x2, y2] = p(a1, r0);
+  const [x3, y3] = p(a0, r0);
+  return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r1} ${r1} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} A ${r0} ${r0} 0 ${large} 0 ${x3.toFixed(2)} ${y3.toFixed(2)} Z`;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -42,6 +65,26 @@ export class Hud {
   private callWord: HTMLDivElement;
   private callSub: HTMLDivElement;
   private callTimer = 0;
+  /** tutorial step title stays up until the step changes (hud-msg is otherwise a toast) */
+  private msgPinned = false;
+  /** while the tutorial is running, setter speech bubbles stay down */
+  suppressCalls = false;
+  /** SKIP TUTORIAL chip (keyboard). Touch draws its own in the top row. */
+  private skipBtn: HTMLButtonElement;
+  onSkip: (() => void) | null = null;
+  /** timing collar is in the Perfect window: touch HIT borrows this */
+  collarSweet = false;
+  private collar!: HTMLDivElement;
+  private collarMarker!: SVGCircleElement;
+  private collarZones: { el: SVGPathElement; name: string }[] = [];
+  private freezeVeil!: HTMLDivElement;
+  /** the lesson: the four parts of a spike, and the one to do now with its key */
+  private coachStrip!: HTMLDivElement;
+  private coachSteps: HTMLSpanElement[] = [];
+  private coachCue!: HTMLDivElement;
+  private coachKeys!: HTMLSpanElement;
+  private coachText!: HTMLSpanElement;
+  private coachShown = '';
   private callAnchor: ((out: THREE.Vector3) => THREE.Vector3) | null = null;
   private callP = new THREE.Vector3();
   private callV = new THREE.Vector3();
@@ -73,10 +116,27 @@ export class Hud {
     this.streakVal = el('span', 'hud-streak-val', this.streakBox, '0');
     this.hint = el('div', 'hud-hint', this.root);
     this.msg = el('div', 'hud-msg', this.root);
+    this.skipBtn = el('button', 't-tap t-skip-kb', this.root, 'SKIP TUTORIAL');
+    this.skipBtn.type = 'button';
+    this.skipBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onSkip?.();
+    });
     this.cross = el('div', 'crosshair', this.root);
     this.camTag = el('div', 'hud-cam', this.root, 'TP');
     this.loadRing = el('div', 'load-ring', this.root);
     this.chargeRing = el('div', 'charge-ring', this.root);
+    this.collar = this.buildCollar();
+    this.freezeVeil = el('div', 't-freeze', this.root);
+    this.coachStrip = el('div', 'coach-strip', this.root);
+    CUE_ORDER.forEach((id, i) => {
+      if (i) el('span', 'coach-sep', this.coachStrip, '›');
+      this.coachSteps.push(el('span', 'coach-step', this.coachStrip, CUE_NAMES[id]));
+    });
+    this.coachCue = el('div', 'coach-cue', this.root);
+    this.coachKeys = el('span', 'coach-keys', this.coachCue);
+    this.coachText = el('span', 'coach-text', this.coachCue);
     this.goCue = el('div', 'go-cue', this.root, 'GO');
     this.callout = el('div', 'callout', this.root);
     const bubble = el('div', 'callout-bubble', this.callout);
@@ -98,13 +158,127 @@ export class Hud {
     this.score.textContent = t;
   }
 
-  setHint(t: string): void {
-    if (!this.showHints) t = '';
-    else if (this.keyLabels) t = this.translateKeys(t);
+  /** `force` keeps a tutorial coach line up even when Settings → Hints is off */
+  setHint(t: string, force = false): void {
+    if (!this.showHints && !force) t = '';
+    else if (this.keyLabels && t) t = translateKeyMarkup(t, this.keyLabels);
     if (t !== this.lastHint) {
       this.lastHint = t;
       this.hint.innerHTML = t;
     }
+  }
+
+  /** keyboard skip chip + the camera-tag nudge. Touch hides this chip in CSS. */
+  setTutorialChrome(on: boolean): void {
+    this.root.classList.toggle('tutoring', on);
+  }
+
+  /** the ball is waiting for the player: the court cools a little, the HUD stays */
+  setFrozen(on: boolean): void {
+    if (this.root.classList.contains('frozen') === on) return;
+    this.root.classList.toggle('frozen', on);
+    document.body.classList.toggle('frozen', on);
+    this.freezeVeil.setAttribute('aria-hidden', on ? 'false' : 'true');
+  }
+
+  /**
+   * The lesson's cues. The strip names the four parts of a spike (the ones behind you ticked,
+   * the current one lit); the cue under the crosshair is the one thing to do now, with its key.
+   * It pulses while the ball waits for it. Null hides both.
+   */
+  setCoach(c: { stage: number; cue: Cue | null } | null): void {
+    this.coachStrip.classList.toggle('show', !!c);
+    const cue = c?.cue ?? null;
+    this.coachCue.classList.toggle('show', !!cue);
+    this.coachCue.classList.toggle('waiting', !!cue?.waiting);
+    if (!c) return;
+    this.coachSteps.forEach((e, i) => {
+      e.classList.toggle('done', i < c.stage);
+      e.classList.toggle('now', i === c.stage);
+    });
+    if (!cue) return;
+    const key = cue.keys + '|' + cue.text;
+    if (key === this.coachShown) return;
+    this.coachShown = key;
+    this.coachKeys.innerHTML = this.keyLabels ? translateKeyMarkup(cue.keys, this.keyLabels) : cue.keys;
+    this.coachText.innerHTML = this.keyLabels ? translateKeyMarkup(cue.text, this.keyLabels) : cue.text;
+  }
+
+  /** the ball has waited a while on the same cue: the cue calls harder and Skip lights up */
+  setNudge(on: boolean): void {
+    this.coachCue.classList.toggle('nudge', on);
+    this.skipBtn.classList.toggle('nudge', on);
+  }
+
+  /**
+   * Timing collar around the charge ring. `err` is how late a release now would be
+   * (negative = early). Null hides it.
+   */
+  setTiming(err: number | null): void {
+    if (err === null) {
+      this.collar.style.opacity = '0';
+      this.chargeRing.classList.remove('sweet');
+      this.cross.classList.remove('sweet');
+      this.collarSweet = false;
+      document.body.classList.remove('collar');
+      return;
+    }
+    document.body.classList.add('collar');
+    this.collar.style.opacity = '1';
+    const zone = collarZone(err);
+    this.collarSweet = zone === 'perfect';
+    this.chargeRing.classList.toggle('sweet', this.collarSweet);
+    this.cross.classList.toggle('sweet', this.collarSweet);
+    const deg = collarDegrees(err);
+    const rad = ((deg - 90) * Math.PI) / 180;
+    const mx = Math.cos(rad) * 37;
+    const my = Math.sin(rad) * 37;
+    this.collarMarker.setAttribute('cx', mx.toFixed(2));
+    this.collarMarker.setAttribute('cy', my.toFixed(2));
+    for (const z of this.collarZones) z.el.classList.toggle('lit', z.name === zone);
+  }
+
+  private buildCollar(): HTMLDivElement {
+    const wrap = el('div', 'timing-collar', this.root);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '-46 -46 92 92');
+    const dps = COLLAR_DEG_PER_S;
+    const zones: { name: string; a0: number; a1: number }[] = [
+      { name: 'wood', a0: -90, a1: -TIMING.spikeGood * dps },
+      { name: 'good', a0: -TIMING.spikeGood * dps, a1: -TIMING.spikePerfect * dps },
+      { name: 'perfect', a0: -TIMING.spikePerfect * dps, a1: TIMING.spikePerfectLate * dps },
+      { name: 'good', a0: TIMING.spikePerfectLate * dps, a1: TIMING.spikeGoodLate * dps },
+      { name: 'wood', a0: TIMING.spikeGoodLate * dps, a1: 72 },
+    ];
+    for (const z of zones) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', ringSector(z.a0, z.a1, 33, 41));
+      path.setAttribute('class', `tz-${z.name}`);
+      svg.appendChild(path);
+      this.collarZones.push({ el: path, name: z.name });
+    }
+    const notch = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    notch.setAttribute('x1', '0');
+    notch.setAttribute('y1', '-29');
+    notch.setAttribute('x2', '0');
+    notch.setAttribute('y2', '-44');
+    notch.setAttribute('class', 'tz-notch');
+    svg.appendChild(notch);
+    this.collarMarker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    this.collarMarker.setAttribute('r', '5.2');
+    this.collarMarker.setAttribute('class', 'tz-marker');
+    svg.appendChild(this.collarMarker);
+    wrap.appendChild(svg);
+    return wrap;
+  }
+
+  /** viewport point over the keyboard Skip chip (hidden on touch, and whenever the lesson isn't up) */
+  skipHit(x: number, y: number): boolean {
+    if (!this.root.classList.contains('tutoring')) return false;
+    const r = this.skipBtn.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    const slop = 8;
+    return x >= r.left - slop && x <= r.right + slop && y >= r.top - slop && y <= r.bottom + slop;
   }
 
   private lastHint = '';
@@ -128,19 +302,19 @@ export class Hud {
     return t;
   }
 
-  private translateKeys(t: string): string {
-    const m = this.keyLabels!;
-    // combined keys first (approach = push the stick out), then single keys
-    t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
-    t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
-    return t.replace(/with the mouse/g, 'by dragging');
-  }
-
   setCam(fp: boolean): void {
     this.camTag.textContent = fp ? 'FIRST PERSON' : 'THIRD PERSON';
     this.camTag.classList.remove('pulse');
     void this.camTag.offsetWidth;
     this.camTag.classList.add('pulse');
+  }
+
+  /** drop a grade / banner left up by the previous drill (tutorial entry, replay) */
+  clearFlash(): void {
+    this.gradeTimer = 0;
+    this.bannerTimer = 0;
+    this.grade.classList.remove('show');
+    this.banner.classList.remove('show');
   }
 
   showGrade(g: Grade, sub: string): void {
@@ -153,15 +327,30 @@ export class Hud {
     this.gradeTimer = g === 'Perfect' ? 1.6 : 1.2;
   }
 
-  showBanner(text: string, kind: 'good' | 'bad' | 'neutral' = 'neutral'): void {
+  showBanner(text: string, kind: 'good' | 'bad' | 'neutral' = 'neutral', dur = 1.5): void {
     this.banner.textContent = text;
     this.banner.className = 'hud-banner show b-' + kind;
     void this.banner.offsetWidth;
     this.banner.classList.add('pop');
-    this.bannerTimer = 1.5;
+    this.bannerTimer = dur;
+  }
+
+  /** a title that stays until cleared (the lesson's `1 / 3 · TOGETHER` line) */
+  pinMessage(text: string | null): void {
+    if (!text) {
+      this.msgPinned = false;
+      this.msg.classList.remove('show');
+      this.msgTimer = 0;
+      return;
+    }
+    this.msgPinned = true;
+    this.msg.textContent = text;
+    this.msg.classList.add('show');
+    this.msgTimer = 0;
   }
 
   message(text: string, dur = 1.5): void {
+    if (this.msgPinned) return;
     if (this.keyLabels) text = Hud.translateText(text);
     this.msg.textContent = text;
     this.msg.classList.add('show');
@@ -221,6 +410,7 @@ export class Hud {
     anchor: ((out: THREE.Vector3) => THREE.Vector3) | null,
     dur = 1.5,
   ): void {
+    if (this.suppressCalls) return;
     this.callWho.textContent = who;
     this.callWord.textContent = word;
     this.callSub.textContent = sub;
@@ -303,7 +493,7 @@ export class Hud {
       this.bannerTimer -= dt;
       if (this.bannerTimer <= 0) this.banner.classList.remove('show');
     }
-    if (this.msgTimer > 0) {
+    if (!this.msgPinned && this.msgTimer > 0) {
       this.msgTimer -= dt;
       if (this.msgTimer <= 0) this.msg.classList.remove('show');
     }

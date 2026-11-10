@@ -16,6 +16,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: 
 /** names shown in the HUD hints instead of keys */
 export const TOUCH_KEY_LABELS: Record<string, string> = {
   LMB: 'HIT',
+  // the tutorial's swing hint says "Left mouse" (the mock). Same button as LMB.
+  'Left mouse': 'HIT',
   RMB: 'BLOCK',
   Space: 'JUMP',
   E: 'PASS',
@@ -74,6 +76,7 @@ export class TouchControls {
   private chips: HTMLDivElement;
   private chipsFor = '';
   private pauseBtn: HTMLDivElement;
+  private skipBtn: HTMLDivElement;
   private replayBtn: HTMLElement;
   private lastCharge = -1;
   private visible = false;
@@ -100,6 +103,9 @@ export class TouchControls {
     this.hitRing = this.buttons.get('hit')!.querySelector('.t-ring') as HTMLDivElement;
     this.jumpRing = this.buttons.get('jump')!.querySelector('.t-ring') as HTMLDivElement;
     const top = el('div', 't-top', this.root);
+    // first chip, left of pause (the keyboard skip lives on the HUD instead)
+    this.skipBtn = el('div', 't-tap t-skip', top, 'SKIP TUTORIAL');
+    this.skipBtn.style.display = 'none';
     this.pauseBtn = el('div', 't-tap t-pause', top, '<span>❚❚</span>');
     this.pauseBtn.dataset.tap = 'pause';
     for (const [id, label] of [
@@ -197,8 +203,12 @@ export class TouchControls {
     if (!this.enabled) return;
     e.preventDefault();
     // children have pointer-events off (the root sees every touch), so hit-test the pause button by geometry
-    const pr = this.pauseBtn.getBoundingClientRect();
-    if (e.clientX >= pr.left - 6 && e.clientX <= pr.right + 6 && e.clientY >= pr.top - 6 && e.clientY <= pr.bottom + 6) {
+    if (this.hitTap(this.skipBtn, e)) {
+      this.pad.releaseAll();
+      this.g.tutorial.requestSkip();
+      return;
+    }
+    if (this.hitTap(this.pauseBtn, e)) {
       this.pad.releaseAll();
       this.cb.pause();
       return;
@@ -224,6 +234,13 @@ export class TouchControls {
   private onUp(e: PointerEvent): void {
     if (!this.enabled) return;
     this.pad.end(e.pointerId);
+  }
+
+  private hitTap(node: HTMLElement, e: PointerEvent): boolean {
+    if (node.style.display === 'none') return false;
+    const r = node.getBoundingClientRect();
+    if (r.width === 0) return false;
+    return e.clientX >= r.left - 6 && e.clientX <= r.right + 6 && e.clientY >= r.top - 6 && e.clientY <= r.bottom + 6;
   }
 
   /** per render frame: visibility, stick drawing, hold feedback (charge / load rings), context buttons */
@@ -261,6 +278,14 @@ export class TouchControls {
     this.lastCharge = charge;
     const air = me.state === 'air' || me.state === 'load';
     this.buttons.get('hit')!.classList.toggle('ready', air && TOUCH.airHitAnywhere && !wind);
+    this.buttons.get('hit')!.classList.toggle('sweet', g.hud.collarSweet);
+    this.skipBtn.classList.toggle('nudge', g.tutorial.stuck());
+    // tutorial: the chip left of pause, and the buttons the current step is not teaching go quiet
+    const skipDisplay = g.tutorial.teaching ? 'flex' : 'none';
+    if (this.skipBtn.style.display !== skipDisplay) this.skipBtn.style.display = skipDisplay;
+    const dim = new Set<string>();
+    if (g.tutorial.quiet()) for (const id of ['block', 'pass', 'toss']) dim.add(id);
+    for (const [id, e] of this.buttons) if (e.classList.contains('t-btn')) e.classList.toggle('dim', dim.has(id));
     // BLOCK reads SET when a press would set
     const blockLabel = this.buttons.get('block')!.querySelector('.t-label')!;
     const wantsSet = g.contact.wantsSet(me);
@@ -271,7 +296,7 @@ export class TouchControls {
     const rd = replay ? '' : 'none';
     if (this.replayBtn.style.display !== rd) this.replayBtn.style.display = rd;
     // drill context: set calls / feed types / toss
-    const key = `${g.modeId}:${g.position}`;
+    const key = `${g.modeId}:${g.position}:${g.tutorial.active ? 'tut' : ''}`;
     if (key !== this.chipsFor) {
       this.chipsFor = key;
       this.buildChips();
@@ -302,14 +327,15 @@ export class TouchControls {
     };
     const toss = this.buttons.get('toss')!;
     toss.style.display = g.modeId === 'free' ? '' : 'none';
-    const calls = (g.modeId === 'spike' || g.modeId === 'rally') && SET_PLAYS[g.position];
+    // tutorial reps: no set-call chips and no block toggle (one Outside story, block off)
+    const calls = !g.tutorial.active && (g.modeId === 'spike' || g.modeId === 'rally') && SET_PLAYS[g.position];
     if (calls) {
       el('span', 't-chip-l', this.chips, 'SET CALL');
       chip('d1', '1');
       chip('d2', '2');
       chip('d3', '3');
     }
-    if (g.modeId === 'spike') chip('vsblock', 'VS BLOCK');
+    if (g.modeId === 'spike' && !g.tutorial.active) chip('vsblock', 'VS BLOCK');
     if (g.modeId === 'free') {
       el('span', 't-chip-l', this.chips, 'FEED');
       for (let i = 1; i <= 5; i++) chip(`d${i}` as PadButton, String(i));

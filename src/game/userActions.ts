@@ -8,16 +8,25 @@ import type { Game } from './game';
 export class UserActions {
   constructor(private g: Game) {
     const u = g.user;
-    u.handlers.jump = () => this.g.me.jumpPress();
-    u.releaseHandlers.jump = () => this.g.me.jumpRelease();
-    u.handlers.attack = () => this.attack();
+    // the lesson's together rep reads jump and attack as held buttons (a button already down
+    // when its moment comes counts), so their edges do nothing there
+    u.handlers.jump = () => {
+      if (this.g.tutorial.ownsButtons()) return true;
+      return this.g.me.jumpPress();
+    };
+    u.releaseHandlers.jump = () => {
+      if (this.g.tutorial.ownsButtons()) return;
+      this.g.me.jumpRelease();
+    };
+    u.handlers.attack = () => (this.g.tutorial.ownsButtons() ? true : this.attack());
     // release the wind-up: the swing goes now (tap = tip, longer hold = more power)
     u.releaseHandlers.attack = () => {
       const g = this.g;
+      if (g.tutorial.ownsButtons()) return;
       const swing = g.contact.releaseWindup(g.me);
       if (swing) g.notePress(swing.err, swing.contactT);
     };
-    u.handlers.block = () => this.rightButton();
+    u.handlers.block = () => (this.g.tutorial.quiet() ? true : this.rightButton());
     u.releaseHandlers.block = () => {
       const act = this.g.me.action;
       if (act && (act.kind === 'block' || act.kind === 'set') && act.held) {
@@ -25,7 +34,7 @@ export class UserActions {
         act.releaseT = this.g.simTime;
       }
     };
-    u.handlers.pass = () => this.pass();
+    u.handlers.pass = () => (this.g.tutorial.quiet() ? true : this.pass());
     u.releaseHandlers.pass = () => {
       const act = this.g.me.action;
       if (act && act.kind === 'pass' && act.held) {

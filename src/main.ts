@@ -9,6 +9,7 @@ import type { ModeId } from './game/modes/mode';
 import type { PositionId } from './config';
 import { showCrashScreen } from './ui/crashScreen';
 import { TouchControls, wantsTouch } from './ui/touchControls';
+import { readTutorialFlag, tutorialOffer, writeTutorialFlag } from './game/tutorial';
 
 const app = document.getElementById('app')!;
 
@@ -74,6 +75,21 @@ function resume(): void {
   game.input.requestLock();
 }
 
+function startTutorial(replay: boolean): void {
+  game.fx.audio.unlock();
+  lastPlay = { mode: 'spike', pos: 'OH' };
+  menu.showStart(false);
+  menu.showPause(false);
+  game.beginTutorial({ replay });
+  game.paused = false;
+  game.hud.setVisible(true);
+  game.input.requestLock();
+  if (touch.enabled) goFullscreen();
+}
+
+/** a skip click releases pointer lock; don't also open the pause menu for that */
+let skipNavAt = 0;
+
 const menu = new Menu(app, settings, {
   play(mode, pos) {
     if (game.stopped) return;
@@ -88,11 +104,31 @@ const menu = new Menu(app, settings, {
     game.input.requestLock();
     if (touch.enabled) goFullscreen();
   },
+  playTutorial() {
+    startTutorial(false);
+  },
+  replayTutorial() {
+    startTutorial(true);
+  },
+  skipTutorial() {
+    game.tutorial.requestSkip();
+  },
+  tutorialOffer() {
+    return tutorialOffer(readTutorialFlag());
+  },
+  declineTutorial() {
+    writeTutorialFlag('skipped');
+  },
+  tutorialActive() {
+    return game.tutorial.active;
+  },
   resume,
   restart() {
     if (game.stopped) return;
     menu.showPause(false);
-    game.startMode(lastPlay.mode, lastPlay.pos);
+    // restarting during the lesson restarts the rep it is on
+    if (game.tutorial.active) game.beginTutorial({ step: game.tutorial.step });
+    else game.startMode(lastPlay.mode, lastPlay.pos);
     game.input.clearEdges();
     game.paused = false;
     game.input.requestLock();
@@ -167,8 +203,37 @@ function enterMenu(): void {
   game.startAttract();
 }
 
+// pointer lock delivers clicks to the canvas; Skip is hit from the integrated travel instead
+game.input.onLockedClick = (x, y) => {
+  if (!game.hud.skipHit(x, y)) return false;
+  game.tutorial.requestSkip();
+  return true;
+};
+
+game.onTutorialSkipped = (where) => {
+  skipNavAt = performance.now();
+  if (where === 'menu') {
+    menu.showPause(false);
+    game.paused = false;
+    game.stopMode();
+    enterMenu();
+  } else resume();
+  menu.syncTutorial();
+};
+
+// the lesson's three balls are done: say so and offer what to do next (carry on here, or choose a drill).
+// The drill underneath is paused, with the mouse free for the buttons.
+game.onTutorialDone = (clean) => {
+  if (game.stopped) return;
+  game.paused = true;
+  menu.showFinished(clean);
+  game.input.exitLock();
+};
+
 game.input.onPointerLockChange = (locked) => {
   if (!locked && !game.inMenu && !game.input.dragLook && !game.stopped) {
+    if (performance.now() - skipNavAt < 500) return;
+    if (game.tutorial.active) game.tutorial.onPause();
     // Esc during a replay ends the replay (the pause menu still opens: the browser dropped the lock)
     if (game.fx.replaying) game.fx.endReplay();
     game.paused = true;
@@ -224,20 +289,34 @@ app.addEventListener('mousedown', () => {
 });
 
 // quick-start links for automation and sharing a drill: ?mode=spike&pos=OH&bot=perfect&cam=fp&hand=left
+// ?tutorial=N starts the first-run lesson at that step (replay, so it runs even after done)
 enterMenu();
-const launch = parseLaunchParams(location.search);
-if (launch) {
-  if (launch.cam) settings.firstPerson = launch.cam === 'fp';
-  if (launch.hand) {
-    settings.hand = launch.hand;
-    game.applyUserBody();
-  }
+const q = new URLSearchParams(location.search);
+if (q.get('tutorial') !== null) {
+  const n = Number(q.get('tutorial'));
+  const cam = q.get('cam');
   menu.showStart(false);
-  menu.selectPos(launch.pos);
-  lastPlay = { mode: launch.mode, pos: launch.pos };
-  game.startMode(launch.mode, launch.pos);
+  menu.selectPos('OH');
+  menu.selectMode('spike');
+  lastPlay = { mode: 'spike', pos: 'OH' };
+  if (cam === 'fp' || cam === 'tp') settings.firstPerson = cam === 'fp';
+  game.beginTutorial({ replay: true, step: Number.isFinite(n) ? n : 0 });
   game.hud.setVisible(true);
-  if (launch.bot) game.enableBot(launch.bot);
+} else {
+  const launch = parseLaunchParams(location.search);
+  if (launch) {
+    if (launch.cam) settings.firstPerson = launch.cam === 'fp';
+    if (launch.hand) {
+      settings.hand = launch.hand;
+      game.applyUserBody();
+    }
+    menu.showStart(false);
+    menu.selectPos(launch.pos);
+    lastPlay = { mode: launch.mode, pos: launch.pos };
+    game.startMode(launch.mode, launch.pos);
+    game.hud.setVisible(true);
+    if (launch.bot) game.enableBot(launch.bot);
+  }
 }
 // robustness: a lost GL context pauses the game and offers a reload
 const canvas = game.renderer.domElement;
