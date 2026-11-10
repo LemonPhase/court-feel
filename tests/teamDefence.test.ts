@@ -216,13 +216,24 @@ describe('the back-row setter releases after their attack (Mini Rally)', () => {
     t.run(0.05);
     expect(t.team.receiver).toBe(t.team.players.get('L'));
     // just before the release delay the setter is still defending
-    t.run(AI.transition.setterRead - 0.1);
+    t.run(D.hitReact - 3 * D.hitReactSd - 0.07);
     expect(S.spot).not.toEqual(target);
     // after the delay it releases to the net, while the ball is still unplayed
-    t.run(0.1);
+    t.run(6 * D.hitReactSd + 0.07);
     expect(S.job).toBe('base');
     expect(S.spot).toEqual(target);
     expect(t.g.ball.lastTouch?.kind).toBe('spike');
+  });
+
+  it('the release comes a reaction time after their hit, not on the hit', () => {
+    const t = homeTeam();
+    const S = t.brain('S');
+    const target = t.team.formSpot('offense', 'S');
+    t.spike({ x: -4.0, y: 3.25, z: -0.9 }, { x: -2.9, y: 0.1, z: 6.2 }, 22);
+    t.run(D.hitReact - 3 * D.hitReactSd - 0.02);
+    expect(S.spot).not.toEqual(target);
+    t.run(6 * D.hitReactSd + 0.04);
+    expect(S.spot).toEqual(target);
   });
 
   it('on their hard spike at the setter, the setter stays and digs', () => {
@@ -232,8 +243,66 @@ describe('the back-row setter releases after their attack (Mini Rally)', () => {
     t.spike({ x: 3.0, y: 3.25, z: -0.5 }, { x: 2.8, y: 0.1, z: 6.2 }, 22);
     t.run(0.05);
     expect(t.team.receiver).toBe(t.team.players.get('S'));
-    t.run(AI.transition.setterRead + 0.1);
+    t.run(D.hitReact + 3 * D.hitReactSd + 0.1);
     expect(S.job).toBe('receive');
     expect(S.spot).not.toEqual(target);
+  });
+});
+
+describe('the middle back reads our block as it goes up (Mini Rally)', () => {
+  /** their outside set to our right; from `upAt` s our pin blocker (OPP) and middle are held in the air at these x (hands: `reach`) */
+  function blockUp(midX: number, reach = 0, upAt = 0.6) {
+    const t = homeTeam();
+    const pin = t.team.players.get('OPP')!;
+    const mid = t.team.players.get('MB')!;
+    const pinX = 3.5;
+    let up = -1;
+    setOutside(t);
+    const hold = () => {
+      if (t.g.simTime < upAt) return;
+      if (up < 0) up = t.g.simTime;
+      for (const [a, x, r] of [
+        [pin, pinX, 0],
+        [mid, midX, reach],
+      ] as const) {
+        a.state = 'air';
+        a.pos.x = x;
+        a.pos.y = 0.8;
+        a.reachX = r;
+      }
+    };
+    return { t, pinX, hold, upAt: () => up };
+  }
+
+  it('a late middle leaves a seam: the middle back steps up onto it before their hitter swings, a reaction time after the block goes up', () => {
+    const { t, pinX, hold, upAt } = blockUp(3.5 - 1.2);
+    const OH2 = t.brain('OH2');
+    t.run(0.6 + D.react - 3 * D.reactSd - 0.02, hold);
+    expect(upAt()).toBeGreaterThan(0);
+    expect(OH2.spot.z).toBeCloseTo(D.middleBack, 1);
+    t.run(0.5, hold);
+    // still their set in the air: the step up comes before the hit
+    expect(t.g.ball.lastTouch?.kind).toBe('set');
+    expect(OH2.spot.z).toBeCloseTo(D.middleBackSeam, 1);
+    // on the line from their hitter through the seam: cross of the pin blocker (within the middle back's range)
+    expect(OH2.spot.x).toBeLessThan(pinX);
+    expect(Math.abs(OH2.spot.x)).toBeLessThanOrEqual(D.middleBackMaxX + 1e-9);
+  });
+
+  it('a closed block: the middle back stays deep through the attack', () => {
+    const { t, hold } = blockUp(3.5 - AI.middle.closeGap);
+    t.run(1.1, hold);
+    expect(t.brain('OH2').spot.z).toBeCloseTo(D.middleBack, 1);
+    const lane = laneFor('OH', -1);
+    t.spike({ x: lane.x, y: 3.25, z: lane.z }, { x: -2.6, y: 0.1, z: 6.5 }, 22);
+    t.run(0.2);
+    expect(t.brain('OH2').spot.z).toBeCloseTo(D.middleBack, 1);
+  });
+
+  it('a late middle whose reach closes the seam: the middle back reads the hands, not the bodies, and stays deep', () => {
+    // the body 1.2 m inside the pin blocker, but the hands stretched 0.6 m towards it
+    const { t, hold } = blockUp(3.5 - 1.2, 0.6);
+    t.run(1.1, hold);
+    expect(t.brain('OH2').spot.z).toBeCloseTo(D.middleBack, 1);
   });
 });

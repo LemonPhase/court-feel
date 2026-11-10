@@ -615,10 +615,7 @@ export class TeamAI {
         const free = lt && (lt.kind === 'pass' || lt.kind === 'dig' || lt.kind === 'set' || lt.kind === 'free');
         if (free && comingToUs && tDown > 0) this.earlyTransition(lt, tDown, p, setJob);
         // on their hard attack the back-row setter releases to the net once it reads the ball isn't its own to dig
-        if (lt && (lt.kind === 'spike' || lt.kind === 'tip')) {
-          this.setterRelease(lt, setJob);
-          this.readBlockSeam(setJob);
-        }
+        if (lt && (lt.kind === 'spike' || lt.kind === 'tip')) this.setterRelease(lt, setJob);
         // blockers read their set
         if (lt?.kind === 'set' && !onOurSide) {
           for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
@@ -752,6 +749,7 @@ export class TeamAI {
         setJob(a, 'base', b.readSpot);
       } else if (back) b.readSpot = this.formSpot('defense', slot);
     }
+    this.readBlockSeam(set, setJob);
   }
   private attackFor: unknown = null;
   private attack = { x: 0, z: 0, t: 0 };
@@ -778,43 +776,52 @@ export class TeamAI {
 
   /**
    * On their hard attack (a spike or tip) the back-row setter releases to the net as soon as it can
-   * see the ball isn't its own to dig: `AI.transition.setterRead` s after the contact, once our
-   * receiver is picked and it isn't the setter. The front row stays put (leaving the net before a
-   * hard dig is a separate item, and its early transition stays limited to free balls and soft
-   * blocks). A front-row setter is blocking, not releasing (the Mini Rally has no rotation, so the
-   * setter is never front row).
+   * see the ball isn't its own to dig: once its read of the hit is in (`AI.defence.hitReact` ±
+   * `hitReactSd` after the contact, the same reaction every defender has to a hit) and our receiver
+   * is someone else. The front row stays put (leaving the net before a hard dig is a separate item,
+   * and its early transition stays limited to free balls and soft blocks). A front-row setter is
+   * blocking, not releasing (the Mini Rally has no rotation, so the setter is never front row).
    */
   private setterRelease(t: Touch, setJob: (a: Athlete | undefined, job: Job, spot?: Spot) => void): void {
     const S = this.players.get('S');
-    if (!S || this.frontRow().includes(S)) return;
+    const b = S ? this.brains.get(S) : null;
+    if (!S || !b || this.frontRow().includes(S)) return;
     if (this.receiverFor !== t || this.receiver === S) return;
-    if (this.g.simTime - t.t < AI.transition.setterRead) return;
+    b.hitRead.look(t, t.t, this.g.rng);
+    if (!b.hitRead.seen(this.g.simTime)) return;
     setJob(S, 'base', this.formSpot('offense', 'S'));
   }
 
   /**
-   * The middle back re-reads our own block while their attack flies: if the middle was late and left
-   * a seam, it steps up onto the seam's line (`AI.defence.middleBackSeam`) instead of staying deep,
-   * cross of a closed block. It reads the actual blockers, not the nominal formation, so a late middle
-   * (a wrong guess, a quick it could not close) pulls the middle back forward.
+   * The middle back reads our own block as it goes up: once both our blockers on their pin attack
+   * are in the air (the cue), a reaction time later (`AI.defence.react` ± `reactSd`, as for its read
+   * of the set) it looks at their hands. If the middle is late and the hands leave a seam, it steps
+   * up onto the seam's line (`AI.defence.middleBackSeam`) instead of staying deep, cross of a closed
+   * block. It reads the hands (a late middle's reach can close the seam), not the bodies, and only
+   * while their set flies: after their contact it holds what it read, like every defender.
    */
-  private readBlockSeam(setJob: (a: Athlete | undefined, job: Job, spot?: Spot) => void): void {
+  private readBlockSeam(set: Touch, setJob: (a: Athlete | undefined, job: Job, spot?: Spot) => void): void {
+    const g = this.g;
+    const now = g.simTime;
     const mb = this.players.get('OH2');
     const b = mb ? this.brains.get(mb) : null;
-    if (!mb || !b || mb.isUser || !b.readSpot) return;
-    const atk = this.attack;
+    if (!mb || !b || mb.isUser || !b.readSpot || !b.setRead.seen(now)) return;
     const s = this.side;
+    const atk = this.attack;
+    const x = b.setRead.x(atk.x, now, atk.t) * s;
     const off = Math.abs(atk.z);
-    if (attackKind(atk.x * s, off) !== 'pin') return;
-    const r = atk.x * s >= 0 ? 1 : -1;
-    const wing = this.players.get(r > 0 ? 'OPP' : 'OH1');
+    if (attackKind(x, off) !== 'pin') return;
+    const wing = this.players.get(x >= 0 ? 'OPP' : 'OH1');
     const middle = this.players.get('MB');
-    if (!wing || !middle) return;
-    const spot = seamSpot({ x: atk.x * s, off, kind: 'pin' }, wing.pos.x * s, middle.pos.x * s);
+    if (!wing || !middle || !wing.airborne || !middle.airborne) return;
+    this.seamRead.look(set, now, g.rng);
+    if (!this.seamRead.seen(now)) return;
+    const spot = seamSpot({ x, off, kind: 'pin' }, (wing.pos.x + wing.reachX) * s, (middle.pos.x + middle.reachX) * s);
     if (!spot) return;
     b.readSpot = { x: spot.x * s, z: spot.z * s };
     setJob(mb, 'base', b.readSpot);
   }
+  private readonly seamRead = new BallRead({ react: AI.defence.react, reactSd: AI.defence.reactSd, err: 0 });
 
   /** the defenders (not the front row, it blocks) split-step to land as their hitter meets this set */
   private splitStep(set: Touch): void {

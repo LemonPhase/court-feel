@@ -541,11 +541,11 @@ export const AI = {
    * releases to the net and the front row leaves it to approach, `read` s after the touch.
    *
    * On their hard attack (a spike or tip) the back-row setter also releases to the net on its own,
-   * `setterRead` s after the contact, once our dig is assigned to someone else (the front row stays:
-   * leaving the net before a hard dig is a separate item). "The setter releases from their defensive
+   * as soon as it has read the hit (`AI.defence.hitReact`) and our dig is assigned to someone else
+   * (the front row stays: leaving the net before a hard dig is a separate item). "The setter releases from their defensive
    * position immediately to run the offense" (FreeCoachingDrills, transition attack tempo drill).
    */
-  transition: { read: 0.3, softSpeed: 10, spare: 0.3, setterRead: 0.3 },
+  transition: { read: 0.3, softSpeed: 10, spare: 0.3 },
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
   blockerSkill: 0.5,
