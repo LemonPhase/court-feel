@@ -49,7 +49,7 @@ Loading the app
                               --manual: manual clock from the first frame (repeatable runs)
 
 Real input (DOM events, the path a player's hardware takes)
-  click <selector>            mouse click (Playwright selector: css, text=, role=button[name="PLAY"])
+  click <selector>            mouse click (Playwright selector: css, text=, role=button[name="Train"])
   dblclick <selector>         mouse double-click
   key <Key>                   press and release (Enter, Escape, Space, Tab, F3, v, 1, Shift, ArrowRight ...)
   keydown <Key> / keyup <Key> hold and release separately (Space to load a jump, Shift+w to approach)
@@ -68,7 +68,8 @@ Time
   wait <js> [--timeout ms]    real clock: wait until <js> is true (default 30000 ms)
 
 Observation
-  state                       screen, HUD text, menu selection, game state, saved settings (JSON)
+  state                       screen, HUD text, menu section and selection, open sheet, game state,
+                              saved settings (JSON)
   events [--clear]            contacts, outcomes and setter calls recorded since the page loaded
   errors [--clear]            console errors / warnings / page errors since the page loaded (exit 1 if any)
   shot <name>                 screenshot into the evidence directory
@@ -259,17 +260,41 @@ function snapshot() {
     }
   };
   const r2 = (n) => +n.toFixed(2);
+  /** on screen: the element and every ancestor are displayed (a section that is not showing still has its children) */
+  const vis = (e) => !!e && e.getClientRects().length > 0;
+  /** a button's words without its key cap ("PLAY", not "PLAYENTER") */
+  const label = (b) => {
+    if (!b) return null;
+    const c = b.cloneNode(true);
+    for (const k of c.querySelectorAll('kbd')) k.remove();
+    return c.textContent.trim().replace(/\s+/g, ' ');
+  };
+  /** the visible settings rows under a root, label to value: a slider's read-out, a switch's On or Off, the chip that is on */
+  const rows = (root) =>
+    Object.fromEntries(
+      [...(root?.querySelectorAll('.set-row') ?? [])]
+        .filter(vis)
+        .map((r) => [
+          r.querySelector('.set-l')?.textContent ?? '?',
+          (r.querySelector('.set-val') ?? r.querySelector('.switch-state') ?? r.querySelector('.chip[aria-pressed="true"]'))?.textContent ??
+            null,
+        ]),
+    );
   const crash = q('.crash');
+  const menu = q('.menu');
+  const sheet = disp('.sheet') ? q('.sheet') : null;
+  const welcomeUp = vis(q('.menu .welcome'));
+  // a sheet (Settings or Athlete) covers the start screen or the pause menu: `sheet` says which one
   const screen = crash
     ? 'crash'
     : !g
       ? 'loading'
-      : disp('.settings')
+      : sheet
         ? 'settings'
         : disp('.pause')
           ? 'paused'
           : disp('.menu')
-            ? disp('.welcome')
+            ? welcomeUp
               ? 'welcome'
               : 'start'
             : g.fx.replaying
@@ -279,35 +304,55 @@ function snapshot() {
   if (crash) out.crash = { title: txt('#crash-title'), body: txt('#crash-body'), details: q('.crash-details')?.value ?? null };
   if (q('.ctx-lost')) out.contextLost = true;
   if (!g) return out;
-  // a first visit (or a lesson left part-way) gets the welcome in place of the positions and drills
-  out.welcome = screen === 'welcome' ? { title: txt('.welcome-t'), button: txt('.welcome .play-btn') } : null;
+  out.sheet = sheet ? (sheet.dataset.sheet ?? null) : null;
+  // a first visit (or a lesson left part-way) gets the welcome on Home in place of Continue and the three doors
+  out.welcome = welcomeUp ? { title: txt('.welcome .eyebrow'), button: label(q('.welcome .play-btn')) } : null;
   out.pauseMenu = disp('.pause')
     ? {
         name: q('.pause')?.getAttribute('aria-label') ?? null,
         title: txt('.pause .pause-t'),
-        buttons: [...document.querySelectorAll('.pause-box button')]
-          .filter((b) => getComputedStyle(b).display !== 'none')
-          .map((b) => b.textContent.trim()),
+        sub: vis(q('.pause .pause-s')) ? txt('.pause .pause-s') : null,
+        buttons: [...document.querySelectorAll('.pause-main button')].filter((b) => getComputedStyle(b).display !== 'none').map(label),
+        keys: [...document.querySelectorAll('.pause-side .key-row')]
+          .filter(vis)
+          .map((r) => `${r.children[0].textContent}: ${r.children[1].textContent}`),
+        quick: rows(q('.pause-side .quick')),
       }
     : null;
-  out.start =
-    disp('.menu') && screen !== 'welcome'
-      ? {
-          position: txt('.pos-card[aria-pressed="true"] .pos-short'),
-          drill: txt('.mode-card[aria-pressed="true"] .mode-t'),
-          camera: txt('.cam-sel .chip[aria-pressed="true"]'),
-        }
-      : null;
-  out.settingsPanel = disp('.settings')
+  // the start screen, also while a sheet covers it: the section, and what its gold button would start
+  if (menu && disp('.menu') && !welcomeUp) {
+    const section = menu.dataset.view ?? null;
+    const view = q('.menu .view.on');
+    const pill = q('.menu .top-right .pill b');
+    const chip = view?.querySelector('[aria-label="View"] .chip[aria-pressed="true"]');
+    // Home has no view chips: its Continue card says "<position> · <first|third> person · <net>"
+    const said = / · (first|third) person · /.exec(txt('.continue-s') ?? '');
+    out.start = {
+      section,
+      position: pill ? pill.textContent : null,
+      drill: section === 'home' ? txt('.continue-t') : (view?.querySelector('.row[aria-pressed="true"] .row-t')?.textContent ?? null),
+      camera: chip ? chip.textContent : section === 'home' && said ? (said[1] === 'first' ? 'First person' : 'Third person') : null,
+      button: label([...(view?.querySelectorAll('.play-btn') ?? [])].find(vis)),
+    };
+  } else out.start = null;
+  out.settingsPanel = sheet
     ? {
-        rows: Object.fromEntries(
-          [...document.querySelectorAll('.settings .set-row')].map((r) => [
-            r.querySelector('.set-l')?.textContent ?? '?',
-            (r.querySelector('.set-val') ?? r.querySelector('.chip'))?.textContent ?? null,
-          ]),
-        ),
-        athleteTab: txt('.body-tab.on'),
-        athlete: q('.body-sum')?.innerText.replace(/\s+/g, ' ') ?? null,
+        sheet: out.sheet,
+        tab: sheet.querySelector('[role="tab"][aria-selected="true"]')?.getAttribute('aria-label') ?? null,
+        rows: rows(sheet),
+        athlete:
+          out.sheet === 'athlete'
+            ? {
+                position: sheet.querySelector('.pos-card[aria-pressed="true"] .pos-short')?.textContent ?? null,
+                reach: sheet.querySelector('.reach b')?.textContent ?? null,
+                cards: Object.fromEntries(
+                  [...sheet.querySelectorAll('.pos-card')].map((c) => [
+                    c.querySelector('.pos-short')?.textContent ?? '?',
+                    c.querySelector('.pos-h')?.textContent ?? null,
+                  ]),
+                ),
+              }
+            : null,
       }
     : null;
   out.hud = disp('.hud')
@@ -380,6 +425,10 @@ function snapshot() {
 function digest(s) {
   const d = { screen: s.screen };
   if (s.crash) d.crash = s.crash.title;
+  if (s.sheet) {
+    d.sheet = s.sheet;
+    if (s.settingsPanel?.tab) d.tab = s.settingsPanel.tab;
+  }
   if (s.welcome) d.welcome = s.welcome;
   if (s.pauseMenu && s.pauseMenu.name !== 'Paused') d.dialog = s.pauseMenu.name;
   if (s.start) d.start = s.start;

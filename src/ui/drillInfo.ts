@@ -197,7 +197,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
       title: 'Game',
       rows: [
         { k: 'V', a: 'First / third person' },
-        { k: 'R', a: 'Replay the last good touch' },
+        { k: 'R', a: 'Replay your last attempt, misses included' },
         { k: 'N', a: 'Reset the rep' },
         { k: 'Esc', a: 'Pause' },
         { k: 'F3', a: 'Debug overlay' },
@@ -238,7 +238,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
     {
       title: 'Game',
       rows: [
-        { k: 'Top right', a: 'Pause, camera, reset the rep, and REPLAY when there is one' },
+        { k: 'Top right', a: 'Pause, camera, reset the rep, and REPLAY your last attempt' },
         { k: 'TOSS', a: 'Serve toss (Free Play)' },
       ],
     },

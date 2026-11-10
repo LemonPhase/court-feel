@@ -152,6 +152,8 @@ export class Menu {
   private trainSel: ModeId = 'spike';
   /** a drill has been started from this browser before: Home says "pick up where you left off" */
   private played = false;
+  /** the drill last started: what is remembered for the next visit (a drill only picked in a list is not) */
+  private lastPlayed: ModeId = 'spike';
   /** Learn's controls list: keyboard or touch (null: whichever is in use) */
   private learnDevice: 'kb' | 'touch' | null = null;
   /** every part of the screens that shows the mode, position or a setting redraws itself from here */
@@ -201,6 +203,7 @@ export class Menu {
     } catch {
       /* ignore */
     }
+    this.lastPlayed = this.mode;
     if (TRAIN_MODES.includes(this.mode)) this.trainSel = this.mode;
 
     // ------------------------------------------------------------ start screen
@@ -733,6 +736,7 @@ export class Menu {
 
   private go(mode: ModeId): void {
     this.mode = mode;
+    this.lastPlayed = mode;
     this.played = true;
     this.save();
     // a first-time visitor who went to the drills by the nav has chosen them over the lesson, as Skip does
@@ -743,7 +747,7 @@ export class Menu {
   /** remember the last drill and position for the next visit */
   private save(): void {
     try {
-      localStorage.setItem('courtfeel.menu', JSON.stringify({ mode: this.mode, pos: this.pos, played: this.played }));
+      localStorage.setItem('courtfeel.menu', JSON.stringify({ mode: this.lastPlayed, pos: this.pos, played: this.played }));
     } catch {
       /* ignore */
     }
