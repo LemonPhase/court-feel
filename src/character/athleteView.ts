@@ -13,7 +13,9 @@ import { buildRig, type BoneName, type Kit, type Rig } from './rig';
  *  3. arms: wrist targets authored relative to the shoulders and blended per
  *     situation; the hitting hand is IK'd onto the actual contact point
  *  4. head look-at towards the ball
- * Wrist/elbow/knee placement is all analytic two-bone IK.
+ * Wrist/elbow/knee placement is all analytic two-bone IK. Arms are authored as
+ * wrist positions, not joint angles: blends become arcs in space, and putting
+ * the hand on the contact point is the same IK.
  */
 
 type V = THREE.Vector3;

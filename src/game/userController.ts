@@ -84,6 +84,8 @@ export class UserController {
     a.cmd.moveX = mx;
     a.cmd.moveZ = mz;
     a.cmd.sprint = this.input.isDown('ShiftLeft') || this.input.isDown('ShiftRight') || (stick.active && stick.sprint);
+    // the body always faces where the camera looks, in both cameras: volleyball players face
+    // the play while they shuffle, and it keeps the aim consistent
     a.cmd.faceYaw = yaw;
 
     // ---- edges

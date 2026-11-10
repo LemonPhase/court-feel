@@ -334,7 +334,9 @@ export class AudioEngine {
    * scales with it continuously: a soft swing is a hand slap and a thump; a
    * hard one adds a sharp leather crack, a mid "pop" that small speakers can
    * play, a deep pitch-dropping boom, the ball ripping away and an arena
-   * slap-back. Layers are staggered by a few ms so their peaks do not stack.
+   * slap-back. Layers are staggered by a few ms so their peaks do not stack:
+   * loudness comes from density and the room (saturated low-mids, slap-back,
+   * reverb), not from a higher peak, and never from a heavy/light switch.
    * `near` 0..1 is how close it is to the camera.
    */
   spike(power: number, perfect: boolean, rate = 1, near = 1): void {
