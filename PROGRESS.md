@@ -753,7 +753,8 @@ speed (2.4 s a frame) it passes in 251 s, where it took 635 to 955 s. No check w
     Stat bars are in real units and coloured by level: gold is the best of the five, cyan is 85% of
     the scale or more, grey is below (`src/ui/athleteStats.ts`). They follow the sliders.
   - **Settings** (a sheet): the same settings in five groups (Controls, Camera, Assists and hints,
-    Sound, Court), switches for on/off, chips for choices, and Reset to defaults in two presses.
+    Sound, Court), one tab each (at first every group was on screen at once and the tabs only
+    scrolled: Jack asked for tabs that do something), switches for on/off, chips for choices, and Reset to defaults in two presses.
   - **Pause**: names the drill and position, shows that drill's keys, and has the view, sensitivity
     and volume to hand.
 - Phones (reported by Jack after the first preview: text falling out of the drill panel, labels on top

@@ -787,6 +787,14 @@ phase('probes');
         }
         window.__menu.openSettings();
         look('settings', document.querySelector('.sheet'));
+        // the settings tabs: one group in view at a time, and each tab shows its own
+        const shown = () =>
+          [...document.querySelectorAll('.sheet .set-group')].filter((g) => !g.hidden).map((g) => g.querySelector('h2').textContent);
+        const first = shown();
+        document.querySelector('.sheet [role=tab][aria-label=Sound]').click();
+        const second = shown();
+        if (first.join() !== 'Controls' || second.join() !== 'Sound') out.push(`settings: tabs show ${first} then ${second}`);
+        look('settings: sound', document.querySelector('.sheet'));
         const reset = [...document.querySelectorAll('.sheet button')].find((b) => b.textContent === 'Reset to defaults');
         if (!reset || reset.offsetParent === null) out.push('settings: Reset to defaults is not shown');
         if (!document.querySelector('.sheet').contains(document.activeElement)) out.push('settings: focus is not in the sheet');

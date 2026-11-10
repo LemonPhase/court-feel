@@ -169,6 +169,8 @@ export class Menu {
   private lessonGo!: HTMLButtonElement;
 
   private settingsOpen = false;
+  /** the Settings group in view: it is kept while the menu lives, so Settings reopens where it was left */
+  private settingsTab = 0;
   /** the button that opened the sheet: focus returns there when it closes */
   private settingsOpener: HTMLElement | null = null;
 
@@ -931,9 +933,24 @@ export class Menu {
     const box = h('div', 'sheet-box');
     const changed = () => this.cb.settingsChanged();
     const body = h('div', 'sheet-body settings-body');
-    const rail = h('nav', 'rail');
+    // one tab per group: the rail picks which group's settings are shown
+    const rail = h('div', 'rail');
+    rail.setAttribute('role', 'tablist');
     rail.setAttribute('aria-label', 'Settings groups');
-    const cols = [h('div', 'set-col'), h('div', 'set-col')];
+    const panels = h('div', 'set-panels');
+    const tabs: { tab: HTMLButtonElement; panel: HTMLElement }[] = [];
+    const show = (n: number, focus = false) => {
+      this.settingsTab = n;
+      tabs.forEach(({ tab, panel }, i) => {
+        const on = i === n;
+        tab.classList.toggle('on', on);
+        tab.setAttribute('aria-selected', String(on));
+        // only the tab in use is a Tab stop; the arrow keys move between tabs
+        tab.tabIndex = on ? 0 : -1;
+        panel.hidden = !on;
+      });
+      if (focus) tabs[n].tab.focus({ preventScroll: true });
+    };
 
     const sw = (label: string, key: BooleanSettingKey, help = '') => {
       const row = h('div', 'set-row choice');
@@ -971,21 +988,34 @@ export class Menu {
       row.append(this.rowText(label, help), chips);
       return row;
     };
-    const group = (col: number, icon: IconName, title: string, rows: HTMLElement[]) => {
-      const sec = h('section', 'set-group');
-      sec.append(txt('h2', 'eyebrow', title), ...rows);
-      cols[col].append(sec);
-      const jump = h('button', 'rail-btn', `${ICONS[icon]}<span>${title}</span>`);
-      jump.type = 'button';
-      jump.onclick = () => {
-        sec.scrollIntoView({ block: 'start', behavior: systemPrefersReducedMotion() ? 'auto' : 'smooth' });
-        sec.querySelector<HTMLElement>('input, button')?.focus({ preventScroll: true });
+    const group = (icon: IconName, title: string, rows: HTMLElement[]) => {
+      const n = tabs.length;
+      const id = `set-${icon}`;
+      const panel = h('section', 'set-group');
+      panel.id = `${id}-panel`;
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', `${id}-tab`);
+      panel.append(txt('h2', 'eyebrow', title), ...rows);
+      panels.append(panel);
+      const tab = h('button', 'rail-btn', `${ICONS[icon]}<span>${title}</span>`);
+      tab.type = 'button';
+      tab.id = `${id}-tab`;
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute('aria-controls', panel.id);
+      tab.setAttribute('aria-label', title);
+      tab.onclick = () => show(n);
+      tab.onkeydown = (e) => {
+        const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+        if (!step) return;
+        e.preventDefault();
+        show((n + step + tabs.length) % tabs.length, true);
       };
-      rail.append(jump);
+      rail.append(tab);
+      tabs.push({ tab, panel });
     };
     const two = (v: number) => v.toFixed(2);
     const touchModes: Settings['touchControls'][] = ['auto', 'on', 'off'];
-    group(0, 'controls', 'Controls', [
+    group('controls', 'Controls', [
       this.sliderRow('Mouse sensitivity', 'sensitivity', two),
       sw('Invert Y', 'invertY'),
       seg(
@@ -997,7 +1027,7 @@ export class Menu {
       ),
       this.sliderRow('Touch aim sensitivity', 'touchSensitivity', two),
     ]);
-    group(1, 'camera', 'Camera', [
+    group('camera', 'Camera', [
       seg(
         'View',
         ['Third person', 'First person'],
@@ -1009,7 +1039,7 @@ export class Menu {
       this.sliderRow('Camera shake', 'shake', percent),
       sw('Perfect-spike replays', 'replays'),
     ]);
-    group(1, 'assists', 'Assists and hints', [
+    group('assists', 'Assists and hints', [
       this.sliderRow(
         'Aim assist',
         'aimAssist',
@@ -1021,8 +1051,8 @@ export class Menu {
       sw('Landing marker', 'landingMarker'),
       sw('Hints', 'showHints', 'The key hint at the bottom, and the timing collar around the charge ring.'),
     ]);
-    group(0, 'sound', 'Sound', [this.sliderRow('Volume', 'volume', percent)]);
-    group(0, 'court', 'Court', [
+    group('sound', 'Sound', [this.sliderRow('Volume', 'volume', percent)]);
+    group('court', 'Court', [
       seg(
         'Net height',
         ["Men's 2.43 m", "Women's 2.24 m"],
@@ -1031,13 +1061,15 @@ export class Menu {
       ),
     ]);
 
-    // back to the defaults, in two presses (the athlete is not touched)
+    show(Math.min(this.settingsTab, tabs.length - 1));
+
+    // every group back to the defaults, in two presses (the athlete is not touched)
     const reset = btn('ghost-btn', 'Reset to defaults');
     let armed = false;
     reset.onclick = () => {
       if (!armed) {
         armed = true;
-        reset.textContent = 'Reset all of these?';
+        reset.textContent = 'Reset every group?';
         return;
       }
       const d = defaultSettings(systemPrefersReducedMotion());
@@ -1049,13 +1081,11 @@ export class Menu {
       armed = false;
       reset.textContent = 'Reset to defaults';
     };
-    // under the groups, not in the rail: the rail is hidden on narrow screens
+    // under the panel: it resets every group, not only the one shown
     const foot = h('div', 'set-foot');
     foot.append(txt('p', 'rail-note', 'Height, jump, power and your hitting hand are under Athlete.'), reset);
-    const grid = h('div', 'set-cols');
-    grid.append(...cols);
     const main = h('div', 'set-main');
-    main.append(grid, foot);
+    main.append(panels, foot);
     body.append(rail, main);
     box.append(this.sheetHead('Settings', 'athlete'), body);
     return box;
