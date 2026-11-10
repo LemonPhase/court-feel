@@ -614,6 +614,8 @@ export class TeamAI {
         // a free ball over (not an attack, not a serve, not a block): an easy first ball
         const free = lt && (lt.kind === 'pass' || lt.kind === 'dig' || lt.kind === 'set' || lt.kind === 'free');
         if (free && comingToUs && tDown > 0) this.earlyTransition(lt, tDown, p, setJob);
+        // on their hard attack the back-row setter releases to the net once it reads the ball isn't its own to dig
+        if (lt && (lt.kind === 'spike' || lt.kind === 'tip')) this.setterRelease(lt, setJob);
         // blockers read their set
         if (lt?.kind === 'set' && !onOurSide) {
           for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
@@ -769,6 +771,22 @@ export class TeamAI {
       const a = this.players.get(slot);
       if (a && a !== r) setJob(a, 'attack', this.formSpot('offense', slot));
     }
+  }
+
+  /**
+   * On their hard attack (a spike or tip) the back-row setter releases to the net as soon as it can
+   * see the ball isn't its own to dig: `AI.transition.setterRead` s after the contact, once our
+   * receiver is picked and it isn't the setter. The front row stays put (leaving the net before a
+   * hard dig is a separate item, and its early transition stays limited to free balls and soft
+   * blocks). A front-row setter is blocking, not releasing (the Mini Rally has no rotation, so the
+   * setter is never front row).
+   */
+  private setterRelease(t: Touch, setJob: (a: Athlete | undefined, job: Job, spot?: Spot) => void): void {
+    const S = this.players.get('S');
+    if (!S || this.frontRow().includes(S)) return;
+    if (this.receiverFor !== t || this.receiver === S) return;
+    if (this.g.simTime - t.t < AI.transition.setterRead) return;
+    setJob(S, 'base', this.formSpot('offense', 'S'));
   }
 
   /** the defenders (not the front row, it blocks) split-step to land as their hitter meets this set */

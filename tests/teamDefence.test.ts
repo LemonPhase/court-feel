@@ -185,7 +185,7 @@ describe('early transition (Mini Rally)', () => {
     for (const slot of ['OH1', 'MB', 'OPP'] as const) expect(t.brain(slot).job, slot).toBe('attack');
   });
 
-  it('on a soft block the passer can get to easily, the setter releases; on a hard hit nobody does', () => {
+  it('on a soft block the passer can get to easily, the setter releases; on a hard hit the setter releases but the front row stays', () => {
     const t = homeTeam();
     const mb = t.team.players.get('MB')!;
     // a soft block pops the ball up and back into our court
@@ -199,6 +199,41 @@ describe('early transition (Mini Rally)', () => {
     const lane = laneFor('OH', -1);
     h.spike({ x: lane.x, y: 3.25, z: lane.z }, { x: -1.5, y: 0.1, z: 5.5 }, 22);
     h.run(0.1 + AI.transition.read);
-    expect(h.brain('S').spot).not.toEqual(h.team.formSpot('offense', 'S'));
+    // the setter releases even on a hard hit (it reads the dig isn't its own)
+    expect(h.brain('S').spot).toEqual(h.team.formSpot('offense', 'S'));
+    // but the front row stays at the net: only free balls and soft blocks send it off to approach
+    for (const slot of ['OH1', 'MB', 'OPP'] as const) expect(h.brain(slot).job, slot).not.toBe('attack');
+  });
+});
+
+describe('the back-row setter releases after their attack (Mini Rally)', () => {
+  it('on their hard spike at our libero, the back-row setter is running to the net before the dig', () => {
+    const t = homeTeam();
+    const S = t.brain('S');
+    const target = t.team.formSpot('offense', 'S');
+    // a hard spike down the line at the libero (left back)
+    t.spike({ x: -4.0, y: 3.25, z: -0.9 }, { x: -2.9, y: 0.1, z: 6.2 }, 22);
+    t.run(0.05);
+    expect(t.team.receiver).toBe(t.team.players.get('L'));
+    // just before the release delay the setter is still defending
+    t.run(AI.transition.setterRead - 0.1);
+    expect(S.spot).not.toEqual(target);
+    // after the delay it releases to the net, while the ball is still unplayed
+    t.run(0.1);
+    expect(S.job).toBe('base');
+    expect(S.spot).toEqual(target);
+    expect(t.g.ball.lastTouch?.kind).toBe('spike');
+  });
+
+  it('on their hard spike at the setter, the setter stays and digs', () => {
+    const t = homeTeam();
+    const S = t.brain('S');
+    const target = t.team.formSpot('offense', 'S');
+    t.spike({ x: 3.0, y: 3.25, z: -0.5 }, { x: 2.8, y: 0.1, z: 6.2 }, 22);
+    t.run(0.05);
+    expect(t.team.receiver).toBe(t.team.players.get('S'));
+    t.run(AI.transition.setterRead + 0.1);
+    expect(S.job).toBe('receive');
+    expect(S.spot).not.toEqual(target);
   });
 });
