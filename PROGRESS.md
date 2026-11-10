@@ -756,6 +756,20 @@ speed (2.4 s a frame) it passes in 251 s, where it took 635 to 955 s. No check w
     Sound, Court), switches for on/off, chips for choices, and Reset to defaults in two presses.
   - **Pause**: names the drill and position, shows that drill's keys, and has the view, sensitivity
     and volume to hand.
+- Phones (reported by Jack after the first preview: text falling out of the drill panel, labels on top
+  of the sliders). Causes: in a column that scrolls, the panel was allowed to shrink below its text; a
+  slider row gave the slider its width first and the label what was left; a choice row gave its chips
+  everything. Fixes: nothing in a scrolling column shrinks; a slider row stacks (label and value, then
+  the slider) by the width of its own box (a container query), and a choice row wraps its chips under
+  the label; the position cards wrap; the top bar keeps only icons under 840 px; safe-area insets on
+  every screen. Checked by scanning every screen at 11 sizes (320 to 1024 wide, both ways up) for boxes
+  that spill, siblings that overlap, anything off the side and controls under 44 px: 298 findings before,
+  0 after. The e2e keeps a smaller version of that scan at 390 x 844 and 844 x 390.
+- From the code review: Reset to defaults sits under the groups (it was hidden with the rail on phones);
+  a sheet makes the screens behind it inert and takes the focus; Enter plays from the nav button and the
+  chips too; starting a drill counts as skipping the lesson; set calls are listed only for the positions
+  that have them; opening Athlete from the pause menu edits the body being played and no longer changes
+  the position.
 - Not changed: the game, the drills, the settings' meaning and storage, quick-start links.
 - Gone: the number keys 1 to 6 picking a drill on the start screen (the list will grow, and those keys
   are set calls and feed types in play); the camera chips' own row; Replay tutorial in Settings (it is

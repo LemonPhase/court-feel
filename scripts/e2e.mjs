@@ -720,6 +720,8 @@ phase('probes');
     await r.p.click('.row:has-text("Block Drill")');
     await r.p.click('.pos-chip[aria-label="Middle Blocker"]');
     m.keys = await r.p.locator('.view.on .keys.only-kb .key-cap').allTextContents();
+    // Enter plays even when the last click left the focus on the nav
+    await r.p.click('.nav-btn[aria-label=Train]');
     await r.p.keyboard.press('Enter');
     Object.assign(
       m,
@@ -753,6 +755,53 @@ phase('probes');
     check(false, 'menu: the probe runs', { error: String(e).split('\n')[0] });
   }
   await r.close();
+  // the menus on a phone: no panel is squeezed shorter than its text, nothing runs off the side, and the
+  // settings' reset is in reach (held upright and sideways)
+  for (const [w, h] of [
+    [390, 844],
+    [844, 390],
+  ]) {
+    const { ctx, p } = await newHeldPage({ viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
+    let up = false;
+    try {
+      await comeUp(p, '', () => window.__court && window.__menu);
+      up = true;
+      await gpuIdle(p);
+      await p.tap('.welcome .ghost-btn');
+      const bad = await p.evaluate(() => {
+        const out = [];
+        const look = (label, root) => {
+          for (const e of root.querySelectorAll(
+            '.panel, .row, .set-group, .set-row, .set-text, .pos-card, .body-set, .sheet-head, .topbar',
+          )) {
+            if (e.offsetParent === null) continue;
+            const r = e.getBoundingClientRect();
+            if (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) out.push(`${label}: ${e.className} spills`);
+            if (r.right > innerWidth + 1 || r.left < -1) out.push(`${label}: ${e.className} is off the side`);
+          }
+        };
+        look('train', document.querySelector('.menu'));
+        for (const name of ['Play', 'Learn']) {
+          document.querySelector(`.nav-btn[aria-label=${name}]`).click();
+          look(name, document.querySelector('.menu'));
+        }
+        window.__menu.openSettings();
+        look('settings', document.querySelector('.sheet'));
+        const reset = [...document.querySelectorAll('.sheet button')].find((b) => b.textContent === 'Reset to defaults');
+        if (!reset || reset.offsetParent === null) out.push('settings: Reset to defaults is not shown');
+        if (!document.querySelector('.sheet').contains(document.activeElement)) out.push('settings: focus is not in the sheet');
+        document.querySelector('.sheet-head .ghost-btn').click();
+        look('athlete', document.querySelector('.sheet'));
+        return out;
+      });
+      check(bad.length === 0, `menus at ${w} x ${h}: every box holds its text and stays on screen`, bad);
+    } catch (e) {
+      check(false, `menus at ${w} x ${h}: the probe runs`, { error: String(e).split('\n')[0] });
+    }
+    // a page that never came up may never answer either: close it without asking it anything
+    if (up) await closeIdle(ctx, p);
+    else await ctx.close();
+  }
   // a crash in play: the crash screen keeps the keyboard and mouse (no pause menu or pointer lock behind it)
   r = await probe('crash screen', '?mode=spike&pos=OH');
   try {

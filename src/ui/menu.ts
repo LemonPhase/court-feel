@@ -14,7 +14,7 @@ import { defaultSettings, systemPrefersReducedMotion } from '../core/settings';
 import { isCustomBody, resolveBody, setBodyValue, spikeReach, topSpikeKmh } from '../game/body';
 import { isModeId, MODE_INFO, type ModeId } from '../game/modes/mode';
 import { athleteStats } from './athleteStats';
-import { ALL_CONTROLS, COMING_FORMATS, DRILL_INFO, PLAY_MODES, SETTER_CALLS, TRAIN_MODES, type KeyHint } from './drillInfo';
+import { ALL_CONTROLS, COMING_FORMATS, DRILL_INFO, HITTERS, PLAY_MODES, SETTER_CALLS, TRAIN_MODES, type KeyHint } from './drillInfo';
 import { ICONS, type IconName } from './icons';
 
 /** the start screen's sections */
@@ -98,8 +98,10 @@ function keyList(keys: readonly KeyHint[], cls = ''): HTMLElement {
 }
 
 /** a mode's keys for the keyboard and for touch: CSS shows the one for the controls in use */
-function drillKeys(mode: ModeId): HTMLElement[] {
-  return [keyList(DRILL_INFO[mode].keys, 'only-kb'), keyList(DRILL_INFO[mode].touch, 'only-tc')];
+function drillKeys(mode: ModeId, pos: PositionId): HTMLElement[] {
+  // set calls are a hitter's: a setter or a libero has none
+  const mine = (keys: readonly KeyHint[]) => keys.filter((k) => !k.hitters || HITTERS.includes(pos));
+  return [keyList(mine(DRILL_INFO[mode].keys), 'only-kb'), keyList(mine(DRILL_INFO[mode].touch), 'only-tc')];
 }
 
 function courtGlyph(id: PositionId, on: boolean): string {
@@ -229,10 +231,11 @@ export class Menu {
     this.showPause(false);
     window.addEventListener('keydown', (e) => {
       if (this.start.style.display !== 'none' && !this.settingsOpen && e.key === 'Enter') {
-        // Enter presses the section's main button from anywhere on it, including a focused row, card or
-        // chip (Space or a click selects those). Other focused controls handle Enter themselves.
+        // Enter presses the section's main button from anywhere on it, including a focused row or chip
+        // and the nav button of the section you are in (Space or a click selects those). Other focused
+        // controls handle Enter themselves.
         const control = (e.target as HTMLElement | null)?.closest?.('button, input, textarea, select, a');
-        if (control && !control.matches('.row, .pos-chip')) return;
+        if (control && !control.matches('.row, .pos-chip, .chip, .nav-btn[aria-current]')) return;
         const main = this.mainBtns.get(this.view);
         if (!main || main.offsetParent === null) return;
         e.preventDefault();
@@ -320,7 +323,10 @@ export class Menu {
     for (const id of POSITION_IDS) {
       const b = btn('pos-chip', POSITIONS[id].short);
       b.setAttribute('aria-label', POSITIONS[id].name);
-      b.onclick = () => this.selectPos(id);
+      b.onclick = () => {
+        this.selectPos(id);
+        this.save();
+      };
       buttons.set(id, b);
       chips.append(b);
     }
@@ -516,7 +522,7 @@ export class Menu {
       title.textContent = MODE_INFO[this.trainSel].title;
       about.textContent = d.about;
       scored.replaceChildren(txt('b', '', 'Scored on'), ` · ${d.scored}`);
-      keyBox.replaceChildren(...drillKeys(this.trainSel));
+      keyBox.replaceChildren(...drillKeys(this.trainSel, this.pos));
       summary.replaceChildren(
         `${netLabel(this.settings.womenNet)} · Aim assist ${percent(this.settings.aimAssist).toLowerCase()} · `,
         txt('b', '', 'Change'),
@@ -705,7 +711,7 @@ export class Menu {
     side.replaceChildren();
     if (playing) {
       const keys = h('div', 'block');
-      keys.append(txt('div', 'eyebrow', 'Keys for this drill'), ...drillKeys(playing.mode));
+      keys.append(txt('div', 'eyebrow', 'Keys for this drill'), ...drillKeys(playing.mode, playing.pos));
       side.append(keys);
     }
     const quick = h('div', 'block quick');
@@ -727,6 +733,8 @@ export class Menu {
     this.mode = mode;
     this.played = true;
     this.save();
+    // a first-time visitor who went to the drills by the nav has chosen them over the lesson, as Skip does
+    if (this.cb.tutorialOffer() === 'new') this.cb.declineTutorial();
     this.cb.play(this.mode, this.pos);
   }
 
@@ -773,8 +781,10 @@ export class Menu {
       this.closeSettings();
       this.finished = null;
     } else {
-      this.drawPauseSide();
-      if (!was) this.resumeBtn.focus();
+      if (!was) {
+        this.drawPauseSide();
+        this.resumeBtn.focus();
+      }
       this.syncTutorial();
     }
     this.syncPause();
@@ -850,7 +860,13 @@ export class Menu {
     this.sheet.replaceChildren(id === 'settings' ? this.buildSettings() : this.buildAthlete());
     this.sheet.style.display = 'flex';
     this.settingsOpen = true;
-    this.sheet.querySelector<HTMLElement>('.sheet-body input, .sheet-body button')?.focus({ preventScroll: true });
+    // the screens underneath are out of reach while it is open (Tab stays in the sheet)
+    this.start.inert = true;
+    this.pause.inert = true;
+    const first = [...this.sheet.querySelectorAll<HTMLElement>('.sheet-body input, .sheet-body button')].find(
+      (e) => e.offsetParent !== null,
+    );
+    (first ?? this.sheet.querySelector<HTMLElement>('.sheet-head .play-btn'))?.focus({ preventScroll: true });
   }
 
   closeSettings(): void {
@@ -858,6 +874,8 @@ export class Menu {
     this.sheet.style.display = 'none';
     this.sheet.replaceChildren();
     this.settingsOpen = false;
+    this.start.inert = false;
+    this.pause.inert = false;
     // the screens underneath show the position and some settings
     if (this.pauseVisible) this.drawPauseSide();
     else this.sync();
@@ -959,7 +977,10 @@ export class Menu {
       cols[col].append(sec);
       const jump = h('button', 'rail-btn', `${ICONS[icon]}<span>${title}</span>`);
       jump.type = 'button';
-      jump.onclick = () => sec.scrollIntoView({ block: 'start', behavior: systemPrefersReducedMotion() ? 'auto' : 'smooth' });
+      jump.onclick = () => {
+        sec.scrollIntoView({ block: 'start', behavior: systemPrefersReducedMotion() ? 'auto' : 'smooth' });
+        sec.querySelector<HTMLElement>('input, button')?.focus({ preventScroll: true });
+      };
       rail.append(jump);
     };
     const two = (v: number) => v.toFixed(2);
@@ -1011,7 +1032,7 @@ export class Menu {
     ]);
 
     // back to the defaults, in two presses (the athlete is not touched)
-    const reset = btn('ghost-btn rail-reset', 'Reset to defaults');
+    const reset = btn('ghost-btn', 'Reset to defaults');
     let armed = false;
     reset.onclick = () => {
       if (!armed) {
@@ -1028,10 +1049,14 @@ export class Menu {
       armed = false;
       reset.textContent = 'Reset to defaults';
     };
-    rail.append(txt('p', 'rail-note', 'Height, jump, power and your hitting hand are under Athlete.'), reset);
+    // under the groups, not in the rail: the rail is hidden on narrow screens
+    const foot = h('div', 'set-foot');
+    foot.append(txt('p', 'rail-note', 'Height, jump, power and your hitting hand are under Athlete.'), reset);
     const grid = h('div', 'set-cols');
     grid.append(...cols);
-    body.append(rail, grid);
+    const main = h('div', 'set-main');
+    main.append(grid, foot);
+    body.append(rail, main);
     box.append(this.sheetHead('Settings', 'athlete'), body);
     return box;
   }
@@ -1045,6 +1070,10 @@ export class Menu {
     const box = h('div', 'sheet-box');
     const body = h('div', 'sheet-body athlete-body');
     const changed = () => this.cb.settingsChanged();
+    // On the start screen a card picks your position. From the pause menu the drill keeps the position it
+    // started with, so a card only picks whose body the sliders edit (it opens on the one being played).
+    const playing = this.cb.playing();
+    let edit: PositionId = playing?.pos ?? this.pos;
 
     const left = h('div', 'athlete-left');
     const cards = h('div', 'pos-row');
@@ -1056,7 +1085,7 @@ export class Menu {
       const stats = athleteStats(s.bodies);
       for (const [id, c] of cardOf) {
         const p = POSITIONS[id];
-        const on = id === this.pos;
+        const on = id === edit;
         const b = resolveBody(id, s.bodies[id]);
         setOn(c, on);
         c.innerHTML = `<span class="pos-top"><span class="pos-short">${p.short}</span>${courtGlyph(id, on)}</span>
@@ -1071,7 +1100,7 @@ export class Menu {
       }
     };
     const drawBody = () => {
-      const id = this.pos;
+      const id = edit;
       const p = POSITIONS[id];
       side.replaceChildren(
         txt('div', 'eyebrow', `Your body as ${p.name}`),
@@ -1140,6 +1169,8 @@ export class Menu {
         changed();
         drawCards();
         drawBody();
+        // the button was redrawn: keep the keyboard in the panel
+        side.querySelector<HTMLElement>('input')?.focus({ preventScroll: true });
       };
       side.append(reach, defaults, reset);
       sum();
@@ -1147,8 +1178,11 @@ export class Menu {
     for (const id of POSITION_IDS) {
       const c = btn('pos-card');
       c.onclick = () => {
-        this.pos = id;
-        this.save();
+        edit = id;
+        if (!playing) {
+          this.pos = id;
+          this.save();
+        }
         drawCards();
         drawBody();
       };
@@ -1160,7 +1194,17 @@ export class Menu {
       'legend',
       '<span class="stat-best"><i></i>Best of the five</span><span class="stat-strong"><i></i>Strong</span><span class="stat-base"><i></i>Not this position\'s job</span><span class="legend-n">The dot is where you start on your side of the net.</span>',
     );
-    left.append(txt('p', 'view-s', 'Your position. You can still switch for a single drill from its panel.'), cards, legend);
+    left.append(
+      txt(
+        'p',
+        'view-s',
+        playing
+          ? `You are playing as ${POSITIONS[playing.pos].name}. Pick a card to set up another position's body; you change position on the start screen.`
+          : 'Your position. You can still switch for a single drill from its panel.',
+      ),
+      cards,
+      legend,
+    );
     drawCards();
     drawBody();
     body.append(left, side);

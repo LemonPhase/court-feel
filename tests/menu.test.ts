@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { POSITIONS, type PositionId } from '../src/config';
 import { MODE_INFO, type ModeId } from '../src/game/modes/mode';
 import { athleteStats, STAT_STRONG } from '../src/ui/athleteStats';
-import { ALL_CONTROLS, DRILL_INFO, PLAY_MODES, TRAIN_MODES } from '../src/ui/drillInfo';
+import { SET_PLAYS } from '../src/game/plays';
+import { ALL_CONTROLS, DRILL_INFO, HITTERS, PLAY_MODES, TRAIN_MODES } from '../src/ui/drillInfo';
 
 const MODES = Object.keys(MODE_INFO) as ModeId[];
 const tierOf = (stats: ReturnType<typeof athleteStats>, id: PositionId, label: string) => stats[id].find((s) => s.label === label)!.tier;
@@ -37,7 +38,20 @@ describe('menu: where each mode lives', () => {
     expect(keys).toEqual(expect.arrayContaining(['Shift + W', 'Space', 'Left mouse']));
   });
 
-  it('Learn lists the same four groups for the keyboard and for touch', () => {
+  it('set calls are shown to the positions that have plays to call, and to no one else', () => {
+    expect([...HITTERS].sort()).toEqual(Object.keys(SET_PLAYS).sort());
+    for (const id of MODES) {
+      for (const k of [...DRILL_INFO[id].keys, ...DRILL_INFO[id].touch]) {
+        if (/call your set/i.test(k.a)) expect(k.hitters, `${id}: ${k.k}`).toBe(true);
+      }
+    }
+    // the drills with set calls are the ones that read them
+    expect(DRILL_INFO.spike.keys.some((k) => k.hitters)).toBe(true);
+    expect(DRILL_INFO.rally.keys.some((k) => k.hitters)).toBe(true);
+    expect(DRILL_INFO.block.keys.some((k) => k.hitters)).toBe(false);
+  });
+
+  it('Learn lists the same groups for the keyboard and for touch', () => {
     expect(ALL_CONTROLS.kb.map((g) => g.title)).toEqual(ALL_CONTROLS.touch.map((g) => g.title));
   });
 });
