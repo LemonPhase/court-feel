@@ -122,6 +122,9 @@ const menu = new Menu(app, settings, {
   tutorialActive() {
     return game.tutorial.active;
   },
+  playing() {
+    return game.inMenu ? null : lastPlay;
+  },
   resume,
   restart() {
     if (game.stopped) return;

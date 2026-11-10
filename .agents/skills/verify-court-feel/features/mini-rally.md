@@ -13,7 +13,7 @@ Mini Rally is 6 v 6 with the player in their chosen position. The AI serves, rec
 
 ## How to get to it (user POV)
 
-- On the start screen choose a position, choose the Mini Rally card (or press `6`) and start with `PLAY`, Enter or a double-click on the card. [Start screen](./start-screen.md) drives this entry.
+- On the start screen open Play, choose a position and start with `PLAY`, Enter or a double-click on the Mini Rally row. [Start screen](./start-screen.md) drives this entry.
 - Open a quick-start link: `?mode=rally&pos=MB`, with `OH`, `OPP`, `MB`, `S` or `L`.
 - In the pause menu of a running rally choose `Restart drill`.
 

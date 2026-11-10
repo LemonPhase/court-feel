@@ -86,8 +86,8 @@ Real frames from the game: no paint-overs, no staged cameras.
       <b>On your phone.</b> A joystick for your feet, drag to aim, hold to jump and hold to swing. The timing windows are the same as on a keyboard.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/start-screen.jpg" alt="Start screen: five position cards (OH, OPP, MB, S, L) with jump, speed, power and control bars, and six drill cards">
-      <b>Pick your position.</b> Five positions with their own height, jump, speed and power, across six drills.
+      <img src="docs/screenshots/start-screen.jpg" alt="Start screen, Train: the five drills in a list, and the Spike Drill's panel with its own keys, the five positions to play it as, and PLAY">
+      <b>Pick a drill.</b> Each drill shows what it scores, its own keys and the position you play it as.
     </td>
   </tr>
 </table>
@@ -108,14 +108,24 @@ npm run e2e        # end-to-end check in headless Chromium (see Testing)
 npm run format     # format the code with Prettier
 ```
 
-Click **PLAY** (or press Enter) on the start screen; the game captures the
-mouse (pointer lock). **Esc** pauses and opens settings.
+The start screen has four sections:
 
-A first visit opens on a welcome, not the menu: **Start the tutorial**, or
+| Section | What is there |
+|---|---|
+| **Home** | One press back into your last drill and position (**Continue**). On a first visit: the tutorial. |
+| **Train** | The five drills. The one you pick shows what it scores, its own keys and **Play as** (your position). |
+| **Play** | The games: Mini Rally today. Sets and full matches will go here. |
+| **Learn** | The tutorial, and every control for the keyboard and for touch. |
+
+Pick a drill and click **PLAY** (or press Enter); the game captures the mouse
+(pointer lock). **Esc** pauses: the pause menu shows the keys of the drill you
+are in, the view, sensitivity and volume, and opens the settings. **Athlete**
+and **Settings** are at the top right of every section.
+
+On a first visit Home offers the lesson: **Start the tutorial**, or
 **Skip to the drills**. (Someone who left part-way is offered the rest:
-**Continue the tutorial**.) After that the start screen is the positions and
-drills, PLAY always plays the drill you picked, and **Tutorial** runs the
-lesson again.
+**Continue the tutorial**.) After that Home is **Continue**, PLAY always plays
+the drill you picked, and the lesson can be taken again under **Learn**.
 
 The lesson teaches one Outside spike in three balls, with less help each time. A strip names the four parts (**RUN › JUMP › DRAW ›
 HIT**) and a cue under the action shows the one key to hold now.
@@ -133,8 +143,8 @@ After each ball the coach says one thing about it: the first thing that went
 wrong, or that it was right. A rep that didn't come off is taken once more,
 then the lesson moves on anyway. After the third ball the game stops and says
 the tutorial is done: **Keep hitting** carries on in the Spike Drill you are
-standing in, **Choose another drill** goes to the start screen, where the
-Spike Drill and the Tutorial always are. On the floor, arrows lead from your start
+standing in, **Choose another drill** goes to Train (the tutorial stays under
+Learn). On the floor, arrows lead from your start
 down the run, a line marks where to plant (the jump carries you forward from
 it), and a spot marks where you hit from. The line and the spot turn green
 under your feet.
@@ -142,8 +152,8 @@ under your feet.
 **Skip tutorial** is in the corner the whole time (and in the pause menu),
 including while the mouse is locked. It is remembered in this browser
 (`courtFeel.tutorial.v1`: `done`, `skipped`, or `in_progress:` plus the step);
-taking it again once it is done or skipped changes nothing. **Tutorial** is
-on the start screen, and **Replay tutorial** in Settings. The lesson does
+taking it again once it is done or skipped changes nothing. The lesson is
+under **Learn** on the start screen (**Take it again**). The lesson does
 not teach the tip (a tap of the attack button) or aiming. First and third
 person both stay available (V).
 
@@ -205,7 +215,7 @@ shot.
 
 ## Positions
 
-Pick one on the start screen. It changes your height, jump, approach speed,
+Pick one in a drill's panel (**Play as**) or under **Athlete**. It changes your height, jump, approach speed,
 power and ball control, where drills start you, and what the AI asks of you.
 
 | | Height | Jump | Specialty |
@@ -227,8 +237,11 @@ camera sits over the left shoulder. Passing, setting and blocking use both
 hands and don't change. Timing windows, power and reach are the same for both
 hands. The AI players stay right-handed.
 
-Settings → **Your athlete** lets you make each position your own: pick the
-position tab and set your **height** (1.60–2.20 m), **vertical jump** (your
+**Athlete** (top right of the start screen, and from Settings) lets you make
+each position your own. Its cards show every position's jump, speed, power and
+control in real units: gold is the best of the five, cyan is strong, grey is not
+that position's job, and the bars follow your sliders. Pick the position card
+and set your **height** (1.60–2.20 m), **vertical jump** (your
 approach jump, 40–110 cm; the standing jump keeps the position's fraction of
 it) and **spike power** (shown as the top speed of a Perfect, full-power
 spike, about 65–140 km/h; it also drives your serve speed). The panel shows
@@ -386,7 +399,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
-| `BODY` | Slider ranges for the custom height, vert and spike power (Settings → Your athlete) |
+| `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
@@ -439,7 +452,10 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   calls of a position stop setting three different plays; the Perfect-spike
   replay doesn't start; the touch controls don't drive run / jump / wind-up /
   swing; a mistyped quick-start link or corrupted saved settings break the
-  page or stop the drill from playing; the menus capture Tab / Space; a crash
+  page or stop the drill from playing; the menus capture Tab / Space; a first
+  visit isn't offered the lesson, a drill doesn't list its own keys or Enter
+  doesn't play the drill picked; the pause menu doesn't name the drill and its
+  keys; a crash
   lets the pause menu or pointer lock take over from the crash screen; or
   geometries, textures or shader programs grow over the soak. Frame time, draw calls and heap are reported,
   not asserted. Screenshots and `report.json` go to `scripts/out/` (in CI:
@@ -494,7 +510,8 @@ src/ai/                setter, hitter, blocker, server, team coordinator
 src/fx/                particles, trails, effects director, replay, post-processing
 src/audio/             Web Audio synthesis
 src/world/             arena and procedural textures
-src/ui/                HUD, menu/settings, touch controls overlay, crash screen, debug overlay
+src/ui/                HUD, menus (start screen sections, pause, Settings and Athlete sheets), each drill's
+                       menu text and keys, icons, touch controls overlay, crash screen, debug overlay
 tests/                 unit tests
 scripts/               e2e and screenshot tooling
 docs/screenshots/      the README screenshots (real frames from the game)

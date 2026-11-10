@@ -15,7 +15,7 @@ In the Spike Drill a coach tosses to your setter, the setter sets your lane, and
 
 ## How to get to it (user POV)
 
-- On the start screen choose a position, choose the Spike Drill card (or press `2`) and start with `PLAY`, Enter or a double-click on the card.
+- On the start screen open Train, choose the Spike Drill row and a position, and start with `PLAY`, Enter or a double-click on the row. [Start screen](./start-screen.md) drives this entry.
 - Open a quick-start link: `?mode=spike&pos=OH`, with `OH`, `OPP`, `MB`, `S` or `L`.
 - In the pause menu of a running Spike Drill choose `Restart drill`.
 
@@ -46,7 +46,7 @@ Preconditions:
 - The hand-input bullet proves the keys reach the athlete, not a graded hit. Its swing meets no ball, so a `MISS` grade there is expected.
 - The target zone is picked at random for each rep. Only a run that starts with `--fresh --manual` repeats the same zones and points.
 - Set calls exist for OH, OPP and MB. As S or L the keys `1` to `3` do nothing and the score line has no `set` part.
-- The automatic replay needs the `Perfect-spike replays` setting on (the default) and a Perfect spike that lands. `--fresh` restores the default.
+- The automatic replay needs the `Perfect-spike replays` switch on (the default, under Settings, Camera) and a Perfect spike that lands. `--fresh` restores the default.
 - During a replay any key press skips it, including the key you meant for the drill. Step until `!g.fx.replaying` before pressing drill keys.
 - `r` only works once the ball is dead and while the attempt is still in the replay buffer (the last 8 seconds of live play). Wait on `g.replayAvailable()`, as the recipe does.
 - With the block up the autopilot can be stuffed (`BLOCKED`) or score off the hands (`TOOLED`). Do not assert a kill against a block.

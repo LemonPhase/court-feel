@@ -5,7 +5,7 @@ description: Launch Court Feel (the 3D volleyball browser game in this repo) on 
 
 # Verify Court Feel
 
-Court Feel is a client-only web app: a three.js canvas (the court) under DOM overlays (start screen, HUD, pause menu, settings, touch pad). There is no backend. All saved state is two `localStorage` keys in the browser profile (`courtfeel.settings.v1`, `courtfeel.menu`).
+Court Feel is a client-only web app: a three.js canvas (the court) under DOM overlays (the start screen with its Home, Train, Play and Learn sections, HUD, pause menu, the Settings and Athlete sheets, touch pad). There is no backend. All saved state is two `localStorage` keys in the browser profile (`courtfeel.settings.v1`, `courtfeel.menu`).
 
 One helper does everything: `.agents/skills/verify-court-feel/court.mjs`. Run it from the repo root. It starts a dev server and a headless Chromium for this checkout, keeps the page alive between commands, and logs every command with the state it left behind.
 
@@ -28,7 +28,7 @@ Start a session:
 .agents/skills/verify-court-feel/court.mjs launch --touch    # phone, 844x390, touch screen
 ```
 
-`launch` starts a supervisor process that runs `vite` on a free loopback port (this checkout's working tree, never port 5173) and a headless Chromium with a new, empty profile. It then loads the app and returns only when the start screen is up. A new profile is a first visit, so that screen is the welcome (`First time here?`). It takes 10 to 20 seconds. It prints the URL, the build label and the evidence directory. Ready means the last line starts with `ready`. On failure it prints the supervisor log and leaves nothing running.
+`launch` starts a supervisor process that runs `vite` on a free loopback port (this checkout's working tree, never port 5173) and a headless Chromium with a new, empty profile. It then loads the app and returns only when the start screen is up. A new profile is a first visit, so the start screen is on Home with the welcome (`First time here?`). It takes 10 to 20 seconds. It prints the URL, the build label and the evidence directory. Ready means the last line starts with `ready`. On failure it prints the supervisor log and leaves nothing running.
 
 Isolation:
 
@@ -63,12 +63,12 @@ Read-only. Run it first, and again whenever a result looks off. It exits 0 when 
 | Command | What it does |
 |---|---|
 | `open [query] [--fresh] [--manual]` | Load the app. `open '?mode=spike&pos=OH'` uses a quick-start link. `--fresh` clears everything the app saved, so it is a first visit: without a link the app opens on its welcome. `--manual` starts on the manual clock. On the real clock a load takes 5 to 20 seconds, and the result's `took` says where the time went. |
-| `click <selector>`, `dblclick <selector>` | Real mouse click. Playwright selectors: CSS, `text=`, `role=button[name="PLAY"]`. |
+| `click <selector>`, `dblclick <selector>` | Real mouse click. Playwright selectors: CSS, `text=`, `role=button[name="Train"]`. |
 | `key <Key>`, `keydown <Key>`, `keyup <Key>` | Real key events. `Enter`, `Escape`, `Space`, `Tab`, `F3`, `Shift`, `ArrowRight`, letters `v`, digits `1`. |
 | `mouse <down\|up> [left\|right]` | Attack (left) and block or set (right) buttons. |
 | `look <dx> <dy>` | Mouse movement in pixels while in play. Right and down are positive. |
 | `esc` | The Esc key as Chrome treats it in play: it releases the pointer, which pauses. |
-| `set <selector> <value>` | Set a settings slider. |
+| `set <selector> <value>` | Set a slider (Settings, Athlete, the pause menu's quick settings). |
 | `tap <selector>`, `touch <start\|move\|end> <id> ...` | Touch session only. |
 | `clock <manual\|real>`, `step <sec> [--until <js>]`, `wait <js>` | Time. See below. |
 | `state`, `events`, `errors`, `shot <name>`, `eval <js>` | Observation. |
@@ -76,15 +76,15 @@ Read-only. Run it first, and again whenever a result looks off. It exits 0 when 
 
 A command that gets no answer from the page fails after 60 seconds (`open` 330, `shot` 120, `step` 900, `wait` its `--timeout` plus 10), so one stuck command cannot block the session. `doctor` and `stop` never wait behind a running command.
 
-Every action command prints its result and one `state` line: the screen (`welcome`, `start`, `play`, `paused`, `settings`, `replay`, `crash`), the HUD title and score, and any grade, banner, message or call on screen. `state unchanged` means the same as after the previous command. A failed command prints `FAILED` and exits 1.
+Every action command prints its result and one `state` line: the screen (`welcome`, `start`, `play`, `paused`, `settings`, `replay`, `crash`), the HUD title and score, and any grade, banner, message or call on screen. On the start screen the line has `start`: the section (`home`, `train`, `play`, `learn`), the position, the drill and the view that section's gold button would start, and that button's label. `settings` is either full-screen sheet, Settings or Athlete, over the start screen or the pause menu: the line then has `"sheet":"settings"` with the `tab` in view, or `"sheet":"athlete"`. `state unchanged` means the same as after the previous command. A failed command prints `FAILED` and exits 1.
 
 A minimal run:
 
 ```bash
 .agents/skills/verify-court-feel/court.mjs open --fresh
 .agents/skills/verify-court-feel/court.mjs click 'role=button[name="Skip to the drills"]'
-.agents/skills/verify-court-feel/court.mjs click '.mode-card:has(.mode-t:text-is("Block Drill"))'
-.agents/skills/verify-court-feel/court.mjs click 'role=button[name="PLAY"]'
+.agents/skills/verify-court-feel/court.mjs click '.view.on .row:has(.row-t:text-is("Block Drill"))'
+.agents/skills/verify-court-feel/court.mjs click '.view.on .panel-foot .play-btn'
 .agents/skills/verify-court-feel/court.mjs shot block-drill-started
 .agents/skills/verify-court-feel/court.mjs errors
 ```
@@ -122,14 +122,18 @@ Test hooks. They are not user input. Say so when a proof uses one:
 
 | What | Selector or key |
 |---|---|
-| Welcome (first visit) | `role=button[name="Skip to the drills"]`, `role=button[name="START THE TUTORIAL"]` |
-| Position card | `.pos-card:has(.pos-short:text-is("MB"))` with `OH`, `OPP`, `MB`, `S`, `L` |
-| Drill card | `.mode-card:has(.mode-t:text-is("Spike Drill"))`, or keys `1` to `6` on the start screen |
-| Camera choice | `role=button[name="First person"]`, `role=button[name="Third person"]` |
-| Play, settings, tutorial | `role=button[name="PLAY"]`, `role=button[name="Settings"]`, `role=button[name="Tutorial"]` |
-| Pause menu | `role=button[name="RESUME"]`, `role=button[name="Restart drill"]`, `role=button[name="Quit to menu"]` |
-| Settings row | `.set-row:has-text("Field of view") input` for a slider, `.set-row:has-text("Net height") .chip` for a switch, `role=button[name="DONE"]` |
-| Your athlete | `.body-tab:text-is("MB")`, `.body-set input[data-body="height"]` with `height`, `jump`, `power` |
+| Welcome (first visit, on Home) | `role=button[name="Skip to the drills"]`, `role=button[name="START THE TUTORIAL"]` |
+| Section | `role=button[name="Train"]` with `Home`, `Train`, `Play`, `Learn`. On Home also the doors: `.door:has(.door-t:text-is("Train"))` |
+| Drill row (Train), game row (Play) | `.view.on .row:has(.row-t:text-is("Spike Drill"))` |
+| Position ("Play as" in Train and Play) | `role=button[name="Middle Blocker"]` with `Outside Hitter`, `Opposite`, `Middle Blocker`, `Setter`, `Libero` |
+| View | `role=button[name="First person"]`, `role=button[name="Third person"]` (Train, Play, Settings › Camera, the pause menu) |
+| Gold button | `.view.on .panel-foot .play-btn` (PLAY in Train and Play), `.continue .play-btn` (Home), `.pause .play-btn` (RESUME), `.lesson .play-btn` (Learn, starts the tutorial). The Enter key presses the one on Home, Train and Play |
+| Open a sheet | `role=button[name="Settings"]` (start screen and pause menu), `[aria-label^="Athlete:"]` (start screen) |
+| Sheet header | `.sheet-head .ghost-btn` (to the other sheet), `role=button[name="DONE"]`, or the Escape key |
+| Pause menu | `.pause .play-btn` (RESUME), `role=button[name="Restart drill"]`, `role=button[name="Settings"]`, `role=button[name="Quit to menu"]` |
+| Settings tab | `role=tab[name="Camera"]` with `Controls`, `Camera`, `Assists and hints`, `Sound`, `Court` |
+| Settings row | `.set-row:has-text("Field of view") input` for a slider, `role=switch[name="Invert Y"]` for an on/off setting, `.set-row:has-text("Net height") .chip:has-text("Women")` for a choice |
+| Athlete sheet | `.pos-card:has(.pos-short:text-is("MB"))` with `OH`, `OPP`, `MB`, `S`, `L`, `role=button[name="Left"]` and `Right`, `.body-set input[data-body="height"]` with `height`, `jump`, `power` |
 | The court | `#app > canvas` |
 | Touch pad | `.t-jump`, `.t-hit`, `.t-block`, `.t-pass`, `.t-pause`, `.touch [data-btn="cam"]` with `cam`, `reset`, `replay`, `d1`, `d2`, `d3`, `vsblock` |
 | Crash screen | `role=alertdialog`, `role=button[name="RELOAD"]`, `role=button[name="Copy details"]` |
@@ -185,9 +189,11 @@ Do not kill `vite`, `node` or `chrome` by name: a developer's own dev server and
 - Deleting `shots/verify/` or a session's folder under `shots/verify/.sessions/` ends that session: its supervisor notices within a few seconds and shuts everything down.
 - Editing a file under `src/` while a session runs reloads the page a few seconds later. The game goes back to wherever the URL puts it and the clock goes back to real. `open` again after every edit. Doctor warns when this happened.
 - A drill opened by link does not hold the pointer, because no click happened. `look` fails until you `click '#app > canvas'`. Keys and mouse buttons work without it.
-- The start screen plays a spike drill in the background. While `screen` is `start`, `game.mode` in `state` is that background drill, not a selection. Read `start.position` and `start.drill`.
+- The start screen plays a spike drill in the background. While `screen` is `start`, `game.mode` in `state` is that background drill, not a selection. Read `start.section`, `start.position` and `start.drill`.
 - Screenshots can show a grade or a banner fading out that `state` no longer reports. CSS fades run in real time even on the manual clock. `state` is the truth.
 - The first `shot` after `open --manual` takes a few seconds, because it draws the first frame and compiles the shaders.
 - The autopilot is reliable in the drills. In Mini Rally it sometimes misses. Assert on what `events` shows, not on a kill.
 - Saved settings persist across `open` inside a session. Start a recipe with `open --fresh` unless it is about persistence.
-- After `open --fresh` with no link the app shows the welcome, not the positions and drills. Click `Skip to the drills` to get to them. `state` then shows `saved.tutorial` as `skipped`, and later loads without `--fresh` go straight to the start screen. A quick-start link starts its drill directly, welcome or not.
+- After `open --fresh` with no link Home shows the welcome, not Continue. Click `Skip to the drills` to land on Train. `state` then shows `saved.tutorial` as `skipped`, and later loads without `--fresh` open on Home with its Continue card. A quick-start link starts its drill directly, welcome or not.
+- The gold buttons carry a key cap, so on a desktop session their accessible names are `PLAY ENTER`, `CONTINUE ENTER` and `RESUME ESC`: `role=button[name="PLAY"]` finds nothing. Use the class selectors in the table. `state` reports the label without the cap (`start.button`, `pauseMenu.buttons`).
+- Train and Play each have their own position and view chips, and a sheet leaves the screen under it in the page. A selector that is not a role selector can match the copy in a section that is not showing: start it with `.view.on` or `.sheet`. With the Athlete sheet open over the start screen, `role=button[name="Settings"]` matches the pill under the sheet too: use `.sheet-head .ghost-btn`.

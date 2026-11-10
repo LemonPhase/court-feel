@@ -25,7 +25,7 @@ Preconditions:
 - **Drill, position, camera and hand.** Open a block drill as a left-handed middle in first person. Run `court open '?mode=block&pos=MB&cam=fp&hand=left' --fresh`. The state line shows `"screen":"play"` and `"title":"Block Drill"`. Run `court state`: `game.mode` is `block`, `game.position` is `MB`, `game.camera` is `fp`, `hud.camera` is `FIRST PERSON` and `game.hand` is `left`.
 - **The link does not take the mouse.** In the same `court state` output `game.pointerLocked` is `false`. Click the court as a player would. Run `court click '#app > canvas'` and `court state`: `game.pointerLocked` is `true`.
 - **Bad position.** Open a mistyped position. Run `court open '?mode=spike&pos=OHH' --fresh`. The state line shows `"screen":"play"` and `"title":"Spike Drill · Outside high ball (4)"`. Run `court state`: `game.position` is `OH`.
-- **Bad drill.** Open a mistyped drill. Run `court open '?mode=spikey' --fresh`. No drill starts: the state line shows `"screen":"welcome"`, the start screen as a first visit sees it. Without `--fresh`, for a player who has been here before, it shows `"screen":"start"`.
+- **Bad drill.** Open a mistyped drill. Run `court open '?mode=spikey' --fresh`. No drill starts: the state line shows `"screen":"welcome"`, Home as a first visit sees it. Without `--fresh`, for a player who has been here before, it shows `"screen":"start"` and `"section":"home"`.
 - **Bad camera, autopilot and hand.** Run `court open '?mode=spike&pos=OPP&cam=side&bot=great&hand=both' --fresh`. The state line shows `"screen":"play"` and `"title":"Spike Drill · Opposite back set (red)"`. Run `court state`: `game.camera` is `tp`, `game.autopilot` is `false` and `game.hand` is `right`, the defaults.
 - **Autopilot.** Open the receive drill with the autopilot on the manual clock. Run `court open '?mode=receive&pos=L&bot=perfect' --fresh --manual`. Run `court state`: `game.autopilot` is `true`. Run `court step 30 --until 'window.__verify.events.some(e => e.who === "me")'`, then `court events`: the last entry is a `contact` by `me` with `"kind": "pass"`.
 - **Touch controls on a desktop.** Run `court open '?mode=spike&pos=OH&touch=1' --fresh`. Run `court state`: `game.touchControls` is `true` and `hud.message` names buttons, not keys: `Approach: the stick out · plant: JUMP · hold HIT, release to hit · 1-3 set call`. Run `court shot link-touch`: the stick ring at the bottom left and the JUMP, HIT, BLOCK and PASS buttons at the bottom right.
@@ -34,7 +34,7 @@ Preconditions:
 ## Gotchas
 
 - A link starts the drill without a click, so the game does not hold the mouse. `court look` fails until `court click '#app > canvas'`. Keys and mouse buttons work at once.
-- `cam` and `hand` from a link apply to this page load. They reach `saved.settings` only when something else saves the settings (the `v` key, the settings panel). Check `game.camera` and `game.hand`, not `saved`.
+- `cam` and `hand` from a link apply to this page load. They reach `saved.settings` only when something else saves the settings (the `v` key, a change in Settings or Athlete). Check `game.camera` and `game.hand`, not `saved`.
 - The link leaves the remembered start-screen selection (`saved.menu`) alone, and a link-started drill on a first visit leaves the tutorial offer in place (`saved.tutorial` stays `null`).
 - `?tutorial=N` starts the first-run lesson at step N. The map does not cover the lesson yet (see the index).
 - `bot` is test tooling that ships in the app. It proves the link parameter works, not that a human can make the contact.

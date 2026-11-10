@@ -710,6 +710,150 @@ phase('probes');
   check(!keys.inMenu.tab && !keys.inMenu.space, 'menus: Tab and Space keep their browser meaning', keys);
   check(keys.inGame.tab && keys.inGame.space, 'in play: Tab and Space are captured by the game', keys);
   await r.close();
+  // the menus: a first visit is offered the lesson; past it, Train lists the drills and Enter plays the one picked
+  r = await probe('menu', '');
+  try {
+    const m = {};
+    m.welcome = await r.p.locator('.welcome').isVisible();
+    await r.p.click('.welcome .ghost-btn');
+    m.view = await r.p.evaluate(() => document.querySelector('.menu').dataset.view);
+    await r.p.click('.row:has-text("Block Drill")');
+    await r.p.click('.pos-chip[aria-label="Middle Blocker"]');
+    m.keys = await r.p.locator('.view.on .keys.only-kb .key-cap').allTextContents();
+    // Enter plays even when the last click left the focus on the nav
+    await r.p.click('.nav-btn[aria-label=Train]');
+    await r.p.keyboard.press('Enter');
+    Object.assign(
+      m,
+      await r.p.evaluate(() => ({ mode: window.__court.modeId, pos: window.__court.position, inMenu: window.__court.inMenu })),
+    );
+    check(m.welcome && m.view === 'train', 'menu: a first visit is offered the lesson, and Skip lands on the drills', m);
+    check(
+      m.keys.includes('Right mouse') && !m.keys.includes('Left mouse'),
+      "menu: a drill lists its own keys (the Block Drill's, not the spike's)",
+      m,
+    );
+    check(m.mode === 'block' && m.pos === 'MB' && !m.inMenu, 'menu: Enter plays the drill and position picked', m);
+    // paused: the dialog names the drill and its keys; Settings opens over it and Esc closes only the sheet
+    const pz = await r.p.evaluate(() => {
+      window.__court.paused = true;
+      window.__menu.showPause(true);
+      const sub = document.querySelector('.pause-s').textContent;
+      const caps = [...document.querySelectorAll('.pause-side .keys.only-kb .key-cap')].map((e) => e.textContent);
+      window.__menu.openSettings();
+      const open = window.__menu.settingsVisible;
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+      return { sub, caps, open, closed: !window.__menu.settingsVisible, paused: window.__menu.pauseVisible };
+    });
+    check(
+      pz.sub.includes('Block Drill') && pz.sub.includes('Middle Blocker') && pz.caps.includes('Right mouse'),
+      'pause: names the drill, the position and its keys',
+      pz,
+    );
+    check(pz.open && pz.closed && pz.paused, 'pause: Esc closes the settings and leaves the pause menu', pz);
+  } catch (e) {
+    check(false, 'menu: the probe runs', { error: String(e).split('\n')[0] });
+  }
+  await r.close();
+  // the menus on a phone: no panel is squeezed shorter than its text, nothing runs off the side, and the
+  // settings' reset is in reach (held upright and sideways)
+  for (const [w, h] of [
+    [390, 844],
+    [844, 390],
+  ]) {
+    const { ctx, p } = await newHeldPage({ viewport: { width: w, height: h }, hasTouch: true, isMobile: true });
+    let up = false;
+    try {
+      await comeUp(p, '', () => window.__court && window.__menu);
+      up = true;
+      await gpuIdle(p);
+      await p.tap('.welcome .ghost-btn');
+      const bad = await p.evaluate(() => {
+        const out = [];
+        const look = (label, root) => {
+          for (const e of root.querySelectorAll(
+            '.panel, .row, .set-group, .set-row, .set-text, .pos-card, .body-set, .sheet-head, .topbar',
+          )) {
+            if (e.offsetParent === null) continue;
+            const r = e.getBoundingClientRect();
+            // a box that scrolls holds its content by scrolling; one inside a sideways strip may sit past the edge
+            const scrolls = getComputedStyle(e).overflowY !== 'visible';
+            const inStrip = !!e.closest('.rows') && getComputedStyle(e.closest('.rows')).overflowX !== 'visible';
+            if (!scrolls && (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1))
+              out.push(`${label}: ${e.className} spills`);
+            if (!inStrip && (r.right > innerWidth + 1 || r.left < -1)) out.push(`${label}: ${e.className} is off the side`);
+          }
+          // side by side, the list and its panel scroll on their own: the page behind them does not
+          for (const v of root.querySelectorAll('.view-split.on, .settings-body')) {
+            if (getComputedStyle(v).flexDirection === 'row' && v.scrollHeight > v.clientHeight + 1)
+              out.push(`${label}: the whole page scrolls`);
+          }
+          // PLAY is on screen, on a foot that sits flush on the bottom of its panel (nothing shows under it)
+          for (const foot of root.querySelectorAll('.view.on .panel-foot')) {
+            const f = foot.getBoundingClientRect();
+            const pr = foot.parentElement.getBoundingClientRect();
+            if (f.bottom > innerHeight + 1) out.push(`${label}: PLAY is below the screen`);
+            if (Math.abs(f.bottom - pr.bottom) > 2.5) out.push(`${label}: the panel's foot is not on its bottom edge`);
+          }
+        };
+        look('train', document.querySelector('.menu'));
+        for (const name of ['Play', 'Learn']) {
+          document.querySelector(`.nav-btn[aria-label=${name}]`).click();
+          look(name, document.querySelector('.menu'));
+        }
+        window.__menu.openSettings();
+        look('settings', document.querySelector('.sheet'));
+        // the settings tabs: one group in view at a time, and each tab shows its own
+        const shown = () =>
+          [...document.querySelectorAll('.sheet .set-group')].filter((g) => !g.hidden).map((g) => g.querySelector('h2').textContent);
+        const first = shown();
+        document.querySelector('.sheet [role=tab][aria-label=Sound]').click();
+        const second = shown();
+        if (first.join() !== 'Controls' || second.join() !== 'Sound') out.push(`settings: tabs show ${first} then ${second}`);
+        look('settings: sound', document.querySelector('.sheet'));
+        const reset = [...document.querySelectorAll('.sheet button')].find((b) => b.textContent === 'Reset to defaults');
+        if (!reset || reset.offsetParent === null) out.push('settings: Reset to defaults is not shown');
+        if (!document.querySelector('.sheet').contains(document.activeElement)) out.push('settings: focus is not in the sheet');
+        document.querySelector('.sheet-head .ghost-btn').click();
+        look('athlete', document.querySelector('.sheet'));
+        // the pause menu: each side's background runs as far as what is in it, scrolled to its end too
+        window.__menu.closeSettings();
+        window.__court.startMode('spike', 'OH');
+        window.__court.inMenu = false;
+        window.__menu.showStart(false);
+        window.__court.paused = true;
+        window.__menu.showPause(true);
+        const held = (when) => {
+          for (const side of document.querySelectorAll('.pause-main, .pause-side')) {
+            const sr = side.getBoundingClientRect();
+            const scrolls = getComputedStyle(side).overflowY !== 'visible';
+            for (const e of side.querySelectorAll('.set-row, .key-row, button')) {
+              const r = e.getBoundingClientRect();
+              const below = scrolls
+                ? r.bottom > sr.bottom + 1 && e.offsetTop + e.offsetHeight <= side.scrollTop + side.clientHeight
+                : r.bottom > sr.bottom + 1;
+              if (e.offsetParent !== null && below)
+                out.push(`pause ${when}: ${e.textContent.trim().slice(0, 24)} is drawn below its side's background`);
+            }
+          }
+        };
+        held('at the top');
+        for (const e of document.querySelectorAll('.pause-box, .pause-main, .pause-side')) e.scrollTop = e.scrollHeight;
+        held('scrolled to the end');
+        const last = [...document.querySelectorAll('.pause-side .set-row')].pop();
+        const side = document.querySelector('.pause-side').getBoundingClientRect();
+        if (last && last.getBoundingClientRect().bottom > side.bottom + 1)
+          out.push('pause: the last quick setting ends below the side panel');
+        return out;
+      });
+      check(bad.length === 0, `menus at ${w} x ${h}: every box holds its text and stays on screen`, bad);
+    } catch (e) {
+      check(false, `menus at ${w} x ${h}: the probe runs`, { error: String(e).split('\n')[0] });
+    }
+    // a page that never came up may never answer either: close it without asking it anything
+    if (up) await closeIdle(ctx, p);
+    else await ctx.close();
+  }
   // a crash in play: the crash screen keeps the keyboard and mouse (no pause menu or pointer lock behind it)
   r = await probe('crash screen', '?mode=spike&pos=OH');
   try {
