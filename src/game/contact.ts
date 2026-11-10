@@ -426,9 +426,9 @@ export class ContactSystem {
     const bp = ball.pos;
     const P = this.platformPoint(a, this._p);
     const assist = h.aimAssist(a);
-    // hard-driven balls: a little extra reach (lunge), more for AI defenders
+    // hard-driven balls: a little extra reach (a lunge), the same for everyone
     const hard = clamp01((ball.speed() - 14) / 10);
-    const r = CONTACT.passRadius + assist * 0.25 + hard * (a.isUser ? 0.12 : 0.3);
+    const r = CONTACT.passRadius + assist * 0.25 + hard * CONTACT.digLunge;
     const dx = bp.x - P.x;
     const dy = bp.y - P.y;
     const dz = bp.z - P.z;
@@ -471,6 +471,13 @@ export class ContactSystem {
     }
     const dig = incoming > 14;
     if (dig && grade === 'Good' && incoming > 22) grade = 'Late';
+    // a hard-driven ball off a mistimed or off-centre platform is shanked: it leaves the arms at a
+    // bad angle, wide and fast, and usually out of play
+    const badness = grade === 'Perfect' ? 0 : grade === 'Good' ? CONTACT.shankGood : 1;
+    if (h.rand() < CONTACT.shank * fast * Math.max(badness, clamp01(dBest / r))) {
+      this.shank(a, act, incoming, t);
+      return true;
+    }
     const skill = a.stats.ballControl;
     const errBase = grade === 'Perfect' ? CONTACT.passErrPerfect : grade === 'Good' ? CONTACT.passErrGood : CONTACT.passErrOk;
     // a hard serve or spike, or a passer still on the move, comes off the arms with less control
@@ -510,6 +517,41 @@ export class ContactSystem {
       target: new THREE.Vector3(target.x, target.y, target.z),
     });
     return true;
+  }
+
+  /** a shanked pass or dig: off the arms sideways and up, still going the way it came, and slower */
+  private shank(a: Athlete, act: Action, incoming: number, t: number): void {
+    const h = this.host;
+    const ball = h.ball;
+    const bp = ball.pos;
+    const bv = ball.vel;
+    const hv = Math.hypot(bv.x, bv.z) || 1;
+    const turn = (h.rand() < 0.5 ? -1 : 1) * lerp(0.7, 1.7, h.rand());
+    const dx = (bv.x / hv) * Math.cos(turn) - (bv.z / hv) * Math.sin(turn);
+    const dz = (bv.x / hv) * Math.sin(turn) + (bv.z / hv) * Math.cos(turn);
+    const sp = incoming * lerp(CONTACT.shankSpeed[0], CONTACT.shankSpeed[1], h.rand());
+    const up = lerp(0.5, 1.2, h.rand());
+    const out = { x: dx * Math.cos(up) * sp, y: Math.sin(up) * sp, z: dz * Math.cos(up) * sp };
+    ball.hit(out, { x: (h.rand() - 0.5) * 10, y: 0, z: (h.rand() - 0.5) * 10 }, 0, t);
+    ball.lastTouch = { athlete: a, kind: 'dig', t, side: a.side };
+    a.lastTouchT = t;
+    act.resolved = true;
+    act.contactT = t;
+    act.grade = 'Late';
+    act.note = 'Shanked';
+    act.contactPoint.set(bp.x, bp.y, bp.z);
+    h.emitContact({
+      athlete: a,
+      kind: 'dig',
+      grade: 'Late',
+      note: 'Shanked',
+      speed: sp,
+      point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      quality: 0,
+      perfect: false,
+      tip: false,
+      target: new THREE.Vector3(bp.x + dx * 4, 0, bp.z + dz * 4),
+    });
   }
 
   /** should the right button set (ball dropping onto us from our own side) */

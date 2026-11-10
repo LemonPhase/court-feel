@@ -297,6 +297,16 @@ export const CONTACT = {
    */
   passSpeedErr: 1.5,
   passMoveErr: 1.0,
+  /** a hard-driven ball (passing or digging) gives this much extra reach (m): a lunge, the same for the AI and you */
+  digLunge: 0.12,
+  /**
+   * Shanks: a ball arriving at 22 m/s or more (from 12 m/s up) off a mistimed platform (Late / Early;
+   * `shankGood` as likely off a Good one), or off the edge of it, is shanked `shank` of the time: it
+   * leaves the arms at a bad angle, at `shankSpeed` times the speed it came in, usually out of play.
+   */
+  shank: 0.15,
+  shankGood: 0.3,
+  shankSpeed: [0.35, 0.6] as [number, number],
 };
 
 export const ASSIST = {
