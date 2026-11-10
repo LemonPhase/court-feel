@@ -418,6 +418,33 @@ export const FX = {
   replaySlow: 0.32,
   replayPre: 0.7,
   replayPost: 0.55,
+  /** a miss is replayed from further back than a highlight: the plant, the jump and the ball coming in (s) */
+  replayMissPre: 1.3,
+  /** and for this long after it: the ball going down (s) */
+  replayMissPost: 1.0,
+  /** the replay of a miss: camera distance beside the player (m) */
+  replayMissDist: 5.5,
+  /** plus this much per metre the ball was from them (a serve that lands across the court) */
+  replayMissSpan: 0.5,
+  /** it stands on the side away from the ball when the ball was at least this far to one side (m) */
+  replayMissSide: 0.5,
+  /** and never further out than this (m): in front of the boards (x = 9.1) */
+  replayMissMaxX: 8.8,
+  /** it looks at the player's chest (fraction of their height) ... */
+  replayMissChest: 0.6,
+  /** ... leaning this share of the way to the ball ... */
+  replayMissLeadShare: 0.5,
+  /** ... but no further than this (m): the player never leaves the frame */
+  replayMissLead: 1.5,
+  /** the most of that lead that may be upwards (m): their feet stay in the frame under a high ball */
+  replayMissLeadUp: 0.5,
+  /**
+   * A button pressed with no ball near is not a rep: an action that never met the ball counts as
+   * an attempt only if the ball came this close to where it would have met it (m, about one step and a reach)
+   */
+  attemptRange: 3,
+  /** a press this soon after the player's own touch is a habit (a double click), not a new attempt (s) */
+  attemptOwnGap: 1,
   bloomStrength: 0.85,
   bloomRadius: 0.55,
   bloomThreshold: 1.0,

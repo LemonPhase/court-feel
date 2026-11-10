@@ -230,6 +230,16 @@ export class MiniRally extends Mode {
     return !this.g.ballLive || super.ballDead();
   }
 
+  /** six on court: a ball that drops is the user's rep only when it was theirs (the pass, the set to them, their set) */
+  userBall(): boolean {
+    const g = this.g;
+    const me = g.me;
+    const lt = g.ball.lastTouch;
+    if (this.home.receiver === me || this.yourBackupSet) return true;
+    if (this.home.setFor === me && lt?.kind === 'set' && lt.side === 1) return true;
+    return me.role === 'S' && this.home.touches === 1 && lt?.side === 1;
+  }
+
   step(dt: number): void {
     const g = this.g;
     this.t += dt;

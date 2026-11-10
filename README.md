@@ -67,7 +67,7 @@ Real frames from the game: no paint-overs, no staged cameras.
     </td>
     <td width="50%" valign="top">
       <img src="docs/screenshots/broadcast-replay.jpg" alt="Letterboxed slow-motion replay from a broadcast angle: the hitter at the net, a shock ring and a fire trail on the ball">
-      <b>The replay.</b> Perfect spikes play back in slow motion from a broadcast camera. R replays any good touch.
+      <b>The replay.</b> Perfect spikes play back in slow motion from a broadcast camera. R replays your last attempt, misses included.
     </td>
   </tr>
   <tr>
@@ -164,7 +164,7 @@ Settings → Hints, which is on by default.
 | E | Bump / pass / dig (press early so the platform is ready; hold it) |
 | Q | Serve toss (Free Play, feed 5 = serve practice), then hold and release Left mouse to hit — standing = float serve, jump = topspin serve |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
-| R | Replay the last highlight (your attacks, serves, blocks and Perfect / Good touches) in slow motion once the ball is dead. Any key skips it; the game carries on where it was. |
+| R | Replay your last attempt in slow motion once the ball is dead: a clean contact, a poor one, a swing or a block that found no ball, or a ball that was yours and dropped untouched. Any key skips it; the game carries on where it was. |
 | N | Reset / skip the current rep (Mini Rally: re-serve) |
 | 1 / 2 / 3 | Spike Drill and Mini Rally: set call for the next ball (outside, middle, opposite — see below) |
 | B | Spike Drill: opposing block off / single / double, with its shadow drawn on their floor (see below) |
@@ -189,7 +189,7 @@ Hold the phone sideways.
 | **BLOCK** | Hands up and load a jump; release to take off. The hands stay up until you land. When the ball is dropping onto you from your side the button reads **SET** and sets instead (no jump). |
 | **PASS** | Hold: platform ready. |
 | **TOSS** | Serve toss (Free Play). |
-| Top right | Pause, camera toggle, reset rep, and REPLAY when a highlight is available. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill) or feed types (Free Play). |
+| Top right | Pause, camera toggle, reset rep, and REPLAY when your last attempt can be watched again. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill) or feed types (Free Play). |
 
 Haptics (Android) tick at full charge and on a graded contact. Tunables are in
 `TOUCH` in `src/config.ts` (stick radius, run threshold, look scale, the
@@ -320,12 +320,29 @@ The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
 ### Replays
 
 A Perfect spike or serve that hits the floor plays back by itself in slow
-motion from a broadcast camera (settings: "Perfect-spike replays"). Anything
-else you did well is kept too: after your attacks, serves, blocks and Perfect
-or Good passes, sets and digs the hint shows **R replay** as soon as the ball
-is dead ("Nice · R to replay"), and R plays the last few seconds around that
-contact. The simulation is frozen while it plays, so nothing is missed: any
-key skips, and the drill or rally continues exactly where it was. With the
+motion from a broadcast camera (settings: "Perfect-spike replays"; R does
+not depend on that setting).
+
+Everything else you try is kept too, the way practice footage is: as soon as
+the ball is dead the hint shows **R replay last attempt** (the REPLAY button
+on touch), and R plays your most recent go at the ball.
+
+* **A contact**, clean or poor: the last moments before it, the touch, and
+  the ball down to the floor if it got there. After an attack, a serve, a
+  block or a Perfect / Good touch a "Nice · R to replay" note comes up as well.
+* **A miss**: a swing graded MISS, or a platform, hands or a block that the
+  ball came close to and never met. The clip starts further back (your plant,
+  your jump, the ball coming in) and the camera stays beside you, so you see
+  where you were and where the ball was.
+* **A ball that was yours and dropped untouched**: a set you never swung at, a
+  serve or an attack that landed in your court. A ball you rightly left to go
+  out is not a rep, and neither is a ball that was a teammate's (the Mini
+  Rally, the set after your pass in Serve Receive) or one coming back off
+  the block in a drill.
+
+The simulation is frozen while it plays, so nothing is missed: any key (or a
+touch) skips, and the drill or rally continues exactly where it was, with the
+same score and rep. With the
 Spike Drill's block on (B), the replay shows it too: the blockers' read and
 jump, the touch on their hands and the block shadow from your contact point.
 

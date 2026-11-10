@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { FX } from '../config';
-import { clamp01, lerp, smooth01 } from '../core/mathx';
+import { clamp, clamp01, lerp, smooth01 } from '../core/mathx';
 import type { Game } from '../game/game';
 import type { AthleteView } from '../character/athleteView';
 import type { ContactEvent } from '../game/contact';
+import { AttemptTracker, type Attempt } from '../game/attempt';
 import { AudioEngine } from '../audio/audio';
 import { makeBlobTexture, makeCrackTexture, makeRingTexture } from '../world/textures';
 import { SpritePool, StreakPool } from './particles';
@@ -23,18 +24,6 @@ interface Decal {
   t: number;
 }
 
-/** the last thing worth watching again (replayable with R while the ball is dead) */
-export interface Highlight {
-  contactT: number;
-  kind: string;
-  focus: THREE.Vector3;
-  /** where (and when) the ball hit the floor after this contact, once known */
-  impact: THREE.Vector3 | null;
-  impactT: number;
-  /** the "R to replay" cue was shown for this one */
-  cued: boolean;
-}
-
 /**
  * The juice: turns game events into sparks, trails, shockwaves, dust, crack
  * decals, hand flashes, hit-stop, camera shake, sound and the slow-motion
@@ -47,8 +36,12 @@ export class Effects {
   readonly glow: SpritePool;
   readonly trail = new Trail(30);
   readonly replay = new Replay(8, 60);
-  /** the last highlight (the user's good contacts); replayable with R while the ball is dead */
-  lastHighlight: Highlight | null = null;
+  /** the user's attempts at the ball, good and bad; the last one is replayable with R while the ball is dead */
+  readonly attempts = new AttemptTracker();
+  /** when the ball first hit the floor since its last touch (before that touch: it is still up) */
+  private downT = -1;
+  /** the replay on screen is of a miss: the camera keeps the player in frame, not only the ball */
+  private cineMiss = false;
   private rings: Ring[] = [];
   private decals: Decal[] = [];
   private decalNext = 0;
@@ -178,13 +171,14 @@ export class Effects {
     });
     ev.on('ballEvent', (e) => {
       if (e.kind === 'floor') {
+        this.noteBallDown(e.x, e.z);
         const imp = this.pendingImpact;
         if (imp && e.impact > 6) {
           this.pendingImpact = null;
           const data = { x: e.x, z: e.z, q: imp.q, perfect: imp.perfect ? 1 : 0, speed: imp.speed, user: imp.user ? 1 : 0 };
           this.playEvent({ t: g.simTime, kind: 'impact', data }, false);
           this.replay.addEvent(g.simTime, 'impact', data);
-          const h = this.lastHighlight;
+          const h = this.lastAttempt;
           if (imp.user && h && !h.impact && (h.kind === 'spike' || h.kind === 'serve')) {
             h.impact = new THREE.Vector3(e.x, 0, e.z);
             h.impactT = g.simTime;
@@ -236,11 +230,8 @@ export class Effects {
     const g = this.g;
     const user = e.athlete.isUser;
     const p = e.point;
-    // worth a replay: any of the user's attacks, serves and blocks, and their Perfect / Good touches
-    const good = e.grade === 'Perfect' || e.grade === 'Good';
-    if (user && e.grade !== 'Miss' && !g.inMenu && (good || e.kind === 'spike' || e.kind === 'serve' || e.kind === 'block')) {
-      this.lastHighlight = { contactT: g.simTime, kind: e.kind, focus: p.clone(), impact: null, impactT: -1, cued: false };
-    }
+    // every go at the ball can be watched again: a clean contact, a poor one, a swing that found nothing
+    if (user && !g.inMenu) this.attempts.contact(g.simTime, e.kind, e.grade, p, e.athlete.pos, g.ball.pos);
     // a new touch ends the previous ball's trail (attacks re-ignite their own) and
     // cancels the previous attack's floor-impact package (a blocked/dug Perfect spike
     // must not crack the floor wherever the ball later drops)
@@ -634,7 +625,8 @@ export class Effects {
     if (this.replayAt > 0 && g.simTime >= this.replayAt && !this.replay.playing) {
       this.replayAt = -1;
       // the automatic replay shows this highlight: no "R to replay" cue needed (R still works)
-      if (this.lastHighlight) this.lastHighlight.cued = true;
+      if (this.lastAttempt) this.lastAttempt.cued = true;
+      this.cineMiss = false;
       return this.begin(true);
     }
     return false;
@@ -647,55 +639,135 @@ export class Effects {
     return !g.ball.active || g.ball.state.rest;
   }
 
-  /** can R replay the last highlight right now? */
-  replayAvailable(): boolean {
-    const g = this.g;
-    const h = this.lastHighlight;
-    if (!h || this.replaying || this.replayAt > 0 || g.inMenu || g.paused) return false;
-    if (!this.ballDead()) return false;
-    // the contact itself must still be in the buffer
-    return h.contactT > this.replay.oldestT + 0.1 && this.replay.newestT > h.contactT + 0.3;
+  /** the user's last attempt at the ball (a contact of any grade, a miss, a ball left to drop) */
+  get lastAttempt(): Attempt | null {
+    return this.attempts.last;
   }
 
-  /** R: replay the last highlight (the contact, then the ball down to the floor if it got there) */
+  /** the ball is in the air and has not been down since its last touch */
+  private ballUp(): boolean {
+    const b = this.g.ball;
+    return b.active && !b.state.rest && this.downT < b.lastLaunchT;
+  }
+
+  /** called every fixed step: follow the user's action, so one that never meets the ball is on record too */
+  trackAttempt(): void {
+    const g = this.g;
+    if (g.inMenu) return;
+    const me = g.me;
+    const act = me.action;
+    if (act?.kind === 'pass') g.contact.platformPoint(me, _v);
+    else if (act?.kind === 'set') g.contact.handsPoint(me, _v);
+    else me.idealContact(_v);
+    const b = g.ball;
+    // their own ball just played is not one to go for again (a second tap after the pass is not a rep)
+    const up = this.ballUp() && !this.ownTouch() && !this.justPlayed();
+    this.attempts.step(g.simTime, act, { up, flight: b.lastLaunchT, mine: up && (g.mode ? g.mode.userBall() : true) }, b.pos, _v, me.pos);
+  }
+
+  /** the user was the last to play the ball. A toss is their own feed: the serve is still to come */
+  private ownTouch(): boolean {
+    const lt = this.g.ball.lastTouch;
+    return lt?.athlete === this.g.me && lt.kind !== 'feed';
+  }
+
+  /** the user has only just played the ball (it may have come off the block since): a click now is a habit, not a rep */
+  private justPlayed(): boolean {
+    return this.g.simTime - this.g.me.lastTouchT < FX.attemptOwnGap;
+  }
+
+  /** a floor contact: the first one since the last touch may be a ball the user let drop */
+  private noteBallDown(x: number, z: number): void {
+    const g = this.g;
+    const b = g.ball;
+    if (this.downT >= b.lastLaunchT) return;
+    this.downT = g.simTime;
+    if (g.inMenu) return;
+    const lt = b.lastTouch;
+    this.attempts.ballDown(g.simTime, x, z, g.me.pos, {
+      side: g.me.side,
+      // (a toss backdates its touch: the launch time is when this flight began)
+      touchT: b.lastLaunchT,
+      ownTouch: this.ownTouch(),
+      ownSide: lt?.side === g.me.side,
+      userBall: g.mode ? g.mode.userBall() : true,
+    });
+  }
+
+  /** can R replay the last attempt right now? */
+  replayAvailable(): boolean {
+    const g = this.g;
+    const h = this.lastAttempt;
+    if (!h || this.replaying || this.replayAt > 0 || g.inMenu || g.paused) return false;
+    if (!this.ballDead()) return false;
+    // the moment itself must still be in the buffer
+    return h.t > this.replay.oldestT + 0.1 && this.replay.newestT > h.t + 0.3;
+  }
+
+  /**
+   * R: replay the last attempt. A contact: the touch, then the ball down to the floor if it got
+   * there. A miss: from further back (the plant, the jump, the ball coming in) to the ball going down.
+   */
   startReplay(): boolean {
     if (!this.replayAvailable()) return false;
-    const h = this.lastHighlight!;
+    const h = this.lastAttempt!;
     const r = this.replay;
-    r.contactT = h.contactT;
+    r.contactT = h.t;
     r.focus.copy(h.focus);
-    this.replayFrom = h.contactT - FX.replayPre;
+    this.cineMiss = !h.contact;
+    if (!h.contact) {
+      this.replayFrom = h.t - FX.replayMissPre;
+      this.replayTo = r.impactT = h.t + FX.replayMissPost;
+      // the camera stands beside the player; the ball comes to them (or does not)
+      if (h.body) r.focus.copy(h.body);
+      const ok = this.begin(false, h.ball ?? undefined);
+      // overlays drawn from the replayed contact (the block shadow) use the point reached for
+      r.contact.copy(h.focus);
+      return ok;
+    }
+    this.replayFrom = h.t - FX.replayPre;
     if (h.impact) {
       r.impact.copy(h.impact);
       r.impactT = h.impactT;
       this.replayTo = h.impactT + FX.replayPost;
     } else {
-      r.impactT = h.contactT + 1.6;
-      this.replayTo = h.contactT + 1.6;
+      r.impactT = h.t + 1.6;
+      this.replayTo = h.t + 1.6;
     }
     return this.begin(h.impact !== null);
   }
 
-  private begin(hasImpact: boolean): boolean {
+  private begin(hasImpact: boolean, ballAt?: THREE.Vector3): boolean {
     if (!this.replay.start(this.replayFrom, this.replayTo)) return false;
     this.replay.contact.copy(this.replay.focus);
     // "any key skips": only keys pressed from now on count. Movement keys are read as held and
     // their press edges are never consumed, so a stale W or Shift must not end it at once
     this.g.input.clearEdges();
     this.replaying = true;
-    this.setupCine(hasImpact);
+    this.setupCine(hasImpact, ballAt);
     document.body.classList.add('replaying');
     return true;
   }
 
-  private setupCine(hasImpact: boolean): void {
+  /** `ballAt` (a miss): where the ball was, so the camera stands on the player's other side with both in front of it */
+  private setupCine(hasImpact: boolean, ballAt?: THREE.Vector3): void {
     const r = this.replay;
     const C = r.focus.clone();
     const I = r.impact.clone();
     // broadcast angle: beside the hitter towards the middle of the court, a step behind the net
-    const sx = Math.abs(C.x) < 0.5 ? 1 : -Math.sign(C.x);
+    let sx = Math.abs(C.x) < 0.5 ? 1 : -Math.sign(C.x);
     const sz = Math.sign(C.z) || 1;
-    this.cineA.set(C.x + sx * 5.0, 1.75, C.z + sz * 1.6);
+    let dist = 5.0;
+    if (this.cineMiss) {
+      dist = FX.replayMissDist;
+      if (ballAt) {
+        const dx = ballAt.x - C.x;
+        if (Math.abs(dx) > FX.replayMissSide) sx = -Math.sign(dx);
+        // further back the further the ball was from them, inside the hall
+        dist += Math.hypot(dx, ballAt.z - C.z) * FX.replayMissSpan;
+      }
+    }
+    this.cineA.set(clamp(C.x + sx * dist, -FX.replayMissMaxX, FX.replayMissMaxX), 1.75, C.z + sz * 1.6);
     // frame the hitter's body and the contact point together
     this.cineLookA.set(C.x, C.y - 1.0, C.z);
     if (hasImpact) {
@@ -708,10 +780,10 @@ export class Effects {
     this.trail.fade();
   }
 
-  /** once per highlight, when the ball goes dead: tell the user it can be watched again */
+  /** once per highlight, when the ball goes dead: tell the user it can be watched again (a miss gets the hint only) */
   cueReplay(): void {
-    const h = this.lastHighlight;
-    if (!h || h.cued || !this.replayAvailable()) return;
+    const h = this.lastAttempt;
+    if (!h || h.cued || !h.highlight || !this.replayAvailable()) return;
     h.cued = true;
     this.g.hud.message('Nice · R to replay', 2.4);
   }
@@ -725,9 +797,20 @@ export class Effects {
     const u = smooth01((r.cursor - r.contactT + 0.05) / Math.max(0.2, r.impactT - r.contactT + 0.1));
     rig.mode = 'cine';
     rig.cinePos.lerpVectors(this.cineA, this.cineB, u);
-    // look at the hitter's contact, then track the ball down to the floor
-    rig.cineTarget.copy(this.cineLookA).lerp(r.focus, smooth01(u * 1.6));
-    rig.cineFov = lerp(50, 56, u);
+    const body = this.cineMiss ? g.views.get(g.me)?.root.position : undefined;
+    if (body) {
+      // a miss: stay on the player, leaning towards the ball as far as keeps them in the frame
+      const chest = _v.set(body.x, body.y + g.me.height * FX.replayMissChest, body.z);
+      const lean = rig.cineTarget.copy(r.focus).sub(chest).multiplyScalar(FX.replayMissLeadShare).clampLength(0, FX.replayMissLead);
+      // a high ball must not lift the view off their feet (the plant is half of what they came to see)
+      lean.y = Math.min(lean.y, FX.replayMissLeadUp);
+      lean.add(chest);
+    } else {
+      // look at the hitter's contact, then track the ball down to the floor
+      rig.cineTarget.copy(this.cineLookA).lerp(r.focus, smooth01(u * 1.6));
+    }
+    // (a miss holds the opening field of view: there is no impact to widen for)
+    rig.cineFov = lerp(50, 56, body ? 0 : u);
     if (!live) this.endReplay();
     return live;
   }
@@ -745,7 +828,8 @@ export class Effects {
     this.replay.setViews([...this.g.views.values()]);
     this.replayAt = -1;
     this.pendingImpact = null;
-    this.lastHighlight = null;
+    this.attempts.reset();
+    this.downT = -1;
     if (this.replaying) this.endReplay();
   }
 }

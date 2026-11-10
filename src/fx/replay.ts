@@ -6,8 +6,8 @@ import type { AthleteView } from '../character/athleteView';
 /**
  * Fixed-size ring buffer of rendered frames (ball + every athlete's root and
  * bone rotations) and FX events, played back in slow motion from a
- * cinematic camera after a Perfect spike, or on demand (R) for the last
- * highlight. No allocation while recording.
+ * cinematic camera after a Perfect spike, or on demand (R) for the player's
+ * last attempt. No allocation while recording.
  *
  * Athletes spawned while a drill runs (the spike drill's opposing block,
  * turned on with B) get a slot of their own from `addView`; a replay hides

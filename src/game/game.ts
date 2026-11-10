@@ -611,7 +611,7 @@ export class Game {
   /** replay recording runs while the ball is live and for a second after (sim time) */
   private recordUntil = 0;
 
-  /** can the last highlight be replayed right now (R)? */
+  /** can the last attempt be replayed right now (R)? */
   replayAvailable(): boolean {
     return this.fx.replayAvailable();
   }
@@ -767,6 +767,7 @@ export class Game {
       this.mode?.onOutcome(out);
     }
     this.mode?.step(dt);
+    this.fx.trackAttempt();
     this.fx.checkReplay();
     this.fx.cueReplay();
     // timing window cache for HUD / slow-mo / debug
@@ -869,7 +870,7 @@ export class Game {
     if (this.mode && !this.inMenu) {
       const tutoring = this.tutorial.active;
       const base = tutoring ? this.tutorial.hint() : this.mode.hint();
-      const replay = !tutoring && this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : '';
+      const replay = !tutoring && this.fx.replayAvailable() ? ` · ${kbd('R')} replay last attempt` : '';
       this.hud.setHint(base + replay, tutoring);
     }
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');

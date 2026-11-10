@@ -517,6 +517,38 @@ unit tests + a Playwright e2e that plays every drill through the real input path
   it existed, and shown again when the replay ends, is skipped or the buffer is reset). Browser check:
   replayed blocker positions within 0.08 m of the live ones over the whole replay (was 3.9 m).
 
+## Replay the last attempt, including misses (#31)
+- Idea: after a whiff, a late block or a serve that drops, R still showed an older highlight (or
+  nothing). Practice footage is most useful for the rep that went wrong, and the useful part starts
+  before the ball arrives: the plant, the jump, where the ball was when you swung.
+- Cause: only "highlights" were remembered (attacks, serves, blocks, Perfect / Good touches), and
+  only contact events could make one. A MISS, a poor pass, a block that met nothing and a ball left
+  to drop left no record.
+- Fix: `AttemptTracker` (`src/game/attempt.ts`, pure bookkeeping) keeps the player's last attempt.
+  - Every contact of the player's, at any grade. A swing graded MISS counts when the ball in the
+    air was theirs to hit (`Mode.userBall`), however far off the swing was, or anyone's ball within
+    `FX.attemptRange` (3 m).
+  - A platform, hands or a block that ends without meeting the ball, if the ball came within
+    `FX.attemptRange` of where it would have met it, timed at that closest pass. The closest pass
+    belongs to one flight of the ball: a button held through to the next ball starts again.
+  - The ball the player has just played is not one to go for: a second tap after a pass, or a
+    double click after a spike (also one the block has touched since: `FX.attemptOwnGap`, 1 s),
+    leaves the contact on record.
+  - A ball that comes down with no attempt at it since its last touch and was the player's to play
+    (`Mode.userBall`): from the other side only when it lands in; from their own side (a set, a
+    pass, their toss) wherever it lands, because an unhit set to the pin drifts wide.
+  - A miss is replayed from `FX.replayMissPre` (1.3 s) before to `FX.replayMissPost` (1.0 s) after,
+    from a camera beside the player, on the side away from the ball and further back the further
+    the ball was, that leans towards the ball but never loses their feet.
+  - The hint reads `R replay last attempt` (`REPLAY last attempt` on touch). "Nice · R to replay"
+    stays for highlights only. The automatic Perfect-spike replay and its setting are untouched.
+- Measured (headless Chromium, manual clock, hand input): Spike Drill, standing still: the set lands
+  at x -5.5 (wide), attempt `untouched` at 4.80 s, R plays it and play resumes at the same sim time
+  with rep 1, 0 pts unchanged. Spike Drill, jumped and swung early: MISS at 3.55 s is the attempt
+  (`whiff`). Receive drill, serve left to drop: `untouched` at the landing. Block drill, hands up
+  after the hit: `whiff` at the ball's pass by the hands. Touch: REPLAY appears and plays the miss.
+- Tests: `tests/attempt.test.ts`.
+
 ## Tutorial v3: the ball waits for you (first-run lesson, #25)
 - Report (Jack, playing v2): "If I hold jump first at the indication, I'm not supposed to jump. I have to re-click again, and the
   entire experience is not very smooth." And: "the indicator on the floor is not present."
@@ -756,3 +788,10 @@ speed (2.4 s a frame) it passes in 251 s, where it took 635 to 955 s. No check w
 - Lefties keep the same attack lanes: they already mirror (a lefty's left pin is a righty's right pin,
   21° off straight). If players want the off-hand approach straighter, that is one lane change for both
   hands, not a lefty special case.
+- R replays the last attempt, not the last highlight (#31): the rep you missed is the one you want
+  to see. A stray button press is not a rep: a MISS needs a ball that was yours to hit (or any ball
+  within 3 m), a held platform or block needs the ball within 3 m, and the ball you have just played
+  yourself never counts. A ball rightly left to go out is not one, and in the drills neither is a ball
+  coming back off the block (nobody covers the hitter there, so the spike stays the attempt).
+- The "Nice · R to replay" note stays for highlights only: after a mistake the hint line offers the
+  replay, a toast naming the miss would nag.
