@@ -776,8 +776,24 @@ phase('probes');
           )) {
             if (e.offsetParent === null) continue;
             const r = e.getBoundingClientRect();
-            if (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) out.push(`${label}: ${e.className} spills`);
-            if (r.right > innerWidth + 1 || r.left < -1) out.push(`${label}: ${e.className} is off the side`);
+            // a box that scrolls holds its content by scrolling; one inside a sideways strip may sit past the edge
+            const scrolls = getComputedStyle(e).overflowY !== 'visible';
+            const inStrip = !!e.closest('.rows') && getComputedStyle(e.closest('.rows')).overflowX !== 'visible';
+            if (!scrolls && (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1))
+              out.push(`${label}: ${e.className} spills`);
+            if (!inStrip && (r.right > innerWidth + 1 || r.left < -1)) out.push(`${label}: ${e.className} is off the side`);
+          }
+          // side by side, the list and its panel scroll on their own: the page behind them does not
+          for (const v of root.querySelectorAll('.view-split.on, .settings-body')) {
+            if (getComputedStyle(v).flexDirection === 'row' && v.scrollHeight > v.clientHeight + 1)
+              out.push(`${label}: the whole page scrolls`);
+          }
+          // PLAY is on screen, on a foot that sits flush on the bottom of its panel (nothing shows under it)
+          for (const foot of root.querySelectorAll('.view.on .panel-foot')) {
+            const f = foot.getBoundingClientRect();
+            const pr = foot.parentElement.getBoundingClientRect();
+            if (f.bottom > innerHeight + 1) out.push(`${label}: PLAY is below the screen`);
+            if (Math.abs(f.bottom - pr.bottom) > 2.5) out.push(`${label}: the panel's foot is not on its bottom edge`);
           }
         };
         look('train', document.querySelector('.menu'));
@@ -800,6 +816,34 @@ phase('probes');
         if (!document.querySelector('.sheet').contains(document.activeElement)) out.push('settings: focus is not in the sheet');
         document.querySelector('.sheet-head .ghost-btn').click();
         look('athlete', document.querySelector('.sheet'));
+        // the pause menu: each side's background runs as far as what is in it, scrolled to its end too
+        window.__menu.closeSettings();
+        window.__court.startMode('spike', 'OH');
+        window.__court.inMenu = false;
+        window.__menu.showStart(false);
+        window.__court.paused = true;
+        window.__menu.showPause(true);
+        const held = (when) => {
+          for (const side of document.querySelectorAll('.pause-main, .pause-side')) {
+            const sr = side.getBoundingClientRect();
+            const scrolls = getComputedStyle(side).overflowY !== 'visible';
+            for (const e of side.querySelectorAll('.set-row, .key-row, button')) {
+              const r = e.getBoundingClientRect();
+              const below = scrolls
+                ? r.bottom > sr.bottom + 1 && e.offsetTop + e.offsetHeight <= side.scrollTop + side.clientHeight
+                : r.bottom > sr.bottom + 1;
+              if (e.offsetParent !== null && below)
+                out.push(`pause ${when}: ${e.textContent.trim().slice(0, 24)} is drawn below its side's background`);
+            }
+          }
+        };
+        held('at the top');
+        for (const e of document.querySelectorAll('.pause-box, .pause-main, .pause-side')) e.scrollTop = e.scrollHeight;
+        held('scrolled to the end');
+        const last = [...document.querySelectorAll('.pause-side .set-row')].pop();
+        const side = document.querySelector('.pause-side').getBoundingClientRect();
+        if (last && last.getBoundingClientRect().bottom > side.bottom + 1)
+          out.push('pause: the last quick setting ends below the side panel');
         return out;
       });
       check(bad.length === 0, `menus at ${w} x ${h}: every box holds its text and stays on screen`, bad);

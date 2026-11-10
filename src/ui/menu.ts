@@ -610,7 +610,7 @@ export class Menu {
   // ---------------------------------------------------------------- learn
 
   private buildLearn(): HTMLElement {
-    const view = h('section', 'view view-split');
+    const view = h('section', 'view view-split view-learn');
     const list = h('div', 'list-col');
     list.append(txt('h1', 'view-t', 'Learn'), txt('p', 'view-s', 'A lesson that waits for you, and every control.'));
     const lesson = h('div', 'lesson');
@@ -785,6 +785,8 @@ export class Menu {
     } else {
       if (!was) {
         this.drawPauseSide();
+        // it opens at the top, wherever it was scrolled to last time
+        for (const e of this.pause.querySelectorAll('.pause-box, .pause-main, .pause-side')) e.scrollTop = 0;
         this.resumeBtn.focus();
       }
       this.syncTutorial();

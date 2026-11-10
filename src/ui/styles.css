@@ -173,7 +173,10 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .build { font-size: 11px; letter-spacing: 0.04em; color: #9198a8; user-select: text; }
 
 /* a list on the left, the chosen one's panel on the right (Train, Play, Learn) */
-.list-col { flex: 0 0 min(480px, 36%); min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+/* The list stays put while its panel scrolls (and the other way round). The 4px is room for the focus ring. */
+.view-split { overflow: hidden; }
+.list-col { flex: 0 0 min(480px, 36%); min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; margin: -4px; padding: 4px;
+  -webkit-overflow-scrolling: touch; }
 .rows { display: flex; flex-direction: column; gap: 10px; }
 .row { display: flex; align-items: center; gap: 14px; min-height: 86px; padding: 14px 18px; border-radius: 12px; background: rgba(14,17,26,0.9);
   border: 2px solid var(--line); text-align: left; }
@@ -183,8 +186,8 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .row-t { font-weight: 800; font-size: 18px; }
 .row-s { font-size: 13px; line-height: 1.4; color: #b4bac8; }
-.panel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 26px 28px 24px; border-radius: 14px; background: var(--panel);
-  border: 1px solid var(--line); align-self: flex-start; min-height: min(100%, 560px); }
+.panel { flex: 1; min-width: 0; min-height: min(100%, 560px); max-height: 100%; align-self: flex-start; display: flex; flex-direction: column; gap: 14px;
+  padding: 26px 28px 0; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .panel-t { margin: 0; font-weight: 900; font-style: italic; font-size: 30px; line-height: 1.2; }
 .panel-b { margin: 0; font-size: 15px; line-height: 1.5; color: #d5d9e2; }
 .panel-n { margin: 0; font-size: 13px; line-height: 1.5; color: #b4bac8; }
@@ -195,11 +198,15 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .panel-setup { flex: 1 1 300px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
 .block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .block-note { font-size: 13px; line-height: 1.45; color: #b4bac8; }
-.pos-chips { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.pos-chips { display: grid; grid-template-columns: repeat(5, minmax(44px, 1fr)); gap: 8px; }
 .pos-chip { height: 52px; border-radius: 10px; background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.24); text-align: center;
   font-weight: 900; font-style: italic; font-size: 20px; }
 .pos-chip.on { background: rgba(255,210,63,0.16); border-color: var(--gold); color: var(--gold); }
-.panel-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.12); }
+/* The foot (view and PLAY) stays at the bottom of the panel while the rest scrolls under it. The panel has no
+   bottom padding of its own, or the text would show through under the foot; a panel without a foot gets it back. */
+.panel:not(:has(> .panel-foot)) { padding-bottom: 24px; }
+.panel-foot { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin: auto -28px 0; padding: 18px 28px 24px;
+  background: #0e111a; border-top: 1px solid rgba(255,255,255,0.12); border-radius: 0 0 14px 14px; }
 .panel-foot .play-btn { margin-left: auto; min-height: 56px; padding: 0 40px; }
 .summary { color: #b4bac8; font-weight: 400; }
 .summary b { color: var(--cyan); font-weight: 600; }
@@ -210,6 +217,7 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .call b.out { color: var(--orange); }
 .lesson { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 20px; border-radius: 12px; background: rgba(255,210,63,0.1);
   border: 2px solid var(--gold); }
+.lesson .play-btn { max-width: 100%; white-space: normal; }
 .lesson-t { font-weight: 900; font-style: italic; font-size: 24px; line-height: 1.1; }
 .lesson-b { font-size: 13px; line-height: 1.5; color: #d5d9e2; }
 .key-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 24px 36px; flex: 1; align-content: start; }
@@ -218,10 +226,10 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .pause, .sheet { position: absolute; inset: 0; z-index: 25; display: none; align-items: center; justify-content: center; }
 .pause { background: rgba(4,6,10,0.66); backdrop-filter: blur(4px);
   padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
-.pause-box { display: flex; width: min(900px, 100%); max-height: 100%; overflow-y: auto; border-radius: 14px; background: rgba(14,17,26,0.97);
+.pause-box { display: flex; width: min(900px, 100%); max-height: 100%; overflow: hidden; border-radius: 14px; background: rgba(14,17,26,0.97);
   border: 1px solid var(--line); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
-/* when the box scrolls, each side still runs the full height of its content */
-.pause-box > * { min-height: max-content; }
+/* each side scrolls on its own: its background always runs the full height of the box */
+.pause-main, .pause-side { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .pause-main { flex: 0 0 min(360px, 100%); display: flex; flex-direction: column; gap: 10px; padding: 28px 28px 22px; }
 .pause-main .play-btn { min-height: 56px; }
 .pause-t { font-weight: 900; font-style: italic; font-size: 32px; line-height: 1.2; }
@@ -277,7 +285,10 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .rail-btn:hover { background: rgba(255,255,255,0.06); }
 .rail-btn.on { color: var(--gold); background: rgba(255,210,63,0.12); font-weight: 700; }
 .rail-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text3); }
-.set-main { flex: 1; min-width: 0; max-width: 760px; display: flex; flex-direction: column; gap: 16px; }
+.settings-body { overflow: hidden; }
+.set-main { flex: 1; min-width: 0; min-height: 0; max-width: 760px; max-height: 100%; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; margin: -4px; padding: 4px;
+  -webkit-overflow-scrolling: touch; }
+.set-main > * { flex: none; }
 .set-group[hidden] { display: none; }
 .set-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .set-group { display: flex; flex-direction: column; padding: 16px 20px 8px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
@@ -291,6 +302,8 @@ body.touchmode .set-row.only-tc { display: grid !important; }
   text-align: left; }
 .pos-card:hover { border-color: rgba(255,255,255,0.4); }
 .pos-card.on { background: rgba(255,210,63,0.12); border-color: var(--gold); box-shadow: 0 0 24px rgba(255,200,60,0.22); }
+/* a narrow card makes room for its code and its court by its own width, whatever the window's */
+.pos-card { container-type: inline-size; }
 .pos-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .pos-court { width: 46px; height: 46px; flex: none; }
 .pos-short { font-weight: 900; font-style: italic; font-size: 34px; line-height: 1.15; }
@@ -304,6 +317,10 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .stat-head b { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--stat-text); white-space: nowrap; }
 .stat-track { display: block; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; }
 .stat-track i { display: block; height: 6px; border-radius: 3px; background: var(--stat); transition: width 0.2s ease; }
+@container (max-width: 160px) {
+  .pos-short { font-size: 26px; }
+  .pos-court { width: 34px; height: 34px; }
+}
 .pos-h { margin-top: auto; padding-top: 10px; font-size: 12px; color: var(--text2); }
 .pos-h b { color: var(--green); font-weight: 700; }
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; font-size: 12px; color: var(--text2); }
@@ -324,9 +341,9 @@ body.touchmode .set-row.only-tc { display: grid !important; }
   .athlete-body { flex-direction: column; align-items: stretch; }
   .athlete-body > * { flex: none; }
   .body-set { align-self: stretch; }
-  .pos-row { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
-  .pos-short { font-size: 28px; }
+  .pos-row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
   .pos-blurb { display: none; }
+  .summary { display: none; }
 }
 /* narrower windows: the list goes above its panel, the nav keeps only its icons */
 @media (max-width: 1000px) {
@@ -335,7 +352,8 @@ body.touchmode .set-row.only-tc { display: grid !important; }
   .sheet-head { padding: 8px 16px; }
   /* the tabs go across the top */
   .settings-body { flex-direction: column; align-items: stretch; gap: 12px; }
-  .settings-body > * { flex: none; }
+  .settings-body > .rail { flex: none; }
+  .set-main { flex: 1; }
   .rail { position: static; align-self: stretch; flex-direction: row; flex-wrap: wrap; }
   .rail-btn { padding: 0 12px; }
   .set-main { max-width: none; }
@@ -345,21 +363,45 @@ body.touchmode .set-row.only-tc { display: grid !important; }
   .nav-btn { padding: 0 12px; }
 }
 @media (max-width: 760px) {
-  .view-split, .pause-box { flex-direction: column; }
-  /* a column that scrolls: nothing in it may be squeezed shorter than its content */
-  .view-split > *, .pause-box > * { flex: none; }
-  .panel { align-self: stretch; min-height: 0; }
   .brand { font-size: 17px; }
   .logo { font-size: 46px; } .logo b { margin-left: 8px; } .tagline { font-size: 14px; margin-top: -8px; }
   .doors { grid-template-columns: minmax(0, 1fr); } .door { min-height: 0; }
   .door-b { display: none; }
   .continue-t { font-size: 28px; }
-  .pause-side { border-left: 0; border-top: 1px solid rgba(255,255,255,0.1); }
-  .panel { padding: 18px 16px 16px; }
+  .list-col { flex-basis: min(250px, 36%); }
+  .panel { padding: 18px 16px 0; }
+  .panel:not(:has(> .panel-foot)) { padding-bottom: 16px; }
+  .panel-foot { margin: auto -16px 0; padding: 12px 16px 16px; }
   .pos-chips { gap: 6px; } .pos-chip { font-size: 16px; }
   .welcome, .continue { padding: 18px 16px; }
-  .panel-foot .play-btn { flex: 1; }
   .legend-n { margin-left: 0; }
+}
+/* a small phone held sideways: the list is too narrow for the skill tags */
+@media (max-width: 700px) and (orientation: landscape) {
+  .row .tag:not(.ready):not(.soon) { display: none; }
+  .panel-foot .chip { padding: 0 8px; font-size: 11px; }
+  .panel-foot .play-btn { padding: 0 20px; }
+}
+/* a phone held upright: the list becomes a strip across the top and the panel takes the rest of the screen,
+   so the panel still scrolls on its own and PLAY stays at its foot */
+@media (max-width: 900px) and (orientation: portrait) {
+  .view-split { flex-direction: column; gap: 12px; }
+  .list-col { flex: none; margin: 0; padding: 0; overflow: visible; gap: 8px; }
+  .list-col > .view-s { display: none; }
+  .rows { flex-direction: row; gap: 8px; padding: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .rows::-webkit-scrollbar { display: none; }
+  .row { flex: none; min-height: 48px; padding: 6px 16px; border-radius: 999px; }
+  .row-main { flex: none; }
+  .row-t { font-size: 15px; white-space: nowrap; } .row-s, .row .tag { display: none; }
+  .panel { flex: 1; align-self: stretch; min-height: 0; max-height: none; }
+  .panel-foot .play-btn { flex: 1; }
+  /* Learn has a card where the others have a list: there the page scrolls as one */
+  .view-learn { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .view-learn > * { flex: none; overflow: visible; max-height: none; }
+  /* the pause menu stacks and scrolls as one box */
+  .pause-box { flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .pause-box > * { flex: none; overflow: visible; }
+  .pause-side { border-left: 0; border-top: 1px solid rgba(255,255,255,0.1); }
 }
 @media (max-width: 520px) {
   .brand { display: none; }
@@ -544,16 +586,18 @@ body.touchmode .menu button, body.touchmode .pause button, body.touchmode .sheet
   .pill { font-size: 12px; padding: 0 12px; }
   .view, .sheet-body { gap: 12px; padding: 10px 16px 12px; }
   .view-t { font-size: 22px; } .view-s { font-size: 12px; }
-  .list-col { flex-basis: 250px; gap: 8px; }
+  .list-col { gap: 8px; }
+  .view-split .list-col { flex-basis: min(250px, 36%); }
   .list-col > .view-t, .list-col > .view-s { display: none; }
   .rows { gap: 6px; }
   .row { min-height: 54px; padding: 6px 14px; }
   .row-t { font-size: 15px; } .row-s { display: none; }
   .tag { font-size: 10px; padding: 4px 8px; }
-  .panel { gap: 8px; padding: 14px 16px 12px; min-height: 0; }
+  .panel { gap: 8px; padding: 14px 16px 0; min-height: 0; }
+  .panel:not(:has(> .panel-foot)) { padding-bottom: 12px; }
   .panel-t { font-size: 20px; } .panel-b { font-size: 12px; line-height: 1.4; } .panel-n { font-size: 12px; }
   .panel-mid { gap: 10px 16px; }
-  .block-keys, .panel-setup { flex-basis: 220px; }
+  .block-keys, .panel-setup { flex-basis: 244px; }
   .panel-setup { gap: 10px; }
   .block, .panel-setup { gap: 6px; }
   .eyebrow { font-size: 10px; }
@@ -562,8 +606,7 @@ body.touchmode .menu button, body.touchmode .pause button, body.touchmode .sheet
   .pos-chip { height: 44px; font-size: 16px; }
   .chip { padding: 0 12px; font-size: 12px; }
   .summary { display: none; }
-  /* PLAY stays in reach while the panel scrolls under it */
-  .panel-foot { position: sticky; bottom: -12px; z-index: 1; gap: 8px; margin: 0 -16px -12px; padding: 10px 16px 12px; background: #0e111a; border-radius: 0 0 14px 14px; }
+  .panel-foot { gap: 8px; margin: auto -16px 0; padding: 10px 16px 12px; }
   .panel-foot .play-btn, .play-btn { min-height: 48px; padding: 0 28px; font-size: 18px; }
   .home-col { gap: 10px; }
   .logo { font-size: 38px; } .tagline { font-size: 13px; margin-top: -4px; }
@@ -574,8 +617,9 @@ body.touchmode .menu button, body.touchmode .pause button, body.touchmode .sheet
   .door { min-height: 0; padding: 10px 12px; gap: 4px; }
   .door .ico { width: 20px; height: 20px; } .door-t { font-size: 18px; } .door-s { font-size: 12px; } .door-b { display: none; }
   .lesson { padding: 12px 14px; gap: 8px; } .lesson-t { font-size: 18px; } .lesson-b { font-size: 12px; }
+  .lesson .play-btn { padding: 0 18px; font-size: 16px; }
   .key-groups { gap: 12px 20px; }
-  .pause-main { padding: 14px 16px 12px; gap: 6px; flex-basis: 280px; }
+  .pause-main { padding: 14px 16px 12px; gap: 6px; flex-basis: min(280px, 40%); }
   .pause-t { font-size: 22px; } .pause-s { margin-bottom: 2px; font-size: 12px; }
   .pause-side { padding: 14px 16px 12px; gap: 12px; }
   .quick { padding-top: 10px; }

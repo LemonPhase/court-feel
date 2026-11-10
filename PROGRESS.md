@@ -766,6 +766,17 @@ speed (2.4 s a frame) it passes in 251 s, where it took 635 to 955 s. No check w
   every screen. Checked by scanning every screen at 11 sizes (320 to 1024 wide, both ways up) for boxes
   that spill, siblings that overlap, anything off the side and controls under 44 px: 298 findings before,
   0 after. The e2e keeps a smaller version of that scan at 390 x 844 and 844 x 390.
+- Phones, second report (Jack, with screenshots): in the pause menu the right side's background stopped
+  above the Volume row, and on Train the drill list scrolled away with the panel. Cause: the whole
+  screen (or the whole pause box) was the one thing that scrolled, and a side's background was only as
+  tall as the box, not as its content. Fix: nothing scrolls as a whole page any more. The list and the
+  panel each scroll on their own, the pause menu's two sides too, and the settings' tabs stay put while
+  the group scrolls. The panel's foot (view and PLAY) sits flush on the panel's bottom edge with the
+  text scrolling under it. On a phone held upright the list becomes a strip across the top and the
+  panel takes the rest. The scan now also checks that every box with a background holds what is in
+  it, that nothing shows under the foot, that the page does not scroll behind the columns and that the
+  gold button is on screen, all of it again with everything scrolled to its end, at 18 sizes (phones
+  both ways up, tablets, and 1100 to 1920 wide desktops): 0 findings, and every frame looked at.
 - From the code review: Reset to defaults sits under the groups (it was hidden with the rail on phones);
   a sheet makes the screens behind it inert and takes the focus; Enter plays from the nav button and the
   chips too; starting a drill counts as skipping the lesson; set calls are listed only for the positions
