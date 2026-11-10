@@ -18,7 +18,7 @@ import {
 } from '../game/plays';
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop, type Brain } from './brain';
-import { attackKind, readSpots } from './defence';
+import { attackKind, readSpots, seamSpot } from './defence';
 import { giveWay, shoulderToShoulder, type Mate } from './giveWay';
 import { HitterBrain } from './hitter';
 import { MiddleBlocker } from './middle';
@@ -615,7 +615,10 @@ export class TeamAI {
         const free = lt && (lt.kind === 'pass' || lt.kind === 'dig' || lt.kind === 'set' || lt.kind === 'free');
         if (free && comingToUs && tDown > 0) this.earlyTransition(lt, tDown, p, setJob);
         // on their hard attack the back-row setter releases to the net once it reads the ball isn't its own to dig
-        if (lt && (lt.kind === 'spike' || lt.kind === 'tip')) this.setterRelease(lt, setJob);
+        if (lt && (lt.kind === 'spike' || lt.kind === 'tip')) {
+          this.setterRelease(lt, setJob);
+          this.readBlockSeam(setJob);
+        }
         // blockers read their set
         if (lt?.kind === 'set' && !onOurSide) {
           for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
@@ -787,6 +790,30 @@ export class TeamAI {
     if (this.receiverFor !== t || this.receiver === S) return;
     if (this.g.simTime - t.t < AI.transition.setterRead) return;
     setJob(S, 'base', this.formSpot('offense', 'S'));
+  }
+
+  /**
+   * The middle back re-reads our own block while their attack flies: if the middle was late and left
+   * a seam, it steps up onto the seam's line (`AI.defence.middleBackSeam`) instead of staying deep,
+   * cross of a closed block. It reads the actual blockers, not the nominal formation, so a late middle
+   * (a wrong guess, a quick it could not close) pulls the middle back forward.
+   */
+  private readBlockSeam(setJob: (a: Athlete | undefined, job: Job, spot?: Spot) => void): void {
+    const mb = this.players.get('OH2');
+    const b = mb ? this.brains.get(mb) : null;
+    if (!mb || !b || mb.isUser || !b.readSpot) return;
+    const atk = this.attack;
+    const s = this.side;
+    const off = Math.abs(atk.z);
+    if (attackKind(atk.x * s, off) !== 'pin') return;
+    const r = atk.x * s >= 0 ? 1 : -1;
+    const wing = this.players.get(r > 0 ? 'OPP' : 'OH1');
+    const middle = this.players.get('MB');
+    if (!wing || !middle) return;
+    const spot = seamSpot({ x: atk.x * s, off, kind: 'pin' }, wing.pos.x * s, middle.pos.x * s);
+    if (!spot) return;
+    b.readSpot = { x: spot.x * s, z: spot.z * s };
+    setJob(mb, 'base', b.readSpot);
   }
 
   /** the defenders (not the front row, it blocks) split-step to land as their hitter meets this set */

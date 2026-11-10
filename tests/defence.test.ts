@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AI, COURT } from '../src/config';
-import { attackKind, readSpots } from '../src/ai/defence';
+import { attackKind, readSpots, seamSpot } from '../src/ai/defence';
 
 const W = COURT.halfWidth;
 const D = AI.defence;
@@ -79,5 +79,29 @@ describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
     expect(attackKind(-3.9, 3.5)).toBe('pin');
     expect(attackKind(-0.4, 2.0)).toBe('back');
     expect(attackKind(0.2, 0.75)).toBe('middle');
+  });
+});
+
+describe('the middle back reads our block and steps up onto a seam (Mini Rally)', () => {
+  it('with a seam in the block, the middle back plays the seam closer than the end line', () => {
+    // their outside on our right; our middle is late, so a seam opens next to the pin blocker
+    const a = { x: 4.05, off: 0.9, kind: 'pin' as const };
+    const pinX = 4.05 + D.shade; // the pin blocker shades outside the attack
+    const midX = pinX - 1.2; // a late middle: 1.2 m inside leaves a 1.2 - 0.65 = 0.55 m seam
+    const s = seamSpot(a, pinX, midX);
+    expect(s).not.toBeNull();
+    expect(s!.z).toBeCloseTo(D.middleBackSeam, 6);
+    expect(s!.z).toBeLessThan(D.middleBack);
+    // on the seam's line: straight from the contact through the middle of the gap
+    const seam = (pinX + midX) / 2;
+    const along = a.x + (seam - a.x) * ((a.off + D.middleBackSeam) / Math.max(0.3, a.off));
+    expect(s!.x).toBeCloseTo(along, 6);
+  });
+
+  it('with a closed block the middle back stays deep and cross (no seam to step onto)', () => {
+    const a = { x: 4.05, off: 0.9, kind: 'pin' as const };
+    const pinX = 4.05 + D.shade;
+    const midX = pinX - AI.middle.closeGap; // hands to hands: 0.6 - 0.65 < 0, no seam
+    expect(seamSpot(a, pinX, midX)).toBeNull();
   });
 });

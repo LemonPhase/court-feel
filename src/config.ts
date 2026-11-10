@@ -511,11 +511,15 @@ export const AI = {
     crossOutside: 0.5,
     sideIn: 1.0,
     /**
-     * Middle back: this deep (the end line is 9 m: feet just inside), on the block's seam if it leaves
-     * one, else `middleBackCross` m to the cross side of the block's inside edge; no further than
-     * `middleBackMaxX` from the middle. MatusGib: deeper, around 9 m, beside a closed block
+     * Middle back: against a closed block it stays deep at `middleBack` (the end line is 9 m: feet
+     * just inside), `middleBackCross` m to the cross side of the block's inside edge, no further than
+     * `middleBackMaxX` from the middle (MatusGib: deeper, around 9 m, beside a closed block). Against a
+     * block that leaves a seam it steps up onto the seam's line at `middleBackSeam`: a ball through a
+     * seam is a hard, straight ball that lands shorter than a deep cross shot over a closed block
+     * (MatusGib, 2026-11-10).
      */
     middleBack: 8.8,
+    middleBackSeam: 7.0,
     middleBackCross: 1.0,
     middleBackMaxX: 3.0,
     /** off-blocker: this far off the net, this far in from its sideline */

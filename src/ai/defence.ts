@@ -55,11 +55,12 @@ export function readSpots(a: Attack): ReadSpots {
   const line: Spot = { x: r * (W - D.lineIn), z: D.digDepth };
   const crossX = clamp(along(insideHand, D.digDepth) - r * D.crossOutside, -(W - D.sideIn), W - D.sideIn);
   const cross: Spot = { x: crossX, z: D.digDepth };
-  // the middle back plays deep, at the end line: on the seam if the block leaves one, else beside the
-  // block's inside edge, towards the cross (a closed block's shadow is no place to stand)
+  // the middle back plays deep, at the end line: on the seam if the block leaves one (shallower, at
+  // middleBackSeam), else beside the block's inside edge, towards the cross (a closed block's shadow
+  // is no place to stand)
   const seamWidth = Math.abs(pinBlocker - middle) - 2 * D.handHalf;
-  const mbX = seamWidth > 0 ? along(seam, D.middleBack) : insideHand - r * D.middleBackCross;
-  const middleBack: Spot = { x: clamp(mbX, -D.middleBackMaxX, D.middleBackMaxX), z: D.middleBack };
+  const mbX = seamWidth > 0 ? along(seam, D.middleBackSeam) : insideHand - r * D.middleBackCross;
+  const middleBack: Spot = { x: clamp(mbX, -D.middleBackMaxX, D.middleBackMaxX), z: seamWidth > 0 ? D.middleBackSeam : D.middleBack };
   const off: Spot = { x: -r * (W - D.offIn), z: D.offOff };
   return {
     S: r > 0 ? line : cross,
@@ -68,4 +69,19 @@ export function readSpots(a: Attack): ReadSpots {
     OH1: r > 0 ? off : null,
     OPP: r > 0 ? null : off,
   };
+}
+
+/**
+ * Where the middle back steps up to when our block actually leaves a seam: the seam's line at
+ * `middleBackSeam` (a ball through a seam is a hard, straight ball that lands shorter than a deep
+ * cross shot over a closed block — MatusGib, 2026-11-10). `a` is the attack and `pinX` / `midX` the
+ * two blockers' actual x at the net, all in the defending team's frame. Null when the block is closed
+ * (the middle back stays deep, cross, as `readSpots` placed it).
+ */
+export function seamSpot(a: Attack, pinX: number, midX: number): Spot | null {
+  const D = AI.defence;
+  if (Math.abs(pinX - midX) - 2 * D.handHalf <= 0) return null;
+  const along = (xNet: number, depth: number) => a.x + (xNet - a.x) * ((a.off + depth) / Math.max(0.3, a.off));
+  const seam = (pinX + midX) / 2;
+  return { x: clamp(along(seam, D.middleBackSeam), -D.middleBackMaxX, D.middleBackMaxX), z: D.middleBackSeam };
 }
