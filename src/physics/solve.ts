@@ -57,6 +57,45 @@ export function flyFor(p0: V3, v0: V3, w0: V3, T: number, out: V3): number {
   return maxY;
 }
 
+/** a fixed-speed topspin shot's flights at many elevations (see shotFan) */
+export interface ShotFan {
+  /** elevations (rad), increasing */
+  angles: number[];
+  /** horizontal distance to the floor (ball at radius height) for each */
+  range: number[];
+  /** each flight every `dt`: horizontal distance and height, until it comes down to the floor */
+  paths: { s: number[]; y: number[] }[];
+  dt: number;
+}
+
+/**
+ * A fixed-speed topspin shot struck from height `y0`, at `n` elevations from `minAngle` to
+ * `maxAngle`: each flight in its own vertical plane (drag and the topspin's Magnus force stay
+ * in it), so one fan serves every direction. For planners that weigh many targets at one
+ * speed: look the elevation up by range instead of solving each target.
+ */
+export function shotFan(y0: number, speed: number, spinRate: number, n = 80, minAngle = -1.35, maxAngle = 0.62): ShotFan {
+  const fan: ShotFan = { angles: [], range: [], paths: [], dt: H };
+  const p0 = { x: 0, y: y0, z: 0 };
+  const w0 = { x: spinRate, y: 0, z: 0 };
+  for (let i = 0; i < n; i++) {
+    const th = minAngle + ((maxAngle - minAngle) * i) / (n - 1);
+    const s = launch(p0, { x: 0, y: Math.sin(th) * speed, z: Math.cos(th) * speed }, w0);
+    const path = { s: [0], y: [y0] };
+    let t = 0;
+    while (s.p.y > R && t < 4) {
+      freeStep(s, H);
+      t += H;
+      path.s.push(s.p.z);
+      path.y.push(s.p.y);
+    }
+    fan.angles.push(th);
+    fan.range.push(s.p.z);
+    fan.paths.push(path);
+  }
+  return fan;
+}
+
 /** fly until the ball descends to height y (or maxT). Returns time, position into out. */
 export function flyUntilY(p0: V3, v0: V3, w0: V3, y: number, out: V3, maxT = 4): number {
   const s = launch(p0, v0, w0);

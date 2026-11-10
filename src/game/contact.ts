@@ -708,9 +708,13 @@ export class ContactSystem {
     const out = { x: 0, y: 0, z: 0 };
     let kind: 'stuff' | 'soft' | 'tool';
     const roll = h.rand();
+    // off the outer edge of the hands (away from the middle of the court): the hitter wiped it, the
+    // ball goes off the fingers and wide (`CONTACT.toolEdge` of the hand's half-width out)
+    const off = bp.x - hands.x;
+    const edge = Math.abs(off) > halfW * CONTACT.toolEdge && Math.sign(off) === Math.sign(hands.x) && h.rand() < CONTACT.toolEdgeP;
     // AI blockers convert fewer of their good blocks into stuffs than the user
     const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;
-    if (rank >= 2 && roll < stuffP) {
+    if (rank >= 2 && !edge && roll < stuffP) {
       // stuff: driven down into their court, close to the net
       kind = 'stuff';
       const sp = Math.max(9, incoming * (rank === 3 ? 0.62 : 0.45));
@@ -719,16 +723,16 @@ export class ContactSystem {
       out.x = bv.x * 0.2 + Math.sin(lat) * sp * 0.4;
       out.y = Math.sin(ang) * sp;
       out.z = -a.side * Math.cos(ang) * sp;
-    } else if (rank >= 2 || roll < 0.55) {
+    } else if (!edge && (rank >= 2 || roll < 0.55)) {
       // soft block: ball pops up, slowed, usually stays playable on our side
       kind = 'soft';
       out.x = bv.x * 0.3 + (h.rand() * 2 - 1) * 1.2;
       out.y = 3.2 + h.rand() * 2.5;
       out.z = bv.z * 0.18;
     } else {
-      // tooled: off the fingers and wide
+      // tooled: off the fingers and wide (off the outer edge, whatever the block's timing)
       kind = 'tool';
-      const sgn = h.rand() < 0.5 ? -1 : 1;
+      const sgn = edge ? Math.sign(off) : h.rand() < 0.5 ? -1 : 1;
       out.x = sgn * (4 + h.rand() * 4);
       out.y = 2 + h.rand() * 4;
       out.z = bv.z * 0.55;

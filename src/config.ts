@@ -272,6 +272,13 @@ export const CONTACT = {
   blockHeight: 0.55,
   /** a blocker reaching sideways (`Athlete.reachX`) gets its hands this much (m) lower per metre of reach */
   blockReachDrop: 0.5,
+  /**
+   * A ball that meets a block past `toolEdge` of the hands' half-width, on the side away from the
+   * middle of the court, is wiped off the block (tooled wide) `toolEdgeP` of the time, however
+   * well the block was timed: hitters aim at the outside hand for it.
+   */
+  toolEdge: 0.6,
+  toolEdgeP: 0.7,
   /** speeds (m/s) */
   spikePerfect: 30,
   spikeGood: 26,
@@ -563,6 +570,13 @@ export const AI = {
    * position immediately to run the offense" (FreeCoachingDrills, transition attack tempo drill).
    */
   transition: { read: 0.3, softSpeed: 10, spare: 0.3 },
+  /**
+   * An AI hitter's swing timing is off by this much (s, 1 sd) plus 0.06 x (1 - skill): Early sails
+   * long, Late goes into the net, Good scatters the shot. Men's pros still miss: about 62% kills at
+   * 47% efficiency off a perfect pass (PlusLiga), so with ~10% of attacks blocked, roughly 5-8% are
+   * hit out or into the net.
+   */
+  attackErr: 0.06,
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
   blockerSkill: 0.5,
@@ -637,6 +651,49 @@ export const AI = {
     shortZ: 3.5,
     spread: 0.6,
   },
+  /**
+   * The open spot (ai/openShot.ts): a hitter who sees the court hits round the block or over its
+   * hands (with `openShotBlockGap` m to spare, wherever they reach: `blockReachBand` m either side of
+   * the net), where nobody gets a platform under it in time. A defender digs a ball within
+   * `digReach` m of their feet (they turn to it: the platform 0.45 m in front, CONTACT.passRadius
+   * and CONTACT.digLunge at a hard-driven ball) once it is below `digTop` m. In system an AI hitter
+   * looks for the spot every time, out of system `openShotOut` of the time (a high ball from off
+   * the net: less of the court in view); their defence moves `AI.defence.hitReact` after the hit.
+   */
+  openShotBlockGap: 0.25,
+  blockReachBand: 0.45,
+  digReach: 1.1,
+  digTop: 1.45,
+  /** a spot is open when the quickest defender is this much (s) late; several open: one at random */
+  openShotMargin: 0.05,
+  openShotOut: 0.45,
+  /** the hitter takes the best spot even if the quickest defender gets there up to this much (s) in time: the hardest ball to dig */
+  openShotStretch: 0.15,
+  /**
+   * Where an AI middle hits its quick: steep and short, a sharp cut `cut` m off the net to either
+   * side or down the middle `down` m off it (behind the off-blocker, in front of the back row);
+   * deep to zone 1 or 5 with weight `deep` (the cut and the down shot: 1 each).
+   */
+  quickShot: { cut: 3.5, down: 4.5, deep: 0.4 },
+  /** how much the setter likes the quick: off a pass within `perfectOff` m of the setter's spot `perfect`, else `good` (outside 1.2, opposite 1.0, pipe 0.6) */
+  quickWeight: { good: 0.75, perfect: 1.4, perfectOff: 0.8 },
+  /**
+   * Fast sets to the pins in system (a go, a fast back): on a good pass a pin hitter is
+   * already running when the setter touches it (`share` of good passes), and the set meets the
+   * hand `flight` s later. In the 2021 Olympic men's final the set to zone 4 flew 0.97 s on
+   * average, down from 1.12 s in 2000 (Offensive pass tactics of setters in Olympic finals,
+   * Papers on Anthropology 2023); a faster set gives the block and the defence less time.
+   * The setter sends it only if the hand is due `minT`-`maxT` s after the touch.
+   */
+  tempo: { share: 0.5, flight: 0.95, minT: 0.6, maxT: 1.2 },
+  /**
+   * Against a closed block (every usual shot into the hands), and off a bad pass whenever a block
+   * is up, an AI pin hitter wipes it off the outside hand (weight `toolShot`) or rolls it over
+   * (`rollShot`). Out of system the high ball goes into a full block, and coaches teach hitters to
+   * use it: high hands and off the block (USA Volleyball, "Tips for tooling the block").
+   */
+  toolShot: 1.0,
+  rollShot: 0.3,
   /** an AI player lets a ball go that will land more than this (m) out; closer to the line it is too close to call and played */
   outJudge: 0.2,
   /** an AI passer's platform timing error grows by this factor at a ball arriving at 22 m/s or more (from 12 m/s up): less time to read it */

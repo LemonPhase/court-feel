@@ -116,7 +116,9 @@ export class TeamPlayer implements Brain {
     if (this.hitter) {
       this.hitter.isMySet = (g) => team.setFor === athlete && g.ball.lastTouch?.kind === 'set' && g.ball.lastTouch.side === s;
       this.hitter.blockers = () => team.opponents?.frontRow() ?? [];
-      if (slot === 'MB') this.hitter.passToSetter = (g) => team.passToSetter(g);
+      this.hitter.defenders = () => (team.opponents ? [...team.opponents.players.values()] : []);
+      this.hitter.inSystem = () => team.setInSystem;
+      if (slot === 'MB' || slot === 'OH1' || slot === 'OPP') this.hitter.passToSetter = (g) => team.passToSetter(g);
     }
     this.blocker =
       slot === 'MB'
@@ -297,6 +299,8 @@ export class TeamAI {
   serving = false;
   /** the setter's read of the current pass (see SetterRead) */
   read: SetterRead | null = null;
+  /** our last set was run in system (the hitter sees the whole court) */
+  setInSystem = true;
   /** the setter has just called a read (the Mini Rally shows and voices it) */
   onRead: ((r: SetterRead) => void) | null = null;
   /** our serve is in the air and nobody has touched it since */
@@ -446,9 +450,15 @@ export class TeamAI {
   callSet(g: Game, setter: Athlete) {
     const s = this.side;
     const options: { slot: Slot; a: Athlete; lane: PositionId; w: number }[] = [];
+    // a pin hitter already running a fast set gets it only if the ball can meet the hand in time
+    const fast = (a: Athlete) => (a.isUser ? null : (this.brains.get(a)?.hitter?.tempoBall ?? null));
+    const fastOk = (a: Athlete) => {
+      const f = fast(a);
+      return !!f && f.t - g.simTime >= AI.tempo.minT && f.t - g.simTime <= AI.tempo.maxT;
+    };
     const add = (slot: Slot, lane: PositionId, w: number) => {
       const a = this.players.get(slot);
-      if (a && a !== setter) options.push({ slot, a, lane, w });
+      if (a && a !== setter && (!fast(a) || (fastOk(a) && !outOfSystem))) options.push({ slot, a, lane, w });
     };
     // a backup (the setter played the first ball) puts up a high ball to a pin: always out of system
     const backup = setter !== this.players.get('S');
@@ -464,7 +474,15 @@ export class TeamAI {
     // the quick only goes off a good pass, and only if the middle is up with the setter's touch
     const mb = this.players.get('MB');
     const quick = mb && mb !== setter && !outOfSystem ? this.quickFor(mb) : null;
-    if (mb && quick?.onTime) options.push({ slot: 'MB', a: mb, lane: 'MB', w: 0.75 });
+    // off a perfect pass the setter goes to the middle more: the quick is the best attack there is
+    const perfect = !!read && read.off <= AI.quickWeight.perfectOff;
+    if (mb && quick?.onTime) options.push({ slot: 'MB', a: mb, lane: 'MB', w: perfect ? AI.quickWeight.perfect : AI.quickWeight.good });
+    // (both pins mid-run on fast sets the setter can't reach: the outside takes a high ball)
+    if (!options.length) {
+      const oh = this.players.get('OH1');
+      if (oh && oh !== setter) options.push({ slot: 'OH1', a: oh, lane: 'OH', w: 1 });
+    }
+    this.setInSystem = !outOfSystem;
     const user = this.user;
     let pick = options[0];
     const userOpt = options.find((o) => o.a === user);
@@ -481,6 +499,9 @@ export class TeamAI {
       }
     }
     if (pick.lane === 'MB' && quick) return quick;
+    // the fast set goes where the running hitter's hand will be, arriving then (a fixed flight)
+    const f = fast(pick.a);
+    if (f) return { target: { x: f.contact.x, y: f.contact.y, z: f.contact.z }, apex: f.contact.y, hitter: pick.a, time: f.t - g.simTime };
     // the user's call (a go, a 3 ball, a fast back...) instead of the lane's default tempo
     const call = pick.a === user && this.userPlay && this.userPlay.inFront === undefined ? this.userPlay.lane : null;
     const lane = call ?? laneFor(pick.lane, s);
