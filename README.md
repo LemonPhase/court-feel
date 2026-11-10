@@ -372,6 +372,22 @@ screen show them. Only your player uses them; AI players keep the defaults.
    runs to the net and the front row leaves it before the pass is even made; on their
    hard attack the setter releases to the net as soon as it reads the dig isn't its own.
 
+   **Serves and passes are men's volleyball.** About 6 serves in 10 are jump serves
+   (met in the air behind the end line, harder, and missed more often), the rest
+   floats. Servers aim at the seams between passers and the deep corners (floats
+   now and then short). A fast serve, or one that makes you move, comes off the
+   platform less accurately, and a hard ball off a mistimed or off-centre platform
+   can be shanked: off the arms sideways, usually out of play. The same goes for
+   the AI's passes and digs, and for yours.
+
+   **Their hitters score like men's hitters.** In system an AI hitter looks for the
+   spot no defender can reach in time and hits it; a middle hits the quick down and
+   short, into the 3-6 m zone behind the off-blocker. Off a perfect pass the setter
+   goes to the middle more, and on a good pass the pin hitters often run fast sets
+   (a go, a fast back), already running when the setter touches the ball. Against a
+   closed block, and off a bad pass, they wipe it off the block's outside hand or
+   roll it over. Kills off a good pass are about one in two, quicks two in three.
+
    **When the setter digs.** If your setter plays the first ball, he digs it high
    to the middle of the court, just behind the 3 m line, and goes back to defend.
    The libero sets the second ball, and it is always out of system (**HIGH!**, from
@@ -446,7 +462,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 |---|---|
 | `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
 | `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
-| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade, how much lower a block reaching sideways is (`blockReachDrop`) |
+| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`) |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`) |
@@ -455,7 +471,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); how often the setter goes to the pipe (`pipe`); perimeter defence read spots and reaction times (`defence`) and early transition (`transition`); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`) |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); how often the setter goes to the pipe (`pipe`); perimeter defence read spots and reaction times (`defence`) and early transition (`transition`); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool and roll shots (`toolShot`, `rollShot`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, your
