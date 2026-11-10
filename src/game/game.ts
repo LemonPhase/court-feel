@@ -226,9 +226,7 @@ export class Game {
 
   private disposeView(v: AthleteView): void {
     this.scene.remove(v.root);
-    v.rig.mesh.geometry.dispose();
-    v.rig.material.dispose();
-    v.rig.mesh.skeleton.dispose();
+    v.rig.dispose();
   }
 
   removeAthlete(a: Athlete): void {

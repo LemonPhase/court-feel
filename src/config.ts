@@ -500,6 +500,14 @@ export const TUTORIAL = {
   ranDist: 1,
 };
 
+/** how the athletes are drawn (never how they play) */
+export const CHARACTER = {
+  /** soft light on the edges of a figure that face up and away from the camera (0 = off) */
+  rim: 0.55,
+  /** how strongly the arena reflects in skin, cloth and shoes */
+  envIntensity: 0.7,
+};
+
 export const FX = {
   /** where your feet go (the plant spot of an approach): ring radius (m), and the lesson's arrows towards it */
   floorSpot: {

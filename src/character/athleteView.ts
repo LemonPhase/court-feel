@@ -166,11 +166,7 @@ export class AthleteView {
   setOpacity(o: number): void {
     if (Math.abs(o - this.opacity) < 0.01) return;
     this.opacity = o;
-    const m = this.rig.material;
-    m.transparent = o < 0.99;
-    m.opacity = o;
-    m.depthWrite = o > 0.5;
-    this.rig.mesh.castShadow = true;
+    this.rig.setOpacity(o);
   }
 
   // ------------------------------------------------------------ frames
