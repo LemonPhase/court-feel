@@ -665,13 +665,45 @@ and passed on a re-run with no change. It was the script, not the game.
   frame in 10.6 min and at 2.6 s a frame in 15.9 min, with every fresh page up in under a second after
   its navigation. On a good machine it costs about a tenth (264 to 287 s over three runs, against
   244 s for the old script on the same machine, `SOAK=30`).
-- Found on the way, not fixed: with the default 120 s soak (`npm run e2e` without CI's `SOAK=30`) two
-  soak checks fail, geometries 113 → 115 and textures 49 → 50, on the old script and the new one alike.
-  The longer soak reaches block, receive, setter and free play for 20 s each, the 30 s one only rally
-  and spike. Whether that is a leak or something built once and kept has not been looked at.
+- Found on the way: with the default 120 s soak (`npm run e2e` without CI's `SOAK=30`) two soak checks
+  failed, geometries 113 → 115 and textures 49 → 50, on the old script and the new one alike. Explained
+  and fixed in the next section (objects kept from start-up but not drawn yet, not a leak).
 - Not covered: a runner about three times slower than the slowest seen runs into the job's own
   30-minute limit first. On a single core (about 5 s a frame) the old script also ran out of its
   screenshots' 90 s limit; that was not looked into.
+
+## The e2e in under half the time
+The suite spent most of its time on the software GPU, and a good part of that drawing frames nobody
+looked at. Same machine, CI's settings, before → after: **235 s → 94 s** (start-up 37.5 → 9.6,
+screenshots 15.4 → 14.9, drills 4.8 → 4.4, perf 88.3 → 25.1, touch 48.7 → 17.4, soak 22.3 → 7.2, probes
+15.2 → 14.3; the script prints this line itself now: `seconds per phase`). Throttled to a slow runner's
+speed (2.4 s a frame) it passes in 251 s, where it took 635 to 955 s. No check was removed.
+- **Frames are paced to the GPU** (`paceRendering` in `scripts/e2e.mjs`): a page that draws by itself
+  ran some twenty frames ahead of SwiftShader, and every screenshot, every wait for the GPU and the
+  closing of the page then waited for that queue (22 s after the warm-up, 13 s after the perf frames,
+  about 30 s in the touch test). Now an animation frame is skipped while two rendered frames are still
+  undrawn, the way a busy display holds a real page back. This alone: 235 → 176 s. The touch test's
+  steps now each wait for real frames (0.7 s here, 2 s throttled), so their limit went from 4 s to 30 s.
+- **The soak draws small frames** (320 × 180): it renders to make three.js build and free resources,
+  and what gets built does not depend on the picture's size.
+- **The soak's first sample no longer depends on the rally before it.** A resource is counted when
+  it is first drawn, and the aim ring (built at start-up, kept) is only drawn once the athlete first
+  winds up. With fewer perf frames that moment moved inside the measured window and read as growth
+  (112 → 113 geometries, 48 → 49 textures). The warm-up now draws every object in the scene once,
+  hidden or not, before the first sample. With that the default 120 s soak passes too (122 / 50 / 36
+  before and after, six mode switches): the failure noted above was this, not a leak.
+- **`PERF_FRAMES`** (default 120, CI 30) sets how many frames the perf numbers are taken over, like
+  `SOAK`. They are reported, not asserted. `swiftshaderWallMsPerFrame` now counts frames really
+  drawn, so it reads 10 to 25% higher than before on the same machine (670 to 800 against 630 here);
+  compare new runs with new runs.
+- The fixed 6 s of warm-up frames is gone: the two frames the script already waits for are the ones
+  that compile the shaders.
+- CI installs only Chromium's headless shell (`--only-shell`), which is what a headless run launches
+  (checked here by launching with nothing else installed; not yet run on a GitHub runner).
+- With default settings (`npm run e2e`: 120 s soak, 120 perf frames) the suite takes 153 s and passes.
+- What is left, largest first: the perf frames (25 s for 30), the touch page (17 s, mostly its first
+  frame's shaders and two screenshots), the screenshots (15 s for 12) and the probes (14 s: every
+  fresh page bakes the environment map, about 2 s of GPU each).
 
 ## Decisions
 - First-run tutorial v3 (issue #25) is a coach layer on Spike Drill, not a seventh mode: Outside, block off, three balls with less help each time. **Together:** the ball waits for you. At each moment (run, jump, draw, hit) time eases down and stops until you do it; on time, nothing stops. Buttons are read as held, never as fresh presses, so a button already down when its moment comes counts. The coach runs the hitter down the planned line and aims the ball: what you hold decides whether time runs. **Slow motion:** you drive at 0.6 speed with the same cues, nothing waits, the result is real. **Full speed:** the drill, with the contact dip. After each ball the coach says one thing (the first thing that went wrong); a rep is retried once, then the lesson moves on. After the third ball the game says the tutorial is done and offers to keep hitting or choose another drill. A timing collar around the charge ring (gold / cyan / wood from the real spike windows) is on in the lesson and, after it, whenever Settings → Hints is on. This replaces v2's hard freezes (below, "Tutorial v3") and the tip stays out of the lesson.

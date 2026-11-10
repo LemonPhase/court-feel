@@ -9,6 +9,8 @@
 //     a crash leaves the crash screen in control of the keyboard and mouse
 //   - GPU resources (geometries, textures, shader programs) do not grow over a soak
 // Frame time, draw calls and heap are reported, not asserted (software rendering here).
+// SOAK sets the soak's length in simulated seconds (120) and PERF_FRAMES the frames the perf numbers are
+// taken over (120); CI runs shorter ones (see .github/workflows/ci.yml).
 // The simulation is stepped manually at a fixed dt, so results do not depend on machine speed.
 // Wall-clock limits do depend on it: see "fresh pages on a software GPU" below before adding a page or a limit.
 // Exit code 1 on any failed check. Output: scripts/out/*.png and scripts/out/report.json
@@ -25,6 +27,7 @@ const out = path.join(root, 'scripts', 'out');
 fs.mkdirSync(out, { recursive: true });
 const PORT = Number(process.env.E2E_PORT ?? 5199);
 const soakSeconds = Number(process.env.SOAK ?? 120);
+const perfFrames = Number(process.env.PERF_FRAMES ?? 120);
 
 // own process group, so stopping it also stops the vite child that npx starts
 const server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: root, stdio: 'pipe', detached: true });
@@ -56,6 +59,16 @@ const browser = await chromium.launch({
   ],
 });
 
+// ---- where the time goes: seconds per phase, printed at the end and kept in the report
+const phaseSeconds = {};
+let phaseName = 'start-up';
+let phaseStart = Date.now();
+const phase = (name) => {
+  phaseSeconds[phaseName] = +((phaseSeconds[phaseName] ?? 0) + (Date.now() - phaseStart) / 1000).toFixed(1);
+  phaseName = name;
+  phaseStart = Date.now();
+};
+
 // ---- fresh pages on a software GPU
 // SwiftShader draws a frame in 0.6 s on a good machine and 2 s on a slow CI runner, and WebGL does not wait
 // for it: draw calls only queue work for the browser's GPU process. Two things then wait for that queue to
@@ -69,8 +82,12 @@ const browser = await chromium.launch({
 // those frames. At 2 s a frame the perf phase leaves 43 s of them and the soak 66 s (it never waits for a
 // render), against limits of 30 and 60 s. The rules that keep a limit about the thing it names:
 //   - a fresh page holds rendering until it is up (`newHeldPage` + `comeUp`), then draws (`startRendering`);
-//   - after a phase that queued frames, and before a context is closed, wait for the GPU (`gpuIdle`,
-//     `closeIdle`). Those waits sit in evaluates, which have no limit of their own, under a generous one.
+//   - a page that draws by itself is paced to the GPU (`paceRendering`), so it never queues more than a
+//     frame or two. That is also most of the suite's speed: unpaced, some 55 s of a 4 min run went on
+//     drawing queued frames nobody looked at;
+//   - after a phase that queued frames (the soak renders from one long evaluate, which pacing cannot
+//     reach), and before a context is closed, wait for the GPU (`gpuIdle`, `closeIdle`). Those waits sit in
+//     evaluates, which have no limit of their own, under a generous one.
 /** for a fresh page to load and construct the game with rendering held: 1 to 4 s here, 23 s on a single core */
 const FRESH_PAGE_MS = 120000;
 /** for the GPU to draw what it was sent: the default 120 s soak leaves 128 renders, over 4 min at 2 s a frame */
@@ -95,10 +112,53 @@ const holdRendering = () => {
     },
   });
 };
+/**
+ * runs in the page before its scripts: animation frames wait for the GPU, the way a display that is not
+ * ready holds a real page back. Left alone, the page renders some twenty frames ahead of the software GPU,
+ * and every screenshot, every `gpuIdle` and the closing of the page then waits for frames nobody looks at.
+ * Here an animation frame is skipped (all of its callbacks, so they stay in step) while `ahead` frames the
+ * game rendered from earlier ones are still not drawn.
+ */
+const paceRendering = (ahead) => {
+  const raf = window.requestAnimationFrame.bind(window);
+  /** one fence per frame the game rendered from an animation frame and the GPU has not drawn yet, oldest first */
+  const fences = [];
+  let frameTime = -1;
+  let open = true;
+  const gpuReady = () => {
+    const gl = window.__court?.renderer.getContext();
+    while (fences.length && (gl.isContextLost() || gl.getSyncParameter(fences[0], gl.SYNC_STATUS) === gl.SIGNALED)) {
+      gl.deleteSync(fences.shift());
+    }
+    return fences.length < ahead;
+  };
+  window.requestAnimationFrame = (callback) =>
+    raf(function run(time) {
+      // one decision per animation frame: every callback of a frame gets the same timestamp
+      if (time !== frameTime) {
+        frameTime = time;
+        open = gpuReady();
+      }
+      if (!open) {
+        raf(run);
+        return;
+      }
+      const renderer = window.__court?.renderer;
+      const before = renderer?.info.render.frame;
+      callback(time);
+      if (renderer && renderer.info.render.frame !== before) {
+        const gl = renderer.getContext();
+        fences.push(gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0));
+        gl.flush();
+      }
+    });
+};
 /** a page in its own context whose game will hold rendering; `init` runs in the page before its scripts */
 const newHeldPage = async (contextOptions, init) => {
   const ctx = await browser.newContext(contextOptions);
   await ctx.addInitScript(holdRendering);
+  // one frame in flight keeps the GPU busy while the page prepares the next; more only builds a queue
+  await ctx.addInitScript(paceRendering, 2);
   if (init) await ctx.addInitScript(init);
   return { ctx, p: await ctx.newPage() };
 };
@@ -158,9 +218,9 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => errors.push('[pageerror] ' + e.message));
 await comeUp(page, '', () => window.__court && window.__menu);
-// let the RAF loop render for a while so every shader compiles before we start capturing
+// the first frames compile the shaders before we start capturing (a fixed 6 s of frames used to follow:
+// with the frames paced, the two that `startRendering` waits for are the ones that did the work)
 await startRendering(page);
-await page.waitForTimeout(6000);
 // render on demand only: continuous SwiftShader frames starve screenshot capture
 await page.evaluate(() => {
   window.__court.holdRender = true;
@@ -186,6 +246,7 @@ const shot = async (name) => {
     }
   }
 };
+phase('screenshots');
 await shot('00_menu');
 
 // helpers inside the page
@@ -269,6 +330,7 @@ for (const fp of [false, true]) {
 }
 
 // ---- every drill with its bot (and the rally both all-AI and with the user)
+phase('drills');
 const runs = [
   ['spike', 'OH'],
   ['spike', 'OPP'],
@@ -340,6 +402,7 @@ for (const pos of ['OH', 'MB', 'OPP']) {
 }
 
 // ---- block FP + rally screenshots
+phase('screenshots');
 await page.evaluate(() => {
   window.start('block', 'MB', true);
   const g = window.__court;
@@ -364,7 +427,8 @@ await page.evaluate(() => {
 await shot('21_rally_wide');
 
 // ---- performance: real rendering frames (SwiftShader: CPU-side numbers only)
-const perf = await page.evaluate(async () => {
+phase('perf');
+const perf = await page.evaluate(async (frames) => {
   const g = window.__court;
   window.start('rally', 'MB', false, null);
   g.autoUser = false;
@@ -378,7 +442,7 @@ const perf = await page.evaluate(async () => {
     const f = () => {
       n++;
       samples.push(g.frameMs);
-      if (n < 120) requestAnimationFrame(f);
+      if (n < frames) requestAnimationFrame(f);
       else res();
     };
     requestAnimationFrame(f);
@@ -391,19 +455,21 @@ const perf = await page.evaluate(async () => {
   return {
     cpuFrameMsMedian: samples[Math.floor(samples.length / 2)],
     cpuFrameMsP95: samples[Math.floor(samples.length * 0.95)],
-    swiftshaderWallMsPerFrame: wall / 120,
+    frames,
+    swiftshaderWallMsPerFrame: wall / frames,
     drawCalls: info.render.calls,
     triangles: info.render.triangles,
     geometries: info.memory.geometries,
     textures: info.memory.textures,
   };
-});
+}, perfFrames);
 report.perf.frame = perf;
 console.log('perf', JSON.stringify(perf));
 // the frames still queued behind the last one measured: the touch page below must not wait for them
 await gpuIdle(page, 'the perf frames');
 
 // ---- touch controls: a phone-sized touch context drives the stick, JUMP and HIT with real touch events
+phase('touch');
 {
   const { ctx: tctx, p: tp } = await newHeldPage({
     viewport: { width: 844, height: 390 },
@@ -461,13 +527,17 @@ await gpuIdle(page, 'the perf frames');
       return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     }, sel);
   // the software renderer runs the sim slower than real time: wait for each state rather than a fixed time
-  const untilSnap = async (pred, ms = 4000) => {
+  // (a step needs a frame or a few, and a slow runner takes seconds to draw one: the limit is there for a
+  // state that never comes, and how long each step took is printed)
+  const stepMs = [];
+  const untilSnap = async (pred, ms = 30000) => {
     const t0 = Date.now();
     let s = await snap();
     while (!pred(s) && Date.now() - t0 < ms) {
       await wait(50);
       s = await snap();
     }
+    stepMs.push(Date.now() - t0);
     return s;
   };
   const t = { ok: true, steps: {} };
@@ -500,11 +570,18 @@ await gpuIdle(page, 'the perf frames');
     !s.swing.held.includes('Mouse0');
   report.touch = t;
   console.log('touch', t.ok ? 'ok' : 'FAILED', JSON.stringify(s));
+  console.log('touch step ms', JSON.stringify(stepMs));
   check(t.ok, 'touch controls drive run, load, jump, wind-up and swing', s);
   await closeIdle(tctx, tp);
 }
 
 // ---- soak: memory and GPU resources must not grow
+phase('soak');
+// The soak renders to make three.js build and free resources, not to be looked at, and what gets built does
+// not depend on the size of the picture: a small one costs the software GPU a fraction of the time.
+// Nothing on this page is captured after this.
+await page.setViewportSize({ width: 320, height: 180 });
+await page.waitForFunction(() => window.__court.renderer.domElement.clientWidth === 320, null, { timeout: FRESH_PAGE_MS, polling: 100 });
 const soak = await page.evaluate(async (secs) => {
   const g = window.__court;
   const mem = () => (performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0);
@@ -524,6 +601,17 @@ const soak = await page.evaluate(async (secs) => {
   window.start('rally', 'OH', false, null);
   g.play(2);
   g.renderNow(1 / 60);
+  // What is built once and kept only counts once it has been drawn, and some of it stays hidden until its
+  // moment (the aim ring until the athlete first winds up). Draw all of it once before the first sample:
+  // otherwise its first appearance counts as growth, and when that falls depends on how the rally went.
+  const shown = [];
+  g.scene.traverse((o) => {
+    shown.push([o, o.visible, o.frustumCulled]);
+    o.visible = true;
+    o.frustumCulled = false;
+  });
+  g.post.render(1 / 60);
+  for (const [o, visible, frustumCulled] of shown) Object.assign(o, { visible, frustumCulled });
   const before = sample();
   let t = 0;
   let k = 0;
@@ -554,6 +642,7 @@ for (const k of ['geometries', 'textures', 'programs']) {
 }
 
 // ---- robustness: what players actually do (share links, old saved settings, keyboard-only menus)
+phase('probes');
 {
   // These probes check loading, settings and keys, not drawing, so rendering stays held: a fresh page's
   // first frame compiles every shader at once, which on a CI runner's software GPU blocks the page's main
@@ -650,6 +739,9 @@ for (const k of ['geometries', 'textures', 'programs']) {
   await r.close();
 }
 
+phase('done');
+report.perf.phaseSeconds = phaseSeconds;
+console.log('seconds per phase', JSON.stringify(phaseSeconds));
 fs.writeFileSync(path.join(out, 'report.json'), JSON.stringify(report, null, 2));
 console.log(errors.length ? 'CONSOLE ERRORS:\n' + errors.join('\n') : 'no console errors');
 console.log(failures.length ? `FAILED CHECKS (${failures.length}):\n  ` + failures.join('\n  ') : 'all checks passed');
