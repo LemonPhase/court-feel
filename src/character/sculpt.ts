@@ -88,7 +88,8 @@ export function sculptBody(d: RigDims, kit: Kit, idx: (n: BoneName) => number, w
     b.roughness = ROUGH.skin;
     b.newGroup();
     const leg: Ring[] = [
-      ring(th(0.3), 0.047, 0.0495, 0.049, skin, [[T, 1]]),
+      // (starts just above the hem: higher up, under the part of the shorts that bends with the hip, it would poke through)
+      ring(th(0.38), 0.0456, 0.0484, 0.0474, skin, [[T, 1]]),
       ring(th(0.5), 0.0435, 0.047, 0.0445, skin, [[T, 1]]),
       ring(th(0.7), 0.038, 0.0405, 0.0385, skin, [[T, 1]]),
       ring(th(0.84), 0.0338, 0.0345, 0.0335, skin, kneeW(0.92)),
@@ -286,12 +287,12 @@ export function sculptBody(d: RigDims, kit: Kit, idx: (n: BoneName) => number, w
       [0.645, 0.0815, 0.0585, 0.058, body],
       [0.695, 0.0885, 0.0645, 0.0605, body],
       [0.74, 0.095, 0.0692, 0.0645, body],
-      [0.772, 0.0985, 0.0676, 0.0665, body],
-      [0.772, 0.0985, 0.0676, 0.0665, jersey],
-      [0.8, 0.102, 0.063, 0.0662, jersey],
-      [0.822, 0.1045, 0.0565, 0.064, jersey, 0.05],
-      [0.8375, 0.0985, 0.049, 0.0585, jersey, 0.12],
-      [0.849, 0.078, 0.0425, 0.0505, jersey, 0.2],
+      [0.772, 0.1, 0.0676, 0.0665, body],
+      [0.772, 0.1, 0.0676, 0.0665, jersey],
+      [0.8, 0.109, 0.063, 0.0662, jersey],
+      [0.822, 0.1165, 0.0565, 0.064, jersey, 0.05],
+      [0.8375, 0.109, 0.049, 0.0585, jersey, 0.12],
+      [0.849, 0.084, 0.0425, 0.0505, jersey, 0.2],
       [0.857, 0.056, 0.0375, 0.043, jersey, 0.27],
       [0.8625, 0.0425, 0.0348, 0.039, jersey, 0.31],
       [0.8625, 0.0425, 0.0348, 0.039, trim, 0.31],
@@ -647,7 +648,7 @@ export function sculptBody(d: RigDims, kit: Kit, idx: (n: BoneName) => number, w
       const topness = smoothstep(0.15, 0.85, dir.y);
       const az = Math.atan2(dir.x, -dir.z);
       const lumps = Math.sin(9 * az + dir.y * 6) * Math.sin(8 * dir.y - 2 * az);
-      if (style === 1) return 0.0016;
+      if (style === 1) return 0.0036;
       if (style === 2 || style === 3) return 0.0052 + 0.002 * topness;
       if (style === 4) return (0.0125 + 0.009 * topness) * (1 + 0.16 * lumps);
       // short crop: fuller on top, a lift at the front
@@ -660,12 +661,12 @@ export function sculptBody(d: RigDims, kit: Kit, idx: (n: BoneName) => number, w
       const dir = new THREE.Vector3();
       const p = new THREE.Vector3();
       const colsH = 56;
-      const rowsH = 14;
+      const rowsH = 16;
       const base = b.count;
       const rise = style === 4 ? 0.3 : 0.16;
       for (let j = 0; j <= rowsH; j++) {
         // more rows near the hairline, where the shell leaves the scalp
-        const t = Math.pow(j / rowsH, 1.6);
+        const t = Math.pow(j / rowsH, 1.35);
         for (let i = 0; i <= colsH; i++) {
           const az = (i / colsH) * Math.PI * 2 - Math.PI; // 0 = front centre
           const y0 = line(Math.abs(az)) - 0.05;

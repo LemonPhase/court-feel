@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { BALL, SIM } from '../config';
+import { BALL, BALL_LOOK, SIM } from '../config';
 import { clamp01, damp, lerp } from '../core/mathx';
 import { copyBall, makeBall, R, stepBall, type BallEnv, type BallState, type CollisionEvent } from '../physics/ball';
 import { BallPredictor } from '../physics/predict';
-import { makeBallTexture, makeBlobTexture, makeRingTexture } from '../world/textures';
+import { makeBallTextures, makeBlobTexture, makeRingTexture } from '../world/textures';
 import type { Athlete } from './athlete';
 
 export type TouchKind = 'spike' | 'tip' | 'block' | 'pass' | 'dig' | 'set' | 'serve' | 'free' | 'feed';
@@ -52,18 +52,20 @@ export class BallEntity {
   lastLaunchT = 0;
 
   constructor(scene: THREE.Scene) {
-    const tex = makeBallTexture();
+    const { map: tex, bump } = makeBallTextures();
     this.mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(R, 32, 20),
+      new THREE.SphereGeometry(R, 48, 32),
       new THREE.MeshStandardMaterial({
         map: tex,
-        roughness: 0.42,
+        bumpMap: bump,
+        bumpScale: BALL_LOOK.seamDepth,
+        roughness: 0.46,
         metalness: 0,
         envMapIntensity: 0.9,
         // a touch of self-illumination keeps the ball readable from below against the ceiling
         emissive: 0xffffff,
         emissiveMap: tex,
-        emissiveIntensity: 0.22,
+        emissiveIntensity: BALL_LOOK.glow,
       }),
     );
     this.mesh.castShadow = true;

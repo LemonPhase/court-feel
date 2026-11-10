@@ -147,18 +147,23 @@ export function makeAntennaTexture(): THREE.CanvasTexture {
 /**
  * Generic volleyball: 18 panels in six groups of three (cube layout), drawn in
  * equirect space from the 3D direction so the sphere mapping is seamless.
- * Our own colourway, not a brand design.
+ * Our own colourway, not a brand design. Returns the colour map and a height
+ * map of the seams (grooves between the panels) for bump mapping.
  */
-export function makeBallTexture(): THREE.CanvasTexture {
-  const w = 512;
-  const h = 256;
+export function makeBallTextures(): { map: THREE.CanvasTexture; bump: THREE.CanvasTexture } {
+  const w = 1024;
+  const h = 512;
   const [c, ctx] = canvas(w, h);
+  const [bc, bctx] = canvas(w, h);
   const img = ctx.createImageData(w, h);
+  const bimg = bctx.createImageData(w, h);
   const d = img.data;
+  const bd = bimg.data;
   const yellow = [246, 200, 46];
   const blue = [28, 74, 168];
   const white = [244, 242, 232];
-  const seam = [40, 40, 46];
+  const seam = [46, 44, 48];
+  const rng = new Rng(11);
   for (let y = 0; y < h; y++) {
     const v = (y + 0.5) / h;
     const theta = v * Math.PI; // polar
@@ -196,23 +201,30 @@ export function makeBallTexture(): THREE.CanvasTexture {
       else col = face === 1 ? white : face === 0 ? blue : white;
       if (face === 2 && band !== 1) col = blue;
       if (face === 0 && band !== 1) col = white;
-      const seamW = 0.03;
-      const nearBand = Math.abs(Math.abs(b) - 1 / 3) < seamW * 1.6;
-      const nearFace = m - second < seamW;
+      // distance to the nearest seam (between the three panels of a face, or between two faces), as an angle
+      const dist = Math.min(Math.abs(Math.abs(b) - 1 / 3) * 0.75, (m - second) * 0.72);
+      // 0 in the groove, 1 on the panel: a soft-edged line a few millimetres wide
+      const k = Math.min(1, Math.max(0, (dist - 0.006) / 0.012));
+      const on = k * k * (3 - 2 * k);
+      // panels are a touch darker towards their edges (the leather curves into the seam), with a fine grain
+      const edge = 0.9 + 0.1 * Math.min(1, dist / 0.07);
+      const grain = 1 + (rng.next() - 0.5) * 0.035;
       const i = (y * w + x) * 4;
-      const sc = nearBand || nearFace ? 0.25 : 1;
-      const base = sc < 1 ? seam : col;
-      d[i] = base[0];
-      d[i + 1] = base[1];
-      d[i + 2] = base[2];
+      for (let q = 0; q < 3; q++) d[i + q] = (seam[q] + (col[q] * edge * grain - seam[q]) * on) | 0;
       d[i + 3] = 255;
+      const hgt = (70 + 185 * Math.min(1, dist / 0.035) ** 0.6) | 0;
+      bd[i] = bd[i + 1] = bd[i + 2] = hgt;
+      bd[i + 3] = 255;
     }
   }
   ctx.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
+  bctx.putImageData(bimg, 0, 0);
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 8;
+  const bump = new THREE.CanvasTexture(bc);
+  bump.anisotropy = 4;
+  return { map, bump };
 }
 
 /** Radial soft blob used for the ball's timing shadow and dust. */

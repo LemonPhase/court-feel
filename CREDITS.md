@@ -6,8 +6,9 @@ see `package.json`); you may treat the generated assets as CC0.
 
 | Asset | Source | License |
 |---|---|---|
-| Wood floor, net, antenna, ball, crowd, LED board, crack textures | Procedural canvas code in `src/world/textures.ts` | Project code (MIT) / output CC0 |
-| Athlete character (mesh, skeleton, skin weights) | Procedurally built in `src/character/` | Project code (MIT) / output CC0 |
+| Wood floor, net, antenna, ball, crowd, LED boards and ribbon, hall walls, crack textures | Procedural canvas code in `src/world/textures.ts` | Project code (MIT) / output CC0 |
+| The hall (stands, seats, roof, referee stand) | Built from boxes and tubes in `src/world/` | Project code (MIT) / output CC0 |
+| Athlete character (mesh, skeleton, skin weights, face and jersey number) | Procedurally sculpted and painted in `src/character/` | Project code (MIT) / output CC0 |
 | Animations (approach, jump, swing, block, pass, set, land, idle, run) | Procedural pose keys + IK in `src/character/` | Project code (MIT) |
 | Sounds (ball contacts, floor, net, squeaks, whistle, crowd) | Synthesised with the Web Audio API in `src/audio/` | Project code (MIT) |
 

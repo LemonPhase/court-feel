@@ -500,6 +500,12 @@ export const TUTORIAL = {
   ranDist: 1,
 };
 
+/** how the ball is drawn: how deep its seams look, and how much it glows by itself (it has to read against the dark roof) */
+export const BALL_LOOK = {
+  seamDepth: 2.2,
+  glow: 0.2,
+};
+
 /** how the arena is drawn and lit (never how the game plays) */
 export const ARENA = {
   /** the floor mirrors the players, the net and the boards */
@@ -545,6 +551,12 @@ export const ARENA = {
     lamp: 1.08,
     doorEvery: 9,
   },
+  /**
+   * the net mesh gives when the ball hits it: how far (m per m/s of the ball's speed into it, up to a limit),
+   * how wide the bulge is (m), how fast it swings (rad/s) and dies away (1/s), for how long (s), and how many
+   * hits can be shown at once
+   */
+  net: { pushPerSpeed: 0.016, maxPush: 0.3, spread: 0.5, swing: 19, damping: 4.5, life: 1.6, hits: 4 },
   /** the finished picture: darker corners (0 = none), an S-curve of contrast (0 = none), saturation (1 = as rendered) */
   grade: { vignette: 0.32, contrast: 0.16, saturation: 1.06 },
   /** light on the court: sky and floor-bounce fill, the key from the roof, and two soft fills from the long sides */

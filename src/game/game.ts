@@ -767,7 +767,11 @@ export class Game {
       else if (act.kind === 'pass' && act.resolved && this.simTime > act.contactT + 0.4) a.endAction();
     }
     this.ball.step(dt, this.env);
-    for (const e of this.ball.events) this.events.emit('ballEvent', e);
+    for (const e of this.ball.events) {
+      // the net gives where the ball hits it (pushed away from the side the ball is on)
+      if (e.kind === 'net') this.arena.netHit(e.x, e.y, e.impact, e.z > 0 ? -1 : 1);
+      this.events.emit('ballEvent', e);
+    }
     const out = this.judge.step(this.ball, this.ball.events, this.env.netTop);
     if (out) {
       this.events.emit('outcome', out);

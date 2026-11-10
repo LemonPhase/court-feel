@@ -20,6 +20,10 @@ export class Arena {
   keyLight!: THREE.DirectionalLight;
   envMap: THREE.Texture | null = null;
   readonly reflection: FloorReflection;
+  /** recent ball hits on the net mesh: x, y (in the mesh's own frame), push (m, signed along z), time of the hit */
+  private netHits = { value: Array.from({ length: ARENA.net.hits }, () => new THREE.Vector4()) };
+  private netTime = { value: 0 };
+  private netHitNext = 0;
   /** the floor and what is painted on it: not part of its own mirror image */
   private unmirrored: THREE.Object3D[] = [];
   /** objects the TP camera must not pass through (net + posts) */
@@ -176,7 +180,30 @@ export class Arena {
       roughness: 0.9,
       depthWrite: false,
     });
-    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, nd), netMat);
+    // the mesh gives where the ball hits it: a bulge that swings back and dies away (the tapes stay put)
+    netMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uNetHits = this.netHits;
+      shader.uniforms.uNetTime = this.netTime;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform vec4 uNetHits[ ' + ARENA.net.hits + ' ];\nuniform float uNetTime;')
+        .replace(
+          '#include <begin_vertex>',
+          /* glsl */ `#include <begin_vertex>
+          {
+            // held along the top and bottom tapes and at the side bands
+            float held = sin( 3.14159 * uv.y ) * smoothstep( 0.0, 0.06, uv.x ) * smoothstep( 1.0, 0.94, uv.x );
+            for ( int i = 0; i < ${ARENA.net.hits}; i ++ ) {
+              vec4 hit = uNetHits[ i ];
+              float age = uNetTime - hit.w;
+              if ( hit.z == 0.0 || age < 0.0 || age > ${ARENA.net.life.toFixed(2)} ) continue;
+              vec2 d = transformed.xy - hit.xy;
+              float near = exp( - dot( d, d ) / ${(ARENA.net.spread ** 2).toFixed(4)} );
+              transformed.z += hit.z * near * held * exp( - age * ${ARENA.net.damping.toFixed(2)} ) * cos( age * ${ARENA.net.swing.toFixed(2)} );
+            }
+          }`,
+        );
+    };
+    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, nd, 120, 12), netMat);
     net.position.set(0, top - nd / 2, 0);
     this.netGroup.add(net);
     // white top band (7cm) and bottom band (5cm)
@@ -410,12 +437,23 @@ export class Arena {
     pmrem.dispose();
   }
 
+  /**
+   * The ball hit the net at (`x`, `y`) with normal speed `impact` (m/s), travelling towards `dir` (sign of z):
+   * the mesh bulges that way. Looks only: the ball's bounce is the physics' business.
+   */
+  netHit(x: number, y: number, impact: number, dir: number): void {
+    const push = Math.min(ARENA.net.maxPush, impact * ARENA.net.pushPerSpeed) * (dir < 0 ? -1 : 1);
+    this.netHits.value[this.netHitNext].set(x, y - (this.netTop - COURT.netDepth / 2), push, this.netTime.value);
+    this.netHitNext = (this.netHitNext + 1) % ARENA.net.hits;
+  }
+
   excite(amount: number): void {
     this.excitement = Math.min(1.5, this.excitement + amount);
   }
 
   update(dt: number): void {
     this.time += dt;
+    this.netTime.value = this.time;
     this.excitement *= Math.exp(-dt * 1.3);
     if (this.crowdMat) {
       this.crowdMat.uniforms.uTime.value = this.time;

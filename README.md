@@ -481,6 +481,28 @@ jump, the touch on their hands and the block shadow from your contact point.
   when hit from the side, antennae, posts. 2.43 m or
   2.24 m net, 21 cm / 270 g ball.
 
+## How it looks
+
+Everything on screen is built by code at start-up (no model or texture files).
+None of it changes how the game plays: the physics, the timing windows and the
+contact rules do not know it is there.
+
+* **Athletes.** One sculpted, skinned body each: a head with painted eyes,
+  brows and a mouth under one of five haircuts, hands with fingers that curl
+  when loose and flatten on the ball, shoes, and a kit that is cloth over the
+  body (sleeve cuffs, a collar, the hem of the shorts, a number front and back).
+* **At the ball.** A spiking palm lies on the ball's surface at contact, a pass
+  lands on the forearms, and a setter's or blocker's palms close on the ball.
+  After a spike the arm slows all the way down, the body folds and opens again,
+  and the feet reach for the floor before the landing.
+* **At the net.** Below the tape, wrists and fingers stay on their own side
+  (a hand may reach across only above it, as a block does), and a landing lean
+  stops short of the net. The mesh bulges where the ball hits it.
+* **The hall.** Two tiers of seats with a crowd in the half-light, an LED ribbon
+  round the balcony, boards round the free zone, roof lamps, and a varnished
+  floor that mirrors the players, the net and the boards. On a slow machine the
+  game drops MSAA first and the floor mirror last (F3 shows the quality level).
+
 ## Tuning the feel
 
 Every tunable number is in **[`src/config.ts`](src/config.ts)**:
@@ -498,6 +520,9 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
+| `CHARACTER` | How athletes are drawn: rim and side fill light, finger curls, where a palm meets the ball, how far arms and head keep from the net (`netClear`), how long a setter's hands follow the ball |
+| `ARENA` | The hall: floor mirror (size, strength, blur), the stands (`bowl`: tiers, rows, seats, how brightly the crowd is lit), how the net mesh gives when the ball hits it, lights, the final grade |
+| `BALL_LOOK` | How deep the ball's seams look and how much it glows by itself |
 | `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); who the setter sets (`setWeight`) and how often the pipe (`pipe`); an overpass (`overpass`), an AI hitter misreading the user's block (`userBlockMisread`), who takes a ball (`pick`: first there takes it, the seam goes to the libero or you, the setter only when nobody else is close, a ball off a block or a second ball the libero gets to is the libero's); where an AI free ball over goes (`freeOver`: a deep corner or short, wherever they aren't); perimeter defence read spots and reaction times (`defence`), early transition and the front row's transition off the net after a block (`transition`, `approachOff`: no quick from the net) and covering our hitter in the real 3-2 spots (`cover`: when, the middle at the net, the setter on the 3 m line, the back row behind and deep, how fast a coverer reads a ball off the block); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, run-up, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool, roll and recycle shots (`toolShot`, `rollShot`, `recycleShot`); the libero's set off a hard ball (`backupSet`: how much it misses, when it bumps instead; never a set to the user), what an AI dive does with the ball (`diveUp`: a bit up, toward the middle) and when a free ball is aimed (`freeOver.aimSpeed`), a setter too late for the hands digging it (`lateSet`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`); first balls overhand (`overhand`), dives (`dive`, `stretch`: a last-ditch dive at a ball just past the hands) and a second player running at a ball the first may not reach (`scramble`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
@@ -599,12 +624,12 @@ src/config.ts          all tunables
 src/core/              input (with buffering), touch pad model, settings (validated), quick-start links,
                        error reporter, build info, math, events
 src/physics/           ball physics, predictor, trajectory solvers (pure, tested)
-src/character/         procedural rig, animator (poses + IK), kits
+src/character/         procedural rig, sculpted mesh, face and number decals, animator (poses + IK), kits
 src/game/              game loop, athlete kinematics, contact/timing system, judge, modes, bots
 src/ai/                setter, hitter, blocker, server, team coordinator
 src/fx/                particles, trails, effects director, replay, post-processing
 src/audio/             Web Audio synthesis
-src/world/             arena and procedural textures
+src/world/             arena, stands and crowd, floor mirror, procedural textures
 src/ui/                HUD, menus (start screen sections, pause, Settings and Athlete sheets), each drill's
                        menu text and keys, icons, touch controls overlay, crash screen, debug overlay
 tests/                 unit tests

@@ -96,11 +96,15 @@ export function buildBowl(group: THREE.Group): Bowl {
   const halfZ = Z0 + dTop + 0.6;
   const height = Math.max(COURT.ceiling + 4.5, yU + U.rows * U.rise + 3.2);
 
-  group.add(
+  // the dark structure and the seats are left out of the floor's mirror image (they would cost a second
+  // drawing of every seat for almost nothing: the crowd, the ribbon and the boards are what shows in the varnish)
+  const structure = [
     new THREE.Mesh(mergeGeometries(concrete), new THREE.MeshStandardMaterial({ color: 0x3a4152, roughness: 0.9 })),
     new THREE.Mesh(mergeGeometries(dark), new THREE.MeshStandardMaterial({ color: 0x232838, roughness: 0.9 })),
     new THREE.Mesh(mergeGeometries(rails), new THREE.MeshStandardMaterial({ color: 0xaab2c2, roughness: 0.35, metalness: 0.7 })),
-  );
+  ];
+  for (const m of structure) m.userData.noMirror = true;
+  group.add(...structure);
 
   // ---------------------------------------------------------------- LED ribbon on the balcony front
   {
@@ -178,6 +182,7 @@ export function buildBowl(group: THREE.Group): Bowl {
       mesh.setColorAt(i, c.copy(tint).multiplyScalar(0.85 + 0.3 * rng.next()));
     });
     mesh.frustumCulled = false;
+    mesh.userData.noMirror = true;
     group.add(mesh);
   }
 
@@ -215,7 +220,9 @@ export function buildBowl(group: THREE.Group): Bowl {
     }
     for (const sx of [-2, 2])
       for (const s of [-1, 1]) trusses.push(boxBetween(s * 4 + sx - 0.12, yTruss, -17, s * 4 + sx + 0.12, yTruss + 0.3, 17));
-    group.add(new THREE.Mesh(mergeGeometries([...trusses, ...cans]), trussMat));
+    const roof = new THREE.Mesh(mergeGeometries([...trusses, ...cans]), trussMat);
+    roof.userData.noMirror = true;
+    group.add(roof);
     // (the lamps are left out of the floor's mirror image: seen in the varnish they would glare over the court)
     const lamps = new THREE.Mesh(mergeGeometries(banks), new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(B.lamp) }));
     lamps.userData.noMirror = true;
