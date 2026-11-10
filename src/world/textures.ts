@@ -243,6 +243,26 @@ export function makeRingTexture(width = 0.12): THREE.CanvasTexture {
   return new THREE.CanvasTexture(c);
 }
 
+/** A floor arrow (a chevron pointing up the texture) with a dark outline, so it reads on the wood and on the blue. */
+export function makeChevronTexture(): THREE.CanvasTexture {
+  const s = 128;
+  const [c, ctx] = canvas(s, s);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const draw = (width: number, style: string) => {
+    ctx.strokeStyle = style;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(s * 0.2, s * 0.68);
+    ctx.lineTo(s * 0.5, s * 0.32);
+    ctx.lineTo(s * 0.8, s * 0.68);
+    ctx.stroke();
+  };
+  draw(s * 0.3, 'rgba(5,7,12,0.6)');
+  draw(s * 0.16, 'rgba(255,255,255,1)');
+  return new THREE.CanvasTexture(c);
+}
+
 /** Floor crack decal: radial fractures with a dark core. Alpha in the texture. */
 export function makeCrackTexture(seed = 7): THREE.CanvasTexture {
   const s = 512;

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, type PositionId, type Settings } from '../config';
+import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings } from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
@@ -28,6 +28,7 @@ import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
 import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
+import { reached, Tutorial, type TutorialBegin } from './tutorial';
 
 /** consecutive frames that throw before the game stops and shows the crash screen */
 const MAX_FAILED_FRAMES = 10;
@@ -85,6 +86,8 @@ export class Game {
   private accum = 0;
   timeScale = 1;
   private slowmo = 1;
+  /** the lesson's clock: 1 real time, slower through a taught rep, 0 while the ball waits for the player */
+  tutor = 1;
   hitStop = 0;
   paused = false;
   private last = 0;
@@ -98,6 +101,11 @@ export class Game {
   manual = false;
   /** called once per render frame after the HUD (the touch overlay draws itself here) */
   onFrame: (() => void) | null = null;
+  /** the lesson's three balls are done (`clean`: the last one was a Perfect or a Good): offer what to do next */
+  onTutorialDone: ((clean: boolean) => void) | null = null;
+  /** Skip tutorial: 'menu' from the welcome, 'drill' once a rep is underway */
+  onTutorialSkipped: ((where: 'menu' | 'drill') => void) | null = null;
+  tutorial!: Tutorial;
   /** test hook: stop the RAF loop from rendering (screenshots render on demand) */
   holdRender = false;
   /** in the menu: attract camera, no user control */
@@ -196,6 +204,7 @@ export class Game {
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
     this.resize();
+    this.tutorial = new Tutorial(this);
   }
 
   // ------------------------------------------------------------ athletes
@@ -358,7 +367,26 @@ export class Game {
     this.hud.setCam(this.settings.firstPerson);
   }
 
+  /**
+   * Guided first session: Spike Drill, Outside, block off. Camera stays whatever
+   * the player picked (FP and TP both stay available). `replay` starts at the welcome.
+   */
+  beginTutorial(opts: TutorialBegin = {}): void {
+    this.hud.setVisible(true);
+    this.paused = false;
+    this.tutorial.begin(opts);
+    this.startMode('spike', 'OH');
+    this.tutorial.present();
+  }
+
+  /** Skip: don't stay frozen for a frame after the lesson ends */
+  snapTutor(): void {
+    this.tutor = 1;
+  }
+
   stopMode(): void {
+    // quitting to the menu part-way through the lesson leaves it (it is offered again from where it stopped)
+    this.tutorial.leave();
     this.mode?.teardown();
     this.mode = null;
     this.judge.disarm();
@@ -402,6 +430,8 @@ export class Game {
   // ------------------------------------------------------------ contacts
   aimTargetFor(a: Athlete, out: THREE.Vector3): THREE.Vector3 {
     if (a.isUser) {
+      // the lesson's together rep: the coach aims it too (deep, down the hitter's line). Aiming comes later.
+      if (this.tutorial.ownsButtons()) return out.set(a.pos.x, 0, -a.side * TUTORIAL.aimDepth);
       const from = a.action && a.action.kind === 'swing' ? a.action.contactPoint : a.pos;
       return aimTargetFromLook(from.x, from.z, this.rig.yaw, this.rig.pitch, this.rig.mode === 'fp', a.side, out);
     }
@@ -414,7 +444,8 @@ export class Game {
         const kmh = ev.speed * 3.6;
         const pw =
           ev.power !== undefined && !ev.tip ? ` · ${ev.power >= 0.999 ? 'full power' : `power ${Math.round(ev.power * 100)}%`}` : '';
-        const sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+        let sub = ev.grade === 'Miss' ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+        if (this.tutorial.active) sub = this.tutorial.gradeSub(ev.grade, sub);
         this.hud.showGrade(ev.grade, sub);
       }
       if (ev.speed > 0) this.hud.setSpeed(ev.speed * 3.6);
@@ -626,6 +657,8 @@ export class Game {
     if (this.input.consumePress('KeyR')) this.fx.startReplay();
     this.user.frame(dt);
     this.bot?.after();
+    // the lesson's together rep: the coach holds your line (what you hold decides whether time runs)
+    this.tutorial.drive(this.me);
     this.stepReturn(dt);
   }
 
@@ -657,22 +690,33 @@ export class Game {
     const step = 1 / SIM.hz;
     // slow-mo assist while lining up a contact
     let slowTarget = 1;
-    if (this.settings.slowmoAssist && this.me.state === 'air' && this.idealValid) {
+    const dip = (this.settings.slowmoAssist || this.tutorial.wantsContactDip()) && this.me.state === 'air' && this.idealValid;
+    if (dip) {
       const until = this.idealCache.t - this.simTime;
       if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4)
         slowTarget = ASSIST.slowmoScale;
     }
     this.slowmo = lerp(this.slowmo, slowTarget, damp(12, realDt));
-    let simDt = realDt * this.timeScale * this.slowmo;
+    // the lesson's own clock never stacks on top of the assist dip. A moment the ball waits at
+    // is taken at once (and never simulated past: `stopAt`); everything else eases.
+    const tutorTarget = this.tutorial.timeScale();
+    this.tutor = this.tutorial.snapScale() ? tutorTarget : lerp(this.tutor, tutorTarget, damp(10, realDt));
+    const stopAt = this.tutorial.stopAt();
+    const scale = Math.min(this.slowmo, this.tutor);
+    let simDt = realDt * this.timeScale * scale;
     if (this.hitStop > 0) {
       const used = Math.min(this.hitStop, realDt);
       this.hitStop -= used;
-      simDt = (realDt - used) * this.timeScale * this.slowmo;
+      simDt = (realDt - used) * this.timeScale * scale;
     }
     this.accum += simDt;
     const ts = performance.now();
     let n = 0;
     while (this.accum >= step) {
+      if (reached(this.simTime, stopAt)) {
+        this.accum = 0;
+        break;
+      }
       this.fixedStep(step);
       this.accum -= step;
       n++;
@@ -687,6 +731,12 @@ export class Game {
     }
     this.stepsThisFrame = n;
     if (n) this.stepMs = (performance.now() - ts) / n;
+    if (this.tutorial.active && !this.fx.replaying) this.tutorial.frame(realDt);
+  }
+
+  /** when the ball the user is jumping at is best met (sim time), or -1 with nothing to reach */
+  idealT(): number {
+    return this.idealValid ? this.idealCache.t : -1;
   }
 
   fixedStep(dt: number): void {
@@ -811,10 +861,17 @@ export class Game {
       v.setOpacity(inBody ? clamp01((d - 0.35) / 0.5) * 0.8 + 0.2 : 1);
     }
     this.arena.update(realDt);
+    // the lesson shows where your feet go: the ball's landing ring beside it would be a second ring to read
+    this.ball.showMarker = this.settings.landingMarker && !this.tutorial.teaching;
     this.updateAimReticle(realDt);
     this.hud.update(realDt);
     this.onFrame?.();
-    if (this.mode && !this.inMenu) this.hud.setHint(this.mode.hint() + (this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : ''));
+    if (this.mode && !this.inMenu) {
+      const tutoring = this.tutorial.active;
+      const base = tutoring ? this.tutorial.hint() : this.mode.hint();
+      const replay = !tutoring && this.fx.replayAvailable() ? ` · ${kbd('R')} replay` : '';
+      this.hud.setHint(base + replay, tutoring);
+    }
     this.hud.setCrosshair(!this.inMenu, me.state === 'air');
     this.hud.setLoad(
       me.state === 'load' && !this.inMenu ? clamp01((me.loadT - PLAYER.loadMin * 0.5) / (PLAYER.loadMax - PLAYER.loadMin * 0.5)) : null,
@@ -823,6 +880,11 @@ export class Game {
     const wind = me.action?.kind === 'windup' ? me.action : null;
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;
     this.hud.setCharge(wind && !this.inMenu ? charge : null);
+    const collarErr =
+      this.idealValid && me.state === 'air' && !this.inMenu
+        ? this.simTime + ContactSystem.swingLead(wind ? charge : 0) - this.idealCache.t
+        : null;
+    this.hud.setTiming(collarErr !== null && (this.tutorial.active || this.settings.showHints) ? collarErr : null);
     if (charge >= 1 && this.lastCharge < 1) this.fx?.audio.chargeFull();
     if (!wind && me.action?.kind === 'swing' && me.action !== this.swished) {
       this.swished = me.action;
