@@ -737,7 +737,36 @@ speed (2.4 s a frame) it passes in 251 s, where it took 635 to 955 s. No check w
   frame's shaders and two screenshots), the screenshots (15 s for 12) and the probes (14 s: every
   fresh page bakes the environment map, about 2 s of GPU each).
 
+## Menus: Home, Train, Play, Learn (the start screen redesigned)
+
+- Reported (Jack): the start screen was the first scaffold. Five position cards, six drill cards, the
+  camera, Settings and twelve key bindings sat on one screen, the settings were one unsorted list of
+  thirteen rows, and there was no place for more modes (sets and matches, ranked runs, more lessons).
+- Change: the start screen is four sections behind one top bar, with Athlete and Settings at its right.
+  - **Home**: Continue, one press back into the last drill and position (the lesson on a first visit).
+  - **Train**: the five drills as a list. The one picked shows what it scores, only its own keys,
+    Play as (five chips) and the view. A new drill is one more row.
+  - **Play**: Mini Rally, with the setter's calls and the net height. One set, best of 3 and best of 5
+    are listed as "soon": a game length will be an option here, not a new card.
+  - **Learn**: the tutorial, and every control for the keyboard and for touch.
+  - **Athlete** (a sheet): the position cards, hitting hand and body sliders, moved out of Settings.
+    Stat bars are in real units and coloured by level: gold is the best of the five, cyan is 85% of
+    the scale or more, grey is below (`src/ui/athleteStats.ts`). They follow the sliders.
+  - **Settings** (a sheet): the same settings in five groups (Controls, Camera, Assists and hints,
+    Sound, Court), switches for on/off, chips for choices, and Reset to defaults in two presses.
+  - **Pause**: names the drill and position, shows that drill's keys, and has the view, sensitivity
+    and volume to hand.
+- Not changed: the game, the drills, the settings' meaning and storage, quick-start links.
+- Gone: the number keys 1 to 6 picking a drill on the start screen (the list will grow, and those keys
+  are set calls and feed types in play); the camera chips' own row; Replay tutorial in Settings (it is
+  Learn's button).
+- Checked: `tests/menu.test.ts` (every mode is under Train or Play once and lists its own keys; the
+  stat tiers), the e2e menu probe (first visit, Skip, a drill's own keys, Enter plays the drill and
+  position picked, the pause menu, Esc closes only the settings), and every screen looked at in
+  headless Chromium at 1440 x 810, 844 x 390 (touch) and 390 x 780.
+
 ## Decisions
+- Menus: the drill comes before the position. You pick what to practise, then who you are in it (Play as); your usual position lives under Athlete. A drill shows only its own keys, before it starts and on pause; the full list is under Learn. One gold button per screen: the one that starts play.
 - First-run tutorial v3 (issue #25) is a coach layer on Spike Drill, not a seventh mode: Outside, block off, three balls with less help each time. **Together:** the ball waits for you. At each moment (run, jump, draw, hit) time eases down and stops until you do it; on time, nothing stops. Buttons are read as held, never as fresh presses, so a button already down when its moment comes counts. The coach runs the hitter down the planned line and aims the ball: what you hold decides whether time runs. **Slow motion:** you drive at 0.6 speed with the same cues, nothing waits, the result is real. **Full speed:** the drill, with the contact dip. After each ball the coach says one thing (the first thing that went wrong); a rep is retried once, then the lesson moves on. After the third ball the game says the tutorial is done and offers to keep hitting or choose another drill. A timing collar around the charge ring (gold / cyan / wood from the real spike windows) is on in the lesson and, after it, whenever Settings → Hints is on. This replaces v2's hard freezes (below, "Tutorial v3") and the tip stays out of the lesson.
 - Home/user team on +z facing -z; facing -z the right hand is +x. (One frame for everything.)
 - No external art: quaternius.com / kenney.nl are blocked by this environment's network policy,

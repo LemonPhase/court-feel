@@ -710,6 +710,49 @@ phase('probes');
   check(!keys.inMenu.tab && !keys.inMenu.space, 'menus: Tab and Space keep their browser meaning', keys);
   check(keys.inGame.tab && keys.inGame.space, 'in play: Tab and Space are captured by the game', keys);
   await r.close();
+  // the menus: a first visit is offered the lesson; past it, Train lists the drills and Enter plays the one picked
+  r = await probe('menu', '');
+  try {
+    const m = {};
+    m.welcome = await r.p.locator('.welcome').isVisible();
+    await r.p.click('.welcome .ghost-btn');
+    m.view = await r.p.evaluate(() => document.querySelector('.menu').dataset.view);
+    await r.p.click('.row:has-text("Block Drill")');
+    await r.p.click('.pos-chip[aria-label="Middle Blocker"]');
+    m.keys = await r.p.locator('.view.on .keys.only-kb .key-cap').allTextContents();
+    await r.p.keyboard.press('Enter');
+    Object.assign(
+      m,
+      await r.p.evaluate(() => ({ mode: window.__court.modeId, pos: window.__court.position, inMenu: window.__court.inMenu })),
+    );
+    check(m.welcome && m.view === 'train', 'menu: a first visit is offered the lesson, and Skip lands on the drills', m);
+    check(
+      m.keys.includes('Right mouse') && !m.keys.includes('Left mouse'),
+      "menu: a drill lists its own keys (the Block Drill's, not the spike's)",
+      m,
+    );
+    check(m.mode === 'block' && m.pos === 'MB' && !m.inMenu, 'menu: Enter plays the drill and position picked', m);
+    // paused: the dialog names the drill and its keys; Settings opens over it and Esc closes only the sheet
+    const pz = await r.p.evaluate(() => {
+      window.__court.paused = true;
+      window.__menu.showPause(true);
+      const sub = document.querySelector('.pause-s').textContent;
+      const caps = [...document.querySelectorAll('.pause-side .keys.only-kb .key-cap')].map((e) => e.textContent);
+      window.__menu.openSettings();
+      const open = window.__menu.settingsVisible;
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+      return { sub, caps, open, closed: !window.__menu.settingsVisible, paused: window.__menu.pauseVisible };
+    });
+    check(
+      pz.sub.includes('Block Drill') && pz.sub.includes('Middle Blocker') && pz.caps.includes('Right mouse'),
+      'pause: names the drill, the position and its keys',
+      pz,
+    );
+    check(pz.open && pz.closed && pz.paused, 'pause: Esc closes the settings and leaves the pause menu', pz);
+  } catch (e) {
+    check(false, 'menu: the probe runs', { error: String(e).split('\n')[0] });
+  }
+  await r.close();
   // a crash in play: the crash screen keeps the keyboard and mouse (no pause menu or pointer lock behind it)
   r = await probe('crash screen', '?mode=spike&pos=OH');
   try {

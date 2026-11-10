@@ -124,7 +124,7 @@ each rule of the principle. Answer them in the pull request template.
 ## Docs that go with a change
 
 * **README:** update it when controls, modes, settings or `config.ts`
-  sections change. The start screen's key list (`src/ui/menu.ts`) and the
+  sections change. Each drill's key list in the menus (`src/ui/drillInfo.ts`) and the
   in-game hints say the same things, so keep them in step.
 * **PROGRESS.md:** log changes to the feel as a section: what was reported,
   the root cause, the fix and how you measured it. Add to **Decisions** when
