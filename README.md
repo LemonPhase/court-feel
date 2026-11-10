@@ -364,12 +364,13 @@ screen show them. Only your player uses them; AI players keep the defaults.
 
    **The defence reads the set.** Perimeter defence: as their set flies, the line
    digger goes to the line, the cross digger (the libero, at left back) cross court
-   outside your block, the back-row outside deep at the end line beside the block
-   (on its seam if it leaves one), and the front-row player who isn't blocking pulls
-   off the net for tips. Nobody chases a hit
+   outside your block, the back-row outside deep at the end line beside a closed
+   block (and up onto the seam when one opens), and the front-row player who isn't
+   blocking pulls off the net for tips. Nobody chases a hit
    before a reaction time after it, so a well-placed shot beats them. On an easy ball
    (their free ball, or your soft block that the passer gets to in time) the setter
-   runs to the net and the front row leaves it before the pass is even made.
+   runs to the net and the front row leaves it before the pass is even made; on their
+   hard attack the setter releases to the net as soon as it reads the dig isn't its own.
 
    **When the setter digs.** If your setter plays the first ball, he digs it high
    to the middle of the court, just behind the 3 m line, and goes back to defend.
