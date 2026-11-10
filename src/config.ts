@@ -506,6 +506,33 @@ export const CHARACTER = {
   rim: 0.55,
   /** how strongly the arena reflects in skin, cloth and shoes */
   envIntensity: 0.7,
+  /** finger curl at the knuckles (rad): loose hand, cupped for a set, flat on the ball, closed for a pass */
+  fingerCurl: { relaxed: 0.5, cupped: 0.28, firm: 0.04, fist: 1.15 },
+  /** a spiking palm meets the ball this far over the top of it (0 = square behind the line it leaves on) */
+  palmOverTop: 0.3,
+  /** a pass meets the forearms this far up from the wrists (fraction of the forearm); forearm thickness in body heights */
+  platformContact: 0.42,
+  forearmRadius: 0.018,
+  /** a setter's hands follow the ball this far (m) after the release, for this long (s) */
+  setFollow: { reach: 0.2, time: 0.2 },
+  /** blocking hands go to the ball once it is within `near` (m) of them, at most `pull` (m) from where the block was set */
+  blockReach: { near: 0.3, pull: 0.16 },
+  /**
+   * Arms and the net. Below the tape a wrist stays `wrist` (m) and the fingertips `fingers` (m) on the
+   * athlete's own side. From `above` (m) over the tape a hand may reach across, `reachPerHeight` metres
+   * for each metre of height. Nothing applies further than `pastPost` (m) outside the net's ends.
+   */
+  netClear: {
+    wrist: 0.09,
+    fingers: 0.035,
+    above: 0.04,
+    reachPerHeight: 1.6,
+    pastPost: 0.25,
+    /** the head keeps this far (m) from the net: a forward lean is cut short. Its height and its lever over the hips, in body heights. */
+    head: 0.17,
+    headHeight: 0.86,
+    headLever: 0.36,
+  },
 };
 
 export const FX = {

@@ -821,6 +821,7 @@ export class Game {
       a.ballPos = this.ball.active ? this.ball.rpos : null;
       if (this.ball.active) a.lookAt.copy(this.ball.rpos);
       v.setFirstPerson(a.isUser && this.rig.mode === 'fp' && !this.inMenu);
+      v.netTop = this.env.netTop;
       v.update(animDt, tr);
     }
     this.ball.updateVisuals(realDt, this.simTime, this.env);

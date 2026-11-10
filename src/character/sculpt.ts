@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { smoothstep } from '../core/mathx';
+import { clamp01, smoothstep } from '../core/mathx';
 import { FACE, faceUV, numberUV } from './kitTexture';
 import { MeshBuilder, radial, tube, type Ring, type Weights } from './meshBuilder';
 import type { BoneName, Kit, RigDims } from './rig';
@@ -256,6 +256,16 @@ export function sculptBody(d: RigDims, kit: Kit, idx: (n: BoneName) => number, w
       const cl = smoothstep(0.045, 0.095, x) * smoothstep(0.772, 0.815, y) * 0.7;
       const nk = smoothstep(0.852, 0.872, y) * 0.4 * (1 - smoothstep(0.03, 0.06, x));
       const ch = t2 * (1 - cl) * (1 - nk);
+      // the front of the hem rides up with the thighs, so a crouch lifts it instead of cutting through it
+      const lift = (1 - smoothstep(0.526, 0.57, y)) * smoothstep(0, -0.04, p.z / H) * 0.45;
+      if (lift > 0) {
+        const r = clamp01(0.5 + p.x / (0.05 * H));
+        return [
+          [Hi, 1 - lift],
+          [idx('thighR'), lift * r],
+          [idx('thighL'), lift * (1 - r)],
+        ];
+      }
       return [
         [Hi, 1 - t1],
         [Sp, t1 * (1 - t2)],
