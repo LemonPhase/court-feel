@@ -627,10 +627,16 @@ export const AI = {
    */
   setterRead: 0.2,
   /**
-   * How much the Mini Rally setter likes the pipe, against 1.2 for the outside, 1.0 for the opposite
-   * and 0.75 for the quick: about one in five balls in system, fewer off a bad pass.
+   * Who the Mini Rally setter sets (weights, the hitters who can take a set): the outside most,
+   * then the opposite, the middle's quick off a good pass (`quickWeight`), the pipe now and then,
+   * hardly ever off a bad pass. Elite men put about half their attacks through zone 4, a quarter
+   * through zone 2, an eighth through the middle and a tenth from the back row (2011 World League,
+   * Laporta et al. 2015, J Hum Kinet 47: zone 4 52%, zone 2 26%, zone 3 12%, back row 9%;
+   * NCAA DI men 2025-26: quicks 13%, the pipe 5%, the D ball 9%). Measured on the all-AI rally:
+   * outside 52%, opposite 25%, middle 15%, pipe 8% (213 attacks; in the pull request).
    */
-  pipe: { inSystem: 0.6, outOfSystem: 0.35 },
+  setWeight: { outside: 2.0, opposite: 1.0 },
+  pipe: { inSystem: 0.35, outOfSystem: 0.1 },
   /**
    * Mini Rally serves (`src/ai/server.ts`). `jump` of the serves are jump serves: the server starts
    * `jumpBack` m behind the end line, walks `jumpStep` m into the toss, tosses the ball `jumpTossHigh` m over their standing reach
@@ -686,8 +692,8 @@ export const AI = {
    * deep to zone 1 or 5 with weight `deep` (the cut and the down shot: 1 each).
    */
   quickShot: { cut: 3.5, down: 4.5, deep: 0.4 },
-  /** how much the setter likes the quick: off a pass within `perfectOff` m of the setter's spot `perfect`, else `good` (outside 1.2, opposite 1.0, pipe 0.6) */
-  quickWeight: { good: 0.75, perfect: 1.4, perfectOff: 0.8 },
+  /** how much the setter likes the quick: off a pass within `perfectOff` m of the setter's spot `perfect`, else `good` (against `setWeight`) */
+  quickWeight: { good: 0.5, perfect: 0.8, perfectOff: 0.8 },
   /**
    * Fast sets to the pins in system (a go, a fast back): on a good pass a pin hitter is
    * already running when the setter touches it (`share` of good passes), and the set meets the

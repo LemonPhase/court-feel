@@ -468,8 +468,8 @@ export class TeamAI {
     const outOfSystem =
       backup ||
       (read ? read.call !== 'in' : Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s) > AI.outOfSystem);
-    add('OH1', 'OH', 1.2);
-    add('OPP', 'OPP', 1.0);
+    add('OH1', 'OH', AI.setWeight.outside);
+    add('OPP', 'OPP', AI.setWeight.opposite);
     if (!backup) add('OH2', 'L', outOfSystem ? AI.pipe.outOfSystem : AI.pipe.inSystem);
     // the quick only goes off a good pass, and only if the middle is up with the setter's touch
     const mb = this.players.get('MB');

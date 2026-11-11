@@ -276,23 +276,34 @@ describe('the pipe (back-row attack, Mini Rally and the libero in the Spike Dril
     expect(takeoffZ).toBeGreaterThan(COURT.attackLine);
   });
 
-  it('in system about one ball in five goes to the pipe; out of system fewer', () => {
+  it('the outside gets about half the sets, the opposite a quarter, the middle and the pipe the rest (elite men: zone 4 52%, zone 2 26%, zone 3 12%, back row 9%)', () => {
     const share = (inSystem: boolean) => {
       const { g, team, pass, flight } = homeTeam('L');
+      team.userSetBias = 0;
       if (inSystem) pass(SETTER_TARGET.x, SETTER_TARGET.z);
       else pass(SETTER_SPOT.x + 0.4, SETTER_SPOT.z + 2.6);
       flight();
       const setter = team.players.get('S')!;
-      const pipe = team.players.get('OH2')!;
-      let n = 0;
-      for (let i = 0; i < 2000; i++) if (team.callSet(g as unknown as Game, setter).hitter === pipe) n++;
-      return n / 2000;
+      const n: Record<string, number> = {};
+      for (let i = 0; i < 2000; i++) {
+        const h = team.callSet(g as unknown as Game, setter).hitter!;
+        const slot = team.slotOf(h)!;
+        n[slot] = (n[slot] ?? 0) + 1 / 2000;
+      }
+      return n;
     };
     const inSys = share(true);
     const out = share(false);
-    expect(inSys).toBeGreaterThan(0.15);
-    expect(inSys).toBeLessThan(0.25);
-    expect(out).toBeLessThan(inSys);
+    // in system: the outside most, then the opposite; the pipe now and then
+    expect(inSys.OH1).toBeGreaterThan(0.4);
+    expect(inSys.OH1).toBeGreaterThan(inSys.OPP * 1.6);
+    expect(inSys.OPP).toBeGreaterThan(inSys.OH2 ?? 0);
+    expect(inSys.OH2 ?? 0).toBeGreaterThan(0.04);
+    expect(inSys.OH2 ?? 0).toBeLessThan(0.12);
+    // off a bad pass: a high ball to the outside most of all, the pipe hardly ever, no quick
+    expect(out.OH1).toBeGreaterThan(inSys.OH1);
+    expect(out.OH2 ?? 0).toBeLessThan(0.05);
+    expect(out.MB ?? 0).toBe(0);
   });
 
   it('out of system the back-row set stays behind the 3 m line', () => {
