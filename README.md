@@ -91,7 +91,7 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/mini-rally-split-step.jpg" alt="Mini Rally from behind the libero: the three back-row defenders just off the floor in a split step as the other team's hitter rises, two blockers up at the net">
+      <img src="docs/screenshots/mini-rally-split-step.jpg" alt="Mini Rally from behind the libero as the other team's hitter rises: the back-row outside beside them loaded for the split step, two blockers up at the net">
       <b>The split step.</b> As their hitter swings, the defence hops and lands on the contact. Team-mates give way to whoever plays the ball.
     </td>
     <td width="50%" valign="top">
@@ -101,11 +101,11 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/mini-rally-perimeter-defence.jpg" alt="Mini Rally from behind the libero at left back: the left front pulled off the net, two blockers up at the right of the net, the back-row outside deep in the middle, the setter on the right line">
+      <img src="docs/screenshots/mini-rally-perimeter-defence.jpg" alt="Mini Rally from behind the libero at left back as their outside swings: the left front pulled off the net, two blockers up at the right of the net, the back-row outside deep beside the libero">
       <b>The defence reads the set.</b> Perimeter defence as their outside swings: the line, the cross, deep at the end line, and the off-blocker off the net for tips.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/mini-rally-early-transition.jpg" alt="Mini Rally from behind the libero on their passing spot, the ball high off a soft block, the setter running for the net and the front row leaving it">
+      <img src="docs/screenshots/mini-rally-early-transition.jpg" alt="Mini Rally from behind the libero on their passing spot, the ball high off a soft block and the setter already on the way to the net">
       <b>Early transition.</b> A soft block the libero will pass easily: the setter is already running to the net and the hitters are off it before the pass.
     </td>
   </tr>
