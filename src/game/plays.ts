@@ -27,8 +27,10 @@ export interface AttackLane {
 export const LANES: Record<PositionId, AttackLane> = {
   // pin sets: met about half a metre inside the antenna, approach from outside the court
   OH: { x: -4.05, z: 0.9, apexAbove: 1.65, sx: -4.85, sz: 3.7, label: 'Outside high ball (4)' },
+  // the back set is a little higher than elite tempo, so it is reachable when you react to the set
   OPP: { x: 4.0, z: 0.9, apexAbove: 1.55, sx: 4.7, sz: 3.4, label: 'Opposite back set (red)' },
-  // first-tempo quick: in the air as the setter touches it (x is a default; see quickSpot)
+  // first-tempo quick, a true "1": in the air as the setter touches it, and the set adapts to the
+  // hitter (see QUICK). A quick timed off the set is unhittable at real tempo. (x is a default; see quickSpot)
   MB: { x: 0.2, z: 0.75, apexAbove: 0.5, sx: 0.35, sz: 2.8, label: 'Middle quick (1)', quick: true },
   S: { x: 1.05, z: 0.55, apexAbove: 0.75, sx: 1.2, sz: 1.3, label: 'Setter attack on two' },
   L: { x: -0.4, z: 3.75, apexAbove: 1.45, sx: -0.4, sz: 6.4, label: 'Back-row pipe' },
@@ -58,7 +60,10 @@ export function laneFor(pos: PositionId, side: 1 | -1): AttackLane {
   return { ...l, x: l.x * side, z: l.z * side, sx: l.sx * side, sz: l.sz * side };
 }
 
-/** first-tempo set timing (seconds of ball flight from the setter's hands) */
+/**
+ * first-tempo set timing (seconds of ball flight from the setter's hands). The set goes to
+ * where the hitter's hand will be at the top of the jump, in a fixed flight time.
+ */
 export const QUICK = {
   /** shortest / longest flight the setter will send to meet a jumping hitter */
   minT: 0.24,

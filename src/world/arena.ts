@@ -465,6 +465,8 @@ export class Arena {
   private buildLights(): void {
     const hemi = new THREE.HemisphereLight(0xdfe6ff, 0x9a7650, 0.42);
     this.group.add(hemi);
+    // key light nearly overhead: the arena look, a readable shadow under each player and no
+    // hotspot on the floor
     const key = new THREE.DirectionalLight(0xfff4e6, 2.1);
     key.position.set(1.5, 24, 3.5);
     key.target.position.set(0, 0, 0);

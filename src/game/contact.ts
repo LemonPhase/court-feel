@@ -430,7 +430,8 @@ export class ContactSystem {
       act.minD = 1e9;
       return false;
     }
-    // resolve at the closest approach (or when it is basically centred)
+    // resolve at the closest approach (or when it is basically centred), not on first entry
+    // into the reach sphere: the touch happens where the ball is nearest the platform or hands
     if (d < act.minD - 1e-4 && d > 0.08) {
       act.minD = d;
       return false;
@@ -738,7 +739,8 @@ function downgrade(g: Grade, early: boolean): Grade {
 
 /** pitch range (radians) that maps onto shallow..deep, per camera */
 export function aimPitchRange(fp: boolean): [number, number] {
-  // FP: looking at the ball (~+0.5 rad) is a mid-court shot, higher = deeper, lower = sharper.
+  // FP: looking at the ball (~+0.5 rad) is a mid-court shot, higher = deeper, lower = sharper,
+  // so the natural first-person look keeps the contact (the arm, the sparks) in view.
   // TP looks down at the court from behind.
   return fp ? [-0.25, 1.15] : [-0.75, 0.05];
 }
@@ -747,6 +749,8 @@ export const AIM_DEPTH: [number, number] = [1.0, 9.6];
 /**
  * Map the camera look onto a floor target: yaw gives the direction, pitch
  * gives how deep into the opponent's court (works from the net or the end line).
+ * Depth is measured into their court, not from the hitter, so spikes and serves
+ * share one mapping and the reticle is always on their side.
  */
 export function aimTargetFromLook(
   fromX: number,

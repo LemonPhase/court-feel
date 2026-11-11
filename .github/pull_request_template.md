@@ -4,11 +4,11 @@
 
 ## Why
 
-<!-- Link the feel report, bug or idea (for example "Closes #12"). -->
+<!-- Link the feel report, bug or idea (for example "Closes #12"). For a change to the feel, say what was reported, the cause, the fix and how you measured it. -->
 
 ## The court test
 
-<!-- See CONTRIBUTING.md#the-court-test. Leave out anything that doesn't apply. -->
+<!-- One question for each rule of the principle (README.md#the-principle). Leave out anything that doesn't apply. -->
 
 - **Real sport:** what does a real court do, and where do the numbers come from (rules, measurement, video, coach, your own play)? Did you bend anything to make it playable, and why?
 - **Skill:** is the player still graded on the volleyball skill, with every input going through `Input`?
@@ -18,10 +18,10 @@
 
 ## Checklist
 
-- [ ] `npm run typecheck`, `npm test` and `npm run build` pass
+- [ ] `npm run check` and `npm run build` pass
 - [ ] Unit test for any physics, timing, contact or AI change
 - [ ] New tunables are in `src/config.ts`
 - [ ] README (and the start screen and in-game hints) updated if controls, modes, settings or config sections changed
-- [ ] PROGRESS.md entry for changes to the feel: what was reported, the cause, the fix, how it was measured
+- [ ] The reason for a call someone would argue about again is in a doc comment next to the code, or in `docs/adr/` if it has no place there
 - [ ] Screenshots or a clip for anything visible, and `docs/screenshots/` retaken if one of those moments changed
 - [ ] CREDITS.md updated if an asset or library was added

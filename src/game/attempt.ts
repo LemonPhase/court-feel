@@ -11,7 +11,10 @@ import type { V3 } from '../physics/ball';
  */
 export type AttemptKind = TouchKind | 'whiff' | 'untouched';
 
-/** the player's last go at the ball: what R (REPLAY on touch) shows once the ball is dead */
+/**
+ * the player's last go at the ball: what R (REPLAY on touch) shows once the ball is dead. It
+ * is the last attempt, not the last highlight (#31): the rep you missed is the one you want to see.
+ */
 export interface Attempt {
   /** the moment the clip is built around: the contact, the swing, the ball's closest pass, or the ball landing */
   t: number;

@@ -198,7 +198,8 @@ export class CameraRig {
       this.pivot.y = lerp(this.pivot.y, pivotTarget.y, damp(CAMERA.tpFollowStiffness * 0.6, dt));
     }
 
-    // frame the ball: dolly back when the ball is high above / far off-axis
+    // frame the ball: dolly back when the ball is high above / far off-axis. Framing only moves
+    // the camera in and out, it never rotates it, so the aim never moves without the mouse.
     let want: number = CAMERA.tpDistance;
     if (this.ballPos) {
       _v2.copy(this.ballPos).sub(this.pivot);

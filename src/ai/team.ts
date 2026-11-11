@@ -563,8 +563,9 @@ export class TeamAI {
       } else if (ourBall) {
         form = 'offense';
         if (this.touches === 1) {
-          // second ball: the setter, or the libero as backup if the setter played the first. A setter
-          // who played the first ball stays out of the second and goes back to defend
+          // second ball: the setter, or the libero as backup if the setter played the first (the
+          // libero, not whoever is closest). A setter who played the first ball stays out of the
+          // second and goes back to defend
           const S = this.players.get('S');
           const setter = S && lt?.athlete === S ? this.players.get('L') : S;
           if (setter !== S) setJob(S, 'base', this.formSpot('defense', 'S'));

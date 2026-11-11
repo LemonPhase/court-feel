@@ -780,7 +780,10 @@ export class Effects {
     this.trail.fade();
   }
 
-  /** once per highlight, when the ball goes dead: tell the user it can be watched again (a miss gets the hint only) */
+  /**
+   * once per highlight, when the ball goes dead: tell the user it can be watched again. A miss
+   * gets the hint line only: a toast naming the miss would nag.
+   */
   cueReplay(): void {
     const h = this.lastAttempt;
     if (!h || h.cued || !h.highlight || !this.replayAvailable()) return;

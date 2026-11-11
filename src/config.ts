@@ -39,7 +39,7 @@ export const BALL = {
   mass: 0.27,
   gravity: 9.81,
   airDensity: 1.2,
-  /** drag coefficient. Real volleyballs sit ~0.2-0.3 at spike Reynolds numbers */
+  /** drag coefficient. Real volleyballs sit ~0.2-0.3 at spike Reynolds numbers: they are past the drag crisis, so not the 0.47 of a smooth sphere */
   dragCoefficient: 0.26,
   /** multiplier on the physically derived Magnus force (1 = Cl ~ r*w/v) */
   magnusScale: 1.0,
@@ -200,7 +200,11 @@ export const PLAYER = {
   apexBand: 1.1,
   landRecover: 0.2,
   bodyTurnRate: 14,
-  /** airborne: max body rotation from the takeoff yaw, and its rate */
+  /**
+   * airborne: max body rotation from the takeoff yaw, and its rate. In the air the arm aims,
+   * not the hips: with a free turn, aiming cross-court swung the contact point away from the
+   * ball and the timing felt random.
+   */
   airTurnMax: 0.35,
   airTurnRate: 4,
 };
@@ -217,13 +221,20 @@ export const TIMING = {
   /** spike grade windows on the release error: early side ... */
   spikePerfect: 0.03,
   spikeGood: 0.07,
-  /** ... and a more forgiving late side (releasing as the ball arrives is the natural instinct) */
+  /**
+   * ... and a more forgiving late side: releasing as the ball arrives is the natural instinct,
+   * and a browser's input and display latency lands on that side too
+   */
   spikePerfectLate: 0.07,
   spikeGoodLate: 0.11,
   spikeOk: 0.15,
   /** attack button held shorter than this => tip/roll instead of a swing */
   tapThreshold: 0.09,
-  /** wind-up hold (s) that reaches full swing power */
+  /**
+   * wind-up hold (s) that reaches full swing power: short enough that a full-power swing fits
+   * in any jump. Power comes from the hold and timing from the release. Holding longer is never
+   * penalised directly: the risk is holding until the ball is out of reach, or landing first.
+   */
   chargeFull: 0.32,
   /** lookahead for the ideal contact search */
   contactLookahead: 0.55,
@@ -466,7 +477,9 @@ export const AI = {
   setterAccuracy: 0.15,
   /**
    * Mini Rally: the setter reads the pass this long (s) after it is played and calls it
-   * ("HIGH!" when it is out of system). The call is the decision: the set follows it.
+   * ("HIGH!" when it is out of system). The call is the decision: the set follows it, and is
+   * never swapped silently at the touch. A hitter can only adjust a fast approach if they
+   * know about a second ahead.
    */
   setterRead: 0.2,
   /** a pass the setter takes further than this (m) from their spot is out of system: high balls only, no quick */

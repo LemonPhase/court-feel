@@ -50,10 +50,9 @@ working on it until it's fun and right. In practice:
    there are no full-screen flashes.
 5. **Players are the judge.** Changes to the feel get played before they
    ship. "That's not how it feels on a real court" is a valid bug report.
-   The playtest rounds are logged in [PROGRESS.md](PROGRESS.md).
 
-[CONTRIBUTING.md](CONTRIBUTING.md) turns these into the checks every change
-goes through.
+Every pull request answers one question for each of these rules, and
+[AGENTS.md](AGENTS.md) is the working guide for anyone changing the code.
 
 ## Screenshots
 
@@ -527,9 +526,9 @@ play it and tell us where it doesn't feel like the court.
   what you did, what the game did, and what happens on a real court.
 * **Something broke?** [Report a bug](https://github.com/LemonPhase/court-feel/issues/new?template=bug-report.yml).
 * **Have an idea?** [Suggest it](https://github.com/LemonPhase/court-feel/issues/new?template=idea.yml).
-* **Want to write code?** Read [CONTRIBUTING.md](CONTRIBUTING.md): setup, the
-  court test every change goes through, conventions and how pull requests
-  are reviewed.
+* **Want to write code?** Read [AGENTS.md](AGENTS.md): the commands, the
+  rules every change follows and how pull requests are named and merged. It
+  is written for coding agents and reads the same for people.
 
 Everyone taking part, on GitHub or at the club, follows the
 [Code of Conduct](CODE_OF_CONDUCT.md).
