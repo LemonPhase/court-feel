@@ -233,7 +233,7 @@ describe('early transition (Mini Rally)', () => {
     for (const slot of ['OH1', 'MB', 'OPP'] as const) expect(t.brain(slot).job, slot).toBe('attack');
   });
 
-  it('on a soft block the passer can get to easily, the setter releases; on a hard hit the setter releases but the front row stays', () => {
+  it('on a soft block the passer can get to easily, the setter releases; on a hard hit the setter releases and the front row leaves the net once it reads the hit', () => {
     const t = homeTeam();
     const mb = t.team.players.get('MB')!;
     // a soft block pops the ball up and back into our court
@@ -246,11 +246,105 @@ describe('early transition (Mini Rally)', () => {
     h.run(1.1);
     const lane = laneFor('OH', -1);
     h.spike({ x: lane.x, y: 3.25, z: lane.z }, { x: -1.5, y: 0.1, z: 5.5 }, 22);
-    h.run(0.1 + AI.transition.read);
+    h.run(D.hitReact - 3 * D.hitReactSd - 0.02);
+    // nobody can leave before they have seen the hit
+    for (const slot of ['OH1', 'MB', 'OPP'] as const) expect(h.brain(slot).job, slot).not.toBe('attack');
+    h.run(6 * D.hitReactSd + 0.1);
     // the setter releases even on a hard hit (it reads the dig isn't its own)
     expect(h.brain('S').spot).toEqual(h.team.formSpot('offense', 'S'));
-    // but the front row stays at the net: only free balls and soft blocks send it off to approach
-    for (const slot of ['OH1', 'MB', 'OPP'] as const) expect(h.brain(slot).job, slot).not.toBe('attack');
+    // and the front row transitions off the net to approach (a blocker still in the air: as it lands)
+    for (const slot of ['OH1', 'MB', 'OPP'] as const) {
+      if (h.team.players.get(slot)!.airborne) continue;
+      expect(h.brain(slot).job, slot).toBe('attack');
+      expect(h.brain(slot).spot, slot).toEqual(h.team.formSpot('offense', slot));
+    }
+  });
+});
+
+describe('the front row transitions after every block (Mini Rally)', () => {
+  it('blockers back on the floor after their hit got by leave the net for their approach starts', () => {
+    const t = homeTeam();
+    const front = ['OH1', 'MB', 'OPP'] as const;
+    for (const slot of front) t.team.players.get(slot)!.place(t.team.formSpot('defense', slot).x, 0.7, 0);
+    // their hit off our block's hands, dropping deep into our court
+    const mb = t.team.players.get('MB')!;
+    t.touch('block', 1, { x: 0.3, y: 3.0, z: 0.3 }, { x: 1.5, y: 0.1, z: 7.5 }, 3.4, mb);
+    t.run(1.2);
+    for (const slot of front) {
+      const a = t.team.players.get(slot)!;
+      if (a === t.team.receiver) continue;
+      expect(t.brain(slot).job, slot).toBe('attack');
+      // off the net, on the way to (or at) the approach start
+      expect(Math.abs(a.pos.z), slot).toBeGreaterThan(1.8);
+    }
+  });
+
+  it('a ball our block sends back over: the blockers stay at the net to block again', () => {
+    const t = homeTeam();
+    const front = ['OH1', 'MB', 'OPP'] as const;
+    for (const slot of front) t.team.players.get(slot)!.place(t.team.formSpot('defense', slot).x, 0.7, 0);
+    const mb = t.team.players.get('MB')!;
+    t.touch('block', 1, { x: 0.3, y: 3.0, z: 0.1 }, { x: 0.5, y: 0.1, z: -4.0 }, 3.3, mb);
+    t.run(0.8);
+    for (const slot of front) {
+      expect(t.brain(slot).job, slot).not.toBe('attack');
+      expect(Math.abs(t.team.players.get(slot)!.pos.z), slot).toBeLessThan(1.2);
+    }
+  });
+
+  it('a middle still at the net when the dig goes up backs off it before running the quick: no standing quick', () => {
+    const t = homeTeam();
+    const mb = t.team.players.get('MB')!;
+    const L = t.team.players.get('L')!;
+    mb.place(0, 0.7, 0);
+    // our libero digs it high to the setter's spot: about 1.3 s in the air
+    const at = { x: SETTER_SPOT.x, y: 2.4, z: SETTER_SPOT.z };
+    t.touch('dig', 1, { x: L.pos.x, y: 0.7, z: L.pos.z }, at, 5.2, L);
+    const hb = t.brain('MB').hitter!;
+    let maxOff = 0;
+    let started = -1;
+    t.run(1.6, () => {
+      if (hb.phase === 'ready') maxOff = Math.max(maxOff, Math.abs(mb.pos.z));
+      if (started < 0 && hb.phase === 'approach' && mb.speed > 0.5) started = Math.abs(mb.pos.z);
+      // (the harness has no contacts: stop before the jump)
+      if (hb.phase === 'air') hb.enabled = false;
+    });
+    expect(maxOff).toBeGreaterThanOrEqual(AI.transition.approachOff);
+    expect(started).toBeGreaterThan(AI.transition.approachOff - 0.3);
+  });
+});
+
+describe('covering our hitter (Mini Rally)', () => {
+  it('as our set flies to the outside, three team-mates close in behind them and two fill in deeper', () => {
+    const t = homeTeam();
+    t.team.place('offense');
+    // (the harness has no contacts: the hitters don't run their approaches here)
+    for (const b of t.team.brains.values()) if (b.hitter) b.hitter.enabled = false;
+    const S = t.team.players.get('S')!;
+    const OH = t.team.players.get('OH1')!;
+    const lane = laneFor('OH', 1);
+    // pass, then the setter's high ball to the outside
+    t.touch('pass', 1, { x: 0, y: 1, z: 6 }, { x: SETTER_SPOT.x, y: 2.4, z: SETTER_SPOT.z }, 4.5, t.team.players.get('L')!);
+    t.run(0.05);
+    t.touch('set', 1, { x: S.pos.x, y: 2.5, z: S.pos.z }, { x: lane.x, y: 3.25, z: lane.z }, 3.25 + lane.apexAbove, S);
+    t.team.onSet(OH);
+    t.run(0.1);
+    // nobody covers before they have seen the set go
+    expect([...t.team.brains.values()].filter((b) => b.job === 'cover')).toHaveLength(0);
+    t.run(0.6);
+    const covers = [...t.team.brains.values()].filter((b) => b.job === 'cover');
+    expect(covers).toHaveLength(5);
+    expect(covers.map((b) => b.athlete)).not.toContain(OH);
+    const d = covers.map((b) => Math.hypot(b.spot.x - lane.x, b.spot.z - lane.z)).sort((p, q) => p - q);
+    // three spots within about 2 m of where the hitter meets it, the other two further back
+    expect(d[2]).toBeLessThan(AI.cover.near + 0.6);
+    expect(d[3]).toBeGreaterThan(AI.cover.near + 0.6);
+    // all of them behind the hitter (further from the net), and everyone on the way there
+    for (const b of covers) {
+      expect(b.spot.z).toBeGreaterThan(1.0);
+      const a = b.athlete;
+      expect(Math.hypot(a.pos.x - b.spot.x, a.pos.z - b.spot.z) < 0.4 || a.speed > 1, t.team.slotOf(a)).toBe(true);
+    }
   });
 });
 

@@ -597,10 +597,26 @@ export const AI = {
    *
    * On their hard attack (a spike or tip) the back-row setter also releases to the net on its own,
    * as soon as it has read the hit (`AI.defence.hitReact`) and our dig is assigned to someone else
-   * (the front row stays: leaving the net before a hard dig is a separate item). "The setter releases from their defensive
-   * position immediately to run the offense" (FreeCoachingDrills, transition attack tempo drill).
+   * "The setter releases from their defensive position immediately to run the offense"
+   * (FreeCoachingDrills, transition attack tempo drill).
+   *
+   * The front row transitions after every block: once a blocker is back on the floor and has read
+   * the hit (`AI.defence.hitReact`), a ball that stays on our side (by the block, off it, a tip)
+   * sends every front-row player who isn't playing it off the net to their approach start; one
+   * our block sends back over keeps them at the net to block again. A hitter starts a quick or a
+   * fast set only from at least `approachOff` m off the net: a middle who blocked gets off the net
+   * first and comes in with a real approach, never a standing quick ("land, turn and get off the
+   * net": USA Volleyball, blocking transition footwork).
    */
-  transition: { read: 0.3, softSpeed: 10, spare: 0.3 },
+  transition: { read: 0.3, softSpeed: 10, spare: 0.3, approachOff: 2.0 },
+  /**
+   * Covering our hitter: `read` s after our setter sets, everyone not attacking or playing the ball
+   * makes a cup around where the hitter meets it, three close in (`near` m: the setter, the
+   * nearest hitter, a back-row player) and two deeper (`far` m), low and facing the net, so a ball
+   * blocked straight down is dug back up (the 3-2 coverage; CoachingVB, hitter coverage strategy).
+   * They hold it until the attack is over the net, then go back to base defence.
+   */
+  cover: { read: 0.2, near: 1.5, far: 3.5 },
   /**
    * An AI hitter's swing timing is off by this much (s, 1 sd) plus 0.06 x (1 - skill): Early sails
    * long, Late goes into the net, Good scatters the shot. Men's pros still miss: about 62% kills at

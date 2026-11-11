@@ -735,6 +735,10 @@ export class TeamAI {
         receive(false, lt?.athlete ?? null, true);
         // a soft block: if it comes down slowly to a passer who will get there, run the offence early
         if (lt && comingToUs && tDown > 0 && ball.speed() < AI.transition.softSpeed) this.earlyTransition(lt, tDown, p, setJob);
+      } else if (ourBall && (lt.kind === 'spike' || lt.kind === 'tip')) {
+        // our attack: the cover holds until it is over the net, then everyone goes back to base defence
+        form = 'defense';
+        if (onOurSide && this.coverFor) for (const c of this.coverSpots) if (c.a !== lt.athlete) setJob(c.a, 'cover', c.spot);
       } else if (ourBall) {
         form = 'offense';
         for (const b of this.brains.values()) b.readSpot = null;
@@ -792,6 +796,22 @@ export class TeamAI {
             const r = this.freeAthlete;
             if (r && lt?.athlete !== r) setJob(r, 'free');
           }
+          // our set to a hitter: the others cover them
+          if (lt?.kind === 'set' && this.setFor && !stranded) this.cover(lt, this.setFor, jobs, setJob);
+        }
+      }
+      // the front row transitions after every block: a ball that stays on our side (their attack by
+      // or off the block, a tip) sends each front-row player who is back on the floor and has read
+      // the hit off the net to their approach start (the one playing it plays it); a ball our block
+      // sends back over keeps them at the net to block again
+      const theirHit = lt && lt.side !== this.side && (lt.kind === 'spike' || lt.kind === 'tip' || lt.kind === 'block');
+      if (lt && (theirHit || ourBlock) && (comingToUs || onOurSide)) {
+        for (const slot of ['OH1', 'MB', 'OPP'] as const) {
+          const a = this.players.get(slot);
+          const b = a ? this.brains.get(a) : null;
+          if (!a || !b || a.isUser || jobs.has(a) || a.airborne) continue;
+          b.hitRead.look(lt, lt.t, g.rng);
+          if (b.hitRead.seen(now)) setJob(a, 'attack', this.formSpot('offense', slot));
         }
       }
     }
@@ -876,9 +896,9 @@ export class TeamAI {
    * On their hard attack (a spike or tip) the back-row setter releases to the net as soon as it can
    * see the ball isn't its own to dig: once its read of the hit is in (`AI.defence.hitReact` ±
    * `hitReactSd` after the contact, the same reaction every defender has to a hit) and our receiver
-   * is someone else. The front row stays put (leaving the net before a hard dig is a separate item,
-   * and its early transition stays limited to free balls and soft blocks). A front-row setter is
-   * blocking, not releasing (the Mini Rally has no rotation, so the setter is never front row).
+   * is someone else. (The front row leaves the net on the same read, once it is back on the floor:
+   * see the transition in `step`.) A front-row setter is blocking, not releasing (the Mini Rally has
+   * no rotation, so the setter is never front row).
    */
   private setterRelease(t: Touch, setJob: (a: Athlete | undefined, job: Job, spot?: Spot) => void): void {
     const S = this.players.get('S');
@@ -920,6 +940,64 @@ export class TeamAI {
     setJob(mb, 'base', b.readSpot);
   }
   private readonly seamRead = new BallRead({ react: AI.defence.react, reactSd: AI.defence.reactSd, err: 0 });
+
+  /**
+   * Covering our hitter (`AI.cover`): a moment after our set, a cup around where the hitter will
+   * meet it, three close and two deeper, each spot taken by the nearest player who is free (not
+   * the hitter, not the user, not playing the ball). Worked out once per set, held while it flies.
+   */
+  private cover(
+    set: Touch,
+    h: Athlete,
+    jobs: Map<Athlete, unknown>,
+    setJob: (a: Athlete | undefined, job: Job, spot?: Spot) => void,
+  ): void {
+    const g = this.g;
+    const now = g.simTime;
+    if (now - set.t < AI.cover.read) return;
+    if (this.coverFor !== set) {
+      this.coverFor = set;
+      this.coverSpots = [];
+      const pred = g.ball.ensurePrediction(g.env, now);
+      let tc = pred.descendThrough(attackHeight(h), now);
+      if (tc < 0) tc = pred.apex().t;
+      pred.posAt(tc, this.cp);
+      const s = this.side;
+      const hx = this.cp.x * s;
+      const hz = Math.max(0.5, this.cp.z * s);
+      const W = COURT.halfWidth - 0.3;
+      const { near, far } = AI.cover;
+      // straight behind the hitter, then either side of it close in, then the two deep gaps
+      const cup: [number, number][] = [
+        [near, 0],
+        [near, -0.95],
+        [near, 0.95],
+        [far, -0.45],
+        [far, 0.45],
+      ];
+      const free = [...this.players.values()].filter((a) => a !== h && !a.isUser && !jobs.has(a));
+      for (const [r, th] of cup) {
+        const x = clamp(hx + r * Math.sin(th), -W, W) * s;
+        const z = clamp(hz + r * Math.cos(th), 1.0, COURT.halfLength - 0.5) * s;
+        let best = -1;
+        let bestD = Infinity;
+        free.forEach((a, i) => {
+          const d = Math.hypot(a.pos.x - x, a.pos.z - z);
+          if (d < bestD) {
+            bestD = d;
+            best = i;
+          }
+        });
+        if (best < 0) break;
+        this.coverSpots.push({ a: free[best], spot: { x, z } });
+        free.splice(best, 1);
+      }
+    }
+    for (const c of this.coverSpots) if (!jobs.has(c.a)) setJob(c.a, 'cover', c.spot);
+  }
+  private coverFor: unknown = null;
+  private coverSpots: { a: Athlete; spot: Spot }[] = [];
+  private cp: V3 = { x: 0, y: 0, z: 0 };
 
   /** the defenders (not the front row, it blocks) split-step to land as their hitter meets this set */
   private splitStep(set: Touch): void {

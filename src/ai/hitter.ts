@@ -84,7 +84,9 @@ export class HitterBrain implements Brain {
         const spot = this.holdSpot ?? { x: this.lane.sx, z: this.lane.sz };
         moveTo(a, spot.x, spot.z, { face, arrive: 0.5 });
         const lt = g.ball.lastTouch;
-        if (this.passToSetter && g.ball.active && a.state === 'ground' && lt !== this.quickFor && lt?.athlete !== a) {
+        // (a quick or a fast set starts from off the net: one still at the net after a block keeps backing off)
+        const offNet = Math.abs(a.pos.z) >= AI.transition.approachOff;
+        if (this.passToSetter && offNet && g.ball.active && a.state === 'ground' && lt !== this.quickFor && lt?.athlete !== a) {
           const ps = this.passToSetter(g);
           if (ps && ps.t - now > 0.3) {
             this.quickFor = lt;
