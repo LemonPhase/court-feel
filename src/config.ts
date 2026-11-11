@@ -633,6 +633,15 @@ export const AI = {
   /**
    * Covering our hitter, `read` s after our setter sets, low and facing the net, so a ball blocked
    * straight down is dug back up. The spots are the real ones (3-2 coverage: CoachingVB, hitter
+  /**
+   * Who takes a ball (serve receive, a dig, a free ball): the team-mate who gets there first. The
+   * first `shuffle` m are shuffled, the rest run, so further away is never quicker. A ball in the
+   * seam (one that two get to within `seam` s of each other, about 0.7 m of running) is the
+   * libero's or the user's: one preference, never both added up, so the user is never sent to a
+   * ball a team-mate is standing next to. The setter is sent only when nobody else gets there
+   * within `setter` s of it: a ball at its feet it digs, and someone else sets.
+   */
+  pick: { seam: 0.15, setter: 0.2, shuffle: 1.5 },
    * coverage strategy; US Sports Camps, how to cover your hitter). On an attack from a pin the
    * three close are the middle at the net (`net` m off it, `inside` m inside the hitter), the
    * setter on the 3 m line (`line` m) between them, and the back-row player on that side `behind`

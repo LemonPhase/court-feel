@@ -196,9 +196,9 @@ describe('going for every ball (Mini Rally)', () => {
     setOutside(t);
     t.run(1.1);
     const lane = laneFor('OH', -1);
-    // a roll shot over the block, dropping short into the open court 3 m from the cross digger, 1 s after the hit
+    // a roll shot over the block, dropping short into the open court 3.3 m from the cross digger, 1 s after the hit
     const L = t.team.players.get('L')!;
-    const to = { x: L.pos.x + 3 * Math.sin(1.2), y: 0.1, z: L.pos.z - 3 * Math.cos(1.2) };
+    const to = { x: L.pos.x + 3.3 * Math.sin(1.2), y: 0.1, z: L.pos.z - 3.3 * Math.cos(1.2) };
     t.touch('spike', -1, { x: lane.x, y: 3.25, z: lane.z }, to, 3.4);
     let dived: Athlete | null = null;
     let sentWhenDived: Athlete | null = null;
@@ -218,6 +218,35 @@ describe('going for every ball (Mini Rally)', () => {
     expect(dived).not.toBeNull();
     expect(dived).toBe(sentWhenDived);
     expect(two).toBeGreaterThan(0);
+  });
+});
+
+describe('who takes the ball (Mini Rally)', () => {
+  /** our receive formation (or defence), `user` marked as the user, and their serve (or roll shot) down at `to` */
+  const ballAt = (to: { x: number; z: number }, user: Slot | null, serve = true) => {
+    const t = homeTeam();
+    t.team.place(serve ? 'receive' : 'defense');
+    if (user) t.team.players.get(user)!.isUser = true;
+    if (serve) t.touch('serve', -1, { x: 0, y: 2.8, z: -10 }, { x: to.x, y: 0.75, z: to.z }, 4.0);
+    else t.touch('spike', -1, { x: -4.0, y: 3.25, z: -0.9 }, { x: to.x, y: 0.75, z: to.z }, 3.6);
+    t.run(0.05);
+    return t;
+  };
+
+  it('a serve that drops next to the middle passer is theirs, even when you are the libero beside them', () => {
+    // 0.6 m from the back-row outside, 1.9 m from the libero
+    const t = ballAt({ x: 0.6, z: 6.4 }, 'L');
+    expect(t.team.receiver).toBe(t.team.players.get('OH2'));
+  });
+
+  it("a serve in the seam between two passers is the libero's", () => {
+    const t = ballAt({ x: 1.25, z: 6.35 }, null);
+    expect(t.team.receiver).toBe(t.team.players.get('L'));
+  });
+
+  it("a roll shot dropping a metre from the deep defender is theirs, not the libero's 2.6 m away, even when you are the libero", () => {
+    const t = ballAt({ x: -0.9, z: 8.3 }, 'L', false);
+    expect(t.team.receiver).toBe(t.team.players.get('OH2'));
   });
 });
 

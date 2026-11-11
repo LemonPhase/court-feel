@@ -624,9 +624,9 @@ export class TeamAI {
   /** how long until `a` can have a platform under a ball dropping at p (feet, landing and a run) */
   reachTime(a: Athlete, p: V3): number {
     const d = Math.hypot(a.pos.x - p.x, a.pos.z - (p.z - this.side * 0.4));
-    // a long way is run, not shuffled
-    const v = d > 1.5 ? a.stats.approachSpeed * 0.8 : a.stats.shuffleSpeed * 0.9;
-    let t = d / v + AI.reactionTime;
+    // the first steps are shuffled, the rest of a long way is run (never quicker from further away)
+    const sh = AI.pick.shuffle;
+    let t = Math.min(d, sh) / (a.stats.shuffleSpeed * 0.9) + Math.max(0, d - sh) / (a.stats.approachSpeed * 0.8) + AI.reactionTime;
     // a blocker still up at the net has to come down first
     if (a.state === 'air') {
       const vy = a.vel.y;
@@ -639,8 +639,9 @@ export class TeamAI {
 
   /**
    * A team-mate (or the user) best placed to take a ball dropping at p: the one who
-   * gets there first, preferring anyone who can actually make it. Someone is always
-   * sent (a desperate dig beats watching it drop) unless `exclude` was the only option.
+   * gets there first (`AI.pick`: a seam ball goes to the libero or the user, the setter
+   * only when nobody else is close). Someone is always sent (a desperate dig beats
+   * watching it drop) unless `exclude` was the only option.
    */
   private pickReceiver(p: V3, serve: boolean, exclude: Athlete | null = null, exclude2: Athlete | null = null): Athlete | null {
     let best: Athlete | null = null;
@@ -649,9 +650,9 @@ export class TeamAI {
       if (a === exclude || a === exclude2) continue;
       if (serve && (slot === 'S' || slot === 'MB' || slot === 'OPP')) continue;
       let t = this.reachTime(a, p);
-      if (slot === 'S') t += 0.4; // the setter digs only if nobody else can
-      if (slot === 'L') t -= 0.15;
-      if (a.isUser) t -= 0.25; // the user's own zone: give it to them
+      if (slot === 'S') t += AI.pick.setter; // the setter digs only if nobody else is close
+      // the seam: the libero's, or the user's (one preference, not both added up)
+      if (slot === 'L' || a.isUser) t -= AI.pick.seam;
       if (t < bestT) {
         bestT = t;
         best = a;
