@@ -620,7 +620,21 @@ export const CHARACTER = {
    * `give` (m) and comes back within `giveTime` (s). The arms hold for `hold` (s), then let go over
    * `release` (s). A free ball arrives at 5 to 8 m/s, a serve at 17 to 25.
    */
-  pass: { firmFrom: 6, firmTo: 14, lift: 0.09, liftTime: 0.2, give: 0.035, giveTime: 0.12, hold: 0.22, release: 0.2 },
+  pass: {
+    firmFrom: 6,
+    firmTo: 14,
+    lift: 0.09,
+    liftTime: 0.2,
+    give: 0.035,
+    giveTime: 0.12,
+    hold: 0.22,
+    release: 0.2,
+    /** the passing stance: how far the hips drop (body heights) and the trunk leans (rad, negative is forward) */
+    crouch: 0.2,
+    lean: -0.34,
+    /** each wrist's distance from the platform's centre line (body heights): together, not touching through each other */
+    wristApart: 0.013,
+  },
   /**
    * blocking hands go to a ball hit at them (faster than `minSpeed`, m/s) once it will pass within `near` (m)
    * of them, at most `pull` (m) from where the block was set

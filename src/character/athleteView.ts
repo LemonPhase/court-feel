@@ -326,10 +326,10 @@ export class AthleteView {
     let chestZ = 0;
     let bodyRate = 10;
 
-    const gTarget = st === 'ground' || st === 'land' ? smoothstep(0.35, 1.3, speed) : 0;
-    this.gaitW = lerp(this.gaitW, gTarget, damp(10, dt));
-    const g = this.gaitW;
     const sprint = a.sprint;
+    const gTarget = st === 'ground' || st === 'land' ? smoothstep(0.35, 1.3, speed) : 0;
+    this.gaitW = lerp(this.gaitW, gTarget, damp(sprint > 0.5 ? 20 : 10, dt));
+    const g = this.gaitW;
 
     // locomotion
     if (st === 'ground' || st === 'land') {
@@ -354,6 +354,8 @@ export class AthleteView {
       this.lowW = lerp(this.lowW, a.low * (1 - g), damp(6, dt));
       drop += 0.13 * H * this.lowW;
       spineX -= 0.32 * this.lowW;
+      // an approach is three steps from a standing start: the lean has to be there by the second
+      if (sprint > 0.5) bodyRate = 20;
     }
     // land absorb
     if (st === 'land' || (st === 'ground' && tSinceLand < 0.45)) {
@@ -449,9 +451,11 @@ export class AthleteView {
     }
     const passAct = act && act.kind === 'pass' && act.form !== 'hands' ? act : null;
     if (passAct && st !== 'air') {
+      // low, with the chest up: the shoulders have to be close enough to a knee-high ball for the
+      // arms to reach it at a slant, not hanging straight down
       const p = smooth01((tr - passAct.t0) / 0.1);
-      drop = lerp(drop, 0.13 * H, p);
-      spineX = lerp(spineX, -0.42, p);
+      drop = lerp(drop, CHARACTER.pass.crouch * H, p);
+      spineX = lerp(spineX, CHARACTER.pass.lean, p);
       chestX = lerp(chestX, -0.1, p);
       chestY = lerp(chestY, 0, p);
       hipsY = lerp(hipsY, 0, p);
@@ -476,8 +480,10 @@ export class AthleteView {
     }
     const setAct = act && (act.kind === 'set' || (act.kind === 'pass' && act.form === 'hands')) ? act : null;
     if (setAct) {
+      // knees a little bent under the ball, then the legs straighten through the release
       const p = smooth01((tr - setAct.t0) / 0.12);
-      if (st !== 'air') drop = lerp(drop, 0.075 * H, p);
+      const up = setAct.resolved && setAct.contactT > 0 ? smooth01((tr - setAct.contactT) / 0.15) : 0;
+      if (st !== 'air') drop = lerp(drop, lerp(0.045, 0.012, up) * H, p);
       spineX = lerp(spineX, -0.04, p);
       chestX = lerp(chestX, 0.12, p);
       chestY = lerp(chestY, 0, p);
@@ -1025,7 +1031,6 @@ export class AthleteView {
       if (act && act.kind === 'pass' && act.form !== 'hands') {
         const p = smooth01((tr - act.t0) / 0.07);
         this.key('pass', _a, _b);
-        _a.x += 0.008 * H; // hands just apart
         // diving: the arms stretch out ahead, just off the floor
         if (st === 'dive') {
           const dp = this.diveP();
@@ -1102,14 +1107,16 @@ export class AthleteView {
           rate = 25;
         }
       }
-      if (act && act.kind === 'toss' && !hitting) {
+      // (a jump serve: once the feet plant, the arms leave the toss and swing through the jump like any other)
+      const tossing = act && act.kind === 'toss' && st !== 'load' && st !== 'air';
+      if (tossing && !hitting) {
         const p = smooth01((tr - act.t0) / 0.18);
         this.key('toss', _a, _b);
         w.lerp(_a, p);
         pole.lerp(_b, p);
         rate = 30;
       }
-      if (act && act.kind === 'toss' && hitting) {
+      if (tossing && hitting) {
         const p = smooth01((tr - act.t0 - 0.12) / 0.25);
         this.key('cock', _a, _b);
         w.lerp(_a, p);
@@ -1351,7 +1358,8 @@ export class AthleteView {
         .copy(ball)
         .addScaledVector(n, -(BALL.radius + CHARACTER.forearmRadius * this.H))
         .addScaledVector(arm, CHARACTER.platformContact * d.foreArm);
-      this.bodyToWorld(s * 0.02 * this.H, 0, 0, _f3);
+      // side by side under the ball, wrists together (one hand in the other)
+      this.bodyToWorld(s * CHARACTER.pass.wristApart * this.H, 0, 0, _f3);
       out.add(_f3);
     } else {
       // a palm on the ball: where on the ball it sits (from the ball's centre), and which way the fingers lie
