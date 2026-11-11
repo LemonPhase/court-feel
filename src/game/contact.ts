@@ -382,6 +382,7 @@ export class ContactSystem {
         } else target.z = side * Math.min(Math.abs(target.z) + 0.8, safeServe ? COURT.halfLength - CONTACT.serveSafe : 99);
         solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
       }
+      if (safeServe) speed = this.overTheTape(p0, target, out, w, margin);
       ball.hit(out, { x: 0, y: 0, z: 0 }, BALL.floatWobble * (rank === 3 ? 1.2 : 0.8), h.simTime);
     } else {
       const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
@@ -394,11 +395,12 @@ export class ContactSystem {
       const land = { x: 0, y: 0, z: 0 };
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, spin, out, w, land);
+      const tape = 0.12;
       if (!a.isUser) {
         // AI attackers read the net: from deep or low contacts they hit deeper / softer
         for (let k = 0; k < 6; k++) {
           const c = netClearance(p0, out, w);
-          if (!c || c.y > h.env.netTop + R + 0.12) break;
+          if (!c || c.y > h.env.netTop + R + tape) break;
           if (Math.abs(target.z) < COURT.halfLength - 0.8)
             target.z = side * Math.min(Math.abs(target.z) + 1.0, safeServe ? COURT.halfLength - CONTACT.serveSafe : Infinity);
           else speed *= 0.85;
@@ -409,6 +411,7 @@ export class ContactSystem {
         w.x *= CONTACT.serveEarlySpin;
         w.z *= CONTACT.serveEarlySpin;
       }
+      if (safeServe) speed = this.overTheTape(p0, target, out, w, tape);
       ball.hit(out, w, 0, h.simTime);
     }
     ball.lastTouch = { athlete: a, kind: serve ? 'serve' : tip ? 'tip' : 'spike', t: h.simTime, side: a.side };
@@ -428,6 +431,20 @@ export class ContactSystem {
       target,
       power: tip ? 0 : charge,
     });
+  }
+
+  /**
+   * The AI never serves into the net: a serve (`out`, spin `w`) that its aim could not get over the
+   * tape by `margin` m is played as a higher, slower ball to the same spot, no spin. Returns its speed.
+   */
+  private overTheTape(p0: V3, target: V3, out: V3, w: V3, margin: number): number {
+    const netTop = this.host.env.netTop;
+    const c = netClearance(p0, out, w);
+    if (!c || c.y < netTop + R + margin) {
+      w.x = w.y = w.z = 0;
+      solveApex(p0, { x: target.x, y: R, z: target.z }, Math.max(p0.y, netTop) + CONTACT.serveSafeApex, w, out);
+    }
+    return Math.hypot(out.x, out.y, out.z);
   }
 
   // ================================================================ zone contacts

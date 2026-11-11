@@ -350,8 +350,11 @@ export const CONTACT = {
   /**
    * The AI never misses a serve (no serve out, none in the net): a mistimed AI serve is a slower,
    * easier serve that still lands `serveSafe` m inside the lines. Only the user can fault a serve.
+   * One its aim still can't get over the tape goes up `serveSafeApex` m above the contact or the
+   * tape, whichever is higher: slower, but over.
    */
   serveSafe: 0.6,
+  serveSafeApex: 1.0,
   sideReach: 0.6,
   sideErr: 1.4,
   diveLow: 0.25,
@@ -631,9 +634,6 @@ export const AI = {
    */
   transition: { read: 0.3, softSpeed: 10, spare: 0.3, approachOff: 2.0 },
   /**
-   * Covering our hitter, `read` s after our setter sets, low and facing the net, so a ball blocked
-   * straight down is dug back up. The spots are the real ones (3-2 coverage: CoachingVB, hitter
-  /**
    * Who takes a ball (serve receive, a dig, a free ball): the team-mate who gets there first. The
    * first `shuffle` m are shuffled, the rest run, so further away is never quicker. A ball in the
    * seam (one that two get to within `seam` s of each other, about 0.7 m of running) is the
@@ -642,6 +642,9 @@ export const AI = {
    * within `setter` s of it: a ball at its feet it digs, and someone else sets.
    */
   pick: { seam: 0.15, setter: 0.2, shuffle: 1.5 },
+  /**
+   * Covering our hitter, `read` s after our setter sets, low and facing the net, so a ball blocked
+   * straight down is dug back up. The spots are the real ones (3-2 coverage: CoachingVB, hitter
    * coverage strategy; US Sports Camps, how to cover your hitter). On an attack from a pin the
    * three close are the middle at the net (`net` m off it, `inside` m inside the hitter), the
    * setter on the 3 m line (`line` m) between them, and the back-row player on that side `behind`
