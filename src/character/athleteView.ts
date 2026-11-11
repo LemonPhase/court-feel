@@ -135,6 +135,20 @@ export class AthleteView {
   private loadFeetInit = false;
   private hideHead = false;
   private fpApplied = false;
+  /**
+   * Where the simulation takes a pass and a set for this athlete (the ball's centre at the touch is the
+   * point of its path nearest these). The game keeps them current; without them the arms' own pose is used.
+   */
+  passZone: V | null = null;
+  setZone: V | null = null;
+  /** speed (m/s) of the ball coming into the pass or set in hand, and the direction it left on */
+  private ballIn = 0;
+  private ballOut = v3(0, 1, 0);
+  private touched: unknown = null;
+  /** 0..1: the two-arm swing of this jump is up, and the arms may go on to the attack, the block or the set */
+  private armsUp = 1;
+  /** how far (m) the hips sit back from the net so the knees stay on their own side of it */
+  private netSit = 0;
   /** next arm update copies targets directly (camera toggle) */
   private snapArms = false;
   private opacity = 1;
@@ -287,6 +301,17 @@ export class AthleteView {
     const last = a.lastAction;
     const tSinceTake = tr - a.takeoffT;
     const tSinceLand = tr - this.landT;
+    // a pass or a set: how fast the ball came in (seen up to the touch), and which way it left
+    const bv = a.ballVel;
+    if (act && (act.kind === 'pass' || act.kind === 'set')) {
+      if (!act.resolved) {
+        if (bv) this.ballIn = Math.hypot(bv.x, bv.y, bv.z);
+      } else if (act !== this.touched) {
+        this.touched = act;
+        if (bv && bv.x * bv.x + bv.y * bv.y + bv.z * bv.z > 1e-6) this.ballOut.set(bv.x, bv.y, bv.z).normalize();
+        else this.ballOut.set(0, 1, 0);
+      }
+    }
     // the attack twists are authored for a righty: a lefty turns the other way
     const hs = a.hand;
 
@@ -395,6 +420,8 @@ export class AthleteView {
         spineX = lerp(W.spineX, -0.12 - 0.05 * ch, ec);
         chestX = lerp(W.chestX, -0.06, ec);
         hipsY = hs * lerp(W.hipsY, 0.08, eh);
+        // the trunk bends away from the hitting arm, which lifts that shoulder: the reach is at its highest on the ball
+        chestZ = hs * CHARACTER.reachTilt * ec;
         bodyRate = 90;
       } else if (swingF >= 0 && (swingF < 1 || st === 'air')) {
         // follow-through: a hard swing keeps going and folds the body (jackknife), held until landing
@@ -406,6 +433,7 @@ export class AthleteView {
         spineX = lerp(lerp(-0.12 - 0.05 * ch, swing.tip ? -0.12 : -0.3 - 0.32 * jk, e), -0.2, recover);
         chestX = lerp(lerp(-0.06, -0.12 - 0.14 * jk, e), -0.04, recover);
         hipsY = hs * lerp(0.08, 0.16, e) * (1 - 0.7 * recover);
+        chestZ = hs * CHARACTER.reachTilt * (1 - smooth01(swingF * 2));
         bodyRate = swingF < 1 ? 60 : 16;
       }
     }
@@ -479,6 +507,14 @@ export class AthleteView {
     // apply torso
     const d = rig.dims;
     B.hips.position.set(0, d.hipY - bd.drop, 0);
+    // at the net the hips sit back so the knees stay on their own side (the amount is found in updateLegs)
+    this.netSitApplied = 0;
+    if (this.netSit > 1e-4) {
+      const sd = a.side * this.netSit;
+      B.hips.position.x += -Math.sin(a.ryaw) * sd;
+      B.hips.position.z += Math.cos(a.ryaw) * sd;
+      this.netSitApplied = this.netSit;
+    }
     B.hips.rotation.set(bd.hipsX, bd.hipsY, 0);
     // at the net the lean is limited: a head below the tape stays on its own side
     let lean = bd.spineX;
@@ -714,26 +750,73 @@ export class AthleteView {
       }
     }
 
-    // ---- solve legs
-    for (let i = 0; i < 2; i++) {
-      const s = i === 0 ? -1 : 1;
-      const L = s < 0 ? 'L' : 'R';
-      const thigh = B[`thigh${L}` as BoneName];
-      const shin = B[`shin${L}` as BoneName];
-      const foot = B[`foot${L}` as BoneName];
-      const f = this.feet[i];
-      // knee points forward and slightly out
-      // (stretched out in a dive, the knees point at the floor)
-      const dp = st === 'dive' ? this.diveP() : 0;
-      this.bodyToWorld(s * 0.25, lerp(0.05, 0.3, dp), lerp(1, -0.6, dp), _pole);
-      twoBoneIK(thigh, shin, foot.position, f.cur, _pole);
-      // foot orientation: yaw with body (+ slight toe-out), pitch from gait/air
-      const yaw = this.athlete.ryaw - s * 0.12;
-      _q.setFromEuler(_e.set(-f.pitch, yaw, 0, 'YXZ'));
-      parentInv(foot, _pq);
-      foot.quaternion.copy(_pq.multiply(_q));
-      foot.updateMatrixWorld(true);
+    // ---- at the net: the feet stay behind the centre line (toes and all)...
+    const side = a.side;
+    const atNet = Math.abs(a.rpos.x) < COURT.netHalfLength + CHARACTER.netClear.pastPost;
+    if (atNet) {
+      const toes = (d.footLen - d.heel) * Math.abs(Math.cos(a.ryaw)) + CHARACTER.netClear.toes;
+      for (const f of this.feet) {
+        if (f.cur.z * side < toes) f.cur.z = side * toes;
+        if (f.plant.z * side < toes) f.plant.z = side * toes;
+      }
     }
+
+    // ---- solve legs
+    const solve = () => {
+      let worst = Infinity;
+      for (let i = 0; i < 2; i++) {
+        const s = i === 0 ? -1 : 1;
+        const L = s < 0 ? 'L' : 'R';
+        const thigh = B[`thigh${L}` as BoneName];
+        const shin = B[`shin${L}` as BoneName];
+        const foot = B[`foot${L}` as BoneName];
+        const f = this.feet[i];
+        thigh.quaternion.identity();
+        shin.quaternion.identity();
+        thigh.updateMatrixWorld(true);
+        // knee points forward and slightly out
+        // (stretched out in a dive, the knees point at the floor)
+        const dp = st === 'dive' ? this.diveP() : 0;
+        this.bodyToWorld(s * 0.25, lerp(0.05, 0.3, dp), lerp(1, -0.6, dp), _pole);
+        twoBoneIK(thigh, shin, foot.position, f.cur, _pole);
+        // foot orientation: yaw with body (+ slight toe-out), pitch from gait/air
+        const yaw = this.athlete.ryaw - s * 0.12;
+        _q.setFromEuler(_e.set(-f.pitch, yaw, 0, 'YXZ'));
+        parentInv(foot, _pq);
+        foot.quaternion.copy(_pq.multiply(_q));
+        foot.updateMatrixWorld(true);
+        worst = Math.min(worst, shin.getWorldPosition(_t3).z * side);
+      }
+      return worst;
+    };
+    const knee = solve();
+    // ...and so do the knees: the hips sit back from the net as far as the bent knees need
+    // (a blocker loads with the hips back, not with the knees under the net)
+    const room = knee - CHARACTER.netClear.knee;
+    const want = atNet ? Math.max(0, this.netSit - room) : 0;
+    // back at once when the knees need it, forward again at leisure
+    this.netSit = want > this.netSit ? want : lerp(this.netSit, want, damp(CHARACTER.netClear.sitRate, dt));
+    if (this.netSit > 1e-4) {
+      // the hips were already set back by last frame's amount (see update): take up the change and solve again
+      const delta = this.netSit - this.netSitApplied;
+      this.shiftHips(delta);
+      this.netSitApplied = this.netSit;
+      solve();
+    }
+  }
+
+  private netSitApplied = 0;
+
+  /** move the hips (and all they carry) `dist` metres straight back from the net */
+  private shiftHips(dist: number): void {
+    if (dist === 0) return;
+    const hips = this.rig.bones.hips;
+    // world +z * side, in the root's own frame
+    const y = this.athlete.ryaw;
+    const sd = this.athlete.side * dist;
+    hips.position.x += -Math.sin(y) * sd;
+    hips.position.z += Math.cos(y) * sd;
+    this.root.updateMatrixWorld(true);
   }
 
   // ------------------------------------------------------------ arms
@@ -796,19 +879,16 @@ export class AthleteView {
           pole.lerp(_b, k);
         }
       } else if (st === 'load') {
-        // approach arms swing back on the plant
-        const p = smooth01(a.loadT / 0.075);
-        this.key('ready', w, pole);
-        this.key('plantBack', _a, _b);
-        w.lerp(_a, p);
-        pole.lerp(_b, p);
+        // the plant: both arms go back, then start down past the hips and up in front
+        this.jumpSwing(a.loadT, w, pole);
         rate = 55;
       } else {
-        // air: double-arm swing up, then intent pose
-        this.key('swingUp', w, pole);
-        rate = 26;
+        // air: the two-arm swing carries on up, then each arm goes to what the jump is for
+        const up = this.jumpSwing(a.loadT + tSinceTake, w, pole);
+        rate = 30;
         const intent = a.airIntent;
-        const blending = smooth01((tSinceTake - 0.08) / 0.2);
+        const blending = Math.max(smooth01((up - 0.55) / 0.4), smooth01((tSinceTake - 0.24) / 0.16));
+        this.armsUp = blending;
         if (intent === 'attack') {
           if (swing && swingF >= 0) this.key('descend', _a, _b);
           else if (hitting) this.key('cock', _a, _b);
@@ -872,7 +952,8 @@ export class AthleteView {
               handBlend = ikBlend;
             }
             palmFwd = 1;
-            curl = CHARACTER.fingerCurl.firm;
+            // flat and firm through the swing, wrapping the ball as the palm meets it
+            curl = lerp(CHARACTER.fingerCurl.firm, CHARACTER.fingerCurl.onBall, handBlend);
           } else {
             // follow-through: fastest off the ball and slowing all the way down, across the body;
             // a full-power swing finishes deeper, by the opposite hip
@@ -896,7 +977,7 @@ export class AthleteView {
             }
             if (!swing.tip)
               flex = (0.2 + 0.85 * easeOutCubic(swingF * 3.5)) * (1 - 0.55 * smooth01((swingF - 0.35) / 0.65)) * (0.6 + 0.4 * ch);
-            curl = lerp(CHARACTER.fingerCurl.firm, CHARACTER.fingerCurl.relaxed, smooth01(swingF * 1.5));
+            curl = lerp(CHARACTER.fingerCurl.onBall, CHARACTER.fingerCurl.relaxed, smooth01(swingF * 1.5));
             // then the arm lets go and hangs ready for the landing
             if (recover > 0) {
               this.key('descend', _h1, _h2);
@@ -934,8 +1015,10 @@ export class AthleteView {
         // the hands go to the ball as it arrives (a short way: the block is where it was set). They stay
         // on the blocker's side of the tape, where the block's contact zone is: pressing them over it
         // would be a change to the block, not to its look
-        if (act.held) {
-          ikWorld = this.reachForBall(s, _a, CHARACTER.blockReach.near, CHARACTER.blockReach.pull, _g, 'block');
+        // (only for a ball hit at the block: a set drifting past is not followed)
+        const bv = a.ballVel;
+        if (act.held && bv && Math.hypot(bv.x, bv.y, bv.z) > CHARACTER.blockReach.minSpeed && bv.z * a.side > 0) {
+          ikWorld = this.reachForBall(s, _a, CHARACTER.blockReach.near, CHARACTER.blockReach.pull, _g, 'block', null);
           if (ikWorld) ikBlend = handBlend = reachBlend * p;
         }
       }
@@ -949,14 +1032,24 @@ export class AthleteView {
           _a.y = lerp(_a.y, -0.07 * H, dp);
           _a.z = lerp(_a.z, 0.36 * H, dp);
         }
-        // follow-through lift after contact
-        if (act.resolved && act.contactT > 0) _a.y += 0.06 * H * smooth01((tr - act.contactT) / 0.2);
         w.lerp(_a, p);
         pole.lerp(_b, p);
         rate = 35;
-        // reach towards the ball when it is close
-        ikWorld = this.reachForBall(s, w, 0.7, 0.5, _g, 'platform');
-        if (ikWorld) ikBlend = reachBlend;
+        if (!(act.resolved && act.contactT > 0)) {
+          // the platform goes to where the ball will come down and waits there, still
+          ikWorld = this.reachForBall(s, w, 0.7, 0.5, _g, 'platform', null);
+          if (ikWorld) ikBlend = reachBlend;
+        } else {
+          // the touch: the platform stays where it met the ball. A hard-driven ball is taken on a firm
+          // platform that gives a little; a slow one is lifted through. It never goes after the ball.
+          const P = CHARACTER.pass;
+          const ts = tr - act.contactT;
+          const firm = smoothstep(P.firmFrom, P.firmTo, this.ballIn);
+          const move = (1 - firm) * P.lift * easeOutCubic(ts / P.liftTime) - firm * P.give * Math.sin(Math.PI * clamp01(ts / P.giveTime));
+          _n2.copy(this.ballOut).add(_up).normalize().multiplyScalar(move).add(act.contactPoint);
+          ikWorld = this.reachForBall(s, w, 0.7, 0.5, _g, 'platform', _n2);
+          if (ikWorld) ikBlend = 1 - smooth01((ts - P.hold) / P.release);
+        }
         curl = lerp(curl, CHARACTER.fingerCurl.fist, p);
       }
       if (act && (act.kind === 'set' || (act.kind === 'pass' && act.form === 'hands'))) {
@@ -973,23 +1066,27 @@ export class AthleteView {
         pole.lerp(_b, p);
         rate = 40;
         if (!released) {
-          ikWorld = this.reachForBall(s, w, 0.6, 0.6, _g, 'set');
+          // the hands wait above the forehead where the ball will arrive: it drops into them
+          ikWorld = this.reachForBall(s, w, 0.6, 0.6, _g, 'set', null);
           if (ikWorld) ikBlend = handBlend = reachBlend;
-        } else if (a.ballPos) {
-          // the release: the hands go on up after the ball for a moment, then open into the finish
+        } else {
+          // the release: the arms extend along the line the ball left on, at arm speed (the ball is
+          // gone at once: the hands push through where it was, they do not carry it), then open
+          const F = CHARACTER.setFollow;
           const ts = tr - act.contactT;
-          _n2.subVectors(a.ballPos, act.contactPoint);
-          const far = _n2.length();
-          if (far > 1e-4) _n2.multiplyScalar(Math.min(far, CHARACTER.setFollow.reach) / far);
-          _n2.add(act.contactPoint);
+          _n2
+            .copy(this.ballOut)
+            .multiplyScalar(Math.min(F.reach, F.speed * ts))
+            .add(act.contactPoint);
           ikWorld = this.reachForBall(s, w, 0.6, 0.6, _g, 'set', _n2);
-          if (ikWorld) ikBlend = handBlend = reachBlend * (1 - smooth01(ts / CHARACTER.setFollow.time));
+          if (ikWorld) ikBlend = handBlend = 1 - smooth01((ts - F.reach / F.speed) / F.time);
         }
-        curl = lerp(curl, released ? CHARACTER.fingerCurl.firm : CHARACTER.fingerCurl.cupped, p);
+        curl = lerp(curl, released ? CHARACTER.fingerCurl.firm : CHARACTER.fingerCurl.onBall, p);
       }
       // (during the plant the arms still swing back; the wind-up shows from takeoff)
       if (act && act.kind === 'windup' && st !== 'load') {
-        const p = smooth01((tr - act.t0) / 0.12);
+        // (off the floor the arm goes up with the jump first, then draws back: the bow comes out of the swing)
+        const p = smooth01((tr - act.t0) / 0.12) * (st === 'air' ? this.armsUp : 1);
         if (hitting) {
           this.cockAt(windupCharge(act.t0, tr), _a, _b);
           w.lerp(_a, p);
@@ -1078,10 +1175,18 @@ export class AthleteView {
         fore.lerp(_handFore, handBlend).normalize();
         _f2.lerp(_handPalm, handBlend).normalize();
       }
-      // at the net the fingers bend back with the wrist: fingertips stay off it too
+      // at the net the fingers bend back with the wrist: fingertips stay off it too. The hand turns
+      // (it keeps its length): its reach towards the net is cut to what is allowed, the rest of its
+      // direction takes up the slack
       hand.getWorldPosition(_n1);
       _n2.copy(_n1).addScaledVector(fore, this.rig.dims.hand);
-      if (this.clearNet(_n2, CHARACTER.netClear.fingers)) fore.subVectors(_n2, _n1).normalize();
+      if (this.clearNet(_n2, CHARACTER.netClear.fingers)) {
+        const fz = clamp((_n2.z - _n1.z) / this.rig.dims.hand, -1, 1);
+        const flat = Math.hypot(fore.x, fore.y);
+        const k = Math.sqrt(1 - fz * fz);
+        if (flat > 1e-4) fore.set((fore.x / flat) * k, (fore.y / flat) * k, fz);
+        else fore.set(0, k, fz);
+      }
       // the hand's thin axis (local x) is the palm normal: +x = -palm for the right hand
       orientBone(hand, fore, _f2.multiplyScalar(-s), 1);
       // fingers: curled when loose, flat and firm on the ball
@@ -1090,6 +1195,32 @@ export class AthleteView {
       fingers.updateMatrixWorld(true);
       ikBlend = 1;
     }
+  }
+
+  /**
+   * The two-arm swing of a jump, `t` seconds after the plant began: the arms whip back and up behind
+   * the hips as the feet plant, then swing down past the hips and up in front as the legs drive.
+   * A run-up swings them further back than a standing jump. Returns how far up they are (0..1).
+   */
+  private jumpSwing(t: number, w: V, pole: V): number {
+    const a = this.athlete;
+    const J = CHARACTER.jumpSwing;
+    const reach = J.radius * this.H;
+    // a block's hands stay in front of the chest: they go straight up from there
+    const blockJump = !!a.action && a.action.kind === 'block';
+    const run = blockJump ? 0 : clamp01(a.loadApproach / J.fullRun);
+    const back = smooth01(t / J.backTime);
+    const up = smooth01((t - J.upStart) / J.upTime);
+    // angle of the arm in the plane it swings in: 0 hangs straight down, negative is behind the body
+    const th = lerp(-(J.backStanding + (J.backRun - J.backStanding) * run), J.top, up);
+    this.key('ready', w, pole);
+    _a.set((0.03 + 0.03 * up) * this.H, -Math.cos(th) * reach, Math.sin(th) * reach);
+    // from where the hands were, down past the hip and back (not straight through the shoulder)
+    if (blockJump) w.lerp(_a, up);
+    else bezier(_ck1.copy(w), _ck2.set(0.04 * this.H, -0.92 * reach, 0.02 * this.H), _a, back, w);
+    // the elbow trails the swing: behind the arm on the way back, under it on the way up
+    pole.lerp(_b.set(0.5, lerp(0.6, -0.4, up), lerp(-0.4, -0.9, up)), back);
+    return up;
   }
 
   /**
@@ -1191,16 +1322,27 @@ export class AthleteView {
     maxPull: number,
     out: V,
     kind: 'platform' | 'set' | 'block',
-    ball: V | null = this.athlete.ballPos,
+    /** the ball's centre to meet; null = where the live ball will be when it gets here */
+    at: V | null,
   ): V | null {
-    if (!ball) return null;
     const d = this.rig.dims;
     const sh = this.shoulderWorld(s, _f1);
     this.bodyToWorld(wLocal.x * s, wLocal.y, wLocal.z, _f3);
     const base = _f2.copy(sh).add(_f3);
+    let ball = at;
+    let soon = 1;
+    if (!ball) {
+      if (!this.athlete.ballPos) return null;
+      // players put their hands where the ball is going and let it arrive: they do not track it down.
+      // The touch happens where the ball comes nearest the platform's or the hands' own spot.
+      const zone = kind === 'platform' ? this.passZone : kind === 'set' ? this.setZone : null;
+      const t = this.ballArrival(zone ?? base, _arrive);
+      ball = _arrive;
+      soon = 1 - smoothstep(CHARACTER.meet.by, CHARACTER.meet.from, t);
+    }
     const dist = base.distanceTo(ball);
     if (dist > near + 0.6) return null;
-    reachBlend = smooth01((near + 0.6 - dist) / 0.6);
+    reachBlend = smooth01((near + 0.6 - dist) / 0.6) * soon;
     if (kind === 'platform') {
       // the ball comes down on the forearms, above the wrists; the two arms lie side by side under it
       const arm = _n3.subVectors(base, sh).normalize();
@@ -1229,6 +1371,39 @@ export class AthleteView {
     const l = _f3.length();
     if (l > maxPull) out.copy(base).addScaledVector(_f3, maxPull / l);
     return out;
+  }
+
+  /**
+   * Where the ball will be when it comes closest to `near`, flying on as it is (gravity only, which
+   * is all that matters over the last half second). Returns how long until then (s).
+   */
+  private ballArrival(near: V, out: V): number {
+    const p = this.athlete.ballPos!;
+    const v = this.athlete.ballVel;
+    out.copy(p);
+    if (!v) return 0;
+    const g = BALL.gravity;
+    const at = (t: number, o: V) => o.set(p.x + v.x * t, p.y + v.y * t - 0.5 * g * t * t, p.z + v.z * t);
+    let best = out.distanceToSquared(near);
+    let bt = 0;
+    const step = CHARACTER.meet.step;
+    for (let t = step; t <= CHARACTER.meet.horizon; t += step) {
+      const d2 = at(t, _t3).distanceToSquared(near);
+      if (d2 > best) break;
+      best = d2;
+      bt = t;
+    }
+    // between two samples a fast ball travels a quarter of a metre: finish on the exact nearest point
+    // (along the velocity there), or the hands would hop from sample to sample as the ball comes in
+    at(bt, out);
+    const vy = v.y - g * bt;
+    const v2 = v.x * v.x + vy * vy + v.z * v.z;
+    if (v2 > 1e-6) {
+      const along = ((near.x - out.x) * v.x + (near.y - out.y) * vy + (near.z - out.z) * v.z) / v2;
+      bt = Math.max(0, bt + clamp(along, -step, step));
+      at(bt, out);
+    }
+    return bt;
   }
 
   // ------------------------------------------------------------ head
@@ -1329,6 +1504,7 @@ const _pole = v3();
 const _n1 = v3();
 const _n2 = v3();
 const _n3 = v3();
+const _arrive = v3();
 const _handFore = v3();
 const _handPalm = v3();
 const _up = v3(0, 1, 0);

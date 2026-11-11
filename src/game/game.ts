@@ -831,6 +831,9 @@ export class Game {
     this.lastRenderSimT = tr;
     for (const [a, v] of this.views) {
       a.ballPos = this.ball.active ? this.ball.rpos : null;
+      a.ballVel = this.ball.active ? this.ball.state.v : null;
+      v.passZone = this.contact.platformPoint(a, v.passZone ?? new THREE.Vector3());
+      v.setZone = this.contact.handsPoint(a, v.setZone ?? new THREE.Vector3());
       if (this.ball.active) a.lookAt.copy(this.ball.rpos);
       v.setFirstPerson(a.isUser && this.rig.mode === 'fp' && !this.inMenu);
       v.netTop = this.env.netTop;

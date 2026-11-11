@@ -585,17 +585,47 @@ export const CHARACTER = {
   envIntensity: 0.7,
   /** first person: your own body starts to show this far (m) from the lens and is whole from `to` (m) */
   fpFade: { from: 0.22, to: 0.34 },
-  /** finger curl at the knuckles (rad): loose hand, cupped for a set, flat on the ball, closed for a pass */
-  fingerCurl: { relaxed: 0.5, cupped: 0.28, firm: 0.04, fist: 1.15 },
+  /**
+   * The two-arm swing of a jump. On the plant the arms go back behind the hips: `backStanding` (rad from
+   * hanging straight down) for a standing jump, up to `backRun` after a run-up of `fullRun` (m/s) or more,
+   * within `backTime` (s). From `upStart` (s) after the plant began they swing down past the hips and up in
+   * front to `top` (rad) over `upTime` (s), so after a full load they pass the shoulders about as the feet
+   * leave the floor. `radius` is the hand's distance from the shoulder, in body heights. From watching
+   * approaches, not from a measurement.
+   */
+  jumpSwing: { backStanding: 0.45, backRun: 1.2, fullRun: 3.5, backTime: 0.08, upStart: 0.1, upTime: 0.3, top: 2.75, radius: 0.3 },
+  /** finger curl at the knuckles (rad): loose hand, cupped, flat and firm, closed for a pass, and wrapped on the ball (the fingertips touch it) */
+  fingerCurl: { relaxed: 0.5, cupped: 0.28, firm: 0.04, fist: 1.15, onBall: 0.4 },
+  /** how far (rad) the trunk bends away from the hitting arm at contact, lifting the hitting shoulder */
+  reachTilt: 0.36,
   /** a spiking palm meets the ball this far over the top of it (0 = square behind the line it leaves on) */
   palmOverTop: 0.3,
   /** a pass meets the forearms this far up from the wrists (fraction of the forearm); forearm thickness in body heights */
   platformContact: 0.42,
   forearmRadius: 0.018,
-  /** a setter's hands follow the ball this far (m) after the release, for this long (s) */
-  setFollow: { reach: 0.2, time: 0.2 },
-  /** blocking hands go to the ball once it is within `near` (m) of them, at most `pull` (m) from where the block was set */
-  blockReach: { near: 0.3, pull: 0.16 },
+  /**
+   * Hands and forearms are put where the ball is going, and wait: they start to move `from` seconds before
+   * it arrives and are there `by` seconds before. The arrival is looked for up to `horizon` (s) ahead in
+   * steps of `step` (s).
+   */
+  meet: { from: 0.5, by: 0.16, horizon: 0.7, step: 1 / 60 },
+  /**
+   * After a set the arms extend `reach` (m) along the line the ball left on, at `speed` (m/s, an arm's, far
+   * slower than the ball: the hands push through, they do not carry), then open over `time` (s).
+   */
+  setFollow: { reach: 0.16, speed: 2.6, time: 0.22 },
+  /**
+   * After a pass the platform stays where it met the ball. A ball slower than `firmFrom` (m/s) is lifted
+   * through: `lift` (m) over `liftTime` (s). One faster than `firmTo` is taken firm: the platform gives
+   * `give` (m) and comes back within `giveTime` (s). The arms hold for `hold` (s), then let go over
+   * `release` (s). A free ball arrives at 5 to 8 m/s, a serve at 17 to 25.
+   */
+  pass: { firmFrom: 6, firmTo: 14, lift: 0.09, liftTime: 0.2, give: 0.035, giveTime: 0.12, hold: 0.22, release: 0.2 },
+  /**
+   * blocking hands go to a ball hit at them (faster than `minSpeed`, m/s) once it will pass within `near` (m)
+   * of them, at most `pull` (m) from where the block was set
+   */
+  blockReach: { near: 0.3, pull: 0.16, minSpeed: 8 },
   /**
    * Arms and the net. Below the tape a wrist stays `wrist` (m) and the fingertips `fingers` (m) on the
    * athlete's own side. From `above` (m) over the tape a hand may reach across, `reachPerHeight` metres
@@ -608,6 +638,15 @@ export const CHARACTER = {
     above: 0.04,
     reachPerHeight: 1.6,
     pastPost: 0.25,
+    /**
+     * Feet and knees and the centre line: the toes stop `toes` (m) short of it and the middle of the knee
+     * `knee` (m), which leaves the kneecap and its pad a couple of centimetres on their own side. The hips
+     * sit back from the net as far as that takes, and come forward again at `sitRate` per second. A foot
+     * wholly over the line is a fault, and a blocker loads with the hips back, not with the knees under the net.
+     */
+    toes: 0.02,
+    knee: 0.1,
+    sitRate: 8,
     /** the head keeps this far (m) from the net: a forward lean is cut short. Its height and its lever over the hips, in body heights. */
     head: 0.17,
     headHeight: 0.86,

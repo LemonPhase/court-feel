@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { BALL, COURT, PLAYER, SIM } from '../src/config';
+import { BALL, CHARACTER, COURT, PLAYER, SIM } from '../src/config';
 import { Athlete } from '../src/game/athlete';
 import { AthleteView } from '../src/character/athleteView';
 import { makeKit } from '../src/character/kits';
@@ -128,5 +128,141 @@ describe('the spike, as the body shows it', () => {
     // ankle height standing is about 7 cm: the last airborne frame has the feet within 10 cm of that
     expect(last).toBeLessThan(s.v.rig.dims.ankleY + 0.1);
     expect(PLAYER.loadMax).toBeGreaterThan(0);
+  });
+});
+
+/** an athlete standing at `z` metres from the net (home side, facing it), with the view posed every step */
+function standing(z: number) {
+  const a = new Athlete('OH', 1);
+  a.place(0, z, 0);
+  const v = new AthleteView(a, makeKit(0, false, 1));
+  const s = { a, v, t: 0, step: () => {} };
+  s.step = () => {
+    s.t += DT;
+    a.step(DT, s.t);
+    a.interpolate(1);
+    v.update(DT, s.t);
+  };
+  for (let i = 0; i < 20; i++) s.step();
+  return s;
+}
+
+describe('the jump, as the body shows it', () => {
+  it('a blocker loading at the net keeps knees and toes behind the centre line', () => {
+    // as close as the game lets you stand
+    const s = standing(0.22);
+    const B = s.v.rig.bones;
+    const d = s.v.rig.dims;
+    s.a.jumpPress();
+    let frames = 0;
+    while (s.t < 1.2) {
+      s.step();
+      frames++;
+      for (const side of ['L', 'R'] as const) {
+        // the kneecap and its pad are about 8 cm in front of the middle of the knee
+        expect(world(B[`shin${side}`]).z).toBeGreaterThan(0.08);
+        // facing the net, the toes are a foot's length in front of the ankle
+        expect(world(B[`foot${side}`]).z - (d.footLen - d.heel)).toBeGreaterThan(0);
+      }
+    }
+    expect(frames).toBeGreaterThan(100);
+  });
+
+  it('the arms go back on the plant of an approach and are overhead as the hitter leaves the floor', () => {
+    const s = standing(4);
+    // a run-up at the net
+    for (let i = 0; i < SIM.hz * 0.7; i++) {
+      s.a.cmd.moveZ = -1;
+      s.a.cmd.sprint = true;
+      s.step();
+    }
+    expect(s.a.speed).toBeGreaterThan(3);
+    s.a.jumpPress();
+    const B = s.v.rig.bones;
+    let behind = 0;
+    while (s.a.state === 'load') {
+      s.step();
+      // behind the hips (the hitter faces -z, so behind is +z) and below the shoulders
+      if (world(B.handL).z > world(B.hips).z + 0.1 && world(B.handR).z > world(B.hips).z + 0.1 && world(B.handR).y < world(B.upperArmR).y)
+        behind++;
+    }
+    // both hands are back there for a good part of the plant
+    expect(behind).toBeGreaterThan(SIM.hz * 0.06);
+    // 0.15 s into the air both hands are above the head: the swing carried on up
+    for (let i = 0; i < SIM.hz * 0.15; i++) s.step();
+    expect(s.a.state).toBe('air');
+    expect(world(B.handL).y).toBeGreaterThan(world(B.head).y);
+    expect(world(B.handR).y).toBeGreaterThan(world(B.head).y);
+  });
+});
+
+describe('the touch, as the arms show it', () => {
+  it("a setter's hands are at the ball before it gets there (the ball drops into them)", () => {
+    const s = standing(2);
+    const zone = new THREE.Vector3(0, s.a.height + 0.17, 2 - 0.14);
+    s.v.setZone = zone;
+    const act = s.a.startAction('set', s.t);
+    const ball = new THREE.Vector3();
+    const vel = new THREE.Vector3();
+    const B = s.v.rig.bones;
+    const d = s.v.rig.dims;
+    // a pass dropping onto the hands at 4 m/s, followed from 0.6 s out
+    const palmGap = () => {
+      let worst = 0;
+      for (const side of ['L', 'R'] as const) {
+        const wrist = world(B[`hand${side}`]);
+        const palm = wrist.clone().addScaledVector(world(B[`fingers${side}`]).sub(wrist).normalize(), d.palm);
+        worst = Math.max(worst, palm.distanceTo(zone) - BALL.radius);
+      }
+      return worst;
+    };
+    let early = 1;
+    for (let tau = 0.6; tau > 0; tau -= DT) {
+      ball.set(zone.x, zone.y + 4 * tau + 0.5 * BALL.gravity * tau * tau, zone.z);
+      vel.set(0, -(4 + BALL.gravity * tau), 0);
+      s.a.ballPos = ball;
+      s.a.ballVel = vel;
+      s.a.lookAt.copy(ball);
+      s.step();
+      if (Math.abs(tau - 0.1) < DT / 2) early = palmGap();
+    }
+    expect(act.kind).toBe('set');
+    // a tenth of a second before the ball arrives the palms are already on where its surface will be
+    expect(early).toBeLessThan(0.05);
+    expect(palmGap()).toBeLessThan(0.05);
+  });
+
+  it('a passing platform does not carry the ball: it stays where it met a hard-driven one', () => {
+    const s = standing(5);
+    const zone = new THREE.Vector3(0, s.a.height * 0.34, 5 - 0.45);
+    s.v.passZone = zone;
+    const act = s.a.startAction('pass', s.t);
+    const ball = new THREE.Vector3();
+    const vel = new THREE.Vector3(0, -6, 16);
+    const B = s.v.rig.bones;
+    // a serve at 17 m/s, flat and dropping, followed in to the platform
+    for (let tau = 0.5; tau > 0; tau -= DT) {
+      ball.set(zone.x - vel.x * tau, zone.y - vel.y * tau, zone.z - vel.z * tau);
+      s.a.ballPos = ball;
+      s.a.ballVel = vel;
+      s.a.lookAt.copy(ball);
+      s.step();
+    }
+    const at = world(B.handR);
+    // the touch: the ball leaves up and forward at 8 m/s
+    act.resolved = true;
+    act.contactT = s.t;
+    act.contactPoint.copy(zone);
+    const out = new THREE.Vector3(0, 6, -5);
+    let moved = 0;
+    for (let ts = 0; ts < CHARACTER.pass.hold; ts += DT) {
+      ball.copy(zone).addScaledVector(out, ts);
+      s.a.ballVel = out;
+      s.step();
+      moved = Math.max(moved, world(B.handR).distanceTo(at));
+    }
+    // by then the ball is well over a metre away, and the wrists have given a few centimetres at most
+    expect(ball.distanceTo(zone)).toBeGreaterThan(1);
+    expect(moved).toBeLessThan(0.07);
   });
 });

@@ -126,6 +126,8 @@ export class Athlete {
   readonly aiAim = new THREE.Vector3(0, 0, -6);
   /** live ball position for reaching (set by the game each frame) */
   ballPos: THREE.Vector3 | null = null;
+  /** the live ball's velocity, for the animator only (where to put the hands before the ball arrives) */
+  ballVel: { x: number; y: number; z: number } | null = null;
   /** assist nudge velocity in air */
   readonly airNudge = new THREE.Vector3();
   jersey = 0;
