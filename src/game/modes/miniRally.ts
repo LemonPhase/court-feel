@@ -284,8 +284,9 @@ export class MiniRally extends Mode {
             return;
           }
         }
-        if (this.t > 25 || (g.ball.state.rest && this.t > 1)) {
-          this.reason = g.ball.state.rest ? 'BALL DOWN' : 'LONG RALLY';
+        // a rally has no time limit: it ends on a fault, the judge's call, or a ball that has come to rest
+        if (g.ball.state.rest && this.t > 1) {
+          this.reason = 'BALL DOWN';
           this.endPoint(g.ball.pos.z > 0 ? -1 : 1);
         }
         break;
