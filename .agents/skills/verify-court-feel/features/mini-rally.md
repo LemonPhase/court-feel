@@ -6,7 +6,7 @@ Mini Rally is 6 v 6 with the player in their chosen position. The AI serves, rec
 
 - `rally-start` puts twelve athletes on court with the score at 0 : 0 and the opponents serving.
 - `rally-set-call` changes your set call with `1`, `2`, `3` (OH, OPP and MB), shown on the score line.
-- `rally-serve` starts each point with a serve.
+- `rally-serve` starts each point with a serve: about 6 AI serves in 10 are jump serves (the server is in the air at the contact), the rest standing floats. A serve can be an ace or a serve error.
 - `rally-setter-call` shows the setter's call on the pass (for example `SHOOT!` in system, `HIGH!` out of system) in a bubble.
 - `rally-point` ends the rally with a banner, updates the score and names the next server.
 - `rally-reserve` abandons the rally with `n` and serves again without changing the score.
@@ -27,13 +27,14 @@ Preconditions:
 - **Start.** Open the rally as a middle blocker with the clock frozen. Run `court open '?mode=rally&pos=MB&bot=perfect' --fresh --manual`. The state line shows `"title":"Mini Rally · you are the Middle Blocker"` and `"score":"YOU 0 : 0 THEM · their serve · call 1: 1 (quick in front)"`. Run `court state`: `game.athletes` is `12`.
 - **Call your set.** Press `2`. Run `court key 2` and `court step 0.05`. The state line shows a score ending `call 2: Shoot (31)` and `"message":"Calling 2: Shoot (31)"`.
 - **Serve.** Step until the serve is hit. Run `court step 30 --until 'window.__verify.events.some(e => e.type === "contact" && e.kind === "serve")'`. Run `court events`: the first entry is a `contact` with `"kind": "serve"` by an `(away)` athlete.
-- **The setter calls the pass.** Step until the call. Run `court step 10 --until 'window.__verify.events.some(e => e.type === "setterCall")'`. The state line shows `"call":{"who":"SETTER","word":"SHOOT!","sub":"in system"}`. Run `court shot rally-setter-call`: the bubble over the setter.
+- **The setter calls the pass.** Step until the call. Run `court step 10 --until 'window.__verify.events.some(e => e.type === "setterCall")'`. The state line shows a call such as `"call":{"who":"SETTER","word":"SHOOT!","sub":"in system"}` (or `HIGH!` / `out of system` off a bad pass). Run `court shot rally-setter-call`: the bubble over the setter.
 - **Point.** Step until the ball is down. Run `court step 30 --until 'window.__verify.events.some(e => e.type === "outcome")'`. The state line shows a banner `POINT YOU · <reason>` or `POINT THEM · <reason>` and a score of `YOU 1 : 0 THEM · your serve ...` or `YOU 0 : 1 THEM · their serve ...` to match. Run `court events`: the last entry is an `outcome` whose `winner` is `home` for a point to YOU and `away` for a point to THEM. Run `court shot rally-point`.
 - **Re-serve.** Step into the next rally, then press `n`. Run `court step 30 --until 'g.ball.active && g.ballLive'`, `court key n`, `court step 0.05` and `court state`. `game.ball` is `null` and `game.score.home` and `game.score.away` are unchanged. Run `court step 30 --until 'g.ball.active && g.ballLive'`: it succeeds, so a new serve came.
 - **Proof.** Run `court errors`. It reports `"count": 0`.
 
 ## Gotchas
 
+- A point can end on the serve (an ace, a shank off the pass, or a serve that lands out or in the net) with no setter call in it. If the call step times out, check `court events` for an `outcome`, then step into the next rally and wait for the call there. Which call comes first depends on the rally's random stream: assert its shape, not the word.
 - The autopilot is weaker here than in the drills. When this was written, as OH it swung late on every set (`MISS`, `Swung late`), as OPP it made no contact in 40 seconds, as MB it hit Perfect quicks when set, as L it passed and as S it set. A rally result is not a fixed number: assert the shape (a serve, an outcome, a score that matches the outcome), not who won.
 - The setter does not set the player every time. In the recipe's rally the set goes to the outside hitter, so `events` may show no contact by `me`.
 - The call bubble is on screen for about 1.5 seconds of game time. Take the `shot` straight after the `step --until` that waits for it.
