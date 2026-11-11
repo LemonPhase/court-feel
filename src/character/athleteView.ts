@@ -931,7 +931,9 @@ export class AthleteView {
         rate = 30;
         palmFwd = p;
         curl = lerp(curl, CHARACTER.fingerCurl.firm, p);
-        // the hands go to the ball as it arrives (a short way: the block is where it was set)
+        // the hands go to the ball as it arrives (a short way: the block is where it was set). They stay
+        // on the blocker's side of the tape, where the block's contact zone is: pressing them over it
+        // would be a change to the block, not to its look
         if (act.held) {
           ikWorld = this.reachForBall(s, _a, CHARACTER.blockReach.near, CHARACTER.blockReach.pull, _g, 'block');
           if (ikWorld) ikBlend = handBlend = reachBlend * p;
@@ -1094,6 +1096,9 @@ export class AthleteView {
    * Keep a point of the arm off the net. Below the tape it stays `margin` on the athlete's own
    * side; above the tape it may reach across, further the higher it is, so a hand coming down
    * from over the net is drawn back before it gets to the tape. Returns true if it moved the point.
+   *
+   * This draws what a player does anyway (pull the hand back) and is all there is: the simulation
+   * has no arm, so nothing here moves the ball or the body (docs/adr/0005).
    */
   private clearNet(p: V, margin: number): boolean {
     const side = this.athlete.side;
@@ -1265,7 +1270,11 @@ const HAND_ON_BALL = {
   block: { at: [0.42, -0.08, -0.9], fingers: [0, 1, 0.2] },
 } as const;
 
-/** how long the hitting arm takes to come through after the ball (s): a harder swing is quicker */
+/**
+ * How long the hitting arm takes to come through after the ball (s): a harder swing is quicker.
+ * An estimate, not a measurement: a hand leaving the ball at 15 to 20 m/s on a 0.75 m arm turns at
+ * 20 to 27 rad/s, and slowing evenly from there through the 2.6 rad down to the hip takes 0.2 to 0.26 s.
+ */
 function followTime(tip: boolean, charge: number): number {
   return tip ? 0.22 : 0.3 - 0.05 * charge;
 }

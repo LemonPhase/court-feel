@@ -600,6 +600,7 @@ export const CHARACTER = {
    * Arms and the net. Below the tape a wrist stays `wrist` (m) and the fingertips `fingers` (m) on the
    * athlete's own side. From `above` (m) over the tape a hand may reach across, `reachPerHeight` metres
    * for each metre of height. Nothing applies further than `pastPost` (m) outside the net's ends.
+   * The clearances are a hand's thickness and a finger's: close enough to read as "at the net", never in it.
    */
   netClear: {
     wrist: 0.09,
