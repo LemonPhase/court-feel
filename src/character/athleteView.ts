@@ -874,7 +874,16 @@ export class AthleteView {
       let handBlend = 0;
 
       // ---- base: ground locomotion / ready
-      if (st === 'ground' || st === 'land') {
+      if (st === 'dive') {
+        // on the floor: the arms stay stretched out ahead until the body is up again (the dig itself is the pass below)
+        const dp = this.diveP();
+        this.key('ready', w, pole);
+        this.key('pass', _a, _b);
+        _a.y = lerp(_a.y, -0.07 * H, dp);
+        _a.z = lerp(_a.z, 0.36 * H, dp);
+        w.lerp(_a, dp);
+        pole.lerp(_b, dp);
+      } else if (st === 'ground' || st === 'land') {
         this.key('ready', w, pole);
         const g = this.gaitW;
         if (g > 0.01) {
@@ -1243,7 +1252,7 @@ export class AthleteView {
    * from over the net is drawn back before it gets to the tape. Returns true if it moved the point.
    *
    * This draws what a player does anyway (pull the hand back) and is all there is: the simulation
-   * has no arm, so nothing here moves the ball or the body (docs/adr/0005).
+   * has no arm, so nothing here moves the ball or the body (docs/adr/0008).
    */
   private clearNet(p: V, margin: number): boolean {
     const side = this.athlete.side;
