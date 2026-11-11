@@ -586,7 +586,7 @@ export const AI = {
    * along the net at the setter's touch (1 sd), an error that shrinks to nothing as the ball gets to
    * the hitter. It watches the setter's hands (coaching: the middle's eyes are on the setter), so it is
    * off 0.12 s after the touch: at 0.24 s an in-system high ball left a 0.12-0.65 m seam 11 times in
-   * 12, at 0.12 s 2 times in 12, 1-5 cm wide (PROGRESS, AI movement 4).
+   * 12, at 0.12 s 2 times in 12, 1-5 cm wide (AI movement 4, in the pull request).
    */
   middle: {
     react: 0.12,
