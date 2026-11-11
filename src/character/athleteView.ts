@@ -356,6 +356,13 @@ export class AthleteView {
       spineX -= 0.32 * this.lowW;
       // an approach is three steps from a standing start: the lean has to be there by the second
       if (sprint > 0.5) bodyRate = 20;
+      // standing and waiting, nobody is a statue: the chest breathes and the weight shifts a little
+      const I = CHARACTER.idle;
+      const still = 1 - g;
+      const ph = a.id * 1.7;
+      chestX += Math.sin(tr * I.breath * Math.PI * 2 + ph) * I.chest * still;
+      drop += Math.sin(tr * I.sway * Math.PI * 2 + ph * 1.3) * I.bob * H * still;
+      chestZ += Math.sin(tr * I.sway * Math.PI * 2 + ph * 0.7) * I.lean * still;
     }
     // land absorb
     if (st === 'land' || (st === 'ground' && tSinceLand < 0.45)) {

@@ -586,6 +586,12 @@ export const CHARACTER = {
   /** first person: your own body starts to show this far (m) from the lens and is whole from `to` (m) */
   fpFade: { from: 0.22, to: 0.34 },
   /**
+   * Standing and waiting: the chest rises and falls `chest` (rad) at `breath` (Hz, a player between rallies
+   * breathes about every two and a half seconds), and the weight shifts at `sway` (Hz): the hips `bob`
+   * (body heights) and the trunk `lean` (rad). Each athlete is out of step with the others.
+   */
+  idle: { breath: 0.4, chest: 0.014, sway: 0.23, bob: 0.004, lean: 0.012 },
+  /**
    * The two-arm swing of a jump. On the plant the arms go back behind the hips: `backStanding` (rad from
    * hanging straight down) for a standing jump, up to `backRun` after a run-up of `fullRun` (m/s) or more,
    * within `backTime` (s). From `upStart` (s) after the plant began they swing down past the hips and up in
