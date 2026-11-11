@@ -155,7 +155,8 @@ export class HitterBrain implements Brain {
           const info = g.contact.ideal(a, now, 0.6);
           const w = a.action?.kind === 'windup' ? a.action : null;
           const lead = ContactSystem.swingLead(w ? ContactSystem.chargeFor(now - w.t0) : 1);
-          if (info && now >= info.t - lead + this.err - 1e-4) {
+          // a late arm still swings (graded late through aiErr): a hitter never lets the set drop past
+          if (info && now >= info.t - lead + Math.min(this.err, 0) - 1e-4) {
             const aim = this.chooseAim(g, info.ball.x, info.ball, info.t);
             a.aiAim.copy(aim);
             // a roll shot over a closed block is a soft swing (the contact rolls it when it goes deep)

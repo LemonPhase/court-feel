@@ -61,10 +61,16 @@ export class ServerBrain implements Brain {
       }
       case 'wait':
         stop(a, face);
+        if (this.t > 0.7 && this.jump && Math.abs(this.spot.z) - Math.abs(a.pos.z) < AI.serve.jumpStep) {
+          // a jump server walks into the toss: the first step of the run-up comes before the ball leaves the hand
+          a.cmd.moveZ = -a.side;
+          break;
+        }
         if (this.t > 0.7) {
           if (this.jump ? g.contact.serveToss(a, AI.serve.jumpToss, AI.serve.jumpTossHigh) : g.contact.serveToss(a)) {
             this.phase = 'toss';
-            this.err = g.rng.gauss() * (this.jump ? AI.serve.jumpErr : AI.serve.floatErr);
+            const e = g.rng.gauss() * (this.jump ? AI.serve.jumpErr : AI.serve.floatErr);
+            this.err = Math.max(-AI.serve.errMax, Math.min(AI.serve.errMax, e));
           }
         }
         break;
@@ -118,11 +124,15 @@ export class ServerBrain implements Brain {
     }
   }
 
-  /** swing so the hand meets the ball at the ideal contact (looking `look` s ahead) */
+  /**
+   * swing so the hand meets the ball at the ideal contact (looking `look` s ahead). The timing
+   * error grades the contact (`aiErr`); a late arm still swings, at the last moment the hand can
+   * reach the ball: a server never lets the toss drop past untouched.
+   */
   private swingAt(g: Game, look: number): void {
     const a = this.athlete;
     const info = g.contact.ideal(a, g.simTime, look);
-    if (info && g.simTime >= info.t - ContactSystem.swingLead(1) + this.err) {
+    if (info && g.simTime >= info.t - ContactSystem.swingLead(1) + Math.min(this.err, 0)) {
       a.aiAim.copy(this.target);
       g.contact.startSwing(a, { aiErr: this.err });
       this.swung = true;

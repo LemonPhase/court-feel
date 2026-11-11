@@ -322,7 +322,8 @@ export class ContactSystem {
     const spread = rank === 3 ? 0 : rank === 2 ? 0.45 : 1.3;
     target.x += (h.rand() * 2 - 1) * spread;
     target.z += (h.rand() * 2 - 1) * spread * 0.6;
-    if (grade === 'Early') target.z += side * 2.2; // contact under the ball: sails long
+    // contact under the ball: sails long (a jump serve keeps its line and loses its topspin below)
+    if (grade === 'Early' && !serve) target.z += side * 2.2;
     if (grade === 'Late') target.z -= side * 1.8; // over the top: drives down into the net
     const pos = a.stats;
     const hf = a.state === 'air' && a.jumpH > 0 ? clamp01(a.pos.y / a.jumpH) : 0.6;
@@ -359,9 +360,10 @@ export class ContactSystem {
       const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
       const gradeK = serve ? (rank === 3 ? 1.1 : rank === 2 ? 1 : 0.8) : 1;
       speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1) * power;
-      const spin =
-        (serve ? CONTACT.serveJumpSpin : rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk) *
-        lerp(0.75, 1, power);
+      // a serve's topspin comes from the same arm speed as its pace: a slower, mistimed swing spins it less
+      const spin = serve
+        ? CONTACT.serveJumpSpin * Math.min(1, speed / CONTACT.serveJumpSpeed)
+        : (rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk) * lerp(0.75, 1, power);
       const land = { x: 0, y: 0, z: 0 };
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, spin, out, w, land);
@@ -374,6 +376,10 @@ export class ContactSystem {
           else speed *= 0.85;
           solveSpeedToFloor(p0, target.x, target.z, speed, spin * 0.8, out, w, land);
         }
+      }
+      if (serve && grade === 'Early') {
+        w.x *= CONTACT.serveEarlySpin;
+        w.z *= CONTACT.serveEarlySpin;
       }
       ball.hit(out, w, 0, h.simTime);
     }

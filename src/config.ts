@@ -293,6 +293,11 @@ export const CONTACT = {
   serveFloatSpeed: 17,
   serveJumpSpeed: 24,
   serveJumpSpin: 50,
+  /**
+   * a jump serve met early (the hand under the ball) keeps its line and speed but loses its
+   * topspin: it flies flat and sails long rather than looping up (this share of `serveJumpSpin` is left)
+   */
+  serveEarlySpin: 0.35,
   /** pass target error (m) by grade */
   passErrPerfect: 0.15,
   passErrGood: 0.6,
@@ -628,21 +633,27 @@ export const AI = {
   pipe: { inSystem: 0.6, outOfSystem: 0.35 },
   /**
    * Mini Rally serves (`src/ai/server.ts`). `jump` of the serves are jump serves: the server starts
-   * `jumpBack` m behind the end line, tosses the ball `jumpTossHigh` m over their standing reach and
-   * `jumpToss` m forward, and meets it at the top of a run-up and jump; the rest are standing floats. The target is the seam between two passers,
+   * `jumpBack` m behind the end line, walks `jumpStep` m into the toss, tosses the ball `jumpTossHigh` m over their standing reach
+   * (about 1.3 m over the contact: the toss drops into a three-step run-up, not out of the sky) and
+   * `jumpToss` m forward (where it would come back down to toss height), runs in, takes off behind
+   * the line and lands in the court (FIVB rule 12.4.3); the rest are standing floats. The target is the seam between two passers,
    * deep in zone 1 or 5 (`deepIn` m inside the corner), short (`shortZ` m off the net, floats only)
    * or at a passer, weighted `seam` / `deep` / `short` / `body`, `spread` m (1 sd) around it before
-   * the server's own error: their swing timing is off by `floatErr` / `jumpErr` s (1 sd). The jump
+   * the server's own error: their swing timing is off by `floatErr` / `jumpErr` s (1 sd), never more
+   * than `errMax` s (a server always gets a hand on their own toss: a mistimed serve is hit early,
+   * long, or late, into the net, it is not whiffed). The jump
    * serve is the riskiest serve: it misses most (FIVB beach: over 20% of jump serves are errors;
    * men's indoor studies: the jump serve has the highest error rate).
    */
   serve: {
     jump: 0.6,
-    jumpBack: 3.0,
-    jumpToss: 1.4,
-    jumpTossHigh: 2.6,
+    jumpBack: 4.5,
+    jumpStep: 0.8,
+    jumpToss: 4.6,
+    jumpTossHigh: 2.0,
     floatErr: 0.07,
-    jumpErr: 0.16,
+    jumpErr: 0.1,
+    errMax: 0.14,
     seam: 0.45,
     deep: 0.25,
     short: 0.1,
