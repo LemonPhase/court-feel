@@ -156,7 +156,7 @@ describe('the defence reads their set (Mini Rally, perimeter)', () => {
     const lane = laneFor('OH', -1);
     t.spike({ x: lane.x, y: 3.25, z: lane.z }, { x: -1.0, y: 0.1, z: 7.0 }, 20);
     const hitT = t.g.simTime;
-    // the moment the digger steers for the ball (it may still be moving from its read when the hit comes)
+    // the moment the digger steers for the ball, or dives for it (it may still be moving from its read when the hit comes)
     let steers = -1;
     let receiver: Athlete | null = null;
     let ticksSince = 0;
@@ -164,12 +164,60 @@ describe('the defence reads their set (Mini Rally, perimeter)', () => {
       // (the players step before the coordinator picks the digger: judge from the tick after)
       if (receiver) ticksSince++;
       receiver ??= t.team.receiver;
-      if (receiver && ticksSince > 0 && steers < 0 && Math.hypot(receiver.cmd.moveX, receiver.cmd.moveZ) > 0.05)
+      if (
+        receiver &&
+        ticksSince > 0 &&
+        steers < 0 &&
+        (Math.hypot(receiver.cmd.moveX, receiver.cmd.moveZ) > 0.05 || receiver.state === 'dive')
+      )
         steers = t.g.simTime - hitT;
     });
     expect(receiver).not.toBeNull();
     expect(steers).toBeGreaterThan(D.hitReact - 3 * D.hitReactSd);
     expect(steers).toBeLessThan(D.hitReact + 0.2);
+  });
+});
+
+describe('going for every ball (Mini Rally)', () => {
+  it('a ball off our own block flying out over our side is still chased: out, it is their point', () => {
+    const t = homeTeam();
+    const mb = t.team.players.get('MB')!;
+    // off the block's outside hand, wide of our sideline
+    t.touch('block', 1, { x: 3.6, y: 3.0, z: 0.3 }, { x: W + 2.0, y: 0, z: 5.0 }, 4.2, mb);
+    t.run(0.4);
+    const r = t.team.receiver;
+    expect(r).not.toBeNull();
+    expect(r).not.toBe(mb);
+    expect(t.team.brains.get(r!)!.job).toBe('receive');
+  });
+
+  it('a ball out of reach on foot: the defender sent runs at it and dives for it, and a team-mate runs at it too', () => {
+    const t = homeTeam();
+    setOutside(t);
+    t.run(1.1);
+    const lane = laneFor('OH', -1);
+    // a roll shot over the block, dropping short into the open court 3 m from the cross digger, 1 s after the hit
+    const L = t.team.players.get('L')!;
+    const to = { x: L.pos.x + 3 * Math.sin(1.2), y: 0.1, z: L.pos.z - 3 * Math.cos(1.2) };
+    t.touch('spike', -1, { x: lane.x, y: 3.25, z: lane.z }, to, 3.4);
+    let dived: Athlete | null = null;
+    let sentWhenDived: Athlete | null = null;
+    let two = 0;
+    t.run(1.0, () => {
+      const r = t.team.receiver;
+      if (!dived) {
+        dived = [...t.team.players.values()].find((a) => a.state === 'dive') ?? null;
+        sentWhenDived = r;
+      }
+      if (!r) return;
+      const runners = [...t.team.brains.values()].filter(
+        (b) => b.athlete !== r && b.job === 'base' && Math.hypot(b.spot.x - to.x, b.spot.z - to.z) < 1.5,
+      );
+      two = Math.max(two, runners.length);
+    });
+    expect(dived).not.toBeNull();
+    expect(dived).toBe(sentWhenDived);
+    expect(two).toBeGreaterThan(0);
   });
 });
 

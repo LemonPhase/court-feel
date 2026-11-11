@@ -6,7 +6,8 @@ Mini Rally is 6 v 6 with the player in their chosen position. The AI serves, rec
 
 - `rally-start` puts twelve athletes on court with the score at 0 : 0 and the opponents serving.
 - `rally-set-call` changes your set call with `1`, `2`, `3` (OH, OPP and MB), shown on the score line.
-- `rally-serve` starts each point with a serve: about 6 AI serves in 10 are jump serves (the server is in the air at the contact), the rest standing floats. A serve can be an ace or a serve error.
+- `rally-serve` starts each point with a serve: about 6 AI serves in 10 are jump serves (the server walks in, tosses about 4.5 m up, takes off behind the end line and lands in the court), the rest standing floats. A serve can be an ace or a serve error, but a jump server never lets the toss drop untouched.
+- `rally-defence` the AI defenders play the first ball in four ways, named in the contact's `note`: a platform dig (no note or a grade note), `Side dig` (a ball past the hip, never Perfect), `Dive` (a ball out of reach on foot: the athlete slides along the floor and gets back up) and `Overhand` (a slow ball at head height passed with the hands). A ball off the team's own block is chased wherever it goes, and on a ball the one sent may not reach a team-mate runs at it too.
 - `rally-setter-call` shows the setter's call on the pass (for example `SHOOT!` in system, `HIGH!` out of system) in a bubble.
 - `rally-point` ends the rally with a banner, updates the score and names the next server.
 - `rally-reserve` abandons the rally with `n` and serves again without changing the score.
@@ -37,6 +38,7 @@ Preconditions:
 - A point can end on the serve (an ace, a shank off the pass, or a serve that lands out or in the net) with no setter call in it. If the call step times out, check `court events` for an `outcome`, then step into the next rally and wait for the call there. Which call comes first depends on the rally's random stream: assert its shape, not the word.
 - The autopilot is weaker here than in the drills. When this was written, as OH it swung late on every set (`MISS`, `Swung late`), as OPP it made no contact in 40 seconds, as MB it hit Perfect quicks when set, as L it passed and as S it set. A rally result is not a fixed number: assert the shape (a serve, an outcome, a score that matches the outcome), not who won.
 - The setter does not set the player every time. In the recipe's rally the set goes to the outside hitter, so `events` may show no contact by `me`.
+- `rally-defence` was measured with an all-AI probe (`g.autoUser = true`, the manual clock, 1000 s of rallies): about 7 dives, 2 side digs and 7 overhand passes for every 16 platform digs. In a short recipe there may be none: step on with `court step 30 --until 'window.__verify.events.some(e => e.note === "Dive")'` and take the `shot` straight after, while the athlete is on the floor (about 1 s).
 - The call bubble is on screen for about 1.5 seconds of game time. Take the `shot` straight after the `step --until` that waits for it.
 - The recipe starts on `their serve`. `your serve` needs the home team to win a point first. Who serves for the home team, and whether the player serves, was not driven when this was written. Add it to this file when you verify it.
 - S and L have no set calls: the score line has no `call` part and `1` to `3` do nothing.

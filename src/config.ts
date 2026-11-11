@@ -201,6 +201,18 @@ export const PLAYER = {
   apexGravityScale: 0.82,
   apexBand: 1.1,
   landRecover: 0.2,
+  /**
+   * A dive (AI defenders, at a ball the platform can't reach on foot): the body goes hands-first
+   * along the floor at `diveSpeed` m/s or the run's speed, sliding to a stop at `diveDecel` m/s²; the
+   * hands are at full stretch, `diveArm` m past the feet and `CONTACT.diveLow` m off the floor,
+   * `diveDown` s after it starts, and the player is up again after `diveTime` s. With a run-up that
+   * is a ball about 2-2.5 m away dug off the floor (a sprawl or a pancake).
+   */
+  diveSpeed: 3.5,
+  diveDecel: 6,
+  diveArm: 1.0,
+  diveDown: 0.3,
+  diveTime: 1.1,
   bodyTurnRate: 14,
   /**
    * airborne: max body rotation from the takeoff yaw, and its rate. In the air the arm aims,
@@ -311,6 +323,20 @@ export const CONTACT = {
   passMoveErr: 1.0,
   /** a hard-driven ball (passing or digging) gives this much extra reach (m): a lunge, the same for the AI and you */
   digLunge: 0.12,
+  /**
+   * Pass forms other than the platform in front. Sideways: the arms swing the platform out to one
+   * side (`sideReach` m) without the feet getting there; it is never Perfect and its error is x
+   * `sideErr`. A dive digs the ball `diveLow` m off the floor, never better than Good, error x
+   * `diveErr` (the ball goes up, roughly at the setter: keeping it alive is the job). Overhand (the
+   * hands, a first ball that comes down at head height): x `handsErr` the platform's error, and a
+   * ball faster than `handsMaxSpeed` m/s is too hard to play with the hands (the AI digs it).
+   */
+  sideReach: 0.6,
+  sideErr: 1.4,
+  diveLow: 0.25,
+  diveErr: 2.2,
+  handsErr: 0.7,
+  handsMaxSpeed: 15,
   /**
    * Shanks: a ball arriving at 22 m/s or more (from 12 m/s up) off a mistimed platform (Late / Early;
    * `shankGood` as likely off a Good one), or off the edge of it, is shanked `shank` of the time: it
@@ -636,6 +662,23 @@ export const AI = {
    * outside 52%, opposite 25%, middle 15%, pipe 8% (213 attacks; in the pull request).
    */
   setWeight: { outside: 2.0, opposite: 1.0 },
+  /**
+   * AI first balls overhand: a ball still under `maxSpeed` m/s when it comes down at head height (a
+   * free ball, a float serve, a soft block) is played with the hands `share` of the time, if the player
+   * can get under it: within `maxRun` m, at no more than `pace` x their top speed. A float serve comes
+   * down through head height a couple of metres in front of where it would be dug, so the passer steps
+   * up to it and takes it high (legal: FIVB rule 9.2.3.2 lets a team's first hit touch the body more
+   * than once in one action). Harder or further balls take the platform.
+   */
+  overhand: { share: 0.7, maxSpeed: 15, maxRun: 2.6, pace: 0.6 },
+  /**
+   * an AI defender runs at a ball and dives for it when the platform would need over `late` x their
+   * top speed to get there in time and it is over `minDist` m away (closer, the platform swings out to it).
+   * The dive starts when the hands would land within `fit` m of where the ball comes down low.
+   */
+  dive: { late: 0.9, minDist: 1.0, fit: 0.35 },
+  /** a ball the defender sent for would reach with less than this (s) to spare: a team-mate runs at it too */
+  scramble: 0.1,
   pipe: { inSystem: 0.35, outOfSystem: 0.1 },
   /**
    * Mini Rally serves (`src/ai/server.ts`). `jump` of the serves are jump serves: the server starts

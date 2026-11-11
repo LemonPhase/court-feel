@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { AI, BALL, COURT, PLAYER, TIMING, type PositionId } from '../config';
-import { clamp, yawFromDir } from '../core/mathx';
+import { AI, BALL, CONTACT, COURT, PLAYER, TIMING, type PositionId } from '../config';
+import { clamp, lerp, smooth01, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
@@ -205,7 +205,12 @@ export class TeamPlayer implements Brain {
     }
   }
 
-  /** intercept the ball with the platform and pass it (to the setter, or over as a free ball) */
+  /**
+   * Intercept the ball and pass it (to the setter, or over as a free ball): with the platform, or
+   * overhand when a slow ball comes down at head height (`AI.overhand`); a ball the platform can't
+   * get to on foot is run down and dived for (PLAYER.dive*). A ball going by to one side is played
+   * with the platform out to that side (the contact system finds it).
+   */
   private playFirstOrFree(_dt: number, g: Game): void {
     const a = this.athlete;
     const ball = g.ball;
@@ -219,6 +224,8 @@ export class TeamPlayer implements Brain {
       g.contact.tryPass(a, a.action);
       if (now - a.action.t0 > 1.2) a.endAction();
     }
+    // committed to a dive: the slide does the rest
+    if (a.state === 'dive') return;
     // a touch is seen a reaction time after it: until then the body stays where the read put it
     const lt = ball.lastTouch;
     if (lt) this.hitRead.look(lt, lt.t, g.rng);
@@ -227,49 +234,109 @@ export class TeamPlayer implements Brain {
       return;
     }
     const pred = ball.ensurePrediction(g.env, now);
-    const h = a.height * 0.34 + 0.05;
-    let tArr = pred.descendThrough(h, now);
+    // overhand or platform: decided once per ball, for a ball that will still be slow when it comes down
+    // to head height, somewhere the player can step to in time (a float serve is taken high, in front)
+    if (this.formFor !== lt) {
+      this.formFor = lt;
+      const tH = pred.descendThrough(a.height + 0.17, now);
+      let ok = false;
+      if (tH > now) {
+        const vH = pred.velAt(tH, this.b);
+        const vArr = Math.hypot(vH.x, vH.y, vH.z);
+        pred.posAt(tH, this.b);
+        const run = Math.hypot(this.b.x - a.pos.x, this.b.z - a.pos.z);
+        const left = tH - TIMING.setLead - now;
+        ok =
+          vArr <= AI.overhand.maxSpeed && run <= AI.overhand.maxRun && left > 0 && run / left <= a.stats.approachSpeed * AI.overhand.pace;
+      }
+      this.hands = ok && g.rng.next() < AI.overhand.share;
+    }
+    let hands = this.hands;
+    let tArr = hands ? pred.descendThrough(a.height + 0.17, now) : -1;
     if (tArr > 0) pred.posAt(tArr, this.b);
-    else if (pred.landT > now) {
-      // already under platform height (a dribble off the tape, a low deflection): dig it where it lands
-      tArr = pred.landT;
-      this.b.x = pred.land.x;
-      this.b.z = pred.land.z;
-    } else {
-      stop(a, netYaw(a.side));
-      return;
+    else hands = false;
+    if (!hands) {
+      tArr = pred.descendThrough(a.height * 0.34 + 0.05, now);
+      if (tArr > 0) pred.posAt(tArr, this.b);
+      else if (pred.landT > now) {
+        // already under platform height (a dribble off the tape, a low deflection): dig it where it lands
+        tArr = pred.landT;
+        this.b.x = pred.land.x;
+        this.b.z = pred.land.z;
+      } else {
+        stop(a, netYaw(a.side));
+        return;
+      }
     }
     const face = netYaw(a.side);
     const fx = -Math.sin(face);
     const fz = -Math.cos(face);
-    const sx = this.b.x - fx * 0.45;
-    const sz = this.b.z - fz * 0.45;
+    const ahead = hands ? 0.14 : 0.45;
+    let sx = this.b.x - fx * ahead;
+    let sz = this.b.z - fz * ahead;
     const sp = ball.speed();
     const fast = clamp((sp - 12) / 10, 0, 1);
-    const lead = TIMING.passLead + (TIMING.digLead - TIMING.passLead) * fast;
-    // far from the spot: turn and run (no backpedalling after a tip), face the net again on arrival;
-    // sprint whenever a shuffle would not get there with the platform ready in time
-    const dist = Math.hypot(sx - a.pos.x, sz - a.pos.z);
+    let lead = hands ? TIMING.setLead : TIMING.passLead + (TIMING.digLead - TIMING.passLead) * fast;
+    let dist = Math.hypot(sx - a.pos.x, sz - a.pos.z);
+    // overhand is for a ball you are under: one you have to run for is played with the platform
+    if (hands && dist > AI.overhand.maxRun) {
+      this.hands = false;
+      return;
+    }
     const left = tArr - lead - now;
     const needSpeed = left > 0.05 ? dist / left : 1e9;
-    const d = moveTo(a, sx, sz, { face: dist < 1.1 ? face : undefined, arrive: 0.35, sprintDist: 1e9 });
-    a.cmd.sprint = dist > 0.9 && needSpeed > a.stats.shuffleSpeed * 0.75;
-    if (this.pressT < 0) this.err = g.rng.gauss() * (0.03 + (1 - this.skill) * 0.12) * (1 + AI.passPressure * fast) - (d > 0.8 ? 0.1 : 0);
     // anything that is not actually in progress (a block that is over, a set that never
     // got its ball, a finished swing) gives way to the pass
     const act = a.action;
     const busy =
       act &&
-      ((act.kind === 'pass' && !act.resolved) ||
+      ((act.kind === 'pass' && !act.resolved && act.form !== 'platform') ||
         act.kind === 'windup' ||
         act.kind === 'toss' ||
         (act.kind === 'swing' && !act.resolved) ||
         (act.kind === 'block' && act.held));
-    if (!busy && now >= tArr - lead + this.err && (a.state === 'ground' || a.state === 'land')) {
-      a.startAction('pass', now);
+    const onFoot = a.state === 'ground' || a.state === 'land';
+    // too far for the platform to be there in time: run at where the ball comes down low, and dive for it
+    if (!hands && onFoot && !busy && dist > AI.dive.minDist && needSpeed > a.stats.approachSpeed * AI.dive.late) {
+      const tLow = pred.descendThrough(CONTACT.diveLow + 0.1, now);
+      if (tLow > now) {
+        pred.posAt(tLow, this.low);
+        const dx = this.low.x - a.pos.x;
+        const dz = this.low.z - a.pos.z;
+        const dl = Math.hypot(dx, dz);
+        // where the hands will be when the ball gets there if the dive starts now: the slide, plus the arms' stretch
+        const T = tLow - now;
+        const v0 = Math.max(PLAYER.diveSpeed, a.speed);
+        const ts = Math.min(T, v0 / PLAYER.diveDecel);
+        const reach = v0 * ts - 0.5 * PLAYER.diveDecel * ts * ts + lerp(0.45, PLAYER.diveArm, smooth01(T / PLAYER.diveDown));
+        if (T <= PLAYER.diveDown + 0.1 && Math.abs(reach - dl) < AI.dive.fit) {
+          a.dive(yawFromDir(dx, dz));
+          a.startAction('pass', now);
+          this.pressT = now;
+          return;
+        }
+        if (dl > 0.3) {
+          sx = this.low.x;
+          sz = this.low.z;
+          dist = dl;
+          lead = 0;
+        }
+      }
+    }
+    // far from the spot: turn and run (no backpedalling after a tip), face the net again on arrival;
+    // sprint whenever a shuffle would not get there with the platform ready in time
+    const d = moveTo(a, sx, sz, { face: dist < 1.1 ? face : undefined, arrive: 0.35, sprintDist: 1e9 });
+    a.cmd.sprint = dist > 0.9 && needSpeed > a.stats.shuffleSpeed * 0.75;
+    if (this.pressT < 0) this.err = g.rng.gauss() * (0.03 + (1 - this.skill) * 0.12) * (1 + AI.passPressure * fast) - (d > 0.8 ? 0.1 : 0);
+    if (!busy && !(act?.kind === 'pass' && !act.resolved) && now >= tArr - lead + this.err && onFoot) {
+      const p = a.startAction('pass', now);
+      p.form = hands ? 'hands' : 'platform';
       this.pressT = now;
     }
   }
+  private formFor: unknown = null;
+  private hands = false;
+  private low: V3 = { x: 0, y: 0, z: 0 };
 }
 
 /**
@@ -555,6 +622,7 @@ export class TeamAI {
       const vy = a.vel.y;
       t += (vy + Math.sqrt(Math.max(0, vy * vy + 2 * BALL.gravity * a.pos.y))) / BALL.gravity + PLAYER.landRecover;
     } else if (a.state === 'land') t += Math.max(0, PLAYER.landRecover - a.stateT);
+    else if (a.state === 'dive') t += Math.max(0, PLAYER.diveTime - a.stateT) + PLAYER.landRecover;
     else if (a.state === 'load') t += 0.7;
     return t;
   }
@@ -564,11 +632,11 @@ export class TeamAI {
    * gets there first, preferring anyone who can actually make it. Someone is always
    * sent (a desperate dig beats watching it drop) unless `exclude` was the only option.
    */
-  private pickReceiver(p: V3, serve: boolean, exclude: Athlete | null = null): Athlete | null {
+  private pickReceiver(p: V3, serve: boolean, exclude: Athlete | null = null, exclude2: Athlete | null = null): Athlete | null {
     let best: Athlete | null = null;
     let bestT = 1e9;
     for (const [slot, a] of this.players) {
-      if (a === exclude) continue;
+      if (a === exclude || a === exclude2) continue;
       if (serve && (slot === 'S' || slot === 'MB' || slot === 'OPP')) continue;
       let t = this.reachTime(a, p);
       if (slot === 'S') t += 0.4; // the setter digs only if nobody else can
@@ -619,15 +687,22 @@ export class TeamAI {
       const inBounds = Math.abs(land.x) < COURT.halfWidth + AI.outJudge && Math.abs(land.z) < COURT.halfLength + AI.outJudge;
       // the receiver sticks to one ball, unless the ball is no longer going where they were sent
       const strayed = comingToUs && tDown > 0 && Math.hypot(p.x - this.receiverAt.x, p.z - this.receiverAt.z) > 1.5;
-      const receive = (serve: boolean, exclude: Athlete | null) => {
+      // (`mustPlay`: a ball off our own block is ours wherever it lands: out, it is their point)
+      const receive = (serve: boolean, exclude: Athlete | null, mustPlay = false) => {
         if (this.receiver && this.receiverFor === lt && !strayed) {
           setJob(this.receiver, 'receive');
-        } else if (comingToUs && tDown > 0 && inBounds) {
+        } else if (comingToUs && tDown > 0 && (inBounds || mustPlay)) {
           const r = this.pickReceiver(p, serve, exclude);
           this.receiver = r;
           this.receiverFor = lt;
           this.receiverAt = { x: p.x, z: p.z };
           if (r) setJob(r, 'receive');
+        }
+        // a ball the one sent may not get to: the next closest runs at it too (two go, one plays it)
+        const r = this.receiver;
+        if (!serve && r && this.receiverFor === lt && comingToUs && tDown > 0 && this.reachTime(r, p) > tDown - now - AI.scramble) {
+          const two = this.pickReceiver(p, false, r, exclude);
+          if (two && two !== this.secondBy) setJob(two, 'base', { x: p.x, z: p.z + this.side * 0.6 });
         }
       };
       if (theirBall || (lt?.kind === 'block' && lt.side !== this.side)) {
@@ -657,7 +732,7 @@ export class TeamAI {
         // our block touched it and it is dropping back on our side: a block is not a touch,
         // so somebody (preferably not the blocker) picks it up and we run our offence
         form = 'defense';
-        receive(false, lt?.athlete ?? null);
+        receive(false, lt?.athlete ?? null, true);
         // a soft block: if it comes down slowly to a passer who will get there, run the offence early
         if (lt && comingToUs && tDown > 0 && ball.speed() < AI.transition.softSpeed) this.earlyTransition(lt, tDown, p, setJob);
       } else if (ourBall) {

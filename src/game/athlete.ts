@@ -4,9 +4,11 @@ import { standingReach } from '../character/rig';
 import { bodyStats, type CustomBody } from './body';
 import { angleLerp, clamp, clamp01, damp, dirFromYaw, lerp, rightFromYaw, wrapAngle } from '../core/mathx';
 
-export type AState = 'ground' | 'load' | 'air' | 'land';
+export type AState = 'ground' | 'load' | 'air' | 'land' | 'dive';
 export type ActionKind = 'swing' | 'windup' | 'block' | 'pass' | 'set' | 'toss' | 'serve';
 export type Grade = 'Perfect' | 'Good' | 'Early' | 'Late' | 'Miss';
+/** how a first ball is played: the platform in front, the platform out to one side, overhand, or diving */
+export type PassForm = 'platform' | 'side' | 'hands' | 'dive';
 
 export interface Action {
   kind: ActionKind;
@@ -38,6 +40,8 @@ export interface Action {
   idealT: number;
   idealD: number;
   idealFor: unknown;
+  /** a pass: the form it is played with (the AI picks overhand; the contact finds a side or diving touch) */
+  form: PassForm;
 }
 
 export interface AthleteCmd {
@@ -300,8 +304,8 @@ export class Athlete {
     const st = this.stats;
     const cmd = this.cmd;
 
-    // ---- facing (in the air the body barely rotates: the arm aims, not the hips)
-    if (cmd.faceYaw !== null && Number.isFinite(cmd.faceYaw)) {
+    // ---- facing (in the air the body barely rotates: the arm aims, not the hips; a dive keeps its line)
+    if (this.state !== 'dive' && cmd.faceYaw !== null && Number.isFinite(cmd.faceYaw)) {
       let want = cmd.faceYaw;
       let rate = PLAYER.bodyTurnRate;
       if (this.state === 'air') {
@@ -362,6 +366,16 @@ export class Athlete {
       }
       const ready = this.loadT >= PLAYER.loadMin;
       if ((this.loadRelease && ready) || this.loadT >= PLAYER.loadMax) this.takeoff();
+    } else if (this.state === 'dive') {
+      // hands-first along the floor: the slide brakes to a stop, then the player gets up
+      const sp = this.speed;
+      const k = sp > 1e-5 ? Math.max(0, sp - PLAYER.diveDecel * dt) / sp : 0;
+      this.vel.x *= k;
+      this.vel.z *= k;
+      if (this.stateT >= PLAYER.diveTime) {
+        this.state = 'land';
+        this.stateT = 0;
+      }
     } else if (this.state === 'air') {
       // tiny air control + assist nudge
       const ac = PLAYER.airControl * dt;
@@ -427,6 +441,21 @@ export class Athlete {
     this.ryaw = angleLerp(this.prevYaw, this.yaw, alpha);
   }
 
+  /**
+   * Throw the body at a ball out of reach (AI defenders): hands-first along `yaw`, at
+   * `PLAYER.diveSpeed` at least, sliding on the floor; up again `PLAYER.diveTime` later.
+   */
+  dive(yaw: number): void {
+    if (this.state !== 'ground' && this.state !== 'land') return;
+    this.state = 'dive';
+    this.stateT = 0;
+    this.yaw = yaw;
+    const d = dirFromYaw(yaw, _f);
+    const along = Math.max(PLAYER.diveSpeed, this.vel.x * d.x + this.vel.z * d.z);
+    this.vel.x = d.x * along;
+    this.vel.z = d.z * along;
+  }
+
   /** begin an action (animation + contact bookkeeping read it) */
   startAction(kind: ActionKind, t: number): Action {
     if (this.action) this.lastAction = this.action;
@@ -450,6 +479,7 @@ export class Athlete {
       idealT: -1,
       idealD: 1e9,
       idealFor: null,
+      form: 'platform',
     };
     this.action = act;
     return act;
