@@ -61,11 +61,11 @@ Real frames from the game: no paint-overs, no staged cameras.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/perfect-spike-first-person.jpg" alt="First person: the hitting arm has just come through the ball, sparks around it, PERFECT 108 km/h full power">
+      <img src="docs/screenshots/perfect-spike-first-person.jpg" alt="First person: the hitting arm coming through just after the ball has left, sparks around it, PERFECT 108 km/h full power">
       <b>From your own eyes.</b> A Perfect, full-power spike in first person: the arm comes through and the ball leaves at 108 km/h.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/broadcast-replay.jpg" alt="Letterboxed slow-motion replay from a broadcast angle: the hitter at the net, a shock ring and a fire trail on the ball">
+      <img src="docs/screenshots/broadcast-replay.jpg" alt="Letterboxed slow-motion replay from a broadcast angle: the hitter in the air at the net with the arm drawn back, the double block going up in front">
       <b>The replay.</b> Perfect spikes play back in slow motion from a broadcast camera. R replays your last attempt, misses included.
     </td>
   </tr>
@@ -75,7 +75,7 @@ Real frames from the game: no paint-overs, no staged cameras.
       <b>At the net.</b> Read the set, time the jump, press over. A stuff block, seen through the blocker's eyes.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/mini-rally-setter-call.jpg" alt="Mini Rally from behind the receivers: the setter's speech bubble reads GO! in system as the pass goes up">
+      <img src="docs/screenshots/mini-rally-setter-call.jpg" alt="Mini Rally from behind the receivers: the setter's speech bubble reads 1! in system (the quick) as the pass goes up">
       <b>The setter calls the pass.</b> 6 v 6 in your position. A second before the set, the setter calls the pass: GO! when it's on, HIGH! when it's out of system.
     </td>
   </tr>
@@ -502,6 +502,8 @@ contact rules do not know it is there.
   round the balcony, boards round the free zone, roof lamps, and a varnished
   floor that mirrors the players, the net and the boards. On a slow machine the
   game drops MSAA first and the floor mirror last (F3 shows the quality level).
+* **First person.** Your own arm dissolves where it passes close to the lens,
+  so the swing crosses the view without a cut-off sleeve in it.
 
 ## Tuning the feel
 
