@@ -584,7 +584,7 @@ export const CHARACTER = {
   /** how strongly the arena reflects in skin, cloth and shoes */
   envIntensity: 0.7,
   /** first person: your own body starts to show this far (m) from the lens and is whole from `to` (m) */
-  fpFade: { from: 0.22, to: 0.34 },
+  fpFade: { from: 0.22, to: 0.265 },
   /**
    * Standing and waiting: the chest rises and falls `chest` (rad) at `breath` (Hz, a player between rallies
    * breathes about every two and a half seconds), and the weight shifts at `sway` (Hz): the hips `bob`
