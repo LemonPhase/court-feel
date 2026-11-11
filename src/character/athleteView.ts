@@ -113,6 +113,8 @@ export class AthleteView {
   private feet: [FootState, FootState];
   private gaitPhase = 0;
   private gaitW = 0;
+  /** how far into the low covering stance the body is (eased from Athlete.low) */
+  private lowW = 0;
   private lastPos = v3();
   private velS = v3();
   /** the split step's hop this frame (m): the body and the feet leave the floor together */
@@ -312,6 +314,10 @@ export class AthleteView {
         drop += 0.045 * H * k;
         spineX -= 0.1 * k;
       }
+      // covering the hitter: low, hips back, chest over the knees (eased; upright again on the run)
+      this.lowW = lerp(this.lowW, a.low * (1 - g), damp(6, dt));
+      drop += 0.13 * H * this.lowW;
+      spineX -= 0.32 * this.lowW;
     }
     // land absorb
     if (st === 'land' || (st === 'ground' && tSinceLand < 0.45)) {

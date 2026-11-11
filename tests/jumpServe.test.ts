@@ -54,7 +54,7 @@ class Ball {
  * server's timing error drawn as `sd` standard deviations: the whole run-up, toss and swing on
  * the real contact system, then the served ball's flight to the floor.
  */
-function jumpServe(sd: number) {
+function jumpServe(sd: number, aim = new THREE.Vector3(-3.5, 0, -7.5), jump = true) {
   const ball = new Ball();
   const events: ContactEvent[] = [];
   const host = {
@@ -81,9 +81,18 @@ function jumpServe(sd: number) {
   };
   const a = new Athlete('OH', 1);
   const brain = new ServerBrain(a);
-  brain.serve(new THREE.Vector3(-3.5, 0, -7.5), -2.5, true);
+  brain.serve(aim, -2.5, jump);
   a.place(brain.spot.x, brain.spot.z, 0);
-  const r = { tossApex: 0, takeoffZ: NaN, landZ: NaN, contactY: NaN, apex: 0, overTape: NaN, e: null as ContactEvent | null };
+  const r = {
+    tossApex: 0,
+    takeoffZ: NaN,
+    landZ: NaN,
+    contactY: NaN,
+    apex: 0,
+    overTape: NaN,
+    e: null as ContactEvent | null,
+    ball: { x: NaN, z: NaN },
+  };
   for (let i = 0; i < SIM.hz * 6; i++) {
     brain.step(DT, g as unknown as Game);
     host.simTime += DT;
@@ -101,7 +110,10 @@ function jumpServe(sd: number) {
     if (r.e) {
       r.apex = Math.max(r.apex, ball.pos.y);
       if (z0 > 0 && ball.pos.z <= 0) r.overTape = ball.pos.y - COURT.netHeightMen;
-      if (ball.pos.y < 0.3) break;
+      if (ball.pos.y < 0.3) {
+        r.ball = { x: ball.pos.x, z: ball.pos.z };
+        break;
+      }
     }
   }
   return r;
@@ -138,10 +150,30 @@ describe('the jump serve (Mini Rally AI)', () => {
     expect(r.e!.grade).toBe('Late');
   });
 
-  it('a jump serve met early sails flat and long, it does not loop up into a lob', () => {
+  it('a jump serve met early flies flat, it does not loop up into a lob', () => {
     const r = jumpServe(-4);
     expect(r.e!.grade).toBe('Early');
     expect(r.apex - r.contactY).toBeLessThan(1.2);
     expect(r.overTape).toBeLessThan(2);
+  });
+
+  it('the AI never misses a serve: early, late, at the deep corners or short, jump or float, it clears the tape and lands in', () => {
+    const aims = [
+      new THREE.Vector3(-4.4, 0, -8.9),
+      new THREE.Vector3(4.4, 0, -8.9),
+      new THREE.Vector3(0, 0, -3.2),
+      new THREE.Vector3(-3.5, 0, -7.5),
+    ];
+    for (const jump of [true, false])
+      for (const aim of aims)
+        for (const sd of [-4, -2, 0, 2, 4]) {
+          const r = jumpServe(sd, aim, jump);
+          const what = `${jump ? 'jump' : 'float'} at ${aim.x},${aim.z}, error ${sd} sd`;
+          expect(r.e?.kind, what).toBe('serve');
+          expect(r.overTape, what).toBeGreaterThan(0.1);
+          expect(Math.abs(r.ball.x), what).toBeLessThan(COURT.halfWidth);
+          expect(r.ball.z, what).toBeLessThan(0);
+          expect(r.ball.z, what).toBeGreaterThan(-COURT.halfLength);
+        }
   });
 });

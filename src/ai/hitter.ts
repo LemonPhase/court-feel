@@ -163,14 +163,15 @@ export class HitterBrain implements Brain {
             a.aiAim.copy(aim);
             // a roll shot over a closed block is a soft swing (the contact rolls it when it goes deep)
             const roll = this.lastShot === 'roll';
-            const tip = roll || g.rng.next() < this.tipChance;
-            if (tip && !roll) {
+            const push = this.lastShot === 'recycle';
+            const tip = roll || push || g.rng.next() < this.tipChance;
+            if (tip && !roll && !push) {
               // tips go short, just over the block
               a.aiAim.set(clamp(aim.x * 0.5, -3.5, 3.5), aim.y, -a.side * (1.5 + g.rng.next() * 1.5));
               this.lastShot = 'tip';
             }
             // release the wind-up (AI holds long enough for full power); no wind-up = full swing
-            if (!g.contact.releaseWindup(a, { aiErr: this.err, tip })) g.contact.startSwing(a, { aiErr: this.err, tip });
+            if (!g.contact.releaseWindup(a, { aiErr: this.err, tip, push })) g.contact.startSwing(a, { aiErr: this.err, tip, push });
             this.swung = true;
           }
         }
@@ -308,6 +309,10 @@ export class HitterBrain implements Brain {
       const tx = hitX + (edge - hitX) * ((dz + 6) / Math.max(0.3, dz));
       options.push({ x: tx, z: opp * 6, w: AI.toolShot, name: 'tool' });
       options.push({ x: hitX * 0.3, z: opp * 5.2, w: AI.rollShot, name: 'roll' });
+      // or play it softly off the hands of the inside blocker, for our cover to pick up and go again
+      const inner = up.reduce((p, q) => (Math.abs(blockHands(q).x) < Math.abs(blockHands(p).x) ? q : p));
+      const ix = blockHands(inner).x;
+      options.push({ x: ix, z: opp * 0.2, w: AI.recycleShot, name: 'recycle' });
     }
     const total = options.reduce((s, o) => s + o.w, 0);
     let r = g.rng.next() * total;
@@ -315,7 +320,9 @@ export class HitterBrain implements Brain {
       r -= o.w;
       if (r <= 0) {
         this.lastShot = o.name;
-        return new THREE.Vector3(o.x + g.rng.gauss() * 0.4, 0, o.z + g.rng.gauss() * 0.4);
+        // (a push at the hands is aimed finely, just behind the net)
+        const n = o.name === 'recycle' ? 0.1 : 0.4;
+        return new THREE.Vector3(o.x + g.rng.gauss() * n, 0, o.z + g.rng.gauss() * n * (o.name === 'recycle' ? 0 : 1));
       }
     }
     return new THREE.Vector3(crossX, 0, opp * 6.5);

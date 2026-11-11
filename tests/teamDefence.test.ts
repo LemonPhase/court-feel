@@ -112,7 +112,7 @@ describe('the defence reads their set (Mini Rally, perimeter)', () => {
     expect(S.job).toBe('base');
     expect(S.spot).toEqual(t.team.formSpot('defense', 'S'));
     expect(t.brain('OH1').job).toBe('block');
-    t.run(0.7);
+    t.run(0.6);
     // the setter at right back digs the line; the libero at left back digs cross; the back-row outside plays middle back
     expect(S.spot.x).toBeCloseTo(W - D.lineIn, 1);
     expect(S.spot.z).toBeCloseTo(D.digDepth, 1);
@@ -315,36 +315,66 @@ describe('the front row transitions after every block (Mini Rally)', () => {
 });
 
 describe('covering our hitter (Mini Rally)', () => {
-  it('as our set flies to the outside, three team-mates close in behind them and two fill in deeper', () => {
+  /** our pass, then the setter's high ball to `slot`; run until the cover is set up */
+  const setTo = (slot: 'OH1' | 'OPP') => {
     const t = homeTeam();
     t.team.place('offense');
     // (the harness has no contacts: the hitters don't run their approaches here)
     for (const b of t.team.brains.values()) if (b.hitter) b.hitter.enabled = false;
     const S = t.team.players.get('S')!;
-    const OH = t.team.players.get('OH1')!;
-    const lane = laneFor('OH', 1);
-    // pass, then the setter's high ball to the outside
+    const hitter = t.team.players.get(slot)!;
+    const lane = laneFor(slot === 'OH1' ? 'OH' : 'OPP', 1);
     t.touch('pass', 1, { x: 0, y: 1, z: 6 }, { x: SETTER_SPOT.x, y: 2.4, z: SETTER_SPOT.z }, 4.5, t.team.players.get('L')!);
     t.run(0.05);
     t.touch('set', 1, { x: S.pos.x, y: 2.5, z: S.pos.z }, { x: lane.x, y: 3.25, z: lane.z }, 3.25 + lane.apexAbove, S);
-    t.team.onSet(OH);
-    t.run(0.1);
+    t.team.onSet(hitter);
+    t.run(AI.cover.read - 0.04);
     // nobody covers before they have seen the set go
     expect([...t.team.brains.values()].filter((b) => b.job === 'cover')).toHaveLength(0);
-    t.run(0.6);
+    t.run(0.45);
     const covers = [...t.team.brains.values()].filter((b) => b.job === 'cover');
     expect(covers).toHaveLength(5);
-    expect(covers.map((b) => b.athlete)).not.toContain(OH);
-    const d = covers.map((b) => Math.hypot(b.spot.x - lane.x, b.spot.z - lane.z)).sort((p, q) => p - q);
-    // three spots within about 2 m of where the hitter meets it, the other two further back
-    expect(d[2]).toBeLessThan(AI.cover.near + 0.6);
-    expect(d[3]).toBeGreaterThan(AI.cover.near + 0.6);
-    // all of them behind the hitter (further from the net), and everyone on the way there
+    expect(covers.map((b) => b.athlete)).not.toContain(hitter);
+    // everyone on the way there, and nobody in front of the middle at the net
     for (const b of covers) {
-      expect(b.spot.z).toBeGreaterThan(1.0);
+      expect(b.spot.z).toBeGreaterThanOrEqual(AI.cover.net - 0.01);
       const a = b.athlete;
       expect(Math.hypot(a.pos.x - b.spot.x, a.pos.z - b.spot.z) < 0.4 || a.speed > 1, t.team.slotOf(a)).toBe(true);
     }
+    const spot = (s: Slot) => {
+      expect(t.brain(s).job, s).toBe('cover');
+      return t.brain(s).spot;
+    };
+    return { t, lane, spot };
+  };
+
+  it('on a set to the outside: the middle at the net inside the hitter, the setter on the 3 m line, the left back behind on the sideline, two deep', () => {
+    const { lane, spot } = setTo('OH1');
+    const mb = spot('MB');
+    const s = spot('S');
+    const l = spot('L');
+    expect(mb.z).toBeLessThan(1.5);
+    expect(mb.x).toBeGreaterThan(lane.x + 1);
+    expect(s.z).toBeCloseTo(3, 0);
+    expect(s.x).toBeGreaterThan(lane.x);
+    expect(s.x).toBeLessThan(mb.x);
+    expect(l.x).toBeLessThan(-COURT.halfWidth + 1.2);
+    expect(l.z).toBeGreaterThan(2.5);
+    expect(l.z).toBeLessThan(4.5);
+    // the middle back down the line, the opposite cross court
+    expect(spot('OH2').z).toBeGreaterThan(5.5);
+    expect(spot('OPP').z).toBeGreaterThan(5.5);
+    expect(spot('OH2').x).toBeLessThan(spot('OPP').x);
+  });
+
+  it('on a set to the opposite, the middle back comes over behind the hitter (the setter has left right back)', () => {
+    const { lane, spot } = setTo('OPP');
+    expect(spot('MB').x).toBeLessThan(lane.x - 1);
+    expect(spot('S').z).toBeCloseTo(3, 0);
+    const mbk = spot('OH2');
+    expect(mbk.x).toBeGreaterThan(COURT.halfWidth - 1.2);
+    expect(mbk.z).toBeGreaterThan(2.5);
+    expect(mbk.z).toBeLessThan(4.5);
   });
 });
 

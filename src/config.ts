@@ -331,6 +331,27 @@ export const CONTACT = {
    * hands, a first ball that comes down at head height): x `handsErr` the platform's error, and a
    * ball faster than `handsMaxSpeed` m/s is too hard to play with the hands (the AI digs it).
    */
+  /**
+   * Recycling: a soft ball (under `recycleSpeed` m/s: a roll shot, a tip, an easy swing) played into
+   * a well-formed block (Good or Perfect, not off the outer edge) comes back off the hands to the
+   * hitter's side `recycleP` of the time (off a mistimed block `recyclePLate`), slow and up, for their
+   * cover to pick up and attack again.
+   * A covered ball (one off the other team's block) is dug up high (`covered.apex` m) to the middle
+   * of the court `covered.off` m off the net (+ up to `covered.depth`), `covered.spread` m either way:
+   * out of system, never Perfect. Keeping it alive is the job; the set off it is a high ball.
+   */
+  recycleSpeed: 14,
+  recycleP: 0.75,
+  recyclePLate: 0.45,
+  /** an AI hitter playing it off the block pushes it at the hands at `pushSpeed` m/s, `pushDrop` m below the contact */
+  pushSpeed: 7,
+  pushDrop: 0.4,
+  covered: { off: 3.2, depth: 1.5, spread: 1.6, apex: 5.8 },
+  /**
+   * The AI never misses a serve (no serve out, none in the net): a mistimed AI serve is a slower,
+   * easier serve that still lands `serveSafe` m inside the lines. Only the user can fault a serve.
+   */
+  serveSafe: 0.6,
   sideReach: 0.6,
   sideErr: 1.4,
   diveLow: 0.25,
@@ -610,13 +631,20 @@ export const AI = {
    */
   transition: { read: 0.3, softSpeed: 10, spare: 0.3, approachOff: 2.0 },
   /**
-   * Covering our hitter: `read` s after our setter sets, everyone not attacking or playing the ball
-   * makes a cup around where the hitter meets it, three close in (`near` m: the setter, the
-   * nearest hitter, a back-row player) and two deeper (`far` m), low and facing the net, so a ball
-   * blocked straight down is dug back up (the 3-2 coverage; CoachingVB, hitter coverage strategy).
-   * They hold it until the attack is over the net, then go back to base defence.
+   * Covering our hitter, `read` s after our setter sets, low and facing the net, so a ball blocked
+   * straight down is dug back up. The spots are the real ones (3-2 coverage: CoachingVB, hitter
+   * coverage strategy; US Sports Camps, how to cover your hitter). On an attack from a pin the
+   * three close are the middle at the net (`net` m off it, `inside` m inside the hitter), the
+   * setter on the 3 m line (`line` m) between them, and the back-row player on that side `behind`
+   * m behind the hitter by the sideline (on the right the setter has left right back, so the middle
+   * back comes over); the other two split the deep court (`deep` m), one down the line, one cross
+   * court. A middle attack is covered like a middle attack is defended: the setter close behind,
+   * the two pins on the 3 m line either side, the back row stays. A back-row attack: the middle
+   * under the block, the setter and the left back close. They hold it until the attack is over the
+   * net, then go back to base defence. Low and watching the hands, a coverer reacts to a ball off
+   * the block in `react` s (a defender reading a hit: 0.3 s).
    */
-  cover: { read: 0.2, near: 1.5, far: 3.5 },
+  cover: { read: 0.2, net: 1.2, inside: 1.3, line: 3.0, behind: 2.5, deep: 6.3, react: 0.12 },
   /**
    * An AI hitter's swing timing is off by this much (s, 1 sd) plus 0.06 x (1 - skill): Early sails
    * long, Late goes into the net, Good scatters the shot. Men's pros still miss: about 62% kills at
@@ -770,6 +798,11 @@ export const AI = {
    */
   toolShot: 1.0,
   rollShot: 0.3,
+  /**
+   * ...or plays it softly into the inside blocker's hands (weight `recycleShot`), so it comes back
+   * off the block for the cover to pick up and attack again (recycling: `CONTACT.recycleSpeed`).
+   */
+  recycleShot: 0.8,
   /** an AI player lets a ball go that will land more than this (m) out; closer to the line it is too close to call and played */
   outJudge: 0.2,
   /** an AI passer's platform timing error grows by this factor at a ball arriving at 22 m/s or more (from 12 m/s up): less time to read it */

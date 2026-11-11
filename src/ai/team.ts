@@ -97,6 +97,9 @@ export class TeamPlayer implements Brain {
   /** this player's read of the other team's set (where the attack will be), and of the ball's last touch */
   readonly setRead = new BallRead({ react: AI.defence.react, reactSd: AI.defence.reactSd, err: AI.defence.readErr });
   readonly hitRead = new BallRead({ react: AI.defence.hitReact, reactSd: AI.defence.hitReactSd, err: 0 });
+  readonly coverRead = new BallRead({ react: AI.cover.react, reactSd: AI.defence.hitReactSd, err: 0 });
+  /** when this player was last covering (s) */
+  coverT = -10;
   /** where the set read put this defender: held while their attack flies (null: no read this rally) */
   readSpot: Spot | null = null;
 
@@ -159,6 +162,10 @@ export class TeamPlayer implements Brain {
   private act(dt: number, g: Game): void {
     const a = this.athlete;
     const face = netYaw(a.side);
+    // covering: low, hands ready, and still low as the ball comes off the block until it is read
+    // (the animator eases into it and stands up on the run; no effect on movement)
+    if (this.job === 'cover') this.coverT = g.simTime;
+    a.low = g.simTime - this.coverT < AI.cover.react + 0.3 ? 1 : 0;
     // an attack in progress always finishes, whatever the coordinator says
     if (this.hitter && this.hitter.phase !== 'ready' && this.hitter.phase !== 'recover') {
       this.hitter.step(dt, g);
@@ -227,9 +234,12 @@ export class TeamPlayer implements Brain {
     // committed to a dive: the slide does the rest
     if (a.state === 'dive') return;
     // a touch is seen a reaction time after it: until then the body stays where the read put it
+    // (a coverer, low and watching the block, picks up a ball off it sooner)
     const lt = ball.lastTouch;
-    if (lt) this.hitRead.look(lt, lt.t, g.rng);
-    if (!this.hitRead.seen(now)) {
+    const covering = lt?.kind === 'block' && lt.side !== a.side && now - this.coverT < 0.6;
+    const read = covering ? this.coverRead : this.hitRead;
+    if (lt) read.look(lt, lt.t, g.rng);
+    if (!read.seen(now)) {
       stop(a, netYaw(a.side));
       return;
     }
@@ -942,9 +952,10 @@ export class TeamAI {
   private readonly seamRead = new BallRead({ react: AI.defence.react, reactSd: AI.defence.reactSd, err: 0 });
 
   /**
-   * Covering our hitter (`AI.cover`): a moment after our set, a cup around where the hitter will
-   * meet it, three close and two deeper, each spot taken by the nearest player who is free (not
-   * the hitter, not the user, not playing the ball). Worked out once per set, held while it flies.
+   * Covering our hitter (`AI.cover`): a moment after our set, the real coverage spots for where the
+   * hitter meets it (a pin, the middle, the back row), each taken by the player whose job it is if
+   * they are free (not the hitter, not the user, not playing the ball), else by the nearest free
+   * player. Worked out once per set, held while it flies.
    */
   private cover(
     set: Touch,
@@ -965,29 +976,49 @@ export class TeamAI {
       const s = this.side;
       const hx = this.cp.x * s;
       const hz = Math.max(0.5, this.cp.z * s);
-      const W = COURT.halfWidth - 0.3;
-      const { near, far } = AI.cover;
-      // straight behind the hitter, then either side of it close in, then the two deep gaps
-      const cup: [number, number][] = [
-        [near, 0],
-        [near, -0.95],
-        [near, 0.95],
-        [far, -0.45],
-        [far, 0.45],
-      ];
+      const W = COURT.halfWidth - 0.4;
+      const C = AI.cover;
+      // (team frame: x < 0 is our left, z is the distance from the net)
+      const k = Math.sign(hx) || 1;
+      const cup: { who: Slot | null; x: number; z: number }[] =
+        // (the pipe is met in front of the 3 m line after a broad jump: it is the back-row hitter that counts)
+        this.slotOf(h) === 'OH2' || hz > C.line
+          ? [
+              // a back-row attack: the middle under the block, the setter and the left back close
+              { who: 'MB', x: hx, z: C.net },
+              { who: 'S', x: hx + C.inside, z: hz },
+              { who: 'L', x: hx - C.inside, z: hz + C.inside },
+            ]
+          : Math.abs(hx) < 1.5
+            ? [
+                // a middle attack: the setter close behind, the pins on the 3 m line either side
+                { who: 'S', x: hx + 0.8, z: hz + C.inside },
+                { who: 'OH1', x: hx - C.behind, z: C.line },
+                { who: 'OPP', x: hx + C.behind, z: C.line },
+              ]
+            : [
+                // a pin: the middle at the net inside the hitter, the setter on the 3 m line between,
+                // the back row on that side behind on the sideline, then deep down the line and cross
+                { who: 'MB', x: hx - k * C.inside, z: C.net },
+                { who: 'S', x: hx - k * C.inside * 0.6, z: C.line },
+                { who: k < 0 ? 'L' : 'OH2', x: hx, z: hz + C.behind },
+                { who: null, x: hx * 0.6, z: C.deep },
+                { who: null, x: -k * 1.5, z: C.deep },
+              ];
       const free = [...this.players.values()].filter((a) => a !== h && !a.isUser && !jobs.has(a));
-      for (const [r, th] of cup) {
-        const x = clamp(hx + r * Math.sin(th), -W, W) * s;
-        const z = clamp(hz + r * Math.cos(th), 1.0, COURT.halfLength - 0.5) * s;
-        let best = -1;
+      for (const c of cup) {
+        const x = clamp(c.x, -W, W) * s;
+        const z = clamp(c.z, 0.8, COURT.halfLength - 0.5) * s;
+        let best = c.who ? free.indexOf(this.players.get(c.who)!) : -1;
         let bestD = Infinity;
-        free.forEach((a, i) => {
-          const d = Math.hypot(a.pos.x - x, a.pos.z - z);
-          if (d < bestD) {
-            bestD = d;
-            best = i;
-          }
-        });
+        if (best < 0)
+          free.forEach((a, i) => {
+            const d = Math.hypot(a.pos.x - x, a.pos.z - z);
+            if (d < bestD) {
+              bestD = d;
+              best = i;
+            }
+          });
         if (best < 0) break;
         this.coverSpots.push({ a: free[best], spot: { x, z } });
         free.splice(best, 1);

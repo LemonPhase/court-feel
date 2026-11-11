@@ -23,6 +23,8 @@ export interface Action {
   grade: Grade | null;
   /** extra info (tip, power, etc.) */
   tip: boolean;
+  /** a soft push straight into the block's hands, to play it off them (a tip with a flat arc) */
+  push: boolean;
   /** whiffed swing */
   miss: boolean;
   /** 0..1 progress handled by the animator */
@@ -112,6 +114,8 @@ export class Athlete {
   reachX = 0;
   /** when the last split step started (the animator hops and lands into a deeper stance; no effect on movement) */
   splitT = -10;
+  /** a low covering stance, 0..1 (set by the AI while it covers its hitter; the animator eases into it, no effect on movement) */
+  low = 0;
   /** 'ready' body lean */
   readyAmount = 1;
   /** look target for head IK (set by game) */
@@ -469,6 +473,7 @@ export class Athlete {
       resolved: false,
       grade: null,
       tip: false,
+      push: false,
       miss: false,
       hand: 'R',
       aim: new THREE.Vector3(0, 0, -1),
