@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeBodyMaterial } from './bodyMaterial';
+import { makeBodyMaterial, type BodyMaterial } from './bodyMaterial';
 import { makeKitTexture } from './kitTexture';
 import { sculptBody } from './sculpt';
 
@@ -149,7 +149,7 @@ export interface Rig {
   mesh: THREE.SkinnedMesh;
   bones: Record<BoneName, THREE.Bone>;
   dims: RigDims;
-  material: THREE.MeshStandardMaterial;
+  material: BodyMaterial;
   /** fade the whole figure (1 = solid). Faded, only its outer surface shows: no limbs seen through the torso. */
   setOpacity(o: number): void;
   dispose(): void;

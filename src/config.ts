@@ -545,10 +545,13 @@ export const ARENA = {
     light: { front: 0.78, back: 0.5, upperFront: 0.4, upperBack: 0.24 },
     /** the cool cast of the hall on the crowd */
     crowdTint: 0xdfe6ff,
-    /** brightness of the balcony's LED ribbon, the doorway glow and the lamps under the roof (1 = white; above 1 blooms) */
+    /**
+     * brightness of the balcony's LED ribbon, the doorway glow and the lamps under the roof (1 = white; above 1
+     * blooms). The lamps stay below it: you look up at a set against them, and a glow there would hide the ball.
+     */
     ribbon: 0.62,
     doorGlow: 0.36,
-    lamp: 1.08,
+    lamp: 0.93,
     doorEvery: 9,
   },
   /**
@@ -580,6 +583,8 @@ export const CHARACTER = {
   sideFill: 0.2,
   /** how strongly the arena reflects in skin, cloth and shoes */
   envIntensity: 0.7,
+  /** first person: your own body starts to show this far (m) from the lens and is whole from `to` (m) */
+  fpFade: { from: 0.22, to: 0.34 },
   /** finger curl at the knuckles (rad): loose hand, cupped for a set, flat on the ball, closed for a pass */
   fingerCurl: { relaxed: 0.5, cupped: 0.28, firm: 0.04, fist: 1.15 },
   /** a spiking palm meets the ball this far over the top of it (0 = square behind the line it leaves on) */

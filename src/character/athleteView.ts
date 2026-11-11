@@ -169,6 +169,11 @@ export class AthleteView {
   }
 
   setFirstPerson(fp: boolean): void {
+    if (fp !== this.hideHead) {
+      // your own arms dissolve close to the lens (it clips what passes it, and a clean cut shows inside the sleeve)
+      const f = CHARACTER.fpFade;
+      this.rig.material.nearFade.set(fp ? f.from : 0, fp ? f.to : 0);
+    }
     this.hideHead = fp;
   }
 

@@ -6,26 +6,46 @@ import { CHARACTER } from '../config';
  *  - roughness per vertex (skin, cloth, shoes and hair differ),
  *  - a decal atlas laid over the vertex colours (face, jersey number),
  *  - a soft rim from above, which lifts the figure off the dark stands,
- *  - fill light from the sides of the hall on upright surfaces (faces).
+ *  - fill light from the sides of the hall on upright surfaces (faces),
+ *  - for your own body in first person, a dissolve close to the lens (`nearFade`): the lens clips an
+ *    arm that passes it, and a clean cut would show the inside of the sleeve.
  */
-export function makeBodyMaterial(atlas: THREE.Texture | null): THREE.MeshStandardMaterial {
+export interface BodyMaterial extends THREE.MeshStandardMaterial {
+  /** distance from the lens (m) where the surface starts to show, and where it is whole; (0, 0) = no dissolve */
+  nearFade: THREE.Vector2;
+}
+
+export function makeBodyMaterial(atlas: THREE.Texture | null): BodyMaterial {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 1,
     metalness: 0,
     envMapIntensity: CHARACTER.envIntensity,
     map: atlas,
-  });
+  }) as BodyMaterial;
+  mat.nearFade = new THREE.Vector2(0, 0);
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uRim = { value: CHARACTER.rim };
     shader.uniforms.uSide = { value: CHARACTER.sideFill };
+    shader.uniforms.uNearFade = { value: mat.nearFade };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aRough;\nvarying float vRough;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRough = aRough;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vRough;\nuniform float uRim;\nuniform float uSide;')
+      .replace(
+        '#include <common>',
+        '#include <common>\nvarying float vRough;\nuniform float uRim;\nuniform float uSide;\nuniform vec2 uNearFade;',
+      )
       // the atlas is premultiplied: lay it over the vertex colour
-      .replace('#include <map_fragment>', '')
+      .replace(
+        '#include <map_fragment>',
+        /* glsl */ `if ( uNearFade.y > 0.0 ) {
+          // screen-door dissolve towards the lens (no blending: the surface stays opaque where it shows)
+          float shown = smoothstep( uNearFade.x, uNearFade.y, length( vViewPosition ) );
+          float noise = fract( 52.9829189 * fract( dot( gl_FragCoord.xy, vec2( 0.06711056, 0.00583715 ) ) ) );
+          if ( shown <= noise ) discard;
+        }`,
+      )
       .replace(
         '#include <color_fragment>',
         /* glsl */ `#include <color_fragment>
