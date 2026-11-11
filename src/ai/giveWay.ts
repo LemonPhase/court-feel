@@ -17,7 +17,8 @@ const sides = new WeakMap<Athlete, WeakMap<Athlete, 1 | -1>>();
  * closer than `AI.giveWay.room`, step off their path to one side, the same side until they are
  * clear. A team-mate who keeps their line gets all the room; two walkers share it, and head-on they
  * both pass on the right. Only the command changes: the athlete's own kinematics still decide how
- * fast it can sidestep.
+ * fast it can sidestep. Giving way is by priority, not by collisions: athletes still don't collide
+ * physically, so whoever plays the ball (or is committed to an approach or a jump) never gets bumped.
  */
 export function giveWay(a: Athlete, mates: readonly Mate[]): void {
   if (a.state !== 'ground' && a.state !== 'land') return;

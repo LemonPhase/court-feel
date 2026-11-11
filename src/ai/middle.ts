@@ -20,8 +20,8 @@ const blockJump = (a: Athlete): number => a.jumpMax * a.stats.standingJumpFrac *
  * good pass with their middle coming it sometimes guesses: commits on the quick (jumps with their
  * middle) or cheats towards a pin. After the set it reacts a moment later with a read that sharpens
  * as the ball flies, and runs to close the block next to the pin blocker. Whether it gets there is
- * down to time and legs: on time it closes the block, late it still goes up from where it is (a
- * block with a gap), hopelessly far it stays down. It reads the ball and the bodies it can see,
+ * down to time and legs, never a coin flip (the old blocker closed half the time): on time it closes
+ * the block, late it still goes up from where it is (a block with a gap), hopelessly far it stays down. It reads the ball and the bodies it can see,
  * never the other team's plan.
  */
 export class MiddleBlocker implements Brain {
