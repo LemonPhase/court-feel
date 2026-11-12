@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { AI, BALL, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
 import { clamp, clamp01, damp, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
+import { DIGITS, FINGERS } from './hand';
 import { orientBone, twoBoneIK } from './ik';
 import { buildRig, type BoneName, type Kit, type Rig } from './rig';
 
@@ -22,8 +23,8 @@ type V = THREE.Vector3;
 const v3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
 interface ArmState {
-  /** how far the fingers are curled (rad at the knuckles) */
-  curl: number;
+  /** the hand's shape: how far the fingers curl at each joint, how far they are spread, where the thumb is */
+  shape: HandShape;
   /** wrist offset from shoulder in body frame (lat, up, fwd), metres */
   w: V;
   pole: V;
@@ -115,6 +116,8 @@ export class AthleteView {
   private H: number;
   private arms: [ArmState, ArmState];
   private feet: [FootState, FootState];
+  /** per hand (left, right): each finger's base and tip bone, then the thumb's */
+  private digits: [THREE.Bone[], THREE.Bone[]];
   private gaitPhase = 0;
   private gaitW = 0;
   /** how far into the low covering stance the body is (eased from Athlete.low) */
@@ -175,11 +178,13 @@ export class AthleteView {
       palm: v3(0, 0, 1),
       rate: 12,
       flex: 0,
-      curl: CHARACTER.fingerCurl.relaxed,
+      shape: { ...CHARACTER.hand.relaxed },
     });
     this.arms = [mkArm(), mkArm()];
     const mkFoot = (): FootState => ({ plant: v3(), stepping: false, from: v3(), to: v3(), t: 0, dur: 0.16, cur: v3(), pitch: 0 });
     this.feet = [mkFoot(), mkFoot()];
+    const digitsOf = (L: 'L' | 'R') => DIGITS.flatMap((d) => [this.rig.bones[`${d}${L}`], this.rig.bones[`${d}Tip${L}`]]);
+    this.digits = [digitsOf('L'), digitsOf('R')];
   }
 
   setFirstPerson(fp: boolean): void {
@@ -869,7 +874,7 @@ export class AthleteView {
       let ikWorld: V | null = null; // explicit world-space wrist target (IK to ball)
       let palmFwd = 0.0;
       let flex = 0;
-      let curl = CHARACTER.fingerCurl.relaxed;
+      const shape = setShape(_shape, SH.relaxed);
       // an exact hand placement (fingers and palm directions in the world), blended in by `handBlend`
       let handBlend = 0;
 
@@ -975,7 +980,7 @@ export class AthleteView {
             }
             palmFwd = 1;
             // flat and firm through the swing, wrapping the ball as the palm meets it
-            curl = lerp(CHARACTER.fingerCurl.firm, CHARACTER.fingerCurl.onBall, handBlend);
+            mixShape(setShape(shape, SH.firm), SH.onBall, handBlend);
           } else {
             // follow-through: fastest off the ball and slowing all the way down, across the body;
             // a full-power swing finishes deeper, by the opposite hip
@@ -999,7 +1004,7 @@ export class AthleteView {
             }
             if (!swing.tip)
               flex = (0.2 + 0.85 * easeOutCubic(swingF * 3.5)) * (1 - 0.55 * smooth01((swingF - 0.35) / 0.65)) * (0.6 + 0.4 * ch);
-            curl = lerp(CHARACTER.fingerCurl.onBall, CHARACTER.fingerCurl.relaxed, smooth01(swingF * 1.5));
+            mixShape(setShape(shape, SH.onBall), SH.relaxed, smooth01(swingF * 1.5));
             // then the arm lets go and hangs ready for the landing
             if (recover > 0) {
               this.key('descend', _h1, _h2);
@@ -1033,7 +1038,7 @@ export class AthleteView {
         pole.lerp(_b, p);
         rate = 30;
         palmFwd = p;
-        curl = lerp(curl, CHARACTER.fingerCurl.firm, p);
+        mixShape(shape, SH.firm, p);
         // the hands go to the ball as it arrives (a short way: the block is where it was set). They stay
         // on the blocker's side of the tape, where the block's contact zone is: pressing them over it
         // would be a change to the block, not to its look
@@ -1071,7 +1076,7 @@ export class AthleteView {
           ikWorld = this.reachForBall(s, w, 0.7, 0.5, _g, 'platform', _n2);
           if (ikWorld) ikBlend = 1 - smooth01((ts - P.hold) / P.release);
         }
-        curl = lerp(curl, CHARACTER.fingerCurl.fist, p);
+        mixShape(shape, SH.fist, p);
       }
       if (act && (act.kind === 'set' || (act.kind === 'pass' && act.form === 'hands'))) {
         const released = act.resolved && act.contactT > 0;
@@ -1102,7 +1107,7 @@ export class AthleteView {
           ikWorld = this.reachForBall(s, w, 0.6, 0.6, _g, 'set', _n2);
           if (ikWorld) ikBlend = handBlend = 1 - smooth01((ts - F.reach / F.speed) / F.time);
         }
-        curl = lerp(curl, released ? CHARACTER.fingerCurl.firm : CHARACTER.fingerCurl.onBall, p);
+        mixShape(shape, released ? SH.firm : SH.onBall, p);
       }
       // (during the plant the arms still swing back; the wind-up shows from takeoff)
       if (act && act.kind === 'windup' && st !== 'load') {
@@ -1114,7 +1119,7 @@ export class AthleteView {
           pole.lerp(_b, p);
           rate = 30;
           flex = -0.3 * p;
-          curl = lerp(curl, CHARACTER.fingerCurl.firm, p);
+          mixShape(shape, SH.firm, p);
         } else if (st !== 'air') {
           // serving: the tossing arm stays up; otherwise it reaches forward for balance
           this.key(a.lastAction?.kind === 'toss' ? 'toss' : 'airNeutral', _a, _b);
@@ -1145,11 +1150,13 @@ export class AthleteView {
       arm.w.lerp(w, kk);
       arm.pole.lerp(pole, kk);
       arm.flex = lerp(arm.flex, flex, kk);
-      arm.curl = lerp(arm.curl, curl, damp(18, dt));
+      mixShape(arm.shape, shape, damp(CHARACTER.hand.rate, dt));
       if (rate >= 80 || this.snapArms) {
+        // a swing is quicker than a hand can ease: the fingers are on the ball when the palm is
         arm.w.copy(w);
         arm.pole.copy(pole);
         arm.flex = flex;
+        setShape(arm.shape, shape);
       }
       arm.palm.set(0, 0, palmFwd);
 
@@ -1212,10 +1219,23 @@ export class AthleteView {
       }
       // the hand's thin axis (local x) is the palm normal: +x = -palm for the right hand
       orientBone(hand, fore, _f2.multiplyScalar(-s), 1);
-      // fingers: curled when loose, flat and firm on the ball
+      // fingers: loosely curled at rest, spread and laid round the ball on it, closed for a pass.
+      // They curl together at the knuckle line, then each fans out and bends at its own middle joint.
+      const sh = arm.shape;
       const fingers = B[`fingers${L}` as BoneName];
-      fingers.rotation.set(0, 0, -s * arm.curl);
+      fingers.rotation.set(0, 0, -s * sh.knuckle);
+      const dg = this.digits[i];
+      for (let k = 0; k < FINGERS.length; k++) {
+        const outer = Math.abs(FINGERS[k].fan) * sh.cup;
+        dg[k * 2].rotation.set(sh.spread * FINGERS[k].fan, 0, -s * outer);
+        dg[k * 2 + 1].rotation.set(0, 0, -s * (sh.mid - outer));
+      }
+      // the thumb opens away from the fingers (about the palm's normal) and bends in towards the palm
+      const th = dg[FINGERS.length * 2];
+      th.rotation.set(sh.thumbOut, s * sh.thumbCurl * 0.5, 0);
+      dg[FINGERS.length * 2 + 1].rotation.set(0, s * sh.thumbCurl, -s * sh.thumbCurl * 0.5);
       fingers.updateMatrixWorld(true);
+      th.updateMatrixWorld(true);
       ikBlend = 1;
     }
   }
@@ -1451,6 +1471,31 @@ export class AthleteView {
     this.eyePos.copy(this.headPos);
     this.eyePos.y += 0.046 * this.H;
   }
+}
+
+type HandShape = { knuckle: number; mid: number; spread: number; cup: number; thumbOut: number; thumbCurl: number };
+const SH = CHARACTER.hand;
+const _shape: HandShape = { ...SH.relaxed };
+
+function setShape(o: HandShape, a: HandShape): HandShape {
+  o.knuckle = a.knuckle;
+  o.mid = a.mid;
+  o.spread = a.spread;
+  o.cup = a.cup;
+  o.thumbOut = a.thumbOut;
+  o.thumbCurl = a.thumbCurl;
+  return o;
+}
+
+/** move `o` a fraction `t` of the way to `b` */
+function mixShape(o: HandShape, b: HandShape, t: number): HandShape {
+  o.knuckle = lerp(o.knuckle, b.knuckle, t);
+  o.mid = lerp(o.mid, b.mid, t);
+  o.spread = lerp(o.spread, b.spread, t);
+  o.cup = lerp(o.cup, b.cup, t);
+  o.thumbOut = lerp(o.thumbOut, b.thumbOut, t);
+  o.thumbCurl = lerp(o.thumbCurl, b.thumbCurl, t);
+  return o;
 }
 
 let ikBlend = 1;

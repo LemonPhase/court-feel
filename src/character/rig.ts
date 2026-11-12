@@ -1,10 +1,11 @@
 import * as THREE from 'three';
+import { DIGITS, FINGER_JOINT, FINGER_ROOT, FINGERS, THUMB_JOINT, thumbPath, type Digit } from './hand';
 import { makeBodyMaterial, type BodyMaterial } from './bodyMaterial';
 import { makeKitTexture } from './kitTexture';
 import { sculptBody } from './sculpt';
 
 /**
- * Procedurally built athlete: a 21-bone skeleton and one skinned mesh
+ * Procedurally built athlete: a 41-bone skeleton (20 of them the fingers and thumbs) and one skinned mesh
  * (sculpt.ts) with a decal atlas for the face and the jersey number
  * (kitTexture.ts). Every bone has identity rest rotation, so local rotations
  * read in athlete space (x right, y up, -z fwd).
@@ -21,6 +22,8 @@ export type BoneName =
   | 'lowerArmL'
   | 'handL'
   | 'fingersL'
+  | `${Digit}${'L' | 'R'}`
+  | `${Digit}Tip${'L' | 'R'}`
   | 'clavR'
   | 'upperArmR'
   | 'lowerArmR'
@@ -33,6 +36,11 @@ export type BoneName =
   | 'shinR'
   | 'footR';
 
+/** each digit has two bones: its base (the knuckle) and its tip half (the middle joint) */
+function digitBones(side: 'L' | 'R'): BoneName[] {
+  return DIGITS.flatMap((d) => [`${d}${side}`, `${d}Tip${side}`] as BoneName[]);
+}
+
 export const BONE_ORDER: BoneName[] = [
   'hips',
   'spine',
@@ -44,11 +52,13 @@ export const BONE_ORDER: BoneName[] = [
   'lowerArmL',
   'handL',
   'fingersL',
+  ...digitBones('L'),
   'clavR',
   'upperArmR',
   'lowerArmR',
   'handR',
   'fingersR',
+  ...digitBones('R'),
   'thighL',
   'shinL',
   'footL',
@@ -129,7 +139,7 @@ export function dimsFor(H: number): RigDims {
     hand: 0.108 * H,
     knuckle: 0.053 * H,
     palm: 0.034 * H,
-    palmThick: 0.012 * H,
+    palmThick: 0.0085 * H,
     thigh: 0.245 * H,
     shin: 0.246 * H,
     ankleY: 0.039 * H,
@@ -177,7 +187,16 @@ export function buildRig(H: number, kit: Kit): Rig {
     const ua = mk(`upperArm${L}` as BoneName, clav, s * (d.shoulderX - d.clavX), 0.003 * H, 0.004 * H);
     const la = mk(`lowerArm${L}` as BoneName, ua, 0, -d.upperArm, 0);
     const ha = mk(`hand${L}` as BoneName, la, 0, -d.foreArm, 0);
-    mk(`fingers${L}` as BoneName, ha, 0, -d.knuckle, 0);
+    // the knuckle line (all four fingers curl on it), then each finger's own base and middle joint
+    const kn = mk(`fingers${L}` as BoneName, ha, 0, -d.knuckle, 0);
+    for (const f of FINGERS) {
+      const base = mk(`${f.name}${L}` as BoneName, kn, 0, 0, f.z * H);
+      mk(`${f.name}Tip${L}` as BoneName, base, 0, (FINGER_ROOT - f.len * FINGER_JOINT) * H, 0);
+    }
+    const tp = thumbPath(s);
+    const tb = mk(`thumb${L}` as BoneName, ha, tp[0].p[0] * H, tp[0].p[1] * H, tp[0].p[2] * H);
+    const tj = tp[THUMB_JOINT].p;
+    mk(`thumbTip${L}` as BoneName, tb, (tj[0] - tp[0].p[0]) * H, (tj[1] - tp[0].p[1]) * H, (tj[2] - tp[0].p[2]) * H);
     const th = mk(`thigh${L}` as BoneName, hips, s * d.hipJointX, d.hipJointY - d.hipY, 0);
     const sh = mk(`shin${L}` as BoneName, th, 0, -d.thigh, 0);
     mk(`foot${L}` as BoneName, sh, 0, -d.shin, 0);

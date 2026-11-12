@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clamp01, smoothstep } from '../core/mathx';
+import { FINGER_JOINT, FINGER_ROOT, FINGERS, THUMB_JOINT, THUMB_RADII, thumbPath } from './hand';
 import { FACE, faceUV, numberUV } from './kitTexture';
 import { MeshBuilder, radial, tube, type Ring, type Weights } from './meshBuilder';
 import type { BoneName, Kit, RigDims } from './rig';
@@ -328,7 +329,6 @@ export function sculptBody(d: RigDims, kit: Kit, idx: (n: BoneName) => number, w
     const U = idx(`upperArm${L}` as BoneName);
     const Lo = idx(`lowerArm${L}` as BoneName);
     const Ha = idx(`hand${L}` as BoneName);
-    const Fi = idx(`fingers${L}` as BoneName);
     const shd = wp(`upperArm${L}` as BoneName);
     const elb = wp(`lowerArm${L}` as BoneName);
     const wr = wp(`hand${L}` as BoneName);
@@ -413,87 +413,91 @@ export function sculptBody(d: RigDims, kit: Kit, idx: (n: BoneName) => number, w
     tube(
       b,
       [
+        // (about 3 cm thick at its middle, thinning to the knuckles: the fingers' pads lie nearly level with the palm)
         palmRing(0.006, 0.0108, 0.0146, 0.0144),
-        palmRing(-0.006, 0.0112, 0.0182, 0.017),
-        palmRing(-0.02, 0.0126, 0.0232, 0.0205, -s * 0.0008),
-        palmRing(-0.036, 0.0118, 0.0236, 0.0222),
-        palmRing(-0.0485, 0.0102, 0.0228, 0.022),
-        palmRing(-0.0545, 0.0074, 0.0212, 0.0204),
-        palmRing(-0.0575, 0.0034, 0.018, 0.0172),
+        palmRing(-0.006, 0.0104, 0.0182, 0.017),
+        palmRing(-0.02, 0.0095, 0.0232, 0.0205, -s * 0.0008),
+        palmRing(-0.036, 0.0085, 0.0236, 0.0222),
+        palmRing(-0.0485, 0.0076, 0.0228, 0.022),
+        palmRing(-0.0545, 0.0062, 0.0212, 0.0204),
+        palmRing(-0.0575, 0.003, 0.018, 0.0172),
       ],
       14,
       { capEnd: true },
     );
-    // fingers: index, middle, ring, little. Slightly spread, a relaxed curl towards the palm.
+    // fingers: index, middle, ring, little. Built straight and together: the pose spreads and curls them,
+    // each on its own knuckle and middle joint
     const knY = -d.knuckle / H;
-    const fingers: [number, number, number, number][] = [
-      // [z at the knuckle, length, radius, splay (rad, + = towards the little finger)]
-      [-0.0162, 0.0375, 0.0052, -0.1],
-      [-0.0054, 0.0415, 0.0054, -0.025],
-      [0.0054, 0.0385, 0.005, 0.05],
-      [0.0158, 0.0305, 0.0044, 0.14],
-    ];
     const tape = C(0xf2efe6);
-    fingers.forEach(([z0, len, rad, splay], fi) => {
+    FINGERS.forEach((f, fi) => {
       const taped = kit.tape > 0 && (fi === 1 || (kit.tape > 1 && fi === 2));
-      const rings: Ring[] = [];
-      const pos = V(0, knY + 0.004, z0);
-      const n = 6;
-      let curl = 0.05;
-      for (let k = 0; k <= n; k++) {
-        const t = k / n;
-        // direction of this stretch of the finger: down, splayed, curling to the palm
-        const dir = V(-s * Math.sin(curl), -Math.cos(curl) * Math.cos(splay), Math.cos(curl) * Math.sin(splay));
-        const r = rad * (k === n ? 0.5 : k === n - 1 ? 0.86 : 1 - 0.14 * t);
-        const wF: Weights =
-          k === 0
-            ? [
-                [Ha, 0.75],
-                [Fi, 0.25],
-              ]
-            : k === 1
-              ? [
-                  [Ha, 0.2],
-                  [Fi, 0.8],
-                ]
-              : [[Fi, 1]];
-        rings.push({
-          c: hp(pos.x, pos.y, pos.z),
+      const A = idx(`${f.name}${L}` as BoneName);
+      const Bt = idx(`${f.name}Tip${L}` as BoneName);
+      // along the finger: the root inside the palm, the knuckle, up to the middle joint, on to the tip
+      const stations = [0, 0.17, 0.34, FINGER_JOINT, 0.66, 0.84, 1];
+      const weights: Weights[] = [
+        [
+          [Ha, 0.7],
+          [A, 0.3],
+        ],
+        [
+          [Ha, 0.15],
+          [A, 0.85],
+        ],
+        [[A, 1]],
+        [
+          [A, 0.5],
+          [Bt, 0.5],
+        ],
+        [
+          [A, 0.1],
+          [Bt, 0.9],
+        ],
+        [[Bt, 1]],
+        [[Bt, 1]],
+      ];
+      const n = stations.length - 1;
+      const rings: Ring[] = stations.map((t, k) => {
+        const r = f.r * (k === n ? 0.5 : k === n - 1 ? 0.86 : 1 - 0.14 * t);
+        return {
+          c: hp(0, knY + FINGER_ROOT - t * f.len, f.z),
           rx: r * 0.92 * H,
           rf: r * H,
           rb: r * H,
           color: taped && k >= 1 && k <= 3 ? tape : skin,
-          w: wF,
-          n: dir.clone(),
-        });
-        const step = (k === n - 1 ? 0.5 : 1) * (len / (n - 0.5));
-        pos.addScaledVector(dir, step);
-        curl += 0.085;
-      }
+          w: weights[k],
+          n: V(0, -1, 0),
+        };
+      });
       b.roughness = taped ? ROUGH.tape : ROUGH.skin;
       tube(b, rings, 8, { capEnd: true });
     });
     b.roughness = ROUGH.skin;
-    // thumb: from the heel of the palm, forward and across
+    // thumb: from the heel of the palm, forward and across, on its own two joints
     {
-      const rings: Ring[] = [];
-      const pos = V(-s * 0.002, -0.014, -0.017);
-      let dir = V(-s * 0.3, -0.62, -0.72).normalize();
-      const radii = [0.0078, 0.0074, 0.0066, 0.006, 0.0054, 0.0046, 0.0026];
-      for (let k = 0; k < radii.length; k++) {
-        rings.push({
-          c: hp(pos.x, pos.y, pos.z),
-          rx: radii[k] * H,
-          rf: radii[k] * H,
-          rb: radii[k] * H,
-          color: skin,
-          w: wHa,
-          n: dir.clone(),
-        });
-        pos.addScaledVector(dir, (k >= radii.length - 2 ? 0.0032 : 0.0068) * 1);
-        // the tip turns back towards the fingers
-        dir = dir.add(V(-s * 0.06, -0.12, 0.1)).normalize();
-      }
+      const Tb = idx(`thumb${L}` as BoneName);
+      const Tt = idx(`thumbTip${L}` as BoneName);
+      const rings: Ring[] = thumbPath(s).map((q, k) => ({
+        c: hp(q.p[0], q.p[1], q.p[2]),
+        rx: THUMB_RADII[k] * H,
+        rf: THUMB_RADII[k] * H,
+        rb: THUMB_RADII[k] * H,
+        color: skin,
+        w: (k === 0
+          ? [
+              [Ha, 0.7],
+              [Tb, 0.3],
+            ]
+          : k < THUMB_JOINT
+            ? [[Tb, 1]]
+            : k === THUMB_JOINT
+              ? [
+                  [Tb, 0.5],
+                  [Tt, 0.5],
+                ]
+              : [[Tt, 1]]) as Weights,
+        n: V(q.d[0], q.d[1], q.d[2]),
+      }));
       tube(b, rings, 8, { capEnd: true });
     }
   }

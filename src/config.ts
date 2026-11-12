@@ -600,8 +600,25 @@ export const CHARACTER = {
    * approaches, not from a measurement.
    */
   jumpSwing: { backStanding: 0.45, backRun: 1.2, fullRun: 3.5, backTime: 0.08, upStart: 0.1, upTime: 0.3, top: 2.75, radius: 0.3 },
-  /** finger curl at the knuckles (rad): loose hand, cupped, flat and firm, closed for a pass, and wrapped on the ball (the fingertips touch it) */
-  fingerCurl: { relaxed: 0.5, cupped: 0.28, firm: 0.04, fist: 1.15, onBall: 0.4 },
+  /**
+   * Hand shapes (rad). `knuckle` and `mid` curl the four fingers at their two joints, `spread` fans them
+   * apart (the index and the little finger take all of it), `cup` bends the outer fingers further at the
+   * knuckle than the inner ones (a ball curves away sideways too), `thumbOut` opens the thumb away from the
+   * fingers and `thumbCurl` bends it in towards the palm. `rate` is how fast a hand changes shape (1/s).
+   *  - relaxed: a loose hand, running or waiting.
+   *  - firm: flat with the fingers apart: a block, a hand drawn back to hit.
+   *  - onBall: laid round the ball for a spike, a set or a block touch. Solved for a ball 21 cm across
+   *    under a palm 3 cm thick: the knuckles bend to bring the fingers down onto the surface, the middle
+   *    joints to keep them on it.
+   *  - fist: closed, one hand in the other, for a pass.
+   */
+  hand: {
+    relaxed: { knuckle: 0.35, mid: 0.5, spread: 0.05, cup: 0, thumbOut: 0, thumbCurl: 0.15 },
+    firm: { knuckle: 0.04, mid: 0.06, spread: 0.2, cup: 0, thumbOut: 0.2, thumbCurl: 0.05 },
+    onBall: { knuckle: 0.59, mid: 0.25, spread: 0.2, cup: 0.11, thumbOut: 0.5, thumbCurl: 0.3 },
+    fist: { knuckle: 1.15, mid: 1.3, spread: 0, cup: 0, thumbOut: -0.15, thumbCurl: 0.6 },
+    rate: 18,
+  },
   /** how far (rad) the trunk bends away from the hitting arm at contact, lifting the hitting shoulder */
   reachTilt: 0.36,
   /** a spiking palm meets the ball this far over the top of it (0 = square behind the line it leaves on) */

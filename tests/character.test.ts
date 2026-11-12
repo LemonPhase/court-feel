@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { BALL, CHARACTER, COURT, PLAYER, SIM } from '../src/config';
 import { Athlete } from '../src/game/athlete';
 import { AthleteView } from '../src/character/athleteView';
+import { FINGER_JOINT, FINGERS } from '../src/character/hand';
 import { makeKit } from '../src/character/kits';
 import { buildRig } from '../src/character/rig';
 
@@ -76,6 +77,28 @@ describe('the spike, as the body shows it', () => {
     // the palm's surface is half a hand's thickness from its centre plane
     expect(gap).toBeGreaterThan(d.palmThick - 0.02);
     expect(gap).toBeLessThan(d.palmThick + 0.02);
+  });
+
+  it('the fingers are spread over the ball at contact, each one lying on it from knuckle to tip', () => {
+    const s = airborne(1.2);
+    const act = swing(s, 0.12);
+    const B = s.v.rig.bones;
+    const H = s.a.height;
+    const tips: THREE.Vector3[] = [];
+    for (const f of FINGERS) {
+      const mid = world(B[`${f.name}TipR`]);
+      const tip = B[`${f.name}TipR`].localToWorld(new THREE.Vector3(0, -f.len * (1 - FINGER_JOINT) * H, 0));
+      tips.push(tip);
+      // the middle of the finger is one finger's radius from the ball's surface when it rests on it
+      for (const p of [mid, tip]) {
+        const off = p.distanceTo(act.contactPoint) - BALL.radius - f.r * H;
+        expect(off).toBeGreaterThan(-0.004);
+        expect(off).toBeLessThan(0.008);
+      }
+    }
+    // spread: the index and little fingertips are further apart than their knuckles
+    const knuckles = world(B.indexR).distanceTo(world(B.littleR));
+    expect(tips[0].distanceTo(tips[3])).toBeGreaterThan(knuckles + 0.02);
   });
 
   it('the arm comes through and lets go: by the landing the trunk has opened up again', () => {

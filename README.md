@@ -71,7 +71,7 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/stuff-block-first-person.jpg" alt="First person block: both hands pressed over the net, the opposing hitter right in front, PERFECT 63 km/h Stuff">
+      <img src="docs/screenshots/stuff-block-first-person.jpg" alt="First person block: both hands pressed over the net, the opposing hitter right in front, PERFECT 57 km/h Stuff">
       <b>At the net.</b> Read the set, time the jump, press over. A stuff block, seen through the blocker's eyes.
     </td>
     <td width="50%" valign="top">
@@ -488,8 +488,9 @@ None of it changes how the game plays: the physics, the timing windows and the
 contact rules do not know it is there.
 
 * **Athletes.** One sculpted, skinned body each: a head with painted eyes,
-  brows and a mouth under one of five haircuts, hands with fingers that curl
-  when loose and flatten on the ball, shoes, and a kit that is cloth over the
+  brows and a mouth under one of five haircuts, hands whose fingers each bend
+  at two joints and spread (loose when running, laid round the ball on it, closed
+  for a pass), shoes, and a kit that is cloth over the
   body (sleeve cuffs, a collar, the hem of the shorts, a number front and back).
 * **The jump.** On the plant both arms go back behind the hips, swing down
   past them and up in front as the legs drive, then the off arm points at the
@@ -501,6 +502,8 @@ contact rules do not know it is there.
   forehead and extend along the line it leaves on. After a spike the arm slows
   all the way down, the body folds and opens again, and the feet reach for the
   floor before the landing.
+  On a Perfect, the frame the hit-stop holds shows the ball where it was
+  touched, on the hand.
 * **At the net.** Below the tape, wrists and fingers stay on their own side
   (a hand may reach across only above it, as a block does), a landing lean
   stops short of the net, and toes and knees stay behind the centre line. The
@@ -529,7 +532,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `CHARACTER` | How athletes are drawn: rim and side fill light, the arm swing of a jump (`jumpSwing`), how early hands go to where the ball will be (`meet`), the passing stance and what the platform does after the touch (`pass`), finger curls, where a palm meets the ball, how far arms, head, knees and toes keep from the net (`netClear`), idle breathing |
+| `CHARACTER` | How athletes are drawn: rim and side fill light, the arm swing of a jump (`jumpSwing`), how early hands go to where the ball will be (`meet`), the passing stance and what the platform does after the touch (`pass`), hand shapes (`hand`: how the fingers curl and spread loose, flat, on the ball and closed), where a palm meets the ball, how far arms, head, knees and toes keep from the net (`netClear`), idle breathing |
 | `ARENA` | The hall: floor mirror (size, strength, blur), the stands (`bowl`: tiers, rows, seats, how brightly the crowd is lit), how the net mesh gives when the ball hits it, lights, the final grade |
 | `BALL_LOOK` | How deep the ball's seams look and how much it glows by itself |
 | `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); who the setter sets (`setWeight`) and how often the pipe (`pipe`); an overpass (`overpass`), an AI hitter misreading the user's block (`userBlockMisread`), who takes a ball (`pick`: first there takes it, the seam goes to the libero or you, the setter only when nobody else is close, a ball off a block or a second ball the libero gets to is the libero's); where an AI free ball over goes (`freeOver`: a deep corner or short, wherever they aren't); perimeter defence read spots and reaction times (`defence`), early transition and the front row's transition off the net after a block (`transition`, `approachOff`: no quick from the net) and covering our hitter in the real 3-2 spots (`cover`: when, the middle at the net, the setter on the 3 m line, the back row behind and deep, how fast a coverer reads a ball off the block); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, run-up, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool, roll and recycle shots (`toolShot`, `rollShot`, `recycleShot`); the libero's set off a hard ball (`backupSet`: how much it misses, when it bumps instead; never a set to the user), what an AI dive does with the ball (`diveUp`: a bit up, toward the middle) and when a free ball is aimed (`freeOver.aimSpeed`), a setter too late for the hands digging it (`lateSet`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`); first balls overhand (`overhand`), dives (`dive`, `stretch`: a last-ditch dive at a ball just past the hands) and a second player running at a ball the first may not reach (`scramble`) |
