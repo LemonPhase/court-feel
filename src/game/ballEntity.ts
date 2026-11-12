@@ -210,10 +210,22 @@ export class BallEntity {
     // were not part of it (they always are: the predictor uses the same step)
   }
 
-  interpolate(alpha: number): void {
-    const a = this.prev.p;
-    const b = this.state.p;
-    this.rpos.set(lerp(a.x, b.x, alpha), lerp(a.y, b.y, alpha), lerp(a.z, b.z, alpha));
+  /**
+   * Where the ball was touched, for the frame a hit-stop holds. A step resolves the contact and then
+   * moves the ball at its new speed, so by the time the frame is drawn a spike is up to half a metre
+   * down its line: the freeze showed the hand at the touch and the ball somewhere past it.
+   */
+  private held: THREE.Vector3 | null = null;
+
+  /** draw the ball at this point for as long as the hit-stop holds the frame (the simulation is not touched) */
+  holdDrawn(x: number, y: number, z: number): void {
+    (this.held ??= new THREE.Vector3()).set(x, y, z);
+  }
+
+  /** `frozen`: a hit-stop is holding this frame */
+  interpolate(alpha: number, frozen = false): void {
+    if (!frozen) this.held = null;
+    drawnBallPos(this.prev.p, this.state.p, alpha, this.held, this.rpos);
     this.mesh.position.copy(this.rpos);
     this.mesh.quaternion.slerpQuaternions(this.prevQ, this.q, alpha);
   }
@@ -282,6 +294,21 @@ export class BallEntity {
     this.markerDotBack.visible = false;
     this.markerPin.visible = false;
   }
+}
+
+/**
+ * Where the ball is drawn: between its last two simulated positions, or, on a frame a hit-stop
+ * holds, where it was touched (`held`).
+ */
+export function drawnBallPos(
+  prev: { x: number; y: number; z: number },
+  cur: { x: number; y: number; z: number },
+  alpha: number,
+  held: { x: number; y: number; z: number } | null,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  if (held) return out.set(held.x, held.y, held.z);
+  return out.set(lerp(prev.x, cur.x, alpha), lerp(prev.y, cur.y, alpha), lerp(prev.z, cur.z, alpha));
 }
 
 const _axis = new THREE.Vector3();

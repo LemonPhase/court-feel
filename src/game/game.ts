@@ -824,7 +824,7 @@ export class Game {
     if (this.userViewDirty) this.rebuildUserView();
     const alpha = this.accum / (1 / SIM.hz);
     for (const a of this.athletes) a.interpolate(alpha);
-    this.ball.interpolate(alpha);
+    this.ball.interpolate(alpha, this.hitStop > 0);
     const step = 1 / SIM.hz;
     const tr = this.simTime - step * (1 - alpha);
     const animDt = Math.max(0, tr - this.lastRenderSimT);
