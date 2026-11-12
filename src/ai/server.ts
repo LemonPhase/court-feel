@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, COURT } from '../config';
+import { AI, COURT, LEVELS, type Level } from '../config';
 import type { Rng } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
@@ -69,7 +69,7 @@ export class ServerBrain implements Brain {
         if (this.t > 0.7) {
           if (this.jump ? g.contact.serveToss(a, AI.serve.jumpToss, AI.serve.jumpTossHigh) : g.contact.serveToss(a)) {
             this.phase = 'toss';
-            const e = g.rng.gauss() * (this.jump ? AI.serve.jumpErr : AI.serve.floatErr);
+            const e = g.rng.gauss() * (this.jump ? a.level.serve.jumpErr : a.level.serve.floatErr);
             this.err = Math.max(-AI.serve.errMax, Math.min(AI.serve.errMax, e));
           }
         }
@@ -148,12 +148,19 @@ export class ServerBrain implements Brain {
  * top of it in the contact. Serving at the seams and the deep corners is how a serve makes the
  * passers move and talk.
  */
-export function serveAim(passers: readonly { x: number; z: number }[], recv: 1 | -1, rng: Rng, jump: boolean): THREE.Vector3 {
+export function serveAim(
+  passers: readonly { x: number; z: number }[],
+  recv: 1 | -1,
+  rng: Rng,
+  jump: boolean,
+  /** the serving team's level: where it aims and how much it scatters */
+  L: Level['serve'] = LEVELS.pro.serve,
+): THREE.Vector3 {
   const S = AI.serve;
   const hw = COURT.halfWidth;
   const sorted = [...passers].sort((p, q) => p.x - q.x);
   const pick = <T>(xs: readonly T[]): T => xs[Math.min(xs.length - 1, Math.floor(rng.next() * xs.length))];
-  const w = { seam: S.seam, deep: S.deep, short: jump ? 0 : S.short, body: S.body };
+  const w = { seam: L.seam, deep: L.deep, short: jump ? 0 : L.short, body: L.body };
   let r = rng.next() * (w.seam + w.deep + w.short + w.body);
   let x: number;
   let z: number;
@@ -172,8 +179,8 @@ export function serveAim(passers: readonly { x: number; z: number }[], recv: 1 |
     x = p.x;
     z = Math.abs(p.z);
   }
-  x += rng.gauss() * S.spread;
-  z += rng.gauss() * S.spread;
+  x += rng.gauss() * L.spread;
+  z += rng.gauss() * L.spread;
   x = Math.max(-hw + 0.4, Math.min(hw - 0.4, x));
   z = Math.max(2.5, Math.min(COURT.halfLength - 0.4, z));
   return new THREE.Vector3(x, 0, z * recv);

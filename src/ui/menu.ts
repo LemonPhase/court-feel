@@ -1,6 +1,8 @@
 import {
   BODY,
   isPositionId,
+  LEVEL_IDS,
+  LEVELS,
   POSITIONS,
   SETTING_RANGES,
   type BodyOverride,
@@ -599,7 +601,27 @@ export class Menu {
         },
       ),
     );
-    setup.append(this.posPicker(), net);
+    // the league both teams play in: it takes effect when the rally starts
+    const level = h('div', 'block');
+    const levelNote = h('div', 'block-note');
+    level.append(
+      txt('div', 'eyebrow', 'Level'),
+      this.chipGroup(
+        'Level of play',
+        LEVEL_IDS.map((id) => LEVELS[id].name),
+        () => LEVEL_IDS.indexOf(this.settings.level),
+        (i) => {
+          this.settings.level = LEVEL_IDS[i];
+          this.cb.settingsChanged();
+        },
+      ),
+      levelNote,
+    );
+    this.syncs.push(() => {
+      const l = LEVELS[this.settings.level];
+      levelNote.replaceChildren(txt('b', '', l.name), ` · ${l.blurb}`);
+    });
+    setup.append(this.posPicker(), level, net);
     mid.append(calls, setup);
     const foot = h('div', 'panel-foot');
     const go = this.playButton('PLAY', () => this.go(mode));

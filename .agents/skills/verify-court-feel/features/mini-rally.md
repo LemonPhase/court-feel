@@ -5,6 +5,7 @@ Mini Rally is 6 v 6 with the player in their chosen position. The AI serves, rec
 ## Sub-features
 
 - `rally-start` puts twelve athletes on court with the score at 0 : 0 and the opponents serving.
+- `rally-level` plays the rally at a level of play, the league both teams play in: `Rec`, `Club`, `National` or `Pro` (the default). It is picked on the Mini Rally's panel (the `Level` chips) or with `&level=` in a link, shown in the HUD title, and takes effect when a rally starts. It changes the AI players (reads, reactions, timing, choices, and their jump, power and speed), never the player's own athlete or how their touch is graded.
 - `rally-set-call` changes your set call with `1`, `2`, `3` (OH, OPP and MB), shown on the score line.
 - `rally-serve` starts each point with a serve: about 6 AI serves in 10 are jump serves (the server walks in, tosses about 4.5 m up, takes off behind the end line and lands in the court), the rest standing floats. An AI serve can be an ace but never a serve error (a mistimed one is a slower, easier serve that still lands in); only the user can miss a serve. A jump server never lets the toss drop untouched.
 - `rally-your-ball` a serve, attack or free ball coming to the home side goes to the player who gets there first ("Your ball!" and a green marker when it is the user). A ball in the seam between two players goes to the libero or the user, never one that a team-mate is clearly closer to; the setter digs only a ball nobody else is close to. A ball off a block (either side's) that the libero can get to is the libero's, even with the user or a team-mate nearer: it takes over from whoever was sent.
@@ -19,7 +20,7 @@ Mini Rally is 6 v 6 with the player in their chosen position. The AI serves, rec
 ## How to get to it (user POV)
 
 - On the start screen open Play, choose a position and start with `PLAY`, Enter or a double-click on the Mini Rally row. [Start screen](./start-screen.md) drives this entry.
-- Open a quick-start link: `?mode=rally&pos=MB`, with `OH`, `OPP`, `MB`, `S` or `L`.
+- Open a quick-start link: `?mode=rally&pos=MB`, with `OH`, `OPP`, `MB`, `S` or `L`, and optionally `&level=rec`, `club`, `national` or `pro`.
 - In the pause menu of a running rally choose `Restart drill`.
 
 ## Driving it with court.mjs
@@ -29,7 +30,10 @@ Preconditions:
 - A desktop session is running and `court doctor` ends with `HEALTHY`.
 - The recipe uses the manual clock and the autopilot for the player's athlete (test hooks). Name them in the proof.
 
-- **Start.** Open the rally as a middle blocker with the clock frozen. Run `court open '?mode=rally&pos=MB&bot=perfect' --fresh --manual`. The state line shows `"title":"Mini Rally · you are the Middle Blocker"` and `"score":"YOU 0 : 0 THEM · their serve · call 1: 1 (quick in front)"`. Run `court state`: `game.athletes` is `12`.
+- **Start.** Open the rally as a middle blocker with the clock frozen. Run `court open '?mode=rally&pos=MB&bot=perfect' --fresh --manual`. The state line shows `"title":"Mini Rally · Pro · you are the Middle Blocker"` and `"score":"YOU 0 : 0 THEM · their serve · call 1: 1 (quick in front)"`. Run `court state`: `game.athletes` is `12`.
+- **Pick a level in the menu.** Open Play as a returning player, pick Club and start. Run `court open --fresh`, `court click 'role=button[name="Skip to the drills"]'`, `court click 'role=button[name="Play"]'` and `court click 'role=button[name="Club"]'`. Run `court state`: `saved.settings.level` is `"club"`. Run `court shot rally-level-row`: the `Level` row under `Play as` with `Club` highlighted and its one-line description. Run `court clock manual` and `court click '.view.on .panel-foot .play-btn'`. The state line shows `"title":"Mini Rally · Club · you are the Outside Hitter"`.
+- **Both teams play at the level, the player does not.** Run `court eval 'JSON.stringify({home: g.mode.home.level.id, away: g.mode.away.level.id, theirJump: g.mode.away.players.get("OH1").stats.jump, myJump: g.me.stats.jump, me: g.me.level.id})'`. It reads `home` and `away` `club`, `theirJump` about `0.72` (0.86 at Pro), `myJump` `0.86` and `me` `pro`. This is a read through `eval`, a test hook.
+- **A level by link.** Run `court open '?mode=rally&pos=L&level=rec' --fresh --manual`. The state line shows `"title":"Mini Rally · Rec · you are the Libero"`. An unknown level (`&level=legend`) is ignored: the title says `Pro`.
 - **Call your set.** Press `2`. Run `court key 2` and `court step 0.05`. The state line shows a score ending `call 2: Shoot (31)` and `"message":"Calling 2: Shoot (31)"`.
 - **Serve.** Step until the serve is hit. Run `court step 30 --until 'window.__verify.events.some(e => e.type === "contact" && e.kind === "serve")'`. Run `court events`: the first entry is a `contact` with `"kind": "serve"` by an `(away)` athlete.
 - **The setter calls the pass.** Step until the call. Run `court step 10 --until 'window.__verify.events.some(e => e.type === "setterCall")'`. The state line shows a call such as `"call":{"who":"SETTER","word":"SHOOT!","sub":"in system"}` (or `HIGH!` / `out of system` off a bad pass). Run `court shot rally-setter-call`: the bubble over the setter.
@@ -44,6 +48,8 @@ Preconditions:
 - The setter does not set the player every time. In the recipe's rally the set goes to the outside hitter, so `events` may show no contact by `me`.
 - `rally-defence` was measured with an all-AI probe (`g.autoUser = true`, the manual clock, 1000 s of rallies): about 7 dives, 2 side digs and 7 overhand passes for every 16 platform digs. In a short recipe there may be none: step on with `court step 30 --until 'window.__verify.events.some(e => e.note === "Dive")'` and take the `shot` straight after, while the athlete is on the floor (about 1 s).
 - The call bubble is on screen for about 1.5 seconds of game time. Take the `shot` straight after the `step --until` that waits for it.
+- A level is read when the rally starts. Changing it needs a new rally (the menu, a link, or `Restart drill` after changing it), and a link's level is not saved: `saved.settings.level` keeps the menu's choice.
+- What a level feels like cannot be asserted from one rally. `npm run levels` measures every level on all-AI rallies (about 15 minutes): the kill rate of a Pro side that hits on time against each level, and each league's own stat line.
 - The recipe starts on `their serve`. `your serve` needs the home team to win a point first. Who serves for the home team, and whether the player serves, was not driven when this was written. Add it to this file when you verify it.
 - S and L have no set calls: the score line has no `call` part and `1` to `3` do nothing.
 - A fast call (`Go`, `Shoot`, `Fast back`) only happens off a good pass. Out of system the bubble says `HIGH!` and the set is a high ball whatever was called.

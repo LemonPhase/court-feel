@@ -20,7 +20,7 @@ export interface SetCall {
 /**
  * Setter: reads the incoming ball, gets under it (hands above the forehead),
  * and sets a solved arc to whatever `call()` asks for. Accuracy degrades with
- * how far the setter had to move and AI.setterAccuracy.
+ * how far the setter had to move and the setter's level (`Level.set.accuracy`).
  */
 export class SetterBrain implements Brain {
   enabled = true;
@@ -30,7 +30,8 @@ export class SetterBrain implements Brain {
   onSet: ((call: SetCall) => void) | null = null;
   private v = new THREE.Vector3();
   private p: V3 = { x: 0, y: 0, z: 0 };
-  accuracy = AI.setterAccuracy;
+  /** set scatter: the setter's level of play (`Level.set.accuracy`), unless a drill sets its own */
+  accuracy: number;
   /** how hard this set is for a backup setter (0-1, `AI.backupSet`): it misses by that much more (never a set to the user) */
   sloppy = 0;
   /** bump-set this ball (forearms) instead of hand-setting it: a libero in the front zone (see handSetAllowed) */
@@ -45,7 +46,9 @@ export class SetterBrain implements Brain {
     public athlete: Athlete,
     public base: { x: number; z: number },
     public faceYaw: number,
-  ) {}
+  ) {
+    this.accuracy = athlete.level.set.accuracy;
+  }
 
   reset(): void {
     this.athlete.endAction();

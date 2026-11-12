@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings } from '../config';
+import { ASSIST, CAMERA, COURT, LEVELS, PLAYER, SIM, TIMING, TUTORIAL, type Level, type PositionId, type Settings } from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
@@ -114,6 +114,8 @@ export class Game {
   ballLive = false;
   /** test hook: the user's athlete is driven by the team AI */
   autoUser = false;
+  /** test hook: the levels of play of the two Mini Rally teams, in place of the setting's (`scripts/levels.mjs` plays a Pro side against each level) */
+  probeLevels: { home: Level; away: Level } | null = null;
   /**
    * Errors caught by the game: a frame or an event handler that threw. `fatal` means the
    * game has stopped (frames kept throwing). Without a handler they go to the console.
@@ -351,6 +353,7 @@ export class Game {
     this.bot = null;
     this.ballLive = false;
     this.me.isUser = true;
+    this.me.setLevel(LEVELS.pro);
     this.input.releaseAll();
     this.judge.disarm();
     this.ball.hide();

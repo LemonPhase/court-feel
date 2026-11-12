@@ -100,7 +100,14 @@ describe('quick-start links', () => {
       cam: 'fp',
       bot: 'good',
       hand: 'left',
+      level: null,
     });
+  });
+
+  it('a link can pick the Mini Rally level of play; an unknown level is ignored', () => {
+    expect(parseLaunchParams('?mode=rally&pos=L&level=club')?.level).toBe('club');
+    expect(parseLaunchParams('?mode=rally&level=legend')?.level).toBeNull();
+    expect(parseLaunchParams('?mode=rally&level=toString')?.level).toBeNull();
   });
 
   it('a mistyped position falls back to the outside hitter instead of crashing', () => {
@@ -120,6 +127,7 @@ describe('quick-start links', () => {
       cam: null,
       bot: null,
       hand: null,
+      level: null,
     });
   });
 

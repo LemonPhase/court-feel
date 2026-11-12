@@ -337,7 +337,14 @@ screen show them. Only your player uses them; AI players keep the defaults.
    the ball back over), and the team covers its hitter low, in the real
    coverage spots. A soft ball into a well-formed block can come back off the
    hands for the cover to dig up and attack again (out of system), and the AI
-   never misses a serve (yours still can). Win or
+   never misses a serve (yours still can). **Level** (on the Mini Rally's
+   panel) picks the league both teams play in: Rec, Club, National or Pro.
+   A level changes how the AI players read, react, time a touch and choose,
+   and how high, fast and hard their bodies are; it never changes how your
+   own touch is graded, and your body stays your Athlete setting. At Rec
+   there are no jump serves, fast sets or dives and one late blocker; at Pro
+   (the default, the game as it was before levels) a closed double block and
+   a defence that reads and dives. Win or
    lose the point. "Your ball!"
    and a green landing marker tell you when the ball is yours: it goes to
    whoever gets there first, and a ball in the seam between you and a
@@ -494,6 +501,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`), the dive (`diveSpeed`, `diveDecel`, `diveArm`, `diveDown`, `diveTime`) |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
+| `LEVELS` | The Mini Rally's levels of play (Rec, Club, National, Pro), one table each: the AI's body multipliers, serve, pass and dig, defence reads and reactions, block, set and attack. Pro is the `AI` numbers. `npm run levels` measures them |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
@@ -537,7 +545,15 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   grade and speed with either hand, the stored hand is sanitised), the block
   shadow, the touch pad model, the pointer-lock fallback, the replay of
   athletes added mid-recording (the Spike Drill's blockers), stored-settings
-  and quick-start-link validation, and the error reporter.
+  and quick-start-link validation, the levels of play (Pro is the game
+  before levels, a level scales the AI's body and never the user's, a Rec
+  defence holds its base and never dives, a Rec middle leaves one blocker
+  up), and the error reporter.
+* `npm run levels` — measures the levels of play on all-AI Mini Rallies
+  (headless Chromium, the manual clock): each league against itself, and a Pro
+  side that hits on time without looking for the open spot against each
+  level's block and defence. Run it after changing a number in `LEVELS`
+  (about 15 minutes; `node scripts/levels.mjs 600 2024` is a quick look).
 * `npm run e2e` — starts Vite, loads the game in headless Chromium and plays
   every drill with an autopilot through the real input path (it plans its
   approach by forward-simulating the athlete). The simulation is stepped at a
@@ -560,7 +576,8 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   playwright install chromium`.
 * URL shortcuts for quick testing: `?mode=spike&pos=OH&cam=fp&bot=perfect`
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,
-  sloppy, tip; `&hand=left` plays as a lefty). Unknown values are ignored: an
+  sloppy, tip; `&hand=left` plays as a lefty; `&level=rec`, `club`,
+  `national` or `pro` sets the Mini Rally's level). Unknown values are ignored: an
   unknown mode opens the menu, an unknown position falls back to OH.
   `?tutorial=0` starts the first-run lesson at the welcome (0 welcome,
   1 together, 2 slow motion, 3 full speed). `cam=fp` and `touch=1`

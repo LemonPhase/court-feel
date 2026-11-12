@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALL, COURT, PLAYER, type Hand, type PositionId, type PositionStats } from '../config';
+import { BALL, COURT, LEVELS, PLAYER, type Hand, type Level, type PositionId, type PositionStats } from '../config';
 import { standingReach } from '../character/rig';
 import { bodyStats, type CustomBody } from './body';
 import { angleLerp, clamp, clamp01, damp, dirFromYaw, lerp, rightFromYaw, wrapAngle } from '../core/mathx';
@@ -128,6 +128,13 @@ export class Athlete {
   ballPos: THREE.Vector3 | null = null;
   /** assist nudge velocity in air */
   readonly airNudge = new THREE.Vector3();
+  /**
+   * The level of play an AI player plays at (`LEVELS`): its reads, timing and choices, and its body
+   * (`setLevel`). Pro unless a team gives it another; the user's athlete is never given one.
+   */
+  level: Level = LEVELS.pro;
+  /** the position's stats with the custom body, before the level's multipliers */
+  private baseStats: PositionStats;
   jersey = 0;
   name = '';
   number = 0;
@@ -136,7 +143,7 @@ export class Athlete {
   /** `body`: a custom height / vert / spike power for this position, `hand`: the hitting hand (the user's settings) */
   constructor(role: PositionId, side: 1 | -1, opts: { height?: number; body?: CustomBody; hand?: Hand } = {}) {
     this.role = role;
-    this.stats = bodyStats(role, opts.body);
+    this.stats = this.baseStats = bodyStats(role, opts.body);
     this.side = side;
     this.team = side === 1 ? 0 : 1;
     this.hand = handSign(opts.hand);
@@ -154,9 +161,33 @@ export class Athlete {
 
   /** apply a custom body (or the position's defaults): height, standing reach, jump and power */
   setBody(body?: CustomBody): void {
-    this.stats = bodyStats(this.role, body);
+    this.stats = this.baseStats = bodyStats(this.role, body);
+    this.level = LEVELS.pro;
     this.height = this.stats.height;
     this.standReach = standingReach(this.height);
+    this.jumpMax = this.stats.jump;
+  }
+
+  /**
+   * Make this an AI player of a level of play: it reads, times and chooses like that league, and its
+   * body is the position's scaled to it (jump, power, speed, ball control; the height stays).
+   */
+  setLevel(level: Level): void {
+    this.level = level;
+    const b = level.body;
+    const p = this.baseStats;
+    const same = b.jump === 1 && b.power === 1 && b.speed === 1 && b.ballControl === 1;
+    this.stats = same
+      ? p
+      : {
+          ...p,
+          jump: p.jump * b.jump,
+          power: p.power * b.power,
+          approachSpeed: p.approachSpeed * b.speed,
+          shuffleSpeed: p.shuffleSpeed * b.speed,
+          accel: p.accel * b.speed,
+          ballControl: p.ballControl * b.ballControl,
+        };
     this.jumpMax = this.stats.jump;
   }
 

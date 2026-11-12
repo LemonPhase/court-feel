@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, BALL, CONTACT, COURT, PLAYER, TIMING, type PositionId } from '../config';
+import { AI, BALL, CONTACT, COURT, LEVELS, PLAYER, TIMING, type Level, type PositionId } from '../config';
 import { clamp, lerp, smooth01, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
@@ -93,11 +93,10 @@ export class TeamPlayer implements Brain {
   private pressT = -1;
   private err = 0;
   private b: V3 = { x: 0, y: 0, z: 0 };
-  skill = AI.defenderSkill;
   /** this player's read of the other team's set (where the attack will be), and of the ball's last touch */
-  readonly setRead = new BallRead({ react: AI.defence.react, reactSd: AI.defence.reactSd, err: AI.defence.readErr });
-  readonly hitRead = new BallRead({ react: AI.defence.hitReact, reactSd: AI.defence.hitReactSd, err: 0 });
-  readonly coverRead = new BallRead({ react: AI.cover.react, reactSd: AI.defence.hitReactSd, err: 0 });
+  readonly setRead: BallRead;
+  readonly hitRead: BallRead;
+  readonly coverRead: BallRead;
   /** when this player was last covering (s) */
   coverT = -10;
   /** where the set read put this defender: held while their attack flies (null: no read this rally) */
@@ -109,6 +108,11 @@ export class TeamPlayer implements Brain {
     public team: TeamAI,
   ) {
     const s = athlete.side;
+    // how well it reads and how soon it reacts is its level of play (`LEVELS`)
+    const D = athlete.level.defence;
+    this.setRead = new BallRead({ react: D.react, reactSd: D.reactSd, err: D.readErr });
+    this.hitRead = new BallRead({ react: D.hitReact, reactSd: D.hitReactSd, err: 0 });
+    this.coverRead = new BallRead({ react: D.coverReact, reactSd: D.hitReactSd, err: 0 });
     const setterFace = s === 1 ? Math.PI / 2 : -Math.PI / 2;
     this.setter = new SetterBrain(athlete, { x: SETTER_SPOT.x * s, z: SETTER_SPOT.z * s }, setterFace);
     this.setter.shouldPlay = () => this.job === 'set';
@@ -132,6 +136,7 @@ export class TeamPlayer implements Brain {
             () => team.frontRow().filter((w) => w !== athlete),
           )
         : new BlockerBrain(athlete, FORM.defense[slot].x * s, 1.3);
+    if (this.blocker instanceof BlockerBrain) this.blocker.tune = athlete.level.block.pin;
     this.server = new ServerBrain(athlete);
   }
 
@@ -165,7 +170,7 @@ export class TeamPlayer implements Brain {
     // covering: low, hands ready, and still low as the ball comes off the block until it is read
     // (the animator eases into it and stands up on the run; no effect on movement)
     if (this.job === 'cover') this.coverT = g.simTime;
-    a.low = g.simTime - this.coverT < AI.cover.react + 0.3 ? 1 : 0;
+    a.low = g.simTime - this.coverT < a.level.defence.coverReact + 0.3 ? 1 : 0;
     // an attack in progress always finishes, whatever the coordinator says
     if (this.hitter && this.hitter.phase !== 'ready' && this.hitter.phase !== 'recover') {
       this.hitter.step(dt, g);
@@ -263,6 +268,9 @@ export class TeamPlayer implements Brain {
           vArr <= AI.overhand.maxSpeed && run <= AI.overhand.maxRun && left > 0 && run / left <= a.stats.approachSpeed * AI.overhand.pace;
       }
       this.hands = ok && g.rng.next() < AI.overhand.share;
+      // will it dive for this ball if the platform can't get there? (a level that always does rolls no dice)
+      const dive = a.level.pass.dive;
+      this.willDive = dive >= 1 || (dive > 0 && g.rng.next() < dive);
     }
     let hands = this.hands;
     let tArr = hands ? pred.descendThrough(a.height + 0.17, now) : -1;
@@ -310,7 +318,7 @@ export class TeamPlayer implements Brain {
         (act.kind === 'block' && act.held));
     const onFoot = a.state === 'ground' || a.state === 'land';
     // too far for the platform to be there in time: run at where the ball comes down low, and dive for it
-    if (!hands && onFoot && !busy && dist > AI.dive.minDist && needSpeed > a.stats.approachSpeed * AI.dive.late) {
+    if (!hands && this.willDive && onFoot && !busy && dist > AI.dive.minDist && needSpeed > a.stats.approachSpeed * AI.dive.late) {
       const tLow = pred.descendThrough(CONTACT.diveLow + 0.1, now);
       if (tLow > now) {
         pred.posAt(tLow, this.low);
@@ -342,7 +350,8 @@ export class TeamPlayer implements Brain {
     // sprint whenever a shuffle would not get there with the platform ready in time
     const d = moveTo(a, sx, sz, { face: dist < 1.1 ? face : undefined, arrive: 0.35, sprintDist: 1e9 });
     a.cmd.sprint = dist > 0.9 && needSpeed > a.stats.shuffleSpeed * 0.75;
-    if (this.pressT < 0) this.err = g.rng.gauss() * (0.03 + (1 - this.skill) * 0.12) * (1 + AI.passPressure * fast) - (d > 0.8 ? 0.1 : 0);
+    const P = a.level.pass;
+    if (this.pressT < 0) this.err = g.rng.gauss() * P.timingErr * (1 + P.pressure * fast) - (d > 0.8 ? 0.1 : 0);
     if (!busy && !(act?.kind === 'pass' && !act.resolved) && now >= tArr - lead + this.err && onFoot) {
       const p = a.startAction('pass', now);
       p.form = hands ? 'hands' : 'platform';
@@ -360,6 +369,7 @@ export class TeamPlayer implements Brain {
   }
   private formFor: unknown = null;
   private hands = false;
+  private willDive = true;
   private low: V3 = { x: 0, y: 0, z: 0 };
 }
 
@@ -439,15 +449,21 @@ export class TeamAI {
   /** who sets our second ball: the setter, or the libero when the setter played the first or can't get there */
   secondBy: Athlete | null = null;
 
+  /** `level`: the league this team plays in (`LEVELS`); every AI player added to it plays at that level */
   constructor(
     public side: 1 | -1,
     private g: Game,
-  ) {}
+    readonly level: Level = LEVELS.pro,
+  ) {
+    const D = level.defence;
+    this.seamRead = new BallRead({ react: D.react, reactSd: D.reactSd, err: 0 });
+  }
 
   add(slot: Slot, a: Athlete, isUser: boolean): void {
     this.players.set(slot, a);
     if (isUser) this.userSlot = slot;
     else {
+      a.setLevel(this.level);
       const b = new TeamPlayer(a, slot, this);
       this.brains.set(a, b);
       this.g.setBrain(a, b);
@@ -502,7 +518,11 @@ export class TeamAI {
     if (lanePos === 'MB') return this.quickFor(h);
     const lane = laneFor(lanePos, this.side);
     const y = attackHeight(h);
-    return { target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove + (outOfSystem ? AI.outOfSystemApex : 0), hitter: h };
+    return {
+      target: { x: lane.x, y, z: lane.z },
+      apex: y + lane.apexAbove + (outOfSystem ? this.level.set.outOfSystemApex : 0),
+      hitter: h,
+    };
   }
 
   /** the quick for our middle, met at the top of their jump if they are up */
@@ -570,7 +590,7 @@ export class TeamAI {
     const s = this.side;
     const off = at ? Math.hypot(at.x - SETTER_SPOT.x * s, at.z - SETTER_SPOT.z * s) : Infinity;
     const backup = setter !== this.players.get('S');
-    const call = help ? 'help' : backup || off > AI.outOfSystem ? 'out' : 'in';
+    const call = help ? 'help' : backup || off > this.level.set.outOfSystem ? 'out' : 'in';
     this.read = { touch: lt, setter, call, at: at ?? { x: setter.pos.x, z: setter.pos.z }, off };
     if (call !== r?.call) this.onRead?.(this.read);
   }
@@ -578,6 +598,7 @@ export class TeamAI {
   /** the setter's call: who gets the ball */
   callSet(g: Game, setter: Athlete) {
     const s = this.side;
+    const L = this.level.set;
     const options: { slot: Slot; a: Athlete; lane: PositionId; w: number }[] = [];
     // a pin hitter already running a fast set gets it only if the ball can meet the hand in time
     const fast = (a: Athlete) => (a.isUser ? null : (this.brains.get(a)?.hitter?.tempoBall ?? null));
@@ -596,16 +617,16 @@ export class TeamAI {
     const read = this.read && this.read.touch === g.ball.lastTouch && this.read.setter === setter ? this.read : null;
     const outOfSystem =
       backup ||
-      (read ? read.call !== 'in' : Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s) > AI.outOfSystem);
-    add('OH1', 'OH', AI.setWeight.outside);
+      (read ? read.call !== 'in' : Math.hypot(setter.pos.x - SETTER_SPOT.x * s, setter.pos.z - SETTER_SPOT.z * s) > L.outOfSystem);
+    add('OH1', 'OH', L.outside);
     add('OPP', 'OPP', AI.setWeight.opposite);
-    if (!backup) add('OH2', 'L', outOfSystem ? AI.pipe.outOfSystem : AI.pipe.inSystem);
+    if (!backup) add('OH2', 'L', outOfSystem ? L.pipeOut : L.pipeIn);
     // the quick only goes off a good pass, and only if the middle is up with the setter's touch
     const mb = this.players.get('MB');
     const quick = mb && mb !== setter && !outOfSystem ? this.quickFor(mb) : null;
     // off a perfect pass the setter goes to the middle more: the quick is the best attack there is
     const perfect = !!read && read.off <= AI.quickWeight.perfectOff;
-    if (mb && quick?.onTime) options.push({ slot: 'MB', a: mb, lane: 'MB', w: perfect ? AI.quickWeight.perfect : AI.quickWeight.good });
+    if (mb && quick?.onTime) options.push({ slot: 'MB', a: mb, lane: 'MB', w: perfect ? L.quickPerfect : L.quickGood });
     // (both pins mid-run on fast sets the setter can't reach: the outside takes a high ball)
     if (!options.length) {
       const oh = this.players.get('OH1');
@@ -636,7 +657,7 @@ export class TeamAI {
     const lane = call ?? laneFor(pick.lane, s);
     const y = attackHeight(pick.a);
     // off a bad pass the setter can only put up a high ball
-    const apexBoost = outOfSystem ? AI.outOfSystemApex : 0;
+    const apexBoost = outOfSystem ? L.outOfSystemApex : 0;
     const apexAbove = outOfSystem && call ? Math.max(call.apexAbove, laneFor(pick.lane, s).apexAbove) : lane.apexAbove;
     // a back-row set off a bad pass stays well behind the 3 m line
     const z = outOfSystem && pick.lane === 'L' ? PIPE_HIGH_Z * s : lane.z;
@@ -678,7 +699,8 @@ export class TeamAI {
     const d = Math.hypot(a.pos.x - p.x, a.pos.z - (p.z - this.side * 0.4));
     // the first steps are shuffled, the rest of a long way is run (never quicker from further away)
     const sh = AI.pick.shuffle;
-    let t = Math.min(d, sh) / (a.stats.shuffleSpeed * 0.9) + Math.max(0, d - sh) / (a.stats.approachSpeed * 0.8) + AI.reactionTime;
+    let t =
+      Math.min(d, sh) / (a.stats.shuffleSpeed * 0.9) + Math.max(0, d - sh) / (a.stats.approachSpeed * 0.8) + this.level.defence.pickReact;
     // a blocker still up at the net has to come down first
     if (a.state === 'air') {
       const vy = a.vel.y;
@@ -841,7 +863,8 @@ export class TeamAI {
       const ourBlock = lt && lt.side === this.side && lt.kind === 'block';
       // a ball that will land clearly out is let go (judged where it lands, not where it is played)
       const land = pred.land;
-      const inBounds = Math.abs(land.x) < COURT.halfWidth + AI.outJudge && Math.abs(land.z) < COURT.halfLength + AI.outJudge;
+      const judge = this.level.pass.outJudge;
+      const inBounds = Math.abs(land.x) < COURT.halfWidth + judge && Math.abs(land.z) < COURT.halfLength + judge;
       // the receiver sticks to one ball, unless the ball is no longer going where they were sent
       const strayed = comingToUs && tDown > 0 && Math.hypot(p.x - this.receiverAt.x, p.z - this.receiverAt.z) > 1.5;
       // (`mustPlay`: a ball off our own block is ours wherever it lands: out, it is their point)
@@ -863,7 +886,16 @@ export class TeamAI {
         // a ball the one sent may not get to: the next closest runs with them (two go, one plays it), to
         // where a dive would pop it up
         const r = this.receiver;
-        if (!serve && r && this.receiverFor === lt && comingToUs && tDown > 0 && this.reachTime(r, p) > tDown - now - AI.scramble) {
+        const spare = this.level.pass.scramble;
+        if (
+          spare !== null &&
+          !serve &&
+          r &&
+          this.receiverFor === lt &&
+          comingToUs &&
+          tDown > 0 &&
+          this.reachTime(r, p) > tDown - now - spare
+        ) {
           const two = this.pickReceiver(p, false, r, exclude);
           if (two && two !== this.secondBy) setJob(two, 'base', this.popSpot(p));
         }
@@ -961,7 +993,8 @@ export class TeamAI {
             else if (r) {
               setJob(r, 'free');
               // one they may only dive for: the next closest runs with them, to play what the dive pops up
-              if (comingToUs && tDown > 0 && this.reachTime(r, p) > tDown - now - AI.scramble) {
+              const spare = this.level.pass.scramble;
+              if (spare !== null && comingToUs && tDown > 0 && this.reachTime(r, p) > tDown - now - spare) {
                 const two = this.pickReceiver(p, false, r, lt?.athlete ?? null);
                 if (two) setJob(two, 'base', this.popSpot(p));
               }
@@ -1056,7 +1089,7 @@ export class TeamAI {
       if (!b.setRead.seen(now)) continue;
       const x = b.setRead.x(atk.x, now, atk.t) * s;
       const off = Math.abs(atk.z);
-      const spot = readSpots({ x, off, kind: attackKind(x, off) })[slot];
+      const spot = readSpots({ x, off, kind: attackKind(x, off) }, this.level.block.middle.closeGap)[slot];
       const back = slot === 'S' || slot === 'L' || slot === 'OH2';
       if (spot) {
         b.readSpot = { x: spot.x * s, z: spot.z * s };
@@ -1078,7 +1111,7 @@ export class TeamAI {
     const g = this.g;
     const now = g.simTime;
     const r = this.receiver;
-    if (!r || now - t.t < AI.transition.read) return;
+    if (!r || now - t.t < this.level.defence.transitionRead) return;
     if (this.reachTime(r, p) + AI.transition.spare > tDown - now) return;
     const S = this.players.get('S');
     if (S && S !== r) setJob(S, 'base', this.formSpot('offense', 'S'));
@@ -1135,7 +1168,7 @@ export class TeamAI {
     b.readSpot = { x: spot.x * s, z: spot.z * s };
     setJob(mb, 'base', b.readSpot);
   }
-  private readonly seamRead = new BallRead({ react: AI.defence.react, reactSd: AI.defence.reactSd, err: 0 });
+  private readonly seamRead: BallRead;
 
   /**
    * Covering our hitter (`AI.cover`): a moment after our set, the real coverage spots for where the

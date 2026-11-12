@@ -1,4 +1,4 @@
-import { AI } from '../../config';
+import { AI, LEVELS } from '../../config';
 import { netYaw } from '../../ai/brain';
 import { serveAim } from '../../ai/server';
 import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
@@ -32,8 +32,10 @@ export class MiniRally extends Mode {
 
   setup(): void {
     const g = this.g;
-    this.home = new TeamAI(1, g);
-    this.away = new TeamAI(-1, g);
+    // both teams play in the league the user picked: the match stays even without them, so the score is about what they add
+    const level = LEVELS[g.settings.level];
+    this.home = new TeamAI(1, g, g.probeLevels?.home ?? level);
+    this.away = new TeamAI(-1, g, g.probeLevels?.away ?? level);
     this.home.opponents = this.away;
     this.away.opponents = this.home;
     this.home.onRead = (r) => this.setterCall(r);
@@ -56,7 +58,7 @@ export class MiniRally extends Mode {
       this.spawned.push(a);
       this.away.add(slot, a, false);
     }
-    g.hud.setTitle('Mini Rally · you are the ' + g.me.stats.name);
+    g.hud.setTitle(`Mini Rally · ${level.name} · you are the ${g.me.stats.name}`);
     this.plays = g.autoUser ? null : (SET_PLAYS[this.position] ?? null);
     this.callIdx = 0;
     this.servingSide = -1;
@@ -278,14 +280,16 @@ export class MiniRally extends Mode {
           const recv = this.servingSide === 1 ? this.away : this.home;
           // a jump serve or a float, at the seams, the deep corners, short or at a passer (the user too)
           const passers = (['OH1', 'OH2', 'L'] as const).map((s) => recv.players.get(s)).filter((a) => a !== undefined);
-          const jump = g.rng.next() < AI.serve.jump;
+          const serving = this.servingSide === 1 ? this.home : this.away;
+          const jump = g.rng.next() < serving.level.serve.jump;
           const aim = serveAim(
             passers.map((a) => a.pos),
             recv.side,
             g.rng,
             jump,
+            serving.level.serve,
           );
-          (this.servingSide === 1 ? this.home : this.away).serve(aim, jump);
+          serving.serve(aim, jump);
         }
         break;
       case 'serve':

@@ -1,4 +1,4 @@
-import { AI, BALL, PLAYER } from '../config';
+import { AI, BALL, PLAYER, type Level } from '../config';
 import { clamp } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
@@ -29,8 +29,10 @@ export class MiddleBlocker implements Brain {
   pinnedGuess: Guess | null = null;
   /** the guess on their current pass */
   guess: Guess = 'read';
-  private readonly passRead = new BallRead({ react: AI.middle.react, reactSd: AI.middle.reactSd, err: 0 });
-  private readonly setRead = new BallRead({ react: AI.middle.react, reactSd: AI.middle.reactSd, err: AI.middle.readErr });
+  private readonly passRead: BallRead;
+  private readonly setRead: BallRead;
+  /** its level of play: how soon it reacts, how well it reads, how much it guesses, how tight it closes */
+  private readonly lvl: Level['block']['middle'];
   private guessFor: unknown = null;
   /** their pass was good enough to run a quick off */
   private inSystem = false;
@@ -54,6 +56,9 @@ export class MiddleBlocker implements Brain {
     private ourWings: () => Athlete[] = () => [],
   ) {
     this.targetX = homeX;
+    const L = (this.lvl = athlete.level.block.middle);
+    this.passRead = new BallRead({ react: L.react, reactSd: L.reactSd, err: 0 });
+    this.setRead = new BallRead({ react: L.react, reactSd: L.reactSd, err: L.readErr });
   }
 
   reset(): void {
@@ -125,8 +130,8 @@ export class MiddleBlocker implements Brain {
 
   private makeGuess(g: Game): Guess {
     const r = g.rng.next();
-    if (r < AI.middle.commit) return 'quick';
-    if (r < AI.middle.commit + AI.middle.cheat) return g.rng.next() < 0.5 ? 'outside' : 'opposite';
+    if (r < this.lvl.commit) return 'quick';
+    if (r < this.lvl.commit + this.lvl.cheat) return g.rng.next() < 0.5 ? 'outside' : 'opposite';
     return 'read';
   }
 
@@ -138,7 +143,7 @@ export class MiddleBlocker implements Brain {
     if (t < 0) return false;
     pred.posAt(t, this.b);
     const s = -this.athlete.side;
-    return Math.hypot(this.b.x - SETTER_SPOT.x * s, this.b.z - SETTER_SPOT.z * s) <= AI.outOfSystem;
+    return Math.hypot(this.b.x - SETTER_SPOT.x * s, this.b.z - SETTER_SPOT.z * s) <= this.athlete.level.set.outOfSystem;
   }
 
   /** a commit block: up with their middle's quick, timed off their plant and take-off */
@@ -148,7 +153,7 @@ export class MiddleBlocker implements Brain {
     const them = this.theirMiddle();
     if (this.committedFor === this.guessFor || !them || !a.canJump() || Math.abs(them.pos.z) > 2.5) return;
     // it sees the plant a reaction time after it starts, the take-off at once
-    if (!(them.state === 'air' || (them.state === 'load' && them.stateT >= AI.middle.react))) return;
+    if (!(them.state === 'air' || (them.state === 'load' && them.stateT >= this.lvl.react))) return;
     // their hands meet the ball at the top of the jump (a planting hitter is taken to hold a full plant)
     const release = them.state === 'load' ? now + Math.max(0, PLAYER.loadMax - 0.02 - them.loadT) : now;
     const top = predictJump(them, now, release);
@@ -188,13 +193,13 @@ export class MiddleBlocker implements Brain {
       // side (wherever it read the set to), else where a pin blocker shading the line would be
       const r = Math.sign(bx);
       const wing = this.ourWings().find((w) => Math.sign(w.pos.x) === r && Math.abs(w.pos.z) < 1.5);
-      spot = (wing ? wing.pos.x : bx + r * AI.defence.shade) - r * M.closeGap;
+      spot = (wing ? wing.pos.x : bx + r * AI.defence.shade) - r * this.lvl.closeGap;
     }
     this.targetX = spot;
     this.handsTo = spot;
     if (this.blockedFor === lt || !a.canJump()) return;
     // on time it goes up where it is meant to be; late, from wherever it got to, if that is near enough
-    if (now >= this.pressFor(this.tc + 0.12) && now <= this.tc && Math.abs(a.pos.x - spot) <= M.lateReach) {
+    if (now >= this.pressFor(this.tc + 0.12) && now <= this.tc && Math.abs(a.pos.x - spot) <= this.lvl.lateReach) {
       this.jump(now);
       this.blockedFor = lt;
     }

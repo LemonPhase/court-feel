@@ -28,7 +28,8 @@ export class HitterBrain implements Brain {
   defenders: () => Athlete[] = () => [];
   /** was the set we are about to hit run off a pass in system (the whole court in view)? */
   inSystem: () => boolean = () => true;
-  tipChance = 0.08;
+  /** share of swings that are tips (the level's, unless a drill sets its own) */
+  tipChance: number;
   private swung = false;
   private err = 0;
   /** stay at the ready spot instead of the approach start (e.g. while defending) */
@@ -49,7 +50,9 @@ export class HitterBrain implements Brain {
   constructor(
     public athlete: Athlete,
     public lane: AttackLane,
-  ) {}
+  ) {
+    this.tipChance = athlete.level.attack.tip;
+  }
 
   reset(): void {
     this.phase = 'ready';
@@ -92,7 +95,7 @@ export class HitterBrain implements Brain {
             this.quickFor = lt;
             // a pin hitter runs a fast set (a go, a fast back) on some good passes: already
             // running when the setter touches it, met AI.tempo.flight after the touch
-            const fast = !this.lane.quick && g.rng.next() < AI.tempo.share;
+            const fast = !this.lane.quick && g.rng.next() < a.level.set.tempo;
             const contact = new THREE.Vector3(this.lane.x, attackHeight(a), this.lane.z);
             const plan = this.lane.quick
               ? planQuick(a, now, quickSpot(ps.x, a.side), ps.t, face, face)
@@ -104,7 +107,7 @@ export class HitterBrain implements Brain {
               this.tempo = !this.lane.quick;
               this.phase = 'approach';
               this.swung = false;
-              this.err = g.rng.gauss() * (AI.attackErr + (1 - this.skill) * 0.06);
+              this.err = g.rng.gauss() * (a.level.attack.timingErr + (1 - this.skill) * 0.06);
               break;
             }
           }
@@ -119,7 +122,7 @@ export class HitterBrain implements Brain {
             this.phase = 'approach';
             this.swung = false;
             const s = 1 - this.skill;
-            this.err = g.rng.gauss() * (AI.attackErr + s * 0.06);
+            this.err = g.rng.gauss() * (a.level.attack.timingErr + s * 0.06);
           }
         }
         break;
@@ -193,9 +196,10 @@ export class HitterBrain implements Brain {
 
   /**
    * The open spot for a full-speed spike from `from` (see openShot), against the defence as it
-   * stands: they can move `read` s after the hit (a blocker in the air comes down first).
+   * stands: each defender can move its level's reaction time after the hit (`Level.defence.hitReact`;
+   * a blocker in the air comes down first).
    */
-  private openSpot(g: Game, from: V3, tHit: number, read: number, misread: boolean) {
+  private openSpot(g: Game, from: V3, tHit: number, misread: boolean) {
     const a = this.athlete;
     const diggers: Digger[] = this.defenders().map((d) => {
       // a blocker in the air comes down first
@@ -204,7 +208,7 @@ export class HitterBrain implements Brain {
         const vy = d.vel.y;
         down = (vy + Math.sqrt(Math.max(0, vy * vy + 2 * BALL.gravity * d.pos.y))) / BALL.gravity + PLAYER.landRecover;
       } else if (d.state === 'land') down = Math.max(0, PLAYER.landRecover - d.stateT);
-      return { x: d.pos.x, z: d.pos.z, ready: Math.max(read, down), speed: d.stats.approachSpeed };
+      return { x: d.pos.x, z: d.pos.z, ready: Math.max(d.level.defence.hitReact, down), speed: d.stats.approachSpeed };
     });
     // each blocker at the net: where their hands will be as the ball crosses, and how high: in the
     // air, the top of this jump; still on the floor, rising from a jump taken right now
@@ -241,10 +245,13 @@ export class HitterBrain implements Brain {
     // (playability: now and then the user's block is misread, as if it weren't there)
     const userUp = this.blockers().some((b) => b.isUser && Math.abs(b.pos.z) < 1.4);
     const misread = userUp && g.rng.next() < AI.userBlockMisread;
-    if (from && (sees || g.rng.next() < AI.openShotOut)) {
-      const open = this.openSpot(g, from, tHit, AI.defence.hitReact, misread);
+    // (a level that always looks in system rolls no dice for it)
+    const L = a.level.attack;
+    const looks = sees ? L.openIn >= 1 || g.rng.next() < L.openIn : g.rng.next() < L.openOut;
+    if (from && looks) {
+      const open = this.openSpot(g, from, tHit, misread);
       // the hitter goes for the hardest spot to dig even when it isn't quite open
-      if (open && open.margin >= -AI.openShotStretch) {
+      if (open && open.margin >= -L.openStretch) {
         this.lastShot = 'open';
         return new THREE.Vector3(open.x, 0, open.z);
       }
@@ -310,12 +317,12 @@ export class HitterBrain implements Brain {
       const edge = hx + out * CONTACT.blockHalfWidth * 0.85;
       const dz = Math.abs(a.pos.z);
       const tx = hitX + (edge - hitX) * ((dz + 6) / Math.max(0.3, dz));
-      options.push({ x: tx, z: opp * 6, w: AI.toolShot, name: 'tool' });
-      options.push({ x: hitX * 0.3, z: opp * 5.2, w: AI.rollShot, name: 'roll' });
+      options.push({ x: tx, z: opp * 6, w: L.tool, name: 'tool' });
+      options.push({ x: hitX * 0.3, z: opp * 5.2, w: L.roll, name: 'roll' });
       // or play it softly off the hands of the inside blocker, for our cover to pick up and go again
       const inner = up.reduce((p, q) => (Math.abs(blockHands(q).x) < Math.abs(blockHands(p).x) ? q : p));
       const ix = blockHands(inner).x;
-      options.push({ x: ix, z: opp * 0.2, w: AI.recycleShot, name: 'recycle' });
+      options.push({ x: ix, z: opp * 0.2, w: L.recycle, name: 'recycle' });
     }
     const total = options.reduce((s, o) => s + o.w, 0);
     let r = g.rng.next() * total;

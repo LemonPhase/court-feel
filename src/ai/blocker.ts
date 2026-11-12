@@ -12,6 +12,11 @@ import { moveTo, netYaw, stop, type Brain } from './brain';
  */
 export class BlockerBrain implements Brain {
   skill = AI.blockerSkill;
+  /**
+   * A Mini Rally pin blocker plays at its level (`Level.block.pin`): its reaction to the set, how
+   * far off it sets its hands and its jump timing error. Null (the drills): from `skill`, below.
+   */
+  tune: { react: number; readErr: number; jumpErr: number } | null = null;
   /** home x along the net */
   homeX: number;
   enabled = true;
@@ -75,14 +80,14 @@ export class BlockerBrain implements Brain {
       this.setRef = lt;
       this.setT = now;
       const s = 1 - this.skill;
-      this.readErr = g.rng.gauss() * (0.15 + s * 0.7);
-      this.jumpErr = g.rng.gauss() * (0.02 + s * 0.09);
+      this.readErr = g.rng.gauss() * (this.tune?.readErr ?? 0.15 + s * 0.7);
+      this.jumpErr = g.rng.gauss() * (this.tune?.jumpErr ?? 0.02 + s * 0.09);
       // a middle frozen by the quick, or just late on the read, stays with the inside
       this.commit = g.rng.next() < 0.3 + this.skill * 0.4;
       this.fooled = g.rng.next() < 0.35 - this.skill * 0.25;
     }
     // the middle's whole job is the read: it reacts sooner than the wings
-    const react = this.closer ? 0.08 + (1 - this.skill) * 0.15 : 0.12 + (1 - this.skill) * 0.25;
+    const react = this.tune?.react ?? (this.closer ? 0.08 + (1 - this.skill) * 0.15 : 0.12 + (1 - this.skill) * 0.25);
     const reacting = theirSet && now - this.setT > react;
     if (theirSet && !this.jumped && !reacting) {
       stop(a, face);
