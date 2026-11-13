@@ -9,6 +9,7 @@ import { laneFor, SETTER_SPOT } from '../src/game/plays';
 import { makeBall, stepBall, type BallEnv, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { solveApex } from '../src/physics/solve';
+import { SetterBrain } from '../src/ai/setter';
 import { SLOT_ROLE, SLOTS, TeamAI, type Slot } from '../src/ai/team';
 
 const DT = 1 / SIM.hz;
@@ -38,6 +39,10 @@ function homeTeam() {
       return state.v;
     },
     speed: () => Math.hypot(state.v.x, state.v.y, state.v.z),
+    hit(v: V3) {
+      Object.assign(state.v, v);
+      version++;
+    },
     ensurePrediction(e: BallEnv, t: number) {
       if (predicted !== version) {
         predictor.compute(state, e, t);
@@ -54,6 +59,7 @@ function homeTeam() {
     ballLive: true,
     ball,
     setBrain() {},
+    onAiContact() {},
     hud: { message() {} },
     contact: { lastSet: null, tryPass: () => false, tryBlock: () => false },
   };
@@ -67,6 +73,14 @@ function homeTeam() {
     const v = { x: 0, y: 0, z: 0 };
     solveApex(from, to, apex, NO_SPIN, v);
     Object.assign(state.p, from);
+    Object.assign(state.v, v);
+    state.rest = false;
+    version++;
+    ball.lastTouch = { athlete, kind, t: g.simTime, side };
+  };
+  /** the ball at `p` moving at `v`, just played by `athlete` */
+  const put = (p: V3, v: V3, athlete: Athlete | null, kind: TouchKind = 'pass', side: 1 | -1 = 1) => {
+    Object.assign(state.p, p);
     Object.assign(state.v, v);
     state.rest = false;
     version++;
@@ -96,7 +110,7 @@ function homeTeam() {
     }
   };
   const brain = (slot: Slot) => team.brains.get(team.players.get(slot)!)!;
-  return { g, team, ball, touch, spike, run, brain };
+  return { g, team, ball, touch, put, spike, run, brain, theirs };
 }
 
 /** their setter sets their outside high (our right) */
@@ -193,7 +207,7 @@ describe('going for every ball (Mini Rally)', () => {
     expect(t.team.brains.get(r!)!.job).toBe('receive');
   });
 
-  it('a ball out of reach on foot: the defender sent runs at it and dives for it, and a team-mate runs at it too', () => {
+  it('a ball out of reach on foot: the defender sent runs at it and dives for it, and a team-mate runs with them, to where the dive pops it up (toward the middle)', () => {
     const t = homeTeam();
     setOutside(t);
     t.run(1.1);
@@ -205,6 +219,9 @@ describe('going for every ball (Mini Rally)', () => {
     let dived: Athlete | null = null;
     let sentWhenDived: Athlete | null = null;
     let two = 0;
+    let towardMiddle = false;
+    const mid = { x: 0, z: COURT.halfLength / 2 };
+    const fromMid = (q: { x: number; z: number }) => Math.hypot(q.x - mid.x, q.z - mid.z);
     t.run(1.0, () => {
       const r = t.team.receiver;
       if (!dived) {
@@ -216,10 +233,12 @@ describe('going for every ball (Mini Rally)', () => {
         (b) => b.athlete !== r && b.job === 'base' && Math.hypot(b.spot.x - to.x, b.spot.z - to.z) < 1.5,
       );
       two = Math.max(two, runners.length);
+      if (runners.some((b) => fromMid(b.spot) < fromMid(to) - 0.5)) towardMiddle = true;
     });
     expect(dived).not.toBeNull();
     expect(dived).toBe(sentWhenDived);
     expect(two).toBeGreaterThan(0);
+    expect(towardMiddle).toBe(true);
   });
 });
 
@@ -316,18 +335,30 @@ describe('the second ball (Mini Rally)', () => {
     expect(t.team.freeBall(t.g as unknown as Game)).toBe(you);
   });
 
-  it('a pass the setter calls HELP on that the libero gets to: the libero sets it, a high ball to a pin', () => {
+  /** a pass from the back-row outside the setter (away right, at the net) can't get to, down at `to` */
+  const helpBall = (to: { x: number; z: number }, apex: number) => {
     const t = homeTeam();
     t.team.place('offense');
     const oh2 = t.team.players.get('OH2')!;
-    const L = t.team.players.get('L')!;
-    // a shanked pass, deep behind the libero: the setter at the net can't get there, the libero can
-    t.touch('pass', 1, { x: oh2.pos.x, y: 0.8, z: oh2.pos.z }, { x: -2.6, y: 0.75, z: 8.0 }, 4.0, oh2);
+    t.team.players.get('S')!.place(4.0, 0.8, 0);
+    t.touch('pass', 1, { x: oh2.pos.x, y: 0.8, z: oh2.pos.z }, { x: to.x, y: 0.75, z: to.z }, apex, oh2);
     t.run(AI.setterRead + 0.2);
+    return { t, L: t.team.players.get('L')! };
+  };
+
+  it('a pass the setter calls HELP on that the libero gets to a few metres off the net: the libero sets it, a high ball to a pin', () => {
+    const { t, L } = helpBall({ x: -2.6, z: 4.0 }, 3.6);
     expect(t.team.read?.call).toBe('help');
     expect(t.brain('L').job).toBe('set');
     expect(t.team.secondBy).toBe(L);
     expect(t.team.freeBall(t.g as unknown as Game)).toBeNull();
+  });
+
+  it("a shanked pass the libero runs down by the end line is too hard to set: it doesn't try, it bumps it up high", () => {
+    const { t, L } = helpBall({ x: -2.6, z: 8.3 }, 3.6);
+    expect(t.team.read?.call).toBe('help');
+    expect(t.brain('L').job).toBe('free');
+    expect(t.team.freeBall(t.g as unknown as Game)).toBe(L);
   });
 
   it('a second ball nobody could set goes up high to the 3 m line, not to the net, for a free ball over from there', () => {
@@ -363,6 +394,90 @@ describe('the second ball (Mini Rally)', () => {
       expect(T.z).toBeLessThan(-6.5);
       expect(Math.abs(T.x)).toBeGreaterThan(2);
     }
+  });
+});
+
+describe('a hard ball is played as well as it can be, and no better (Mini Rally)', () => {
+  const avg = (m: number[]) => m.reduce((a, b) => a + b, 0) / m.length;
+  /**
+   * `n` sets by the libero from behind the 3 m line to the outside's pin, `sloppy` as hard as the
+   * ball made it: how far each passes from where it was meant to meet the hitter's hand
+   */
+  const liberoSets = (sloppy: number, toUser: boolean, n = 30) => {
+    const t = homeTeam();
+    const L = t.team.players.get('L')!;
+    const hitter = t.team.players.get('OH1')!;
+    hitter.isUser = toUser;
+    const sb = new SetterBrain(L, { x: 0, z: 4 }, Math.PI / 2);
+    sb.sloppy = sloppy;
+    const lane = laneFor('OH', 1);
+    const target = { x: lane.x, y: 3.25, z: lane.z };
+    sb.call = () => ({ target, apex: target.y + lane.apexAbove, hitter });
+    const misses: number[] = [];
+    for (let i = 0; i < n; i++) {
+      L.place(0, 4);
+      // the ball drops onto the libero's hands
+      t.put({ x: -0.14, y: L.height + 0.22, z: 4 }, { x: 0, y: -2, z: 0 }, t.team.players.get('OH2')!);
+      sb.step(DT, t.g as unknown as Game);
+      expect(t.ball.lastTouch?.athlete).toBe(L);
+      // where the set comes down through the hitter's contact height
+      const b = makeBall();
+      Object.assign(b.p, t.ball.state.p);
+      Object.assign(b.v, t.ball.state.v);
+      for (let k = 0; k < 4 * SIM.hz && !(b.v.y < 0 && b.p.y < target.y); k++) stepBall(b, DT, t.g.env, []);
+      misses.push(Math.hypot(b.p.x - target.x, b.p.z - target.z));
+    }
+    return misses;
+  };
+
+  it("the libero's set off a hard ball misses its hitter: a hard ball can't be set perfectly", () => {
+    expect(avg(liberoSets(0, false))).toBeLessThan(0.2);
+    expect(avg(liberoSets(1, false))).toBeGreaterThan(0.6);
+  });
+
+  it('a set to the user is always clean, however hard the ball was', () => {
+    const toYou = liberoSets(1, true);
+    expect(toYou).toEqual(liberoSets(0, true));
+    expect(avg(toYou)).toBeLessThan(0.2);
+  });
+
+  it('an AI dive keeps the ball alive and no more: it pops up a couple of metres toward the middle, not to the setter; your own dive still passes to the setter', () => {
+    const t = homeTeam();
+    const L = t.team.players.get('L')!;
+    const at = { x: 4, y: 0.35, z: 8 };
+    t.put(at, { x: 2, y: -4, z: 3 }, t.theirs, 'spike', -1);
+    L.state = 'dive';
+    const target = () => MiniRally.prototype.passTarget.call({ home: t.team, away: t.team, g: t.g }, L);
+    const T = target();
+    const fromMid = (q: { x: number; z: number }) => Math.hypot(q.x, q.z - COURT.halfLength / 2);
+    expect(Math.hypot(T.x - at.x, T.z - at.z)).toBeCloseTo(AI.diveUp.carry, 5);
+    expect(fromMid(T)).toBeCloseTo(fromMid(at) - AI.diveUp.carry, 5);
+    expect(T.apex).toBeCloseTo(at.y + AI.diveUp.apex, 5);
+    L.isUser = true;
+    const yours = target();
+    expect(yours.apex).toBeGreaterThan(T.apex + 1);
+    expect(Math.abs(yours.z)).toBeLessThan(2.5);
+  });
+
+  it('a setter who gets there after the ball has dropped below their hands digs it up (platform or dive) instead of watching it drop', () => {
+    const t = homeTeam();
+    const S = t.team.players.get('S')!;
+    const b = t.brain('S');
+    S.place(2, 2.5, 0);
+    // a pass that got away: 1.5 m beside the setter, already under the hands, going away
+    t.put({ x: 3.5, y: S.height - 0.1, z: 2.5 }, { x: 1.2, y: 0, z: 0 }, t.team.players.get('OH2')!);
+    // (seen a while ago)
+    t.ball.lastTouch!.t -= 1;
+    b.job = 'set';
+    let dug = false;
+    for (let i = 0; i < 0.6 * SIM.hz && !dug; i++) {
+      t.g.simTime += DT;
+      stepBall(t.ball.state, DT, t.g.env, []);
+      b.step(DT, t.g as unknown as Game);
+      S.step(DT, t.g.simTime);
+      dug = S.action?.kind === 'pass' || S.state === 'dive';
+    }
+    expect(dug).toBe(true);
   });
 });
 

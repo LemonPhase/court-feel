@@ -682,7 +682,24 @@ export const AI = {
    * m), whichever spot their nearest player is furthest from (plus up to `guess` m of guesswork).
    * `apex`/`shortApex`: the arcs.
    */
-  freeOver: { deep: 7.3, short: 2.0, side: 2.8, apex: 5.0, shortApex: 4.0, guess: 1.0 },
+  freeOver: { deep: 7.3, short: 2.0, side: 2.8, apex: 5.0, shortApex: 4.0, guess: 1.0, aimSpeed: 2.0 },
+  /**
+   * The libero's set (a backup set: the setter dug the first ball or can't get to it) is as good as
+   * the ball lets it be. Its difficulty (0-1, never under `base`) grows as the time to spare drops
+   * under `easy` s and as it is played further than `offEasy` m from the setter's spot (1 at
+   * `offEasy` + `offHard` m). Over `noSet` (give or take half of `noSetJitter`) it doesn't try a
+   * set: it bumps the ball up high to the 3 m line. A set it does try misses its target by `miss`
+   * m (along the net, off the net, apex: one sigma) times the difficulty. A set to the user is always
+   * clean (playability: the user's sets stay perfect).
+   */
+  backupSet: { base: 0.2, easy: 0.8, offEasy: 3.0, offHard: 6.0, noSet: 0.7, noSetJitter: 0.3, miss: { x: 1.2, z: 0.5, apex: 0.8 } },
+  /**
+   * An AI dive (Mini Rally) keeps the ball alive and no more: it goes `apex` m above the hands (plus
+   * the dive's own metre) and `carry` m toward the middle of the court, for a team-mate running with
+   * the diver to play. (A free ball over is aimed, `freeOver`, only by a player moving slower than
+   * `freeOver.aimSpeed` m/s: one still scrambling just gets it over.)
+   */
+  diveUp: { carry: 2.0, apex: 1.8 },
   /**
    * Covering our hitter, `read` s after our setter sets, low and facing the net, so a ball blocked
    * straight down is dug back up. The spots are the real ones (3-2 coverage: CoachingVB, hitter
@@ -771,9 +788,14 @@ export const AI = {
   /**
    * an AI defender runs at a ball and dives for it when the platform would need over `late` x their
    * top speed to get there in time and it is over `minDist` m away (closer, the platform swings out to it).
-   * The dive starts when the hands would land within `fit` m of where the ball comes down low.
+   * The dive starts when the hands would land within `fit` m of where the ball comes down low, or
+   * up to `stretch` m short of it: a last-ditch dive at a ball just beyond the hands, which the
+   * contact system grades by how close it really got (at the edge of the platform: a scrape, up and
+   * not much more).
    */
-  dive: { late: 0.9, minDist: 1.0, fit: 0.35 },
+  dive: { late: 0.9, minDist: 1.0, fit: 0.35, stretch: 0.6 },
+  /** an AI setter whose ball has dropped this far (m) below their standing hands, not under them, digs it instead (platform or dive) */
+  lateSet: 0.15,
   /** a ball the defender sent for would reach with less than this (s) to spare: a team-mate runs at it too */
   scramble: 0.1,
   pipe: { inSystem: 0.35, outOfSystem: 0.1 },

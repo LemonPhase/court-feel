@@ -174,9 +174,11 @@ export class MiniRally extends Mode {
     if (team.touches >= 2) {
       // third contact without an attack: a free ball over, deep into their court (the AI aims it
       // where it is hard to play: a deep corner, or short over the net)
-      if (!a.isUser) return team.freeOverTarget();
+      if (!a.isUser && a.state !== 'dive' && a.speed < AI.freeOver.aimSpeed) return team.freeOverTarget();
       return { x: (this.g.rng.next() - 0.5) * 5, y: 0.5, z: -s * 6.5, apex: 5.2 };
     }
+    // an AI dive keeps the ball alive and no more: a bit up, toward the middle (a team-mate plays it)
+    if (a.state === 'dive' && !a.isUser) return team.diveUpTarget(this.g.ball.pos);
     // a first ball goes to the setter target (or, played by the setter himself, high to the 3 m line)
     if (team.touches === 0) return team.firstBallTarget(a);
     // a second ball nobody could set: high to the 3 m line, for a free ball over from there

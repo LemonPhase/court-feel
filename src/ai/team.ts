@@ -186,7 +186,10 @@ export class TeamPlayer implements Brain {
         this.server.step(dt, g);
         break;
       case 'set':
-        this.setter.step(dt, g);
+        // a ball that got below the hands before the setter got under it: dig it up with the
+        // platform (or dive for it) rather than watch it drop
+        if (this.underTheHands(g)) this.playFirstOrFree(dt, g);
+        else this.setter.step(dt, g);
         break;
       case 'attack':
         if (this.hitter) {
@@ -319,7 +322,9 @@ export class TeamPlayer implements Brain {
         const v0 = Math.max(PLAYER.diveSpeed, a.speed);
         const ts = Math.min(T, v0 / PLAYER.diveDecel);
         const reach = v0 * ts - 0.5 * PLAYER.diveDecel * ts * ts + lerp(0.45, PLAYER.diveArm, smooth01(T / PLAYER.diveDown));
-        if (T <= PLAYER.diveDown + 0.1 && Math.abs(reach - dl) < AI.dive.fit) {
+        // (one just beyond the hands: dived for at the last moment the arms still get all the way out)
+        const short = T <= PLAYER.diveDown ? AI.dive.stretch : AI.dive.fit;
+        if (T <= PLAYER.diveDown + 0.1 && reach - dl < AI.dive.fit && dl - reach < short) {
           a.dive(yawFromDir(dx, dz));
           a.startAction('pass', now);
           this.pressT = now;
@@ -343,6 +348,15 @@ export class TeamPlayer implements Brain {
       p.form = hands ? 'hands' : 'platform';
       this.pressT = now;
     }
+  }
+  /** the ball the setter is sent to has dropped below their hands, out of reach of them: too late to set */
+  private underTheHands(g: Game): boolean {
+    const a = this.athlete;
+    const ball = g.ball;
+    const lt = ball.lastTouch;
+    if (!ball.active || !lt || lt.athlete === a || lt.side !== a.side || ball.vel.y >= 0 || this.setter.bumping) return false;
+    if (ball.pos.y > a.height + 0.17 - AI.lateSet) return false;
+    return Math.hypot(ball.pos.x - a.pos.x, ball.pos.z - a.pos.z) > CONTACT.setRadius;
   }
   private formFor: unknown = null;
   private hands = false;
@@ -714,8 +728,11 @@ export class TeamAI {
     return !!L && L !== exclude && L !== exclude2 && this.reachTime(L, p) + AI.pick.libero <= budget;
   }
 
-  /** `a` can run under the ball now in flight and get their hands to it (`fallback`: where it lands) */
-  private runsDown(a: Athlete, tDown: number, fallback: V3): boolean {
+  /**
+   * How much time (s) `a` has to spare running under the ball now in flight to get their hands to it
+   * (negative: they can't; `fallback`: where it lands). Leaves where they would play it in `qp`.
+   */
+  private spareFor(a: Athlete, tDown: number, fallback: V3): number {
     const now = this.g.simTime;
     const pred = this.g.ball.ensurePrediction(this.g.env, now);
     const tHands = pred.descendThrough(setterTouchY(a), now);
@@ -725,7 +742,28 @@ export class TeamAI {
     // the setter releases at once and runs: only a hopeless one gives it up
     const d = Math.hypot(a.pos.x - this.qp.x, a.pos.z - this.qp.z);
     const tRun = d / a.stats.approachSpeed + 0.15 + (a.state === 'air' ? 0.5 : 0);
-    return tRun <= tAt - now + 0.05;
+    return tAt - now + 0.05 - tRun;
+  }
+
+  /**
+   * How hard a backup set (the libero's) is, 0-1: the less time to spare and the further from the
+   * setter's spot it is played, the harder (`AI.backupSet`), never under `base`.
+   */
+  private backupDifficulty(spare: number, at: V3): number {
+    const B = AI.backupSet;
+    const s = this.side;
+    const off = Math.hypot(at.x - SETTER_SPOT.x * s, at.z - SETTER_SPOT.z * s);
+    return Math.max(B.base, clamp(1 - spare / B.easy, 0, 1), clamp((off - B.offEasy) / B.offHard, 0, 1));
+  }
+
+  /** where a team-mate running with a player sent to a ball they may only dive for waits: toward the middle of our court, where the dive pops it up */
+  private popSpot(p: V3): Spot {
+    const cz = (this.side * COURT.halfLength) / 2;
+    const dx = -p.x;
+    const dz = cz - p.z;
+    const dl = Math.hypot(dx, dz) || 1;
+    const c = Math.min(dl, AI.diveUp.carry * 0.5);
+    return { x: p.x + (dx / dl) * c, z: p.z + (dz / dl) * c };
   }
 
   /**
@@ -756,6 +794,17 @@ export class TeamAI {
       }
     }
     return { x: best.x, y: 0.5, z: -s * best.z, apex: best.apex };
+  }
+
+  /** a dive keeps the ball alive and no more: a bit up, `AI.diveUp.carry` m toward the middle of our court */
+  diveUpTarget(from: V3): { x: number; y: number; z: number; apex: number } {
+    const U = AI.diveUp;
+    const cz = (this.side * COURT.halfLength) / 2;
+    const dx = -from.x;
+    const dz = cz - from.z;
+    const dl = Math.hypot(dx, dz) || 1;
+    const c = Math.min(dl, U.carry);
+    return { x: from.x + (dx / dl) * c, y: 0.9, z: from.z + (dz / dl) * c, apex: from.y + U.apex };
   }
 
   step(): void {
@@ -811,11 +860,12 @@ export class TeamAI {
           this.receiverAt = { x: p.x, z: p.z };
           if (r) setJob(r, 'receive');
         }
-        // a ball the one sent may not get to: the next closest runs at it too (two go, one plays it)
+        // a ball the one sent may not get to: the next closest runs with them (two go, one plays it), to
+        // where a dive would pop it up
         const r = this.receiver;
         if (!serve && r && this.receiverFor === lt && comingToUs && tDown > 0 && this.reachTime(r, p) > tDown - now - AI.scramble) {
           const two = this.pickReceiver(p, false, r, exclude);
-          if (two && two !== this.secondBy) setJob(two, 'base', { x: p.x, z: p.z + this.side * 0.6 });
+          if (two && two !== this.secondBy) setJob(two, 'base', this.popSpot(p));
         }
       };
       if (theirBall || (lt?.kind === 'block' && lt.side !== this.side)) {
@@ -863,9 +913,11 @@ export class TeamAI {
         } else if (this.touches === 1) {
           // second ball: the setter sets it. A setter who played the first ball, or can't get to
           // this one (and calls HELP), leaves it to the libero, who sets a high ball to a pin when it
-          // can get there: a real libero takes every second ball it can. If nobody can set it,
-          // whoever is closest bumps it high to the 3 m line (the mode's pass target), so the third
-          // ball can go over as a free ball from there, not from under the net.
+          // can get there: a real libero takes every second ball it can. Its set is as good as the
+          // ball lets it be (`AI.backupSet`), and one too hard to set it just bumps up high to the
+          // 3 m line. If nobody can set it, whoever is closest bumps it there (the mode's pass
+          // target), so the third ball can go over as a free ball from there, not from under the net;
+          // one they may only dive for, a team-mate runs with them.
           const S = this.players.get('S');
           const L = this.players.get('L');
           const sDug = !!S && lt?.athlete === S;
@@ -881,12 +933,24 @@ export class TeamAI {
               this.freeAthlete = null;
               this.secondSetter = caller;
               this.secondHelp = false;
+              if (L && !L.isUser) this.brains.get(L)!.setter.sloppy = 0;
               if (comingToUs && tDown > 0) {
-                const runs = (a: Athlete | undefined) => !!a && a !== lt?.athlete && this.runsDown(a, tDown, p);
-                if (!runs(caller)) {
+                const spare = (a: Athlete | undefined) => (a && a !== lt?.athlete ? this.spareFor(a, tDown, p) : -1);
+                if (spare(caller) < 0) {
                   this.secondHelp = true;
-                  this.secondSetter = !sDug && L && runs(L) ? L : null;
+                  this.secondSetter = !sDug && L && spare(L) >= 0 ? L : null;
                   if (!this.secondSetter) this.freeAthlete = this.pickReceiver(p, false, lt?.athlete ?? null, null, tDown - now);
+                }
+                // the libero's set: as good as the ball lets it be; one too hard to set is bumped up
+                const back = this.secondSetter;
+                if (back && back === L && !L.isUser) {
+                  const d = this.backupDifficulty(spare(L), this.qp);
+                  const B = AI.backupSet;
+                  if (d + (g.rng.next() - 0.5) * B.noSetJitter > B.noSet) {
+                    this.secondSetter = null;
+                    this.secondHelp = true;
+                    this.freeAthlete = L;
+                  } else this.brains.get(L)!.setter.sloppy = d;
                 }
               }
             }
@@ -894,7 +958,14 @@ export class TeamAI {
             this.secondBy = setter;
             const r = this.freeAthlete;
             if (setter) setJob(setter, 'set');
-            else if (r) setJob(r, 'free');
+            else if (r) {
+              setJob(r, 'free');
+              // one they may only dive for: the next closest runs with them, to play what the dive pops up
+              if (comingToUs && tDown > 0 && this.reachTime(r, p) > tDown - now - AI.scramble) {
+                const two = this.pickReceiver(p, false, r, lt?.athlete ?? null);
+                if (two) setJob(two, 'base', this.popSpot(p));
+              }
+            }
             // (a good pass is not "coming to us" by the floor test: left alone it would drop at the net)
             if (lt) this.readPass(g, caller, lt, this.secondHelp);
           }
