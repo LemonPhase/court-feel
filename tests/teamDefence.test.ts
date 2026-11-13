@@ -250,6 +250,45 @@ describe('who takes the ball (Mini Rally)', () => {
   });
 });
 
+describe('the second ball (Mini Rally)', () => {
+  it('our pass going over the net: the setter reads the overpass, stays, calls nothing; the front row waits at the net', () => {
+    const t = homeTeam();
+    t.team.place('offense');
+    const L = t.team.players.get('L')!;
+    // the libero's pass sails over the net, coming down 3 m into their court
+    t.touch('pass', 1, { x: L.pos.x, y: 0.8, z: L.pos.z }, { x: 0.5, y: 0.5, z: -3 }, 4.6, L);
+    t.run(AI.setterRead + 0.2);
+    expect(t.team.overpass(t.g as unknown as Game)).toBe(true);
+    expect(t.brain('S').job).not.toBe('set');
+    expect(t.team.read).toBeNull();
+    for (const slot of ['OH1', 'MB', 'OPP'] as const) expect(t.brain(slot).job).toBe('block');
+  });
+
+  it('the same pass to the setter is set as usual', () => {
+    const t = homeTeam();
+    t.team.place('offense');
+    const L = t.team.players.get('L')!;
+    t.touch('pass', 1, { x: L.pos.x, y: 0.8, z: L.pos.z }, { x: SETTER_SPOT.x, y: 2.4, z: SETTER_SPOT.z }, 4.6, L);
+    t.run(AI.setterRead + 0.2);
+    expect(t.team.overpass(t.g as unknown as Game)).toBe(false);
+    expect(t.brain('S').job).toBe('set');
+  });
+
+  it('a pass the setter calls HELP on, nearest to you: it is your ball (someone always plays it)', () => {
+    const t = homeTeam();
+    t.team.place('offense');
+    const L = t.team.players.get('L')!;
+    const you = t.team.players.get('OH2')!;
+    you.isUser = true;
+    you.place(-3.4, 8.0, 0);
+    // a shanked pass, deep into our left corner: the setter at the net can't get there
+    t.touch('pass', 1, { x: L.pos.x, y: 0.8, z: L.pos.z }, { x: -3.8, y: 0.75, z: 8.2 }, 5.5, L);
+    t.run(AI.setterRead + 0.2);
+    expect(t.team.read?.call).toBe('help');
+    expect(t.team.freeBall(t.g as unknown as Game)).toBe(you);
+  });
+});
+
 describe('early transition (Mini Rally)', () => {
   it('on their free ball the setter releases to the net and the front row leaves the net to approach', () => {
     const t = homeTeam();

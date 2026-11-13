@@ -367,6 +367,41 @@ export class TeamAI {
   private receiverAt: Spot = { x: 0, z: 0 };
   private freeFor: unknown = null;
   private freeAthlete: Athlete | null = null;
+
+  /**
+   * Who was sent to play the ball now in flight when it isn't the setter's to set (the setter
+   * called HELP, or nobody can attack the third ball): may be the user, who is told it is theirs.
+   */
+  freeBall(g: Game): Athlete | null {
+    return this.freeFor === g.ball.lastTouch ? this.freeAthlete : null;
+  }
+
+  /**
+   * Our first ball is going over the net (an overpass): it comes down to the setter's hands
+   * `AI.overpass` m or more into their court (closer, the setter jumps and plays it while it is
+   * still over our side). The setter reads it as it goes up and doesn't chase it; nobody calls a set. Read
+   * once per ball, while it is still to come down to the hands (a tight pass the setter is about
+   * to set would land over the net if left alone: it is no overpass).
+   */
+  overpass(g: Game): boolean {
+    const lt = g.ball.lastTouch;
+    const s = this.side;
+    if (!g.ball.active || !lt || lt.side !== s || this.touches !== 1 || g.ball.state.rest) return false;
+    if (this.overFor === lt) return this.over;
+    const now = g.simTime;
+    const pred = g.ball.ensurePrediction(g.env, now);
+    const t = pred.descendThrough(setterTouchY(this.players.get('S')), now);
+    this.overFor = lt;
+    this.over = false;
+    if (t > 0) {
+      pred.posAt(t, this.op);
+      this.over = this.op.z * s < -AI.overpass;
+    }
+    return this.over;
+  }
+  private overFor: unknown = null;
+  private over = false;
+  private op: V3 = { x: 0, y: 0, z: 0 };
   userSlot: Slot | null = null;
   private lastTouchRef: unknown = null;
   /** set selection bias towards the user (when the user is a front-row hitter) */
@@ -753,7 +788,12 @@ export class TeamAI {
       } else if (ourBall) {
         form = 'offense';
         for (const b of this.brains.values()) b.readSpot = null;
-        if (this.touches === 1) {
+        if (this.touches === 1 && this.overpass(g)) {
+          // our first ball is going over: the setter reads it and stays (no set, no call), and the
+          // front row gets ready at the net for their play on it
+          form = 'defense';
+          for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
+        } else if (this.touches === 1) {
           // second ball: the setter, or the libero as backup if the setter played the first (the
           // libero, not whoever is closest). A setter who played the first ball stays out of the
           // second and goes back to defend

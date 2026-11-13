@@ -125,6 +125,11 @@ export class MiniRally extends Mode {
     return this.home.touches === 1 && this.home.secondBy === me && me !== this.home.players.get('S');
   }
 
+  /** a ball that isn't the setter's to set (HELP, or a third ball nobody can attack) was given to the user */
+  private get yourFreeBall(): boolean {
+    return this.home.freeBall(this.g) === this.g.me;
+  }
+
   /** the setter's read of the pass we are on, if they have called it */
   private get read(): SetterRead | null {
     const r = this.home.read;
@@ -202,6 +207,10 @@ export class MiniRally extends Mode {
     const g = this.g;
     const me = g.me;
     if (this.home.receiver === me) return `YOUR BALL · ${kbd('E')} pass / dig`;
+    if (this.yourFreeBall)
+      return this.home.touches === 1
+        ? `YOUR BALL · the setter can't get there · ${kbd('E')} bump it high / ${kbd('RMB')} set a pin`
+        : `YOUR BALL · nobody can attack it · ${kbd('E')} bump it over`;
     if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set')
       return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;
     if (me.role === 'S' && this.home.touches === 1) return `Your set · look at a hitter · ${kbd('RMB')}`;
@@ -235,7 +244,7 @@ export class MiniRally extends Mode {
     const g = this.g;
     const me = g.me;
     const lt = g.ball.lastTouch;
-    if (this.home.receiver === me || this.yourBackupSet) return true;
+    if (this.home.receiver === me || this.yourBackupSet || this.yourFreeBall) return true;
     if (this.home.setFor === me && lt?.kind === 'set' && lt.side === 1) return true;
     return me.role === 'S' && this.home.touches === 1 && lt?.side === 1;
   }
@@ -247,7 +256,7 @@ export class MiniRally extends Mode {
     this.away.step();
     // "your ball" cue (once per ball), also for the second ball when the user backs up the setter
     const backup = this.yourBackupSet;
-    const yours = this.home.receiver === g.me || backup;
+    const yours = this.home.receiver === g.me || backup || this.yourFreeBall;
     if (yours && this.lastReceiverMsg !== g.ball.lastTouch) {
       this.lastReceiverMsg = g.ball.lastTouch;
       g.hud.message(backup ? 'Your set!' : 'Your ball!', 0.9);

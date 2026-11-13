@@ -648,6 +648,12 @@ export const AI = {
    */
   transition: { read: 0.3, softSpeed: 10, spare: 0.3, approachOff: 2.0 },
   /**
+   * An overpass: our first ball comes down to the setter's hands `overpass` m or more into their
+   * court. The setter reads it as it goes up, doesn't chase it and calls nothing; the front row
+   * waits at the net for their play on it. (A tight pass just over the tape is still played.)
+   */
+  overpass: 0.25,
+  /**
    * Who takes a ball (serve receive, a dig, a free ball): the team-mate who gets there first. The
    * first `shuffle` m are shuffled, the rest run, so further away is never quicker. A ball in the
    * seam (one that two get to within `seam` s of each other, about 0.7 m of running) is the
@@ -797,18 +803,18 @@ export const AI = {
   /** a spot is open when the quickest defender is this much (s) late; several open: one at random */
   openShotMargin: 0.05,
   openShotOut: 0.45,
-  /** the hitter takes the best spot even if the quickest defender gets there up to this much (s) in time: the hardest ball to dig */
-  openShotStretch: 0.15,
-  /**
-   * Where an AI middle hits its quick: steep and short, a sharp cut `cut` m off the net to either
-   * side or down the middle `down` m off it (behind the off-blocker, in front of the back row);
-   * deep to zone 1 or 5 with weight `deep` (the cut and the down shot: 1 each).
   /**
    * Playability (bent on purpose): with the user up in the block, an AI hitter misreads the user's
    * hands `userBlockMisread` of the time and aims as if they weren't there, so the user gets more
    * balls into the block. AI blockers are read as before.
    */
   userBlockMisread: 0.3,
+  /** the hitter takes the best spot even if the quickest defender gets there up to this much (s) in time: the hardest ball to dig */
+  openShotStretch: 0.15,
+  /**
+   * Where an AI middle hits its quick: steep and short, a sharp cut `cut` m off the net to either
+   * side or down the middle `down` m off it (behind the off-blocker, in front of the back row);
+   * deep to zone 1 or 5 with weight `deep` (the cut and the down shot: 1 each).
    */
   quickShot: { cut: 3.5, down: 4.5, deep: 0.4 },
   /** how much the setter likes the quick: off a pass within `perfectOff` m of the setter's spot `perfect`, else `good` (against `setWeight`) */
