@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { BALL, SIM } from '../config';
 import { clamp01, damp, lerp } from '../core/mathx';
 import { copyBall, makeBall, R, stepBall, type BallEnv, type BallState, type CollisionEvent } from '../physics/ball';
-import { BallPredictor } from '../physics/predict';
+import { BallPredictor, type PredictionSave } from '../physics/predict';
 import { makeBallTexture, makeBlobTexture, makeRingTexture } from '../world/textures';
 import type { Athlete } from './athlete';
 
@@ -13,6 +13,21 @@ export interface Touch {
   kind: TouchKind;
   t: number;
   side: 1 | -1 | 0;
+}
+
+interface BallSave {
+  state: BallState;
+  prev: BallState;
+  q: THREE.Quaternion;
+  prevQ: THREE.Quaternion;
+  lastTouch: Touch | null;
+  touchesThisSide: number;
+  active: boolean;
+  visible: boolean;
+  lastLaunchT: number;
+  version: number;
+  predictedVersion: number;
+  prediction: PredictionSave;
 }
 
 /**
@@ -179,6 +194,45 @@ export class BallEntity {
     s.rest = false;
     this.version++;
     this.lastLaunchT = t;
+  }
+
+  /**
+   * What a flashback puts back (core/memento.ts): the flight, the last touch and whether the ball is
+   * in play, and the prediction the players read (to the bit: see `BallPredictor.save`). The meshes
+   * are not state.
+   */
+  saveState(): BallSave {
+    return {
+      state: copyBall(this.state, makeBall()),
+      prev: copyBall(this.prev, makeBall()),
+      q: this.q.clone(),
+      prevQ: this.prevQ.clone(),
+      lastTouch: this.lastTouch,
+      touchesThisSide: this.touchesThisSide,
+      active: this.active,
+      visible: this.visible,
+      lastLaunchT: this.lastLaunchT,
+      version: this.version,
+      predictedVersion: this.predictedVersion,
+      prediction: this.predictor.save(),
+    };
+  }
+
+  loadState(saved: unknown): void {
+    const s = saved as BallSave;
+    copyBall(s.state, this.state);
+    copyBall(s.prev, this.prev);
+    this.q.copy(s.q);
+    this.prevQ.copy(s.prevQ);
+    this.lastTouch = s.lastTouch;
+    this.touchesThisSide = s.touchesThisSide;
+    this.active = s.active;
+    this.visible = s.visible;
+    this.lastLaunchT = s.lastLaunchT;
+    this.events.length = 0;
+    this.version = s.version;
+    this.predictedVersion = s.predictedVersion;
+    this.predictor.load(s.prediction);
   }
 
   /** make sure the prediction reflects the current state */

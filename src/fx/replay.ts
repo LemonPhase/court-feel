@@ -117,6 +117,17 @@ export class Replay {
     while (this.events.length && this.events[0].t < oldest) this.events.shift();
   }
 
+  /** the game went back to `t` (a flashback): what was recorded after it never happened */
+  forgetAfter(t: number): void {
+    this.stop();
+    while (this.count > 0 && this.times[this.head] > t) {
+      this.head = (this.head - 1 + this.frames) % this.frames;
+      this.count--;
+    }
+    if (!this.count) this.head = -1;
+    while (this.events.length && this.events[this.events.length - 1].t > t) this.events.pop();
+  }
+
   addEvent(t: number, kind: string, data: Record<string, number>): void {
     if (this.playing) return;
     if (this.events.length > 64) this.events.shift();

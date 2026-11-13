@@ -112,6 +112,8 @@ export class Athlete {
   lastTouchT = -10;
   /** a block's hands reaching sideways from the body (m along the net, world x): a late blocker stretching for the seam */
   reachX = 0;
+  /** the side this player picked to pass each team-mate on, kept until they are clear (ai/giveWay.ts); on the athlete so a flashback puts it back */
+  readonly passSide = new Map<Athlete, 1 | -1>();
   /** when the last split step started (the animator hops and lands into a deeper stance; no effect on movement) */
   splitT = -10;
   /** a low covering stance, 0..1 (set by the AI while it covers its hitter; the animator eases into it, no effect on movement) */

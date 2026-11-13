@@ -4,6 +4,7 @@
 //   - no console errors or warnings, no page errors
 //   - every drill's bot makes its contacts, mostly Perfect; rallies produce points
 //   - spike-drill set calls take effect (each call sets its own play)
+//   - a rally put back to an earlier touch plays on exactly as it did; Z takes a ball again after the player's own mistake
 //   - the Perfect-spike replay starts; touch controls drive the athlete
 //   - bad quick-start links and corrupted saved settings still load and play; menus are keyboard-usable;
 //     a crash leaves the crash screen in control of the keyboard and mouse
@@ -406,6 +407,74 @@ for (const [mode, pos, call = 0] of runs) {
 for (const pos of ['OH', 'MB', 'OPP']) {
   const plays = [report.modes[`spike_${pos}`], report.modes[`spike_${pos}_call2`], report.modes[`spike_${pos}_call3`]].map((m) => m?.play);
   check(new Set(plays).size === 3 && plays.every(Boolean), `spike drill ${pos}: calls 1 / 2 / 3 set different plays`, plays);
+}
+
+// ---- take that ball again: a rally put back to an earlier touch plays on exactly as it did the first time.
+// It fails when some state a player's next move depends on is not part of what a flashback saves
+// (a cache worked out again, a module-level map): see docs/adr/0009.
+phase('flashback');
+{
+  const fb = await page.evaluate(() => {
+    const g = window.__court;
+    g.autoUser = true;
+    g.settings.level = 'rec';
+    window.start('rally', 'OH', false, null);
+    const line = () =>
+      g.athletes.map((a) => `${a.pos.x},${a.pos.y},${a.pos.z},${a.state}`).join('|') +
+      `#${g.mode.scoreHome}:${g.mode.scoreAway}:${g.mode.phase}:${g.ball.pos.x},${g.ball.pos.z}`;
+    const trials = [];
+    for (let trial = 0; trial < 6; trial++) {
+      // on to a new touch of a live rally, a few touches in
+      let last = g.ball.lastTouch;
+      for (let i = 0, seen = 0; i < 60 * 60 && seen < 1 + (trial % 3); i++) {
+        g.play(1 / 60);
+        if (g.ballLive && g.ball.lastTouch !== last) {
+          last = g.ball.lastTouch;
+          seen++;
+        }
+      }
+      const save = g.saveSim();
+      const at = g.simTime;
+      g.play(6);
+      const first = line();
+      g.restoreSim(save);
+      const back = g.simTime === at && g.ball.lastTouch === last;
+      g.play(6);
+      trials.push({ kind: last?.kind, back, same: line() === first });
+    }
+    g.settings.level = 'pro';
+    g.autoUser = false;
+    return trials;
+  });
+  check(
+    fb.every((t) => t.back && t.same),
+    'take that ball again: a rally put back to a touch plays on exactly as it did',
+    fb,
+  );
+  // the player's own mistake at Rec: the offer, Z through the input layer, the point taken back
+  const again = await page.evaluate(() => {
+    const g = window.__court;
+    g.settings.level = 'rec';
+    window.start('rally', 'OH', false, 'sloppy');
+    for (let i = 0; i < 60 * 300 && !g.mode.againOffered(); i++) g.play(1 / 60);
+    const offered = g.mode.againOffered();
+    const before = { t: g.simTime, away: g.mode.scoreAway };
+    g.input.down('KeyZ');
+    g.play(1 / 60);
+    g.input.up('KeyZ');
+    const after = { t: g.simTime, away: g.mode.scoreAway, phase: g.mode.phase, offered: g.mode.againOffered() };
+    g.settings.level = 'pro';
+    return { offered, before, after };
+  });
+  check(
+    again.offered &&
+      again.after.t < again.before.t &&
+      again.after.away === again.before.away - 1 &&
+      again.after.phase === 'live' &&
+      !again.after.offered,
+    "take that ball again: after the player's own mistake at Rec, Z takes the rally back and the point with it",
+    again,
+  );
 }
 
 // ---- block FP + rally screenshots

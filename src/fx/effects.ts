@@ -827,6 +827,16 @@ export class Effects {
     g.ball.mesh.visible = g.ball.active;
   }
 
+  /** the rally went back to sim time `t` (a flashback): the attempts and the frames after it are gone */
+  onFlashback(t: number): void {
+    if (this.replaying) this.endReplay();
+    this.replay.forgetAfter(t);
+    this.replayAt = -1;
+    this.pendingImpact = null;
+    this.attempts.reset();
+    this.downT = -1;
+  }
+
   onModeStart(): void {
     this.replay.setViews([...this.g.views.values()]);
     this.replayAt = -1;

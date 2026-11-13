@@ -927,6 +927,11 @@ export interface Level {
   name: string;
   /** one line for the menu: who these players are */
   blurb: string;
+  /**
+   * How many times in a rally the user may take a ball again after their own mistake (`FLASHBACK`):
+   * a learner's league gives the same toss again, as a coach does in practice; a match does not.
+   */
+  again: number;
   /** multipliers on an AI player's position stats (`POSITIONS`); height stays as it is */
   body: {
     /** approach jump (the block jump is a fraction of it, so the block comes down with it) */
@@ -1041,6 +1046,7 @@ export const LEVELS: Record<LevelId, Level> = {
     id: 'rec',
     name: 'Rec',
     blurb: 'A social league. Floats, high balls, nobody dives.',
+    again: Infinity,
     // a recreational men's approach jump is about 0.6 m and a good spike about 80 km/h
     body: { jump: 0.72, power: 0.75, speed: 0.88, ballControl: 0.55 },
     serve: { jump: 0, floatErr: 0.11, jumpErr: 0.14, seam: 0.1, deep: 0.1, short: 0, body: 0.8, spread: 1.2 },
@@ -1077,6 +1083,7 @@ export const LEVELS: Record<LevelId, Level> = {
     id: 'club',
     name: 'Club',
     blurb: 'A regional club. A late middle, a defence that reads late.',
+    again: 1,
     body: { jump: 0.84, power: 0.82, speed: 0.93, ballControl: 0.75 },
     serve: { jump: 0.15, floatErr: 0.09, jumpErr: 0.12, seam: 0.25, deep: 0.2, short: 0.05, body: 0.5, spread: 0.9 },
     pass: { timingErr: 0.104, pressure: 1.6, outJudge: 0.5, dive: 0.2, scramble: null },
@@ -1112,6 +1119,7 @@ export const LEVELS: Record<LevelId, Level> = {
     id: 'national',
     name: 'National',
     blurb: 'A national league. Jump serves, quicks, fast sets.',
+    again: 0,
     body: { jump: 0.93, power: 0.92, speed: 0.97, ballControl: 0.9 },
     serve: { jump: 0.4, floatErr: 0.08, jumpErr: 0.11, seam: 0.4, deep: 0.25, short: 0.1, body: 0.25, spread: 0.7 },
     pass: { timingErr: 0.09, pressure: 1.3, outJudge: 0.3, dive: 0.6, scramble: 0 },
@@ -1147,6 +1155,7 @@ export const LEVELS: Record<LevelId, Level> = {
     id: 'pro',
     name: 'Pro',
     blurb: 'Men’s numbers. A closed double block, a defence that dives.',
+    again: 0,
     body: { jump: 1, power: 1, speed: 1, ballControl: 1 },
     serve: {
       jump: AI.serve.jump,
@@ -1206,6 +1215,20 @@ export const LEVELS: Record<LevelId, Level> = {
       recycle: AI.recycleShot,
     },
   },
+};
+
+/**
+ * Take that ball again (game/flashback.ts, docs/adr/0009): when a Mini Rally ends on the user's own
+ * mistake, a level that allows it (`Level.again`) offers the same ball again. The rally goes back
+ * to the start of that play and the lost point is taken back.
+ */
+export const FLASHBACK = {
+  /** the offer stays up this long (s) after the point, before the next serve */
+  offer: 5,
+  /** after a flashback the court stands still this long (s, real time) before the ball flies again: time to see it and find the keys */
+  hold: 1.2,
+  /** how many of a rally's last touches are remembered (a flashback goes back one to three) */
+  touches: 12,
 };
 
 /** the levels in order, easiest first (the menu's row) */

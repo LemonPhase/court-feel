@@ -17,7 +17,10 @@ import type { BallEnv } from '../physics/ball';
 import { AthleteView } from '../character/athleteView';
 import { makeKit } from '../character/kits';
 import type { Kit } from '../character/rig';
-import { aimTargetFromLook, ContactSystem, type ContactEvent, type IdealInfo } from './contact';
+import { aimTargetFromLook, ContactSystem, type ContactEvent, type IdealInfo, type SetOption } from './contact';
+import { restore, type Memento } from '../core/memento';
+import { saveSim } from './flashback';
+import { planScratch } from '../ai/approach';
 import { Judge, type Outcome } from './judge';
 import { Hud } from '../ui/hud';
 import type { Brain } from '../ai/brain';
@@ -45,6 +48,8 @@ export type GameEvents = {
   takeoff: { athlete: Athlete };
   /** a team-mate's call to the user (the setter's read of the pass: in system, high, help) */
   setterCall: { athlete: Athlete; call: 'in' | 'out' | 'help' };
+  /** the user took a ball again: the rally went back to sim time `t`, to a touch of this kind */
+  flashback: { t: number; kind: TouchKind };
 };
 
 /**
@@ -615,6 +620,11 @@ export class Game {
   /** replay recording runs while the ball is live and for a second after (sim time) */
   private recordUntil = 0;
 
+  /** is a ball on offer to be taken again right now (Z)? */
+  againOffered(): boolean {
+    return !this.inMenu && !!this.mode?.againOffered();
+  }
+
   /** can the last attempt be replayed right now (R)? */
   replayAvailable(): boolean {
     return this.fx.replayAvailable();
@@ -686,6 +696,51 @@ export class Game {
     this.bot = new SpikeBot(this, 'good');
     this.rig.setMode('menu');
     this.hud.setVisible(false);
+  }
+
+  /**
+   * Everything the simulation needs to be put back to this moment (game/flashback.ts). Taken at the
+   * end of a step, put back between steps, so the same steps follow.
+   */
+  saveSim(): Memento {
+    return saveSim({
+      t: this.simTime,
+      ballLive: this.ballLive,
+      lastSet: this.contact.lastSet,
+      serving: this.contact.serving,
+      athletes: this.athletes,
+      brains: [...this.brains.values()],
+      ball: this.ball,
+      judge: this.judge,
+      rng: this.rng,
+      mode: this.mode,
+      scratch: planScratch,
+    });
+  }
+
+  /** put a saved simulation back; the court then stands still for `hold` s (real time) */
+  restoreSim(m: Memento, hold = 0): void {
+    const s = restore(m) as { t: number; ballLive: boolean; lastSet: SetOption | null; serving: Athlete | null };
+    this.simTime = s.t;
+    this.ballLive = s.ballLive;
+    this.contact.lastSet = s.lastSet;
+    this.contact.serving = s.serving;
+    this.accum = 0;
+    this.hitStop = hold;
+    this.idealValid = false;
+    this.lastRenderSimT = s.t;
+    // the player's hands are their own again: nothing held, nothing buffered, no action left waiting on a button
+    this.input.releaseAll();
+    this.user.clear();
+    const act = this.me.action;
+    if (act && !act.resolved) {
+      if (act.kind === 'windup') this.me.endAction();
+      else if (act.held) {
+        act.held = false;
+        act.releaseT = s.t;
+      }
+    }
+    this.fx.onFlashback(s.t);
   }
 
   /** advance simulation by real seconds (respects hit-stop, slow-mo and timescale) */

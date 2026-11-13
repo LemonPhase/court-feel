@@ -618,7 +618,15 @@ export class Menu {
       levelNote,
     );
     this.syncs.push(() => {
-      levelNote.textContent = LEVELS[this.settings.level].blurb;
+      const l = LEVELS[this.settings.level];
+      // (the lower levels give the same ball again after your own mistake)
+      const again =
+        l.again === Infinity
+          ? ' Your own mistake: take that ball again.'
+          : l.again > 0
+            ? ' Your own mistake: take that ball again, once a rally.'
+            : '';
+      levelNote.textContent = l.blurb + again;
     });
     setup.append(this.posPicker(), level, net);
     mid.append(calls, setup);

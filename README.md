@@ -205,6 +205,7 @@ Settings → Hints, which is on by default.
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Replay your last attempt in slow motion once the ball is dead: a clean contact, a poor one, a swing or a block that found no ball, or a ball that was yours and dropped untouched. Any key skips it; the game carries on where it was. |
 | N | Reset / skip the current rep (Mini Rally: re-serve) |
+| Z | Mini Rally at Rec and Club: take that ball again after your own mistake (see below) |
 | 1 / 2 / 3 | Spike Drill and Mini Rally: set call for the next ball (outside, middle, opposite — see below) |
 | B | Spike Drill: opposing block off / single / double, with its shadow drawn on their floor (see below) |
 | Esc | Pause / settings |
@@ -228,7 +229,7 @@ Hold the phone sideways.
 | **BLOCK** | Hands up and load a jump; release to take off. The hands stay up until you land. When the ball is dropping onto you from your side the button reads **SET** and sets instead (no jump). |
 | **PASS** | Hold: platform ready. |
 | **TOSS** | Serve toss (Free Play). |
-| Top right | Pause, camera toggle, reset rep, and REPLAY when your last attempt can be watched again. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill) or feed types (Free Play). |
+| Top right | Pause, camera toggle, reset rep, REPLAY when your last attempt can be watched again, and AGAIN when a ball can be taken again. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill) or feed types (Free Play). |
 
 Haptics (Android) tick at full charge and on a graded contact. Tunables are in
 `TOUCH` in `src/config.ts` (stick radius, run threshold, look scale, the
@@ -344,7 +345,15 @@ screen show them. Only your player uses them; AI players keep the defaults.
    own touch is graded, and your body stays your Athlete setting. At Rec
    there are no jump serves, fast sets or dives and one late blocker; at Pro
    (the default, the game as it was before levels) a closed double block and
-   a defence that reads and dives. Win or
+   a defence that reads and dives. **Take that ball again:** at Rec (every
+   time) and Club (once a rally), when the rally ends on your own mistake
+   (you hit it out or into the net, mistimed or shanked your pass, dig or
+   set, or let a ball that was yours drop), the hint offers **Z** for a few
+   seconds. The rally goes back to the start of that play (your team's first
+   touch for a ball you attack or set, their set for a ball you dig, the
+   serve itself), the same ball comes exactly as it did, and the lost point
+   is taken back. A stuffed spike, a block that did not stop the hit and a
+   team-mate's error are not offered. Win or
    lose the point. "Your ball!"
    and a green landing marker tell you when the ball is yours: it goes to
    whoever gets there first, and a ball in the seam between you and a
@@ -501,7 +510,8 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`), the dive (`diveSpeed`, `diveDecel`, `diveArm`, `diveDown`, `diveTime`) |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
-| `LEVELS` | The Mini Rally's levels of play (Rec, Club, National, Pro), one table each: the AI's body multipliers, serve, pass and dig, defence reads and reactions, block, set and attack. Pro is the `AI` numbers. `npm run levels` measures them |
+| `LEVELS` | The Mini Rally's levels of play (Rec, Club, National, Pro), one table each: the AI's body multipliers, serve, pass and dig, defence reads and reactions, block, set and attack, and how many times a rally you may take a ball again (`again`). Pro is the `AI` numbers. `npm run levels` measures them |
+| `FLASHBACK` | Take that ball again: how long the offer stays up, how long the court stands still before the same ball flies, how many touches of a rally are remembered |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
@@ -548,7 +558,9 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   and quick-start-link validation, the levels of play (Pro is the game
   before levels, a level scales the AI's body and never the user's, a Rec
   defence holds its base and never dives, a Rec middle leaves one blocker
-  up), and the error reporter.
+  up), taking a ball again (whose mistake ended the rally, which touch the
+  rally goes back to, the limits by level, and that every player then
+  moves exactly as they did the first time), and the error reporter.
 * `npm run levels` — measures the levels of play on all-AI Mini Rallies
   (headless Chromium, the manual clock): each league against itself, and a Pro
   side that hits on time without looking for the open spot against each
