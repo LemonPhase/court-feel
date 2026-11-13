@@ -4,6 +4,7 @@ import { Rng } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import type { Touch, TouchKind } from '../src/game/ballEntity';
 import type { Game } from '../src/game/game';
+import { MiniRally } from '../src/game/modes/miniRally';
 import { laneFor, SETTER_SPOT } from '../src/game/plays';
 import { makeBall, stepBall, type BallEnv, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
@@ -49,6 +50,7 @@ function homeTeam() {
     simTime: 0,
     env,
     rng: new Rng(3),
+    athletes: [] as Athlete[],
     ballLive: true,
     ball,
     setBrain() {},
@@ -248,6 +250,32 @@ describe('who takes the ball (Mini Rally)', () => {
     const t = ballAt({ x: -0.9, z: 8.3 }, 'L', false);
     expect(t.team.receiver).toBe(t.team.players.get('OH2'));
   });
+
+  /** their block sends our attack back down at (-1.8, 3.0); you (our outside) 0.6 m from it, the libero at `L` */
+  const offTheirBlock = (L: { x: number; z: number }) => {
+    const t = homeTeam();
+    t.team.place('defense');
+    const you = t.team.players.get('OH1')!;
+    you.isUser = true;
+    you.place(-1.9, 2.4, 0);
+    t.team.players.get('L')!.place(L.x, L.z, 0);
+    t.touch('block', -1, { x: -1.5, y: 3.0, z: -0.2 }, { x: -1.8, y: 0.75, z: 3.0 }, 3.6);
+    t.run(0.05);
+    return { t, you, L: t.team.players.get('L')! };
+  };
+
+  it("a ball off their block that the libero, covering, gets to is the libero's, even with you nearer", () => {
+    const { t, L } = offTheirBlock({ x: -0.6, z: 3.6 });
+    expect(t.team.receiver).toBe(L);
+  });
+
+  it('the libero coming in to a ball off the block someone else was sent to calls it and takes it', () => {
+    const { t, you, L } = offTheirBlock({ x: 2.5, z: 7.5 });
+    expect(t.team.receiver).toBe(you);
+    L.place(-0.6, 3.6, 0);
+    t.run(0.05);
+    expect(t.team.receiver).toBe(L);
+  });
 });
 
 describe('the second ball (Mini Rally)', () => {
@@ -286,6 +314,55 @@ describe('the second ball (Mini Rally)', () => {
     t.run(AI.setterRead + 0.2);
     expect(t.team.read?.call).toBe('help');
     expect(t.team.freeBall(t.g as unknown as Game)).toBe(you);
+  });
+
+  it('a pass the setter calls HELP on that the libero gets to: the libero sets it, a high ball to a pin', () => {
+    const t = homeTeam();
+    t.team.place('offense');
+    const oh2 = t.team.players.get('OH2')!;
+    const L = t.team.players.get('L')!;
+    // a shanked pass, deep behind the libero: the setter at the net can't get there, the libero can
+    t.touch('pass', 1, { x: oh2.pos.x, y: 0.8, z: oh2.pos.z }, { x: -2.6, y: 0.75, z: 8.0 }, 4.0, oh2);
+    t.run(AI.setterRead + 0.2);
+    expect(t.team.read?.call).toBe('help');
+    expect(t.brain('L').job).toBe('set');
+    expect(t.team.secondBy).toBe(L);
+    expect(t.team.freeBall(t.g as unknown as Game)).toBeNull();
+  });
+
+  it('a second ball nobody could set goes up high to the 3 m line, not to the net, for a free ball over from there', () => {
+    const t = homeTeam();
+    const you = t.team.players.get('OH2')!;
+    t.team.touches = 1;
+    const T = MiniRally.prototype.passTarget.call({ home: t.team, away: t.team, g: t.g }, you);
+    expect(T.z).toBeGreaterThan(3);
+    expect(T.z).toBeLessThan(4);
+    expect(Math.abs(T.x)).toBeLessThan(1.5);
+    expect(T.apex).toBeGreaterThan(5);
+  });
+
+  it("an AI free ball over goes where they aren't: short over the net when they are deep, to a deep corner when they are up", () => {
+    const t = homeTeam();
+    const mate = t.team.players.get('OH1')!;
+    t.team.touches = 2;
+    const target = () => MiniRally.prototype.passTarget.call({ home: t.team, away: t.team, g: t.g }, mate);
+    const xs = [-3, -1.5, 0, 1.5, 3];
+    const them = xs.map(() => new Athlete('OH', -1));
+    t.g.athletes.push(...them);
+    // all of them back, deep in their court
+    them.forEach((a, i) => a.place(xs[i], -7.5, 0));
+    for (let i = 0; i < 5; i++) {
+      const T = target();
+      expect(T.z).toBeGreaterThan(-3);
+      expect(T.z).toBeLessThan(0);
+    }
+    // all of them up at the net
+    them.forEach((a, i) => a.place(xs[i], -1.0, 0));
+    for (let i = 0; i < 5; i++) {
+      const T = target();
+      expect(T.z).toBeLessThan(-6.5);
+      expect(Math.abs(T.x)).toBeGreaterThan(2);
+    }
   });
 });
 

@@ -367,6 +367,9 @@ export class TeamAI {
   private receiverAt: Spot = { x: 0, z: 0 };
   private freeFor: unknown = null;
   private freeAthlete: Athlete | null = null;
+  /** who sets our second ball (decided with `freeFor`), and whether the setter called HELP */
+  private secondSetter: Athlete | null = null;
+  private secondHelp = false;
 
   /**
    * Who was sent to play the ball now in flight when it isn't the setter's to set (the setter
@@ -419,7 +422,7 @@ export class TeamAI {
   private ourServe = false;
   /** one of us touched our own serve before the other side did: a service fault */
   serveFault = false;
-  /** who plays our second ball: the setter, or the libero when the setter played the first */
+  /** who sets our second ball: the setter, or the libero when the setter played the first or can't get there */
   secondBy: Athlete | null = null;
 
   constructor(
@@ -676,9 +679,18 @@ export class TeamAI {
    * A team-mate (or the user) best placed to take a ball dropping at p: the one who
    * gets there first (`AI.pick`: a seam ball goes to the libero or the user, the setter
    * only when nobody else is close). Someone is always sent (a desperate dig beats
-   * watching it drop) unless `exclude` was the only option.
+   * watching it drop) unless `exclude` was the only option. Given the time until the ball is
+   * down (`budget`: given for a ball off a block and a second ball), a ball the libero gets to with
+   * `AI.pick.libero` s to spare is the libero's, whoever else is near.
    */
-  private pickReceiver(p: V3, serve: boolean, exclude: Athlete | null = null, exclude2: Athlete | null = null): Athlete | null {
+  private pickReceiver(
+    p: V3,
+    serve: boolean,
+    exclude: Athlete | null = null,
+    exclude2: Athlete | null = null,
+    budget?: number,
+  ): Athlete | null {
+    if (budget !== undefined && this.liberoGets(p, budget, exclude, exclude2)) return this.players.get('L') ?? null;
     let best: Athlete | null = null;
     let bestT = 1e9;
     for (const [slot, a] of this.players) {
@@ -694,6 +706,56 @@ export class TeamAI {
       }
     }
     return best;
+  }
+
+  /** the libero (not excluded) gets to a ball dropping at p within `budget` s, with time to spare */
+  private liberoGets(p: V3, budget: number, exclude: Athlete | null = null, exclude2: Athlete | null = null): boolean {
+    const L = this.players.get('L');
+    return !!L && L !== exclude && L !== exclude2 && this.reachTime(L, p) + AI.pick.libero <= budget;
+  }
+
+  /** `a` can run under the ball now in flight and get their hands to it (`fallback`: where it lands) */
+  private runsDown(a: Athlete, tDown: number, fallback: V3): boolean {
+    const now = this.g.simTime;
+    const pred = this.g.ball.ensurePrediction(this.g.env, now);
+    const tHands = pred.descendThrough(setterTouchY(a), now);
+    const tAt = tHands > 0 ? tHands : tDown;
+    if (tHands > 0) pred.posAt(tHands, this.qp);
+    else Object.assign(this.qp, fallback);
+    // the setter releases at once and runs: only a hopeless one gives it up
+    const d = Math.hypot(a.pos.x - this.qp.x, a.pos.z - this.qp.z);
+    const tRun = d / a.stats.approachSpeed + 0.15 + (a.state === 'air' ? 0.5 : 0);
+    return tRun <= tAt - now + 0.05;
+  }
+
+  /**
+   * An AI free ball over (a third ball nobody can attack) is aimed to be hard to play: deep to a
+   * back corner or short, just over the net, wherever their nearest player is furthest away.
+   */
+  freeOverTarget(): { x: number; y: number; z: number; apex: number } {
+    const g = this.g;
+    const s = this.side;
+    const F = AI.freeOver;
+    const spots = [
+      { x: -F.side, z: F.deep, apex: F.apex },
+      { x: F.side, z: F.deep, apex: F.apex },
+      { x: -F.side, z: F.short, apex: F.shortApex },
+      { x: 0, z: F.short, apex: F.shortApex },
+      { x: F.side, z: F.short, apex: F.shortApex },
+    ];
+    let best = spots[0];
+    let bestScore = -Infinity;
+    for (const sp of spots) {
+      let near = Infinity;
+      for (const o of g.athletes) if (o.side !== s) near = Math.min(near, Math.hypot(o.pos.x - sp.x, o.pos.z + s * sp.z));
+      // (a little guesswork: not always the very same spot)
+      const score = near + g.rng.next() * F.guess;
+      if (score > bestScore) {
+        bestScore = score;
+        best = sp;
+      }
+    }
+    return { x: best.x, y: 0.5, z: -s * best.z, apex: best.apex };
   }
 
   step(): void {
@@ -735,10 +797,15 @@ export class TeamAI {
       const strayed = comingToUs && tDown > 0 && Math.hypot(p.x - this.receiverAt.x, p.z - this.receiverAt.z) > 1.5;
       // (`mustPlay`: a ball off our own block is ours wherever it lands: out, it is their point)
       const receive = (serve: boolean, exclude: Athlete | null, mustPlay = false) => {
-        if (this.receiver && this.receiverFor === lt && !strayed) {
+        // a ball off a block is the libero's whenever it gets there (coming in from the cover to a
+        // ball someone else was sent to, it calls it and takes it)
+        const offBlock = lt?.kind === 'block';
+        const L = this.players.get('L');
+        const takeOver = offBlock && !!L && this.receiver !== L && comingToUs && tDown > 0 && this.liberoGets(p, tDown - now, exclude);
+        if (this.receiver && this.receiverFor === lt && !strayed && !takeOver) {
           setJob(this.receiver, 'receive');
         } else if (comingToUs && tDown > 0 && (inBounds || mustPlay)) {
-          const r = this.pickReceiver(p, serve, exclude);
+          const r = this.pickReceiver(p, serve, exclude, null, offBlock ? tDown - now : undefined);
           this.receiver = r;
           this.receiverFor = lt;
           this.receiverAt = { x: p.x, z: p.z };
@@ -794,35 +861,42 @@ export class TeamAI {
           form = 'defense';
           for (const a of this.frontRow()) setJob(a, 'block', this.formSpot('defense', this.slotOf(a)));
         } else if (this.touches === 1) {
-          // second ball: the setter, or the libero as backup if the setter played the first (the
-          // libero, not whoever is closest). A setter who played the first ball stays out of the
-          // second and goes back to defend
+          // second ball: the setter sets it. A setter who played the first ball, or can't get to
+          // this one (and calls HELP), leaves it to the libero, who sets a high ball to a pin when it
+          // can get there: a real libero takes every second ball it can. If nobody can set it,
+          // whoever is closest bumps it high to the 3 m line (the mode's pass target), so the third
+          // ball can go over as a free ball from there, not from under the net.
           const S = this.players.get('S');
-          const setter = S && lt?.athlete === S ? this.players.get('L') : S;
-          if (setter !== S) setJob(S, 'base', this.formSpot('defense', 'S'));
-          this.secondBy = setter ?? null;
-          if (setter && !setter.isUser) {
-            // a pass the setter cannot run down (dug from the back row): whoever is closest
-            // bumps the second ball. Decided once per ball, so the two never leave it to each other.
+          const L = this.players.get('L');
+          const sDug = !!S && lt?.athlete === S;
+          // a setter who played the first ball stays out of the second and goes back to defend
+          if (sDug) setJob(S, 'base', this.formSpot('defense', 'S'));
+          // (who calls the pass: the setter, or the libero backing up a setter who dug it)
+          const caller = sDug ? L : S;
+          this.secondBy = caller ?? null;
+          if (caller && !caller.isUser) {
+            // decided once per ball, so two players never leave it to each other
             if (this.freeFor !== lt) {
               this.freeFor = lt;
               this.freeAthlete = null;
+              this.secondSetter = caller;
+              this.secondHelp = false;
               if (comingToUs && tDown > 0) {
-                const tHands = pred.descendThrough(setterTouchY(setter), now);
-                const tAt = tHands > 0 ? tHands : tDown;
-                if (tHands > 0) pred.posAt(tHands, this.qp);
-                else Object.assign(this.qp, p);
-                // the setter releases at once and runs: only a hopeless one gives it up
-                const d = Math.hypot(setter.pos.x - this.qp.x, setter.pos.z - this.qp.z);
-                const tRun = d / setter.stats.approachSpeed + 0.15 + (setter.state === 'air' ? 0.5 : 0);
-                if (tRun > tAt - now + 0.05) this.freeAthlete = this.pickReceiver(p, false, lt?.athlete ?? null);
+                const runs = (a: Athlete | undefined) => !!a && a !== lt?.athlete && this.runsDown(a, tDown, p);
+                if (!runs(caller)) {
+                  this.secondHelp = true;
+                  this.secondSetter = !sDug && L && runs(L) ? L : null;
+                  if (!this.secondSetter) this.freeAthlete = this.pickReceiver(p, false, lt?.athlete ?? null, null, tDown - now);
+                }
               }
             }
+            const setter = this.secondSetter;
+            this.secondBy = setter;
             const r = this.freeAthlete;
-            if (r && r !== setter) setJob(r, 'free');
-            else setJob(setter, 'set');
+            if (setter) setJob(setter, 'set');
+            else if (r) setJob(r, 'free');
             // (a good pass is not "coming to us" by the floor test: left alone it would drop at the net)
-            if (lt) this.readPass(g, setter, lt, !!r && r !== setter);
+            if (lt) this.readPass(g, caller, lt, this.secondHelp);
           }
         } else if (this.touches >= 2) {
           // third ball: the set hitter attacks; if nobody can, someone bumps it over

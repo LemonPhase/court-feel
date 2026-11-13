@@ -671,9 +671,18 @@ export const AI = {
    * seam (one that two get to within `seam` s of each other, about 0.7 m of running) is the
    * libero's or the user's: one preference, never both added up, so the user is never sent to a
    * ball a team-mate is standing next to. The setter is sent only when nobody else gets there
-   * within `setter` s of it: a ball at its feet it digs, and someone else sets.
+   * within `setter` s of it: a ball at its feet it digs, and someone else sets. A ball off a block,
+   * or a second ball the setter can't get to, is the libero's whenever it gets there with `libero` s
+   * to spare: it calls off whoever was sent (a real libero takes every one of those it can).
    */
-  pick: { seam: 0.15, setter: 0.2, shuffle: 1.5 },
+  pick: { seam: 0.15, setter: 0.2, shuffle: 1.5, libero: 0.1 },
+  /**
+   * An AI free ball over (a third ball nobody can attack) goes where it is hard to play: deep to a
+   * back corner (`deep` m off the net, `side` m off the middle) or short, just over the net (`short`
+   * m), whichever spot their nearest player is furthest from (plus up to `guess` m of guesswork).
+   * `apex`/`shortApex`: the arcs.
+   */
+  freeOver: { deep: 7.3, short: 2.0, side: 2.8, apex: 5.0, shortApex: 4.0, guess: 1.0 },
   /**
    * Covering our hitter, `read` s after our setter sets, low and facing the net, so a ball blocked
    * straight down is dug back up. The spots are the real ones (3-2 coverage: CoachingVB, hitter

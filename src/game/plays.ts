@@ -47,7 +47,8 @@ export const SETTER_SPOT = { x: 1.1, z: 0.65 };
 export const SETTER_TARGET = { x: 1.0, z: 0.9, height: 3.6 };
 /**
  * Target for a dig by the setter himself: high to the middle of the court, just behind the
- * 3 m line, so the backup (the libero) has time to get there and may hand-set it.
+ * 3 m line, so the backup (the libero) has time to get there and may hand-set it. A second ball
+ * nobody could set goes there too, for a free ball over from there.
  */
 export const BACKUP_TARGET = { x: 0.5, y: 2.35, z: 3.4, apex: 5.2 };
 

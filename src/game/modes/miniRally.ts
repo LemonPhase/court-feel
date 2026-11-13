@@ -5,7 +5,7 @@ import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/t
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
-import { needsGoodPass, SET_PLAYS, SETTER_TARGET, type SetPlay } from '../plays';
+import { BACKUP_TARGET, needsGoodPass, SET_PLAYS, type SetPlay } from '../plays';
 import { kbd, Mode } from './mode';
 
 type Phase = 'prepare' | 'serve' | 'live' | 'dead';
@@ -172,12 +172,15 @@ export class MiniRally extends Mode {
     const team = a.side === 1 ? this.home : this.away;
     const s = a.side;
     if (team.touches >= 2) {
-      // third contact without an attack: free ball deep into their court
+      // third contact without an attack: a free ball over, deep into their court (the AI aims it
+      // where it is hard to play: a deep corner, or short over the net)
+      if (!a.isUser) return team.freeOverTarget();
       return { x: (this.g.rng.next() - 0.5) * 5, y: 0.5, z: -s * 6.5, apex: 5.2 };
     }
     // a first ball goes to the setter target (or, played by the setter himself, high to the 3 m line)
     if (team.touches === 0) return team.firstBallTarget(a);
-    return { x: SETTER_TARGET.x * s, y: 2.35, z: SETTER_TARGET.z * s, apex: 4.1 };
+    // a second ball nobody could set: high to the 3 m line, for a free ball over from there
+    return { x: BACKUP_TARGET.x * s, y: BACKUP_TARGET.y, z: BACKUP_TARGET.z * s, apex: BACKUP_TARGET.apex };
   }
 
   setOptions(a: Athlete) {
@@ -214,7 +217,10 @@ export class MiniRally extends Mode {
     if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set')
       return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;
     if (me.role === 'S' && this.home.touches === 1) return `Your set · look at a hitter · ${kbd('RMB')}`;
-    if (this.yourBackupSet) return `YOUR SET · the setter dug it · high ball to a pin · look at a hitter · ${kbd('RMB')}`;
+    if (this.yourBackupSet) {
+      const dug = this.g.ball.lastTouch?.athlete === this.home.players.get('S');
+      return `YOUR SET · the setter ${dug ? 'dug it' : "can't get there"} · high ball to a pin · look at a hitter · ${kbd('RMB')}`;
+    }
     // the setter's call on the pass overrides the plan: off a bad pass everything goes up high
     const read = this.hitter && this.home.touches === 1 ? this.read : null;
     const who = read ? this.setterName(read.setter) : 'SETTER';

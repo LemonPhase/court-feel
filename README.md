@@ -339,7 +339,12 @@ screen show them. Only your player uses them; AI players keep the defaults.
    and a green landing marker tell you when the ball is yours: it goes to
    whoever gets there first, and a ball in the seam between you and a
    team-mate is yours (so is a ball the setter calls HELP on when you are
-   nearest). A pass of ours going over the net is read as an overpass: no set,
+   nearest). A ball off a block, and a second ball the setter can't get to,
+   is the libero's whenever it can get there (it calls off whoever was sent,
+   you too, and sets a high ball to a pin); a second ball nobody can set goes
+   up high to the 3 m line, and the third goes over from there as a free ball
+   (the AI's deep to a corner or short over the net, wherever you aren't). A
+   pass of ours going over the net is read as an overpass: no set,
    no call, the front row waits at the net. To keep it playable the AI is a
    little kinder to you than to itself: it shanks more of your hard spikes,
    your spike wipes off its block more often, and its hitters now and then
@@ -465,7 +470,9 @@ jump, the touch on their hands and the block shadow from your contact point.
   optional landing ring shrinks with time-to-land.
 * **Physics.** Fixed 120 Hz simulation with interpolated rendering: gravity,
   drag, Magnus topspin (spikes dip), spin decay, floor friction/spin, a soft
-  net with a stiff top tape (balls can roll over), antennae, posts. 2.43 m or
+  net the ball sinks into and drops down (drawn static for now), a top tape
+  that is stiff from above (balls can roll over) and swings back with the net
+  when hit from the side, antennae, posts. 2.43 m or
   2.24 m net, 21 cm / 270 g ball.
 
 ## Tuning the feel
@@ -482,10 +489,10 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`), the dive (`diveSpeed`, `diveDecel`, `diveArm`, `diveDown`, `diveTime`) |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
-| `BALL` | Drag, Magnus scale, restitution and friction for floor/net/tape/antenna |
+| `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); who the setter sets (`setWeight`) and how often the pipe (`pipe`); an overpass (`overpass`), an AI hitter misreading the user's block (`userBlockMisread`), who takes a ball (`pick`: first there takes it, the seam goes to the libero or you, the setter only when nobody else is close); perimeter defence read spots and reaction times (`defence`), early transition and the front row's transition off the net after a block (`transition`, `approachOff`: no quick from the net) and covering our hitter in the real 3-2 spots (`cover`: when, the middle at the net, the setter on the 3 m line, the back row behind and deep, how fast a coverer reads a ball off the block); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, run-up, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool, roll and recycle shots (`toolShot`, `rollShot`, `recycleShot`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`); first balls overhand (`overhand`), dives (`dive`) and a second player running at a ball the first may not reach (`scramble`) |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); who the setter sets (`setWeight`) and how often the pipe (`pipe`); an overpass (`overpass`), an AI hitter misreading the user's block (`userBlockMisread`), who takes a ball (`pick`: first there takes it, the seam goes to the libero or you, the setter only when nobody else is close, a ball off a block or a second ball the libero gets to is the libero's); where an AI free ball over goes (`freeOver`: a deep corner or short, wherever they aren't); perimeter defence read spots and reaction times (`defence`), early transition and the front row's transition off the net after a block (`transition`, `approachOff`: no quick from the net) and covering our hitter in the real 3-2 spots (`cover`: when, the middle at the net, the setter on the 3 m line, the back row behind and deep, how fast a coverer reads a ball off the block); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, run-up, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool, roll and recycle shots (`toolShot`, `rollShot`, `recycleShot`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`); first balls overhand (`overhand`), dives (`dive`) and a second player running at a ball the first may not reach (`scramble`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
 slow-mo assist, landing marker, replays, camera shake, volume, hints, your
