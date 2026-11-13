@@ -564,7 +564,11 @@ export class ContactSystem {
     // a hard-driven ball off a mistimed or off-centre platform is shanked: it leaves the arms at a
     // bad angle, wide and fast, and usually out of play
     const badness = grade === 'Perfect' ? 0 : grade === 'Good' ? CONTACT.shankGood : 1;
-    if (h.rand() < CONTACT.shank * fast * Math.max(badness, clamp01(dBest / r))) {
+    let pShank = CONTACT.shank * fast * Math.max(badness, clamp01(dBest / r));
+    // (playability: the AI gets to the user's hard spike, but shanks a lot of them)
+    const lt = ball.lastTouch;
+    if (dig && !a.isUser && lt?.kind === 'spike' && lt.athlete?.isUser) pShank = Math.max(pShank, CONTACT.userSpikeShank);
+    if (h.rand() < pShank) {
       act.form = form;
       this.shank(a, act, incoming, t);
       return true;
@@ -629,7 +633,7 @@ export class ContactSystem {
     const bp = ball.pos;
     const bv = ball.vel;
     const hv = Math.hypot(bv.x, bv.z) || 1;
-    const turn = (h.rand() < 0.5 ? -1 : 1) * lerp(0.7, 1.7, h.rand());
+    const turn = (h.rand() * 2 - 1) * CONTACT.shankTurn;
     const dx = (bv.x / hv) * Math.cos(turn) - (bv.z / hv) * Math.sin(turn);
     const dz = (bv.x / hv) * Math.sin(turn) + (bv.z / hv) * Math.cos(turn);
     const sp = incoming * lerp(CONTACT.shankSpeed[0], CONTACT.shankSpeed[1], h.rand());
@@ -815,7 +819,11 @@ export class ContactSystem {
     // off the outer edge of the hands (away from the middle of the court): the hitter wiped it, the
     // ball goes off the fingers and wide (`CONTACT.toolEdge` of the hand's half-width out)
     const off = bp.x - hands.x;
-    const edge = Math.abs(off) > halfW * CONTACT.toolEdge && Math.sign(off) === Math.sign(hands.x) && h.rand() < CONTACT.toolEdgeP;
+    // (playability: the user's spike wipes off an AI block more often)
+    const userHit = lt.athlete?.isUser === true && !a.isUser;
+    const toolEdge = userHit ? CONTACT.userToolEdge : CONTACT.toolEdge;
+    const toolEdgeP = userHit ? CONTACT.userToolEdgeP : CONTACT.toolEdgeP;
+    const edge = Math.abs(off) > halfW * toolEdge && Math.sign(off) === Math.sign(hands.x) && h.rand() < toolEdgeP;
     // AI blockers convert fewer of their good blocks into stuffs than the user
     const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;
     if (!edge && incoming < CONTACT.recycleSpeed && h.rand() < (rank >= 2 ? CONTACT.recycleP : CONTACT.recyclePLate)) {

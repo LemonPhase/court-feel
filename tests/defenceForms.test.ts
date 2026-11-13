@@ -135,12 +135,14 @@ describe('how a defender plays the first ball', () => {
  * A home blocker at the net jumps and puts the hands up; at the top of the jump their attack (side
  * -1) comes into the hands at `speed` m/s. Returns the block's contact and the ball's velocity off it.
  */
-function blockAt(speed: number) {
+function blockAt(speed: number, opts: { at?: number; off?: number; user?: boolean } = {}) {
   const state = makeBall();
+  const hitter = new Athlete('OH', -1);
+  hitter.isUser = opts.user ?? false;
   const ball = {
     state,
     active: true,
-    lastTouch: { athlete: new Athlete('OH', -1), kind: 'spike', t: 0, side: -1 } as any,
+    lastTouch: { athlete: hitter, kind: 'spike', t: 0, side: -1 } as any,
     get pos() {
       return state.p;
     },
@@ -169,7 +171,7 @@ function blockAt(speed: number) {
   } satisfies ContactHost;
   const cs = new ContactSystem(host);
   const a = new Athlete('MB', 1);
-  a.place(0, 0.45, 0);
+  a.place(opts.at ?? 0, 0.45, 0);
   a.jumpPress();
   let act: ReturnType<Athlete['startAction']> | null = null;
   let fired = false;
@@ -181,7 +183,7 @@ function blockAt(speed: number) {
     // at the top of the jump their attack arrives, a little down, into the middle of the hands
     if (act && !fired && a.vel.y <= 0) {
       fired = true;
-      Object.assign(state.p, { x: 0, y: a.pos.y + a.standReach - 0.15, z: -0.25 });
+      Object.assign(state.p, { x: a.pos.x + (opts.off ?? 0), y: a.pos.y + a.standReach - 0.15, z: -0.25 });
       Object.assign(state.v, { x: 0, y: -0.15 * speed, z: speed });
     }
     if (fired) {
@@ -206,6 +208,17 @@ describe('the ball off the block', () => {
     const hard = blockAt(22);
     expect(hard.e?.kind).toBe('block');
     expect(hard.e.note).not.toBe('Off the block');
+  });
+
+  it("your spike off the outside of an AI block's hands is wiped off it more often than an AI hitter's (playability)", () => {
+    // an AI blocker at the pin; the ball meets the hands just over half their half-width out
+    const off = (CONTACT.blockHalfWidth * (CONTACT.userToolEdge + CONTACT.toolEdge)) / 2;
+    const yours = blockAt(22, { at: 3, off, user: true });
+    const theirs = blockAt(22, { at: 3, off });
+    expect(yours.e?.note).toBe('Tooled');
+    expect(Math.abs(yours.v.x)).toBeGreaterThan(3);
+    expect(theirs.e?.kind).toBe('block');
+    expect(theirs.e.note).not.toBe('Tooled');
   });
 
   it('a ball off their block, dug by our cover, goes up high and well off the net: out of system, never Perfect', () => {

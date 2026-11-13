@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { COURT, SIM, TIMING } from '../src/config';
+import { CONTACT, COURT, SIM, TIMING } from '../src/config';
 import { lerp } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import { ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
@@ -18,7 +18,7 @@ const TARGET = { x: 1, y: 2.35, z: 0.9, apex: 4 };
  * the platform out `lead` s before it arrives (the ideal lead for that speed by default).
  * Returns the contact and how far from the setter's target the pass was aimed.
  */
-function receive(speed: number, opts: { lead?: number; rand?: number; moving?: number } = {}) {
+function receive(speed: number, opts: { lead?: number; rand?: number; moving?: number; spikeBy?: 'user' | 'ai' } = {}) {
   const state = makeBall();
   const predictor = new BallPredictor(DT, SIM.predictHorizon);
   let version = 0;
@@ -47,6 +47,11 @@ function receive(speed: number, opts: { lead?: number; rand?: number; moving?: n
       version++;
     },
   };
+  if (opts.spikeBy) {
+    const hitter = new Athlete('OH', -1);
+    hitter.isUser = opts.spikeBy === 'user';
+    ball.lastTouch = { athlete: hitter, kind: 'spike', t: 0, side: -1 };
+  }
   const events: ContactEvent[] = [];
   const host = {
     ball: ball as any,
@@ -81,7 +86,7 @@ function receive(speed: number, opts: { lead?: number; rand?: number; moving?: n
     stepBall(state, DT, host.env);
   }
   const e = events[0];
-  return { e, off: e ? Math.hypot(e.target.x - TARGET.x, e.target.z - TARGET.z) : NaN };
+  return { e, off: e ? Math.hypot(e.target.x - TARGET.x, e.target.z - TARGET.z) : NaN, v: { ...state.v }, vIn: speed };
 }
 
 describe('serve reception (contact)', () => {
@@ -109,6 +114,28 @@ describe('serve reception (contact)', () => {
   it('a well-timed platform is not shanked even on the hardest ball', () => {
     const r = receive(26, { rand: 0.05 });
     expect(r.e.note).not.toBe('Shanked');
+  });
+
+  it("an AI defender who gets to your hard spike shanks it half the time, well timed or not (playability); an AI hitter's is dug", () => {
+    // (the harness's random draw is fixed: under the user-spike shank chance)
+    const rand = CONTACT.userSpikeShank * 0.6;
+    const yours = receive(24, { rand, spikeBy: 'user' });
+    const theirs = receive(24, { rand, spikeBy: 'ai' });
+    expect(yours.e.note).toBe('Shanked');
+    expect(theirs.e.note).not.toBe('Shanked');
+    // a slow ball of yours (a roll shot, an easy swing) is played as usual
+    expect(receive(12, { rand, spikeBy: 'user' }).e.note).not.toBe('Shanked');
+  });
+
+  it('a shank keeps going the way the spike came, at most 100 degrees off its line, up and off the arms', () => {
+    for (const rand of [0.02, 0.3, 0.5, 0.7, 0.98]) {
+      const r = receive(24, { rand: Math.min(rand, CONTACT.userSpikeShank * 0.99), spikeBy: 'user' });
+      expect(r.e.note).toBe('Shanked');
+      // the spike came in along +z (towards our end line)
+      const ang = Math.atan2(r.v.x, r.v.z);
+      expect(Math.abs(ang)).toBeLessThanOrEqual(CONTACT.shankTurn + 1e-6);
+      expect(r.v.y).toBeGreaterThan(0);
+    }
   });
 });
 

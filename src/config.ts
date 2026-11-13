@@ -291,6 +291,13 @@ export const CONTACT = {
    */
   toolEdge: 0.6,
   toolEdgeP: 0.7,
+  /**
+   * Playability (bent on purpose; the defence is strong and hitting is hard enough): the user's
+   * spike is wiped off an AI block more often, from `userToolEdge` of the hands' half-width out,
+   * `userToolEdgeP` of the time.
+   */
+  userToolEdge: 0.45,
+  userToolEdgeP: 0.85,
   /** speeds (m/s) */
   spikePerfect: 30,
   spikeGood: 26,
@@ -364,11 +371,18 @@ export const CONTACT = {
   /**
    * Shanks: a ball arriving at 22 m/s or more (from 12 m/s up) off a mistimed platform (Late / Early;
    * `shankGood` as likely off a Good one), or off the edge of it, is shanked `shank` of the time: it
-   * leaves the arms at a bad angle, at `shankSpeed` times the speed it came in, usually out of play.
+   * leaves the arms at a bad angle, at `shankSpeed` times the speed it came in, usually out of play:
+   * still going the way the ball came, up to `shankTurn` rad off its line either way (straight on
+   * into the stands behind, or wide to the side).
+   * Playability (bent on purpose): an AI defender who gets to the user's hard spike (over 14 m/s)
+   * shanks it at least `userSpikeShank` of the time, however well timed. Real defenders dig more of
+   * them, but with the strong AI defence the user's kills were too hard to come by.
    */
   shank: 0.15,
   shankGood: 0.3,
   shankSpeed: [0.35, 0.6] as [number, number],
+  shankTurn: 1.7,
+  userSpikeShank: 0.6,
 };
 
 export const ASSIST = {
@@ -789,6 +803,12 @@ export const AI = {
    * Where an AI middle hits its quick: steep and short, a sharp cut `cut` m off the net to either
    * side or down the middle `down` m off it (behind the off-blocker, in front of the back row);
    * deep to zone 1 or 5 with weight `deep` (the cut and the down shot: 1 each).
+  /**
+   * Playability (bent on purpose): with the user up in the block, an AI hitter misreads the user's
+   * hands `userBlockMisread` of the time and aims as if they weren't there, so the user gets more
+   * balls into the block. AI blockers are read as before.
+   */
+  userBlockMisread: 0.3,
    */
   quickShot: { cut: 3.5, down: 4.5, deep: 0.4 },
   /** how much the setter likes the quick: off a pass within `perfectOff` m of the setter's spot `perfect`, else `good` (against `setWeight`) */

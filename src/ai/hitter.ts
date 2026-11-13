@@ -195,7 +195,7 @@ export class HitterBrain implements Brain {
    * The open spot for a full-speed spike from `from` (see openShot), against the defence as it
    * stands: they can move `read` s after the hit (a blocker in the air comes down first).
    */
-  private openSpot(g: Game, from: V3, tHit: number, read: number) {
+  private openSpot(g: Game, from: V3, tHit: number, read: number, misread: boolean) {
     const a = this.athlete;
     const diggers: Digger[] = this.defenders().map((d) => {
       // a blocker in the air comes down first
@@ -209,7 +209,7 @@ export class HitterBrain implements Brain {
     // each blocker at the net: where their hands will be as the ball crosses, and how high: in the
     // air, the top of this jump; still on the floor, rising from a jump taken right now
     const blocks: BlockHands[] = this.blockers()
-      .filter((b) => Math.abs(b.pos.z) < 1.4)
+      .filter((b) => Math.abs(b.pos.z) < 1.4 && !(misread && b.isUser))
       .map((b) => {
         const hands = b.standReach + 0.04;
         const x = b.pos.x + b.reachX + b.vel.x * (0.05 + Math.abs(a.pos.z) / 20);
@@ -238,8 +238,11 @@ export class HitterBrain implements Brain {
     const opp = -a.side; // the other court
     const hw = COURT.halfWidth;
     const sees = this.inSystem();
+    // (playability: now and then the user's block is misread, as if it weren't there)
+    const userUp = this.blockers().some((b) => b.isUser && Math.abs(b.pos.z) < 1.4);
+    const misread = userUp && g.rng.next() < AI.userBlockMisread;
     if (from && (sees || g.rng.next() < AI.openShotOut)) {
-      const open = this.openSpot(g, from, tHit, AI.defence.hitReact);
+      const open = this.openSpot(g, from, tHit, AI.defence.hitReact, misread);
       // the hitter goes for the hardest spot to dig even when it isn't quite open
       if (open && open.margin >= -AI.openShotStretch) {
         this.lastShot = 'open';
@@ -271,7 +274,7 @@ export class HitterBrain implements Brain {
         ];
     // avoid the block: penalise shots whose direction passes over a blocker's hands
     const up = this.blockers()
-      .filter((b) => Math.abs(b.pos.z) < 1.4)
+      .filter((b) => Math.abs(b.pos.z) < 1.4 && !(misread && b.isUser))
       .sort((p, q) => p.pos.x - q.pos.x);
     for (const b of up) {
       for (const o of options) {
