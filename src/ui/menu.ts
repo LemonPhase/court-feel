@@ -618,8 +618,7 @@ export class Menu {
       levelNote,
     );
     this.syncs.push(() => {
-      const l = LEVELS[this.settings.level];
-      levelNote.replaceChildren(txt('b', '', l.name), ` · ${l.blurb}`);
+      levelNote.textContent = LEVELS[this.settings.level].blurb;
     });
     setup.append(this.posPicker(), level, net);
     mid.append(calls, setup);
@@ -1091,7 +1090,7 @@ export class Menu {
 
     show(Math.min(this.settingsTab, tabs.length - 1));
 
-    // every group back to the defaults, in two presses (the athlete is not touched)
+    // every group back to the defaults, in two presses (the athlete and the Mini Rally's level, which are not set here, are not touched)
     const reset = btn('ghost-btn', 'Reset to defaults');
     let armed = false;
     reset.onclick = () => {
@@ -1101,7 +1100,7 @@ export class Menu {
         return;
       }
       const d = defaultSettings(systemPrefersReducedMotion());
-      Object.assign(s, { ...d, bodies: s.bodies, hand: s.hand });
+      Object.assign(s, { ...d, bodies: s.bodies, hand: s.hand, level: s.level });
       changed();
       this.openSheet('settings');
     };

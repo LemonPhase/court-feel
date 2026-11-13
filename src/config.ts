@@ -913,11 +913,12 @@ export const AI = {
  * with the defender's reaction, the hitter's jump with the block's, the hitter's eye for the open
  * spot with the defence's read of the set, tips with dives.
  *
- * Where the numbers come from: four rounds of all-AI rallies (`scripts/levels.mjs`, 9000 s a
- * level, seeds 2024 / 7 / 11), tuned until a hitter with a pro body who swings on time and plays
- * the usual shots scored on 58% of attacks against a Rec side, 47% against Club, 40% against
- * National and 34% against Pro. Reaction times: about 0.2-0.25 s for a trained player (docs/adr/
- * 0005), longer for one who watches the ball. Not yet played by a volleyball player at each level.
+ * Where the numbers come from: four rounds of all-AI rallies (`npm run levels`, 9000 s a level,
+ * seeds 2024 / 7 / 11), tuned until a Pro side that swings on time and plays its usual shots,
+ * without looking for the open spot, scored on about 63% of its attacks against a Rec side, 54%
+ * against Club, 40% against National and 30% against Pro (27-32% from run to run). Reaction times:
+ * about 0.2-0.25 s for a trained player (docs/adr/0005), longer for one who watches the ball. Not
+ * yet played by a volleyball player at each level.
  */
 export type LevelId = 'rec' | 'club' | 'national' | 'pro';
 
@@ -1039,7 +1040,7 @@ export const LEVELS: Record<LevelId, Level> = {
   rec: {
     id: 'rec',
     name: 'Rec',
-    blurb: 'A social league. Floats, high balls, one late blocker, nobody dives.',
+    blurb: 'A social league. Floats, high balls, nobody dives.',
     // a recreational men's approach jump is about 0.6 m and a good spike about 80 km/h
     body: { jump: 0.72, power: 0.75, speed: 0.88, ballControl: 0.55 },
     serve: { jump: 0, floatErr: 0.11, jumpErr: 0.14, seam: 0.1, deep: 0.1, short: 0, body: 0.8, spread: 1.2 },
@@ -1075,7 +1076,7 @@ export const LEVELS: Record<LevelId, Level> = {
   club: {
     id: 'club',
     name: 'Club',
-    blurb: 'A regional club side. Mostly floats, a middle who is late to the pin, a defence that reads late.',
+    blurb: 'A regional club. A late middle, a defence that reads late.',
     body: { jump: 0.84, power: 0.82, speed: 0.93, ballControl: 0.75 },
     serve: { jump: 0.15, floatErr: 0.09, jumpErr: 0.12, seam: 0.25, deep: 0.2, short: 0.05, body: 0.5, spread: 0.9 },
     pass: { timingErr: 0.104, pressure: 1.6, outJudge: 0.5, dive: 0.2, scramble: null },
@@ -1110,7 +1111,7 @@ export const LEVELS: Record<LevelId, Level> = {
   national: {
     id: 'national',
     name: 'National',
-    blurb: 'A national league side. Jump serves, quicks and fast sets, a double block with a small seam.',
+    blurb: 'A national league. Jump serves, quicks, fast sets.',
     body: { jump: 0.93, power: 0.92, speed: 0.97, ballControl: 0.9 },
     serve: { jump: 0.4, floatErr: 0.08, jumpErr: 0.11, seam: 0.4, deep: 0.25, short: 0.1, body: 0.25, spread: 0.7 },
     pass: { timingErr: 0.09, pressure: 1.3, outJudge: 0.3, dive: 0.6, scramble: 0 },
@@ -1145,7 +1146,7 @@ export const LEVELS: Record<LevelId, Level> = {
   pro: {
     id: 'pro',
     name: 'Pro',
-    blurb: 'Men’s numbers. Jump serves at the seams, a closed double block, a defence that reads and dives.',
+    blurb: 'Men’s numbers. A closed double block, a defence that dives.',
     body: { jump: 1, power: 1, speed: 1, ballControl: 1 },
     serve: {
       jump: AI.serve.jump,
