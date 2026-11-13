@@ -129,6 +129,32 @@ describe('net and antennae', () => {
     const r = simulateToFloor(b);
     expect(r.events.some((e) => e.kind === 'net')).toBe(true);
     expect(r.land!.z).toBeGreaterThan(0);
+    expect(r.land!.z).toBeLessThan(1);
+  });
+
+  it('a spike into the net dies in the mesh and drops within a metre of the net, not bounced back', () => {
+    const b = ballAt({ x: 0, y: 2.0, z: 1.2 }, { x: 0, y: -5, z: -20 });
+    let minZ = Infinity;
+    let maxZ = 0;
+    let hit = false;
+    const events: CollisionEvent[] = [];
+    for (let i = 0; i < 240 && !events.some((e) => e.kind === 'floor'); i++) {
+      stepBall(b, DT, env, events);
+      minZ = Math.min(minZ, b.p.z);
+      hit ||= events.some((e) => e.kind === 'net');
+      if (hit) maxZ = Math.max(maxZ, b.p.z);
+    }
+    // it sinks into the mesh (closer than its radius) but its centre never crosses the net plane
+    expect(minZ).toBeLessThan(R - 0.05);
+    expect(minZ).toBeGreaterThan(0);
+    expect(maxZ).toBeLessThan(1);
+  });
+
+  it('a ball driven into the side of the tape drops close to the net instead of bouncing back off it', () => {
+    const b = ballAt({ x: 0, y: env.netTop + 0.08, z: 1 }, { x: 0, y: -1, z: -12 });
+    const r = simulateToFloor(b);
+    expect(r.events.some((e) => e.kind === 'tape')).toBe(true);
+    expect(r.land!.z).toBeGreaterThan(0);
     expect(r.land!.z).toBeLessThan(1.5);
   });
 

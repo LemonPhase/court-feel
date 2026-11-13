@@ -6,7 +6,7 @@ import { BALL, COURT } from '../config';
  *
  * Forces: gravity, quadratic drag, Magnus lift (w x v), optional "float"
  * knuckle wobble. Collisions: floor (restitution + friction/spin coupling),
- * net body (soft), top tape (stiff cylinder), antennae, posts (+pads), LED
+ * net body (a soft mesh the ball sinks into), top tape (cable: stiff from above, gives sideways), antennae, posts (+pads), LED
  * boards, walls and ceiling. Fast balls are sub-stepped so they never tunnel.
  */
 
@@ -145,7 +145,7 @@ function subStep(s: BallState, h: number, env: BallEnv, events?: CollisionEvent[
   p.x += v.x * h;
   p.y += v.y * h;
   p.z += v.z * h;
-  collideNet(s, prevZ, env, events);
+  collideNet(s, prevZ, h, env, events);
   collideAntennae(s, env, events);
   collidePosts(s, events);
   collideFloor(s, h, events);
@@ -200,7 +200,7 @@ function collideFloor(s: BallState, h: number, events?: CollisionEvent[]): void 
   }
 }
 
-function collideNet(s: BallState, prevZ: number, env: BallEnv, events?: CollisionEvent[]): void {
+function collideNet(s: BallState, prevZ: number, h: number, env: BallEnv, events?: CollisionEvent[]): void {
   const { p, v } = s;
   const top = env.netTop;
   const bottom = top - COURT.netDepth;
@@ -219,7 +219,8 @@ function collideNet(s: BallState, prevZ: number, env: BallEnv, events?: Collisio
       const nz = d > 1e-6 ? dz / d : Math.sign(prevZ) || 1;
       const vn = v.y * ny + v.z * nz;
       if (vn < 0) {
-        const e = BALL.tapeRestitution;
+        // the cable is taut from above, but hit from the side the whole net swings back with it
+        const e = BALL.netRestitution + (BALL.tapeRestitution - BALL.netRestitution) * ny * ny;
         v.y -= (1 + e) * vn * ny;
         v.z -= (1 + e) * vn * nz;
         v.x *= 0.85;
@@ -233,25 +234,30 @@ function collideNet(s: BallState, prevZ: number, env: BallEnv, events?: Collisio
       return;
     }
   }
-  // ---- soft net body
-  if (p.y > bottom - R * 0.5 && p.y < cy) {
-    const crossed = Math.sign(p.z) !== Math.sign(prevZ) && prevZ !== 0;
-    if (Math.abs(p.z) < R || crossed) {
-      if (Math.abs(p.x) <= hx) {
-        const side = Math.sign(prevZ) || 1;
-        const vn = -v.z * side; // speed into the net
-        if (vn > 0) {
-          v.z = side * vn * BALL.netRestitution;
-          v.x *= 1 - BALL.netDamping;
-          v.y *= 1 - BALL.netDamping * 0.6;
-          if (v.y > 0) v.y *= 0.5;
-          s.w.x *= 0.3;
-          s.w.y *= 0.3;
-          s.w.z *= 0.3;
-          emit(events, 'net', p, vn);
-        }
-        p.z = side * R;
+  // ---- soft net body: a mesh the ball sinks into (up to netGive), held by an overdamped spring
+  // and gripped by the mesh, so it dies there and drops down the net. The centre never crosses
+  // the net plane (the judge reads a crossing as the ball going over or under).
+  if (p.y > bottom - R * 0.5 && p.y < cy && Math.abs(p.x) <= hx) {
+    const side = Math.sign(prevZ) || 1;
+    const depth = R - p.z * side; // how far into the mesh
+    if (depth > 0) {
+      if (R - Math.abs(prevZ) <= 0 && -v.z * side > 0) emit(events, 'net', p, -v.z * side);
+      const zMin = R - BALL.netGive;
+      if (depth >= BALL.netGive) {
+        // the mesh is taut: no more give
+        p.z = side * zMin;
+        const vn = -v.z * side;
+        if (vn > 0) v.z = side * vn * BALL.netRestitution;
       }
+      const k = BALL.netStiffness * BALL.netStiffness;
+      const c = 2 * BALL.netDampingRatio * BALL.netStiffness;
+      v.z = v.z * Math.exp(-c * (v.z * side < 0 ? 1 : BALL.netReturn) * h) + side * k * Math.min(depth, BALL.netGive) * h;
+      const g = Math.exp(-BALL.netGrip * h);
+      v.x *= g;
+      if (v.y > 0) v.y *= g;
+      s.w.x *= g;
+      s.w.y *= g;
+      s.w.z *= g;
     }
   }
 }

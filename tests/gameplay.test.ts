@@ -503,22 +503,30 @@ describe('spike drill set calls', () => {
 });
 
 describe('middle shot choice', () => {
-  it('a middle only hits the deep corners, zone 1 or zone 5', () => {
+  it('a middle hits down and short, into the 3-6 m zone; now and then deep to zone 1 or zone 5', () => {
     for (const side of [1, -1] as const) {
       const a = new Athlete('MB', side);
       const brain = new HitterBrain(a, laneFor('MB', side));
       const seen = new Set<string>();
-      for (let i = 0; i < 40; i++) {
-        const r = (i + 0.5) / 40;
+      let short = 0;
+      const n = 200;
+      for (let i = 0; i < n; i++) {
+        const r = (i + 0.5) / n;
         const g = { rng: { next: () => r, gauss: () => 0 } } as any;
         const aim = brain.chooseAim(g, 0.2 * side);
         seen.add(brain.lastShot);
-        expect(Math.abs(aim.x)).toBeGreaterThan(2.8);
-        expect(aim.z * side).toBeLessThan(-6.5);
+        // always into their court, the side away from the hitter
+        expect(Math.sign(aim.z)).toBe(-side);
+        if (Math.abs(aim.z) >= 3 && Math.abs(aim.z) <= 6) short++;
+        else {
+          expect(Math.abs(aim.x)).toBeGreaterThan(2.8);
+          expect(Math.abs(aim.z)).toBeGreaterThan(6.5);
+        }
       }
-      expect([...seen].sort()).toEqual(['zone 1', 'zone 5']);
+      expect(short / n).toBeGreaterThan(0.7);
+      expect([...seen].sort()).toEqual(['cut', 'down', 'zone 1', 'zone 5']);
       // zone 1 is the receiving team's right back: x < 0 when the home team attacks
-      const g1 = { rng: { next: () => 0.1, gauss: () => 0 } } as any;
+      const g1 = { rng: { next: () => 0.85, gauss: () => 0 } } as any;
       const z1 = brain.chooseAim(g1, 0);
       expect(brain.lastShot).toBe('zone 1');
       expect(Math.sign(z1.x)).toBe(-side);
