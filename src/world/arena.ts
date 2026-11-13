@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ARENA, COURT } from '../config';
 import { FloorReflection, REFLECT_LAYER } from './floorReflection';
 import { mergeGeometries } from './geo';
+import { netPress } from './netPress';
 import { buildBowl } from './stands';
 import { makeAntennaTexture, makeBoardTexture, makeNetTexture, makeWoodTextures } from './textures';
 
@@ -20,9 +21,13 @@ export class Arena {
   keyLight!: THREE.DirectionalLight;
   envMap: THREE.Texture | null = null;
   readonly reflection: FloorReflection;
-  /** recent ball hits on the net mesh: x, y (in the mesh's own frame), push (m, signed along z), time of the hit */
+  /** where the ball last let go of the mesh: x, y (in the mesh's own frame), how far it had pushed it (m, signed along z), when */
   private netHits = { value: Array.from({ length: ARENA.net.hits }, () => new THREE.Vector4()) };
   private netTime = { value: 0 };
+  /** the ball in the mesh right now: x, y (in the mesh's own frame) and how far it pushes the mesh (m, signed along z) */
+  private netBall = { value: new THREE.Vector3() };
+  private pressed = false;
+  private press = { x: 0, y: 0, push: 0 };
   private netHitNext = 0;
   /** the floor and what is painted on it: not part of its own mirror image */
   private unmirrored: THREE.Object3D[] = [];
@@ -180,18 +185,26 @@ export class Arena {
       roughness: 0.9,
       depthWrite: false,
     });
-    // the mesh gives where the ball hits it: a bulge that swings back and dies away (the tapes stay put)
+    // the mesh gives with the ball: it is pushed as far as the ball has sunk into it, and once the
+    // ball lets go it swings back and settles (the tapes stay put)
     netMat.onBeforeCompile = (shader) => {
       shader.uniforms.uNetHits = this.netHits;
       shader.uniforms.uNetTime = this.netTime;
+      shader.uniforms.uNetBall = this.netBall;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform vec4 uNetHits[ ' + ARENA.net.hits + ' ];\nuniform float uNetTime;')
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform vec4 uNetHits[ ' + ARENA.net.hits + ' ];\nuniform float uNetTime;\nuniform vec3 uNetBall;',
+        )
         .replace(
           '#include <begin_vertex>',
           /* glsl */ `#include <begin_vertex>
           {
             // held along the top and bottom tapes and at the side bands
             float held = sin( 3.14159 * uv.y ) * smoothstep( 0.0, 0.06, uv.x ) * smoothstep( 1.0, 0.94, uv.x );
+            // under the ball the mesh goes all the way with it, except right at the tapes
+            vec2 db = transformed.xy - uNetBall.xy;
+            transformed.z += uNetBall.z * exp( - dot( db, db ) / ${(ARENA.net.spread ** 2).toFixed(4)} ) * min( 1.0, held * ${ARENA.net.pin.toFixed(1)} );
             for ( int i = 0; i < ${ARENA.net.hits}; i ++ ) {
               vec4 hit = uNetHits[ i ];
               float age = uNetTime - hit.w;
@@ -438,13 +451,24 @@ export class Arena {
   }
 
   /**
-   * The ball hit the net at (`x`, `y`) with normal speed `impact` (m/s), travelling towards `dir` (sign of z):
-   * the mesh bulges that way. Looks only: the ball's bounce is the physics' business.
+   * Where the ball is drawn this frame (null without one): the mesh goes with a ball that is in it,
+   * and swings back from where the ball left it. Looks only: what the ball does in the net is the
+   * physics' business (`BALL.netGive`).
    */
-  netHit(x: number, y: number, impact: number, dir: number): void {
-    const push = Math.min(ARENA.net.maxPush, impact * ARENA.net.pushPerSpeed) * (dir < 0 ? -1 : 1);
-    this.netHits.value[this.netHitNext].set(x, y - (this.netTop - COURT.netDepth / 2), push, this.netTime.value);
+  netPress(ball: { x: number; y: number; z: number } | null): void {
+    const at = ball ? netPress(ball, this.netTop, this.press) : null;
+    if (at) {
+      this.netBall.value.set(at.x, at.y, at.push);
+      this.pressed = true;
+      return;
+    }
+    if (!this.pressed) return;
+    // the ball has let go: the mesh swings back from there
+    this.pressed = false;
+    const b = this.netBall.value;
+    this.netHits.value[this.netHitNext].set(b.x, b.y, b.z, this.netTime.value);
     this.netHitNext = (this.netHitNext + 1) % ARENA.net.hits;
+    b.z = 0;
   }
 
   excite(amount: number): void {

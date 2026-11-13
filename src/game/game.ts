@@ -625,6 +625,7 @@ export class Game {
 
   private renderReplay(dt: number, draw: boolean): void {
     this.mode?.replayFrame();
+    this.arena.netPress(this.ball.mesh.visible ? this.ball.mesh.position : null);
     this.rig.update(dt, null);
     this.fx.update(dt * this.fx.replay.speed);
     this.arena.update(dt);
@@ -767,11 +768,7 @@ export class Game {
       else if (act.kind === 'pass' && act.resolved && this.simTime > act.contactT + 0.4) a.endAction();
     }
     this.ball.step(dt, this.env);
-    for (const e of this.ball.events) {
-      // the net gives where the ball hits it (pushed away from the side the ball is on)
-      if (e.kind === 'net') this.arena.netHit(e.x, e.y, e.impact, e.z > 0 ? -1 : 1);
-      this.events.emit('ballEvent', e);
-    }
+    for (const e of this.ball.events) this.events.emit('ballEvent', e);
     const out = this.judge.step(this.ball, this.ball.events, this.env.netTop);
     if (out) {
       this.events.emit('outcome', out);
@@ -825,6 +822,8 @@ export class Game {
     const alpha = this.accum / (1 / SIM.hz);
     for (const a of this.athletes) a.interpolate(alpha);
     this.ball.interpolate(alpha, this.hitStop > 0);
+    // the net's mesh goes with a ball that is in it
+    this.arena.netPress(this.ball.active ? this.ball.rpos : null);
     const step = 1 / SIM.hz;
     const tr = this.simTime - step * (1 - alpha);
     const animDt = Math.max(0, tr - this.lastRenderSimT);

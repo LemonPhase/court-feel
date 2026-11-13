@@ -49,7 +49,8 @@ export const BALL = {
   floorFriction: 0.32,
   /** The net is a soft mesh: the ball sinks into it, dies and drops down the net, as a ball
    * driven into a real net does (it comes out within about a metre of it, not bounced back off a
-   * wall). The net is drawn static, so the give is kept within the ball's radius. */
+   * wall). The give is kept within the ball's radius; the drawn mesh goes in with the ball
+   * (`ARENA.net`). */
   netGive: 0.08,
   /** the mesh's spring (rad/s) and its damping ratio (> 1: it eases the ball back out, no bounce) */
   netStiffness: 35,
@@ -555,11 +556,12 @@ export const ARENA = {
     doorEvery: 9,
   },
   /**
-   * the net mesh gives when the ball hits it: how far (m per m/s of the ball's speed into it, up to a limit),
-   * how wide the bulge is (m), how fast it swings (rad/s) and dies away (1/s), for how long (s), and how many
-   * hits can be shown at once
+   * The net's mesh is drawn going with a ball that is in it (as far as the ball has sunk: `BALL.netGive`),
+   * in a bulge `spread` (m) wide, held only close to the tapes (`pin`: how sharply). Once the ball lets go
+   * it swings back at `swing` (rad/s) and dies away at `damping` (1/s), with hardly any overshoot: the
+   * ball is still beside it, dropping down the net. Shown for `life` (s); `hits` can settle at once.
    */
-  net: { pushPerSpeed: 0.016, maxPush: 0.3, spread: 0.5, swing: 19, damping: 4.5, life: 1.6, hits: 4 },
+  net: { spread: 0.25, pin: 3, swing: 12, damping: 6, life: 1.2, hits: 4 },
   /** the finished picture: darker corners (0 = none), an S-curve of contrast (0 = none), saturation (1 = as rendered) */
   grade: { vignette: 0.32, contrast: 0.16, saturation: 1.06 },
   /** light on the court: sky and floor-bounce fill, the key from the roof, and two soft fills from the long sides */
