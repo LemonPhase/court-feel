@@ -47,10 +47,22 @@ export const BALL = {
   spinDecayTime: 3.0,
   floorRestitution: 0.66,
   floorFriction: 0.32,
-  /** soft mesh of the net eats most of the energy */
-  netRestitution: 0.16,
-  netDamping: 0.45,
-  /** the top cable/tape is stiffer: lets roll over */
+  /** The net is a soft mesh: the ball sinks into it, dies and drops down the net, as a ball
+   * driven into a real net does (it comes out within about a metre of it, not bounced back off a
+   * wall). The net is drawn static, so the give is kept within the ball's radius. */
+  netGive: 0.08,
+  /** the mesh's spring (rad/s) and its damping ratio (> 1: it eases the ball back out, no bounce) */
+  netStiffness: 35,
+  netDampingRatio: 1.5,
+  /** ...and only part of that damping (this share) as it pushes the ball back out, so a hard ball pops
+   * out a little (about half a metre) while a soft one drops down the net */
+  netReturn: 0.3,
+  /** what is left of the ball's speed into the net once the mesh is taut */
+  netRestitution: 0.1,
+  /** the mesh grips the ball: its sideways and upward speed die at this rate (1/s) while it is in */
+  netGrip: 18,
+  /** the top cable/tape is stiff from above (a ball can roll over it); hit from the side the net
+   * swings back with it, so its bounce blends down to `netRestitution` */
   tapeRestitution: 0.38,
   tapeRadius: 0.035,
   antennaRestitution: 0.55,
