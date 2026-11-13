@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { ASSIST, BALL, CONTACT, COURT, SET_LEVELS, TIMING, type SetLevel } from '../config';
-import { clamp, clamp01, dirFromYaw, lerp, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
+import { ASSIST, BALL, CONTACT, COURT, PLAYER, SET_LEVELS, TIMING, type SetLevel } from '../config';
+import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
 import { netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
-import { Athlete, type Action, type Grade } from './athlete';
+import { Athlete, type Action, type Grade, type PassForm } from './athlete';
 import type { BallEntity, TouchKind } from './ballEntity';
 import type { SetterKey } from './setterCalls';
 import { gradeRelease, setMiss, setNote, setQuality, setShape, setTouch, setWindow, type SetWindow } from './setTiming';
@@ -24,6 +24,8 @@ export interface ContactEvent {
   target: THREE.Vector3;
   /** swing power 0..1 from the wind-up hold (spikes / serves) */
   power?: number;
+  /** a pass or dig: how it was played (the platform in front, out to the side, overhand, diving) */
+  form?: PassForm;
 }
 
 export interface IdealInfo {
@@ -122,11 +124,20 @@ const GRADE_RANK: Record<Grade, number> = { Perfect: 3, Good: 2, Early: 1, Late:
  * predicted best moment, clamped to what a real arm swing can stretch to, and
  * graded on how far the click was from ideal (plus jump timing and reach).
  */
+/**
+ * Where a blocker's hands are: over the body, or reaching sideways (`Athlete.reachX`); a reach
+ * costs height (`CONTACT.blockReachDrop` per metre), so a stretched block is lower and softer.
+ */
+export function blockHands(a: Athlete): { x: number; top: number } {
+  return { x: a.pos.x + a.reachX, top: a.pos.y + a.standReach + 0.04 - Math.abs(a.reachX) * CONTACT.blockReachDrop };
+}
+
 export class ContactSystem {
   constructor(private host: ContactHost) {}
 
   private _a = new THREE.Vector3();
   private _p = new THREE.Vector3();
+  private _q = new THREE.Vector3();
   private _b: V3 = { x: 0, y: 0, z: 0 };
 
   /** search the next `horizon` seconds for the moment the ball is closest to the athlete's ideal point */
@@ -193,14 +204,14 @@ export class ContactSystem {
    * moment it can still reach (graded on this release). A hold shorter than
    * a tap becomes a tip; longer holds hit harder up to full charge.
    */
-  releaseWindup(a: Athlete, opts: { aiErr?: number; tip?: boolean } = {}): Action | null {
+  releaseWindup(a: Athlete, opts: { aiErr?: number; tip?: boolean; push?: boolean } = {}): Action | null {
     const act = a.action;
     if (!act || act.kind !== 'windup') return null;
     const hold = this.host.simTime - act.t0;
     const tip = opts.tip ?? hold < TIMING.tapThreshold;
     // the closest approach the wind-up saw for this ball (it may already be behind a late release)
     const seen = act.idealFor === this.host.ball.lastTouch && act.idealT > 0 ? { t: act.idealT, d: act.idealD } : undefined;
-    return this.startSwing(a, { aiErr: opts.aiErr, charge: tip ? 0 : ContactSystem.chargeFor(hold), tip, seen });
+    return this.startSwing(a, { aiErr: opts.aiErr, charge: tip ? 0 : ContactSystem.chargeFor(hold), tip, push: opts.push, seen });
   }
 
   /** during a wind-up: remember the closest approach of the ball to the ideal contact point */
@@ -223,12 +234,16 @@ export class ContactSystem {
   private _wi: IdealInfo = { t: 0, d: 1e9, ball: new THREE.Vector3(), point: new THREE.Vector3() };
 
   /** begin a spike/serve swing now (the release of the wind-up) */
-  startSwing(a: Athlete, opts: { aiErr?: number; charge?: number; tip?: boolean; seen?: { t: number; d: number } } = {}): Action {
+  startSwing(
+    a: Athlete,
+    opts: { aiErr?: number; charge?: number; tip?: boolean; push?: boolean; seen?: { t: number; d: number } } = {},
+  ): Action {
     const h = this.host;
     const t = h.simTime;
     const act = a.startAction('swing', t);
     act.charge = opts.charge ?? 1;
     act.tip = opts.tip ?? false;
+    act.push = act.tip && (opts.push ?? false);
     const lead = ContactSystem.swingLead(act.tip ? 0 : act.charge);
     const info = this.ideal(a, t + TIMING.swingMin * 0.5);
     let tStar = t + lead;
@@ -366,14 +381,33 @@ export class ContactSystem {
     const spread = rank === 3 ? 0 : rank === 2 ? 0.45 : 1.3;
     target.x += (h.rand() * 2 - 1) * spread;
     target.z += (h.rand() * 2 - 1) * spread * 0.6;
-    if (grade === 'Early') target.z += side * 2.2; // contact under the ball: sails long
-    if (grade === 'Late') target.z -= side * 1.8; // over the top: drives down into the net
+    // the AI never misses a serve: a mistimed one is just slower and easier, well inside the lines
+    const safeServe = serve && !a.isUser;
+    // contact under the ball: sails long (a jump serve keeps its line and loses its topspin below)
+    if (grade === 'Early' && !serve) target.z += side * 2.2;
+    if (grade === 'Late' && !safeServe) target.z -= side * 1.8; // over the top: drives down into the net
+    if (safeServe) {
+      target.x = clamp(target.x, -COURT.halfWidth + CONTACT.serveSafe, COURT.halfWidth - CONTACT.serveSafe);
+      target.z = side * clamp(Math.abs(target.z), 2.5, COURT.halfLength - CONTACT.serveSafe);
+    }
     const pos = a.stats;
     const hf = a.state === 'air' && a.jumpH > 0 ? clamp01(a.pos.y / a.jumpH) : 0.6;
     const out = { x: 0, y: 0, z: 0 };
     const w = { x: 0, y: 0, z: 0 };
     let speed: number;
-    if (tip) {
+    if (act.push) {
+      // a push straight at the block's hands (where the hitter aims it): soft and a little down
+      const aim = a.aiAim;
+      const dx = aim.x - bp.x;
+      const dy = -CONTACT.pushDrop;
+      const dz = aim.z - bp.z;
+      const tt = Math.hypot(dx, dy, dz) / CONTACT.pushSpeed;
+      out.x = dx / tt;
+      out.y = dy / tt + 0.5 * BALL.gravity * tt;
+      out.z = dz / tt;
+      speed = Math.hypot(out.x, out.y, out.z);
+      ball.hit(out, w, 0, h.simTime);
+    } else if (tip) {
       // tip / roll shot: short = tip over the block, deep = topspin roll
       const depth = Math.abs(target.z);
       const roll = depth > 4.5;
@@ -391,35 +425,46 @@ export class ContactSystem {
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
       // floaters wobble: keep a margin over the tape (good serves skim it, bad ones may not)
-      const margin = rank >= 2 ? 0.28 : 0.12;
+      const margin = rank >= 2 || safeServe ? 0.28 : 0.12;
       for (let k = 0; k < 4; k++) {
         const c = netClearance(p0, out, w);
         if (!c || c.y > h.env.netTop + R + margin) break;
-        target.z += side * 0.8;
+        if (safeServe && Math.abs(target.z) >= COURT.halfLength - CONTACT.serveSafe - 0.1) {
+          speed *= 0.92;
+        } else target.z = side * Math.min(Math.abs(target.z) + 0.8, safeServe ? COURT.halfLength - CONTACT.serveSafe : 99);
         solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
       }
+      if (safeServe) speed = this.overTheTape(p0, target, out, w, margin);
       ball.hit(out, { x: 0, y: 0, z: 0 }, BALL.floatWobble * (rank === 3 ? 1.2 : 0.8), h.simTime);
     } else {
       const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
       const gradeK = serve ? (rank === 3 ? 1.1 : rank === 2 ? 1 : 0.8) : 1;
       speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1) * power;
-      const spin =
-        (serve ? CONTACT.serveJumpSpin : rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk) *
-        lerp(0.75, 1, power);
+      // a serve's topspin comes from the same arm speed as its pace: a slower, mistimed swing spins it less
+      const spin = serve
+        ? CONTACT.serveJumpSpin * Math.min(1, speed / CONTACT.serveJumpSpeed)
+        : (rank === 3 ? CONTACT.spikeSpinPerfect : rank === 2 ? CONTACT.spikeSpinGood : CONTACT.spikeSpinOk) * lerp(0.75, 1, power);
       const land = { x: 0, y: 0, z: 0 };
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, spin, out, w, land);
+      const tape = 0.12;
       if (!a.isUser) {
         // AI attackers read the net: from deep or low contacts they hit deeper / softer
         for (let k = 0; k < 6; k++) {
           const c = netClearance(p0, out, w);
-          if (!c || c.y > h.env.netTop + R + 0.12) break;
-          // deeper, but never past the end line
-          if (Math.abs(target.z) < COURT.halfLength - 0.8) target.z = side * Math.min(Math.abs(target.z) + 1.0, COURT.halfLength - 0.3);
+          if (!c || c.y > h.env.netTop + R + tape) break;
+          // deeper, but never past the end line (an AI serve kept CONTACT.serveSafe inside it)
+          if (Math.abs(target.z) < COURT.halfLength - 0.8)
+            target.z = side * Math.min(Math.abs(target.z) + 1.0, COURT.halfLength - (safeServe ? CONTACT.serveSafe : 0.3));
           else speed *= 0.85;
           solveSpeedToFloor(p0, target.x, target.z, speed, spin * 0.8, out, w, land);
         }
       }
+      if (serve && grade === 'Early' && !safeServe) {
+        w.x *= CONTACT.serveEarlySpin;
+        w.z *= CONTACT.serveEarlySpin;
+      }
+      if (safeServe) speed = this.overTheTape(p0, target, out, w, tape);
       ball.hit(out, w, 0, h.simTime);
     }
     // an attack straight off your green set
@@ -445,6 +490,20 @@ export class ContactSystem {
     });
   }
 
+  /**
+   * The AI never serves into the net: a serve (`out`, spin `w`) that its aim could not get over the
+   * tape by `margin` m is played as a higher, slower ball to the same spot, no spin. Returns its speed.
+   */
+  private overTheTape(p0: V3, target: V3, out: V3, w: V3, margin: number): number {
+    const netTop = this.host.env.netTop;
+    const c = netClearance(p0, out, w);
+    if (!c || c.y < netTop + R + margin) {
+      w.x = w.y = w.z = 0;
+      solveApex(p0, { x: target.x, y: R, z: target.z }, Math.max(p0.y, netTop) + CONTACT.serveSafeApex, w, out);
+    }
+    return Math.hypot(out.x, out.y, out.z);
+  }
+
   // ================================================================ zone contacts
 
   private ballIncoming(a: Athlete): boolean {
@@ -458,7 +517,21 @@ export class ContactSystem {
   /** platform centre for a pass / dig */
   platformPoint(a: Athlete, out: THREE.Vector3): THREE.Vector3 {
     const f = dirFromYaw(a.yaw, _f);
+    if (a.state === 'dive') {
+      // diving: the arms stretch out ahead, down to the floor
+      const p = smooth01(a.stateT / PLAYER.diveDown);
+      const reach = lerp(0.45, PLAYER.diveArm, p);
+      return out.set(a.pos.x + f.x * reach, lerp(a.height * 0.34, CONTACT.diveLow, p), a.pos.z + f.z * reach);
+    }
     return out.set(a.pos.x + f.x * 0.45, a.pos.y + a.height * 0.34, a.pos.z + f.z * 0.45);
+  }
+
+  /** the platform swung out to side `s` (+1 right, -1 left), the feet where they are: lower, and level with the hips */
+  sidePlatformPoint(a: Athlete, s: 1 | -1, out: THREE.Vector3): THREE.Vector3 {
+    const f = dirFromYaw(a.yaw, _f);
+    const r = rightFromYaw(a.yaw, _r);
+    const k = s * CONTACT.sideReach;
+    return out.set(a.pos.x + f.x * 0.2 + r.x * k, a.pos.y + a.height * 0.3, a.pos.z + f.z * 0.2 + r.z * k);
   }
 
   /** setter's hands point (ball centre at contact) */
@@ -473,17 +546,32 @@ export class ContactSystem {
     if (!this.ballIncoming(a)) return false;
     const ball = h.ball;
     const bp = ball.pos;
-    const P = this.platformPoint(a, this._p);
+    const hands = act.form === 'hands';
+    // a ball off the other team's block (our attack came back): our cover is digging it
+    const covered = ball.lastTouch?.kind === 'block' && ball.lastTouch.side !== a.side;
+    const P = hands ? this.handsPoint(a, this._p) : this.platformPoint(a, this._p);
     const assist = h.aimAssist(a);
-    // hard-driven balls: a little extra reach (lunge), more for AI defenders
+    // hard-driven balls: a little extra reach (a lunge), the same for everyone
     const hard = clamp01((ball.speed() - 14) / 10);
-    const r = CONTACT.passRadius + assist * 0.25 + hard * (a.isUser ? 0.12 : 0.3);
-    const dx = bp.x - P.x;
-    const dy = bp.y - P.y;
-    const dz = bp.z - P.z;
+    const r = (hands ? CONTACT.setRadius : CONTACT.passRadius) + assist * 0.25 + hard * CONTACT.digLunge;
     // forgiving vertically for low digs
-    const d = Math.hypot(dx, dy * (dy < 0 ? 0.6 : 1), dz);
-    if (d > r || bp.y > a.pos.y + a.height * 0.75) {
+    const dist = (Q: THREE.Vector3) => {
+      const dy = bp.y - Q.y;
+      return Math.hypot(bp.x - Q.x, dy * (dy < 0 ? 0.6 : 1), bp.z - Q.z);
+    };
+    let d = dist(P);
+    let form: PassForm = a.state === 'dive' ? 'dive' : hands ? 'hands' : 'platform';
+    if (form === 'platform' && d > r * 0.6) {
+      // a ball going by to one side: the platform swings out to it, the feet stay where they are
+      const rt = rightFromYaw(a.yaw, _r);
+      const s = (bp.x - a.pos.x) * rt.x + (bp.z - a.pos.z) * rt.z >= 0 ? 1 : -1;
+      const dq = dist(this.sidePlatformPoint(a, s, this._q));
+      if (dq < d) {
+        d = dq;
+        form = 'side';
+      }
+    }
+    if (d > r || (!hands && bp.y > a.pos.y + a.height * 0.75)) {
       act.minD = 1e9;
       return false;
     }
@@ -520,20 +608,55 @@ export class ContactSystem {
     }
     const dig = incoming > 14;
     if (dig && grade === 'Good' && incoming > 22) grade = 'Late';
+    if (form === 'side' && grade === 'Perfect') grade = 'Good';
+    // a dive is about getting there at all: a clean touch at full stretch keeps it up, a scrape is late
+    if (form === 'dive') grade = dBest < r * 0.5 ? 'Good' : 'Late';
+    // the hands can't hold a hard ball
+    if (form === 'hands' && incoming > CONTACT.handsMaxSpeed) grade = downgrade(grade, false);
+    if (form !== 'platform') note = form === 'side' ? 'Side dig' : form === 'dive' ? 'Dive' : note || 'Overhand';
+    if (covered) {
+      if (grade === 'Perfect') grade = 'Good';
+      note = 'Covered';
+    }
+    // a hard-driven ball off a mistimed or off-centre platform is shanked: it leaves the arms at a
+    // bad angle, wide and fast, and usually out of play
+    const badness = grade === 'Perfect' ? 0 : grade === 'Good' ? CONTACT.shankGood : 1;
+    let pShank = CONTACT.shank * fast * Math.max(badness, clamp01(dBest / r));
+    // (playability: the AI gets to the user's hard spike, but shanks a lot of them)
+    const lt = ball.lastTouch;
+    if (dig && !a.isUser && lt?.kind === 'spike' && lt.athlete?.isUser) pShank = Math.max(pShank, CONTACT.userSpikeShank);
+    if (h.rand() < pShank) {
+      act.form = form;
+      this.shank(a, act, incoming, t);
+      return true;
+    }
     const skill = a.stats.ballControl;
     const errBase = grade === 'Perfect' ? CONTACT.passErrPerfect : grade === 'Good' ? CONTACT.passErrGood : CONTACT.passErrOk;
-    const err = errBase * (1.3 - skill * 0.5) * (dig ? 1.3 : 1);
+    // a hard serve or spike, or a passer still on the move, comes off the arms with less control
+    const moving = clamp01(Math.hypot(a.vel.x, a.vel.z) / a.stats.approachSpeed);
+    const pressure = 1 + CONTACT.passSpeedErr * fast + CONTACT.passMoveErr * moving;
+    const formErr = form === 'side' ? CONTACT.sideErr : form === 'dive' ? CONTACT.diveErr : form === 'hands' ? CONTACT.handsErr : 1;
+    const err = errBase * (1.3 - skill * 0.5) * (dig ? 1.3 : 1) * pressure * formErr;
     const T = h.passTarget(a);
     const ang = h.rand() * Math.PI * 2;
     const rad = err * Math.sqrt(h.rand());
     const target = { x: T.x + Math.cos(ang) * rad, y: T.y, z: T.z + Math.sin(ang) * rad * 0.7 };
+    if (covered) {
+      // a covered ball goes up high to the middle of the court, well off the net: out of system
+      const C = CONTACT.covered;
+      target.x = clamp(T.x * 0.4 + (h.rand() * 2 - 1) * C.spread, -COURT.halfWidth + 1, COURT.halfWidth - 1);
+      target.z = a.side * (C.off + h.rand() * C.depth);
+    }
     // never pass it over our own end line: keep shanks wild but plausible
     if (grade !== 'Perfect' && grade !== 'Good' && h.rand() < 0.35) {
       target.x += (h.rand() * 2 - 1) * 3;
       target.z += a.side * (h.rand() * 3);
     }
     const out = { x: 0, y: 0, z: 0 };
-    const apex = Math.max(T.apex + (grade === 'Perfect' ? 0 : (h.rand() - 0.3) * 1.2), bp.y + 0.6);
+    // (a dive digs it up high: time to get up, and for someone else to play it)
+    const apex = covered
+      ? CONTACT.covered.apex + h.rand() * 0.8
+      : Math.max(T.apex + (grade === 'Perfect' ? 0 : (h.rand() - 0.3) * 1.2), bp.y + 0.6) + (form === 'dive' ? 1 : 0);
     solveApex({ x: bp.x, y: bp.y, z: bp.z }, target, apex, { x: 0, y: 0, z: 0 }, out);
     ball.hit(out, { x: (h.rand() - 0.5) * 6, y: 0, z: (h.rand() - 0.5) * 6 }, 0, t);
     ball.lastTouch = { athlete: a, kind: dig ? 'dig' : 'pass', t, side: a.side };
@@ -543,8 +666,10 @@ export class ContactSystem {
     act.grade = grade;
     act.note = note;
     act.contactPoint.set(bp.x, bp.y, bp.z);
+    act.form = form;
     h.emitContact({
       athlete: a,
+      form,
       kind: dig ? 'dig' : 'pass',
       grade,
       note,
@@ -556,6 +681,42 @@ export class ContactSystem {
       target: new THREE.Vector3(target.x, target.y, target.z),
     });
     return true;
+  }
+
+  /** a shanked pass or dig: off the arms sideways and up, still going the way it came, and slower */
+  private shank(a: Athlete, act: Action, incoming: number, t: number): void {
+    const h = this.host;
+    const ball = h.ball;
+    const bp = ball.pos;
+    const bv = ball.vel;
+    const hv = Math.hypot(bv.x, bv.z) || 1;
+    const turn = (h.rand() * 2 - 1) * CONTACT.shankTurn;
+    const dx = (bv.x / hv) * Math.cos(turn) - (bv.z / hv) * Math.sin(turn);
+    const dz = (bv.x / hv) * Math.sin(turn) + (bv.z / hv) * Math.cos(turn);
+    const sp = incoming * lerp(CONTACT.shankSpeed[0], CONTACT.shankSpeed[1], h.rand());
+    const up = lerp(0.5, 1.2, h.rand());
+    const out = { x: dx * Math.cos(up) * sp, y: Math.sin(up) * sp, z: dz * Math.cos(up) * sp };
+    ball.hit(out, { x: (h.rand() - 0.5) * 10, y: 0, z: (h.rand() - 0.5) * 10 }, 0, t);
+    ball.lastTouch = { athlete: a, kind: 'dig', t, side: a.side };
+    a.lastTouchT = t;
+    act.resolved = true;
+    act.contactT = t;
+    act.grade = 'Late';
+    act.note = 'Shanked';
+    act.contactPoint.set(bp.x, bp.y, bp.z);
+    h.emitContact({
+      athlete: a,
+      kind: 'dig',
+      form: act.form,
+      grade: 'Late',
+      note: 'Shanked',
+      speed: sp,
+      point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      quality: 0,
+      perfect: false,
+      tip: false,
+      target: new THREE.Vector3(bp.x + dx * 4, 0, bp.z + dz * 4),
+    });
   }
 
   /** should the right button set (ball dropping onto us from our own side) */
@@ -822,7 +983,8 @@ export class ContactSystem {
     const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
     const assist = h.aimAssist(a);
     const halfW = CONTACT.blockHalfWidth + assist * 0.12;
-    const top = a.pos.y + a.standReach + 0.04;
+    const hands = blockHands(a);
+    const top = hands.top;
     const bottom = top - CONTACT.blockHeight;
     // hands reach over the net: from our side up to 0.3m into theirs
     const pen = (a.state === 'air' ? 0.32 : 0.12) * ext;
@@ -831,7 +993,7 @@ export class ContactSystem {
     const zmin = Math.min(zNear, zFar) - R;
     const zmax = Math.max(zNear, zFar) + R;
     if (bp.y < bottom - R || bp.y > top + R) return false;
-    if (Math.abs(bp.x - a.pos.x) > halfW + R) return false;
+    if (Math.abs(bp.x - hands.x) > halfW + R) return false;
     if (bp.z < zmin || bp.z > zmax) return false;
     if (ext < 0.35) return false;
     // ---- grade
@@ -852,11 +1014,26 @@ export class ContactSystem {
     const incoming = Math.hypot(bv.x, bv.y, bv.z);
     const rank = GRADE_RANK[grade];
     const out = { x: 0, y: 0, z: 0 };
-    let kind: 'stuff' | 'soft' | 'tool';
+    let kind: 'stuff' | 'soft' | 'tool' | 'recycle';
     const roll = h.rand();
+    // off the outer edge of the hands (away from the middle of the court): the hitter wiped it, the
+    // ball goes off the fingers and wide (`CONTACT.toolEdge` of the hand's half-width out)
+    const off = bp.x - hands.x;
+    // (playability: the user's spike wipes off an AI block more often)
+    const userHit = lt.athlete?.isUser === true && !a.isUser;
+    const toolEdge = userHit ? CONTACT.userToolEdge : CONTACT.toolEdge;
+    const toolEdgeP = userHit ? CONTACT.userToolEdgeP : CONTACT.toolEdgeP;
+    const edge = Math.abs(off) > halfW * toolEdge && Math.sign(off) === Math.sign(hands.x) && h.rand() < toolEdgeP;
     // AI blockers convert fewer of their good blocks into stuffs than the user
     const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;
-    if (rank >= 2 && roll < stuffP) {
+    if (!edge && incoming < CONTACT.recycleSpeed && h.rand() < (rank >= 2 ? CONTACT.recycleP : CONTACT.recyclePLate)) {
+      // a soft ball into a good block comes back off the hands to the hitter's side, slow and up:
+      // their cover picks it up and they go again (recycling)
+      kind = 'recycle';
+      out.x = bv.x * 0.15 + (h.rand() * 2 - 1) * 0.8;
+      out.y = lerp(2.6, 4.2, h.rand());
+      out.z = -a.side * lerp(1.2, 2.6, h.rand());
+    } else if (rank >= 2 && !edge && roll < stuffP) {
       // stuff: driven down into their court, close to the net
       kind = 'stuff';
       const sp = Math.max(9, incoming * (rank === 3 ? 0.62 : 0.45));
@@ -865,29 +1042,29 @@ export class ContactSystem {
       out.x = bv.x * 0.2 + Math.sin(lat) * sp * 0.4;
       out.y = Math.sin(ang) * sp;
       out.z = -a.side * Math.cos(ang) * sp;
-    } else if (rank >= 2 || roll < 0.55) {
+    } else if (!edge && (rank >= 2 || roll < 0.55)) {
       // soft block: ball pops up, slowed, usually stays playable on our side
       kind = 'soft';
       out.x = bv.x * 0.3 + (h.rand() * 2 - 1) * 1.2;
       out.y = 3.2 + h.rand() * 2.5;
       out.z = bv.z * 0.18;
     } else {
-      // tooled: off the fingers and wide
+      // tooled: off the fingers and wide (off the outer edge, whatever the block's timing)
       kind = 'tool';
-      const sgn = h.rand() < 0.5 ? -1 : 1;
+      const sgn = edge ? Math.sign(off) : h.rand() < 0.5 ? -1 : 1;
       out.x = sgn * (4 + h.rand() * 4);
       out.y = 2 + h.rand() * 4;
       out.z = bv.z * 0.55;
     }
     ball.hit(out, { x: 0, y: 0, z: 0 }, 0, t);
     // pop the ball out of the hands volume so it doesn't re-collide
-    ball.state.p.z = kind === 'stuff' ? -a.side * (R + 0.02) : ball.state.p.z;
+    ball.state.p.z = kind === 'stuff' || kind === 'recycle' ? -a.side * (R + 0.02) : ball.state.p.z;
     ball.lastTouch = { athlete: a, kind: 'block', t, side: a.side };
     a.lastTouchT = t;
     act.resolved = true;
     act.contactT = t;
     act.grade = grade;
-    act.note = kind === 'stuff' ? 'Stuff!' : kind === 'soft' ? 'Soft block' : 'Tooled';
+    act.note = kind === 'stuff' ? 'Stuff!' : kind === 'soft' ? 'Soft block' : kind === 'recycle' ? 'Off the block' : 'Tooled';
     act.contactPoint.set(bp.x, bp.y, bp.z);
     h.emitContact({
       athlete: a,
@@ -904,8 +1081,11 @@ export class ContactSystem {
     return true;
   }
 
-  /** Q: toss for a serve (ball appears in the tossing hand) */
-  serveToss(a: Athlete): boolean {
+  /**
+   * Q: toss for a serve (ball appears in the tossing hand), `above` m over the standing reach and
+   * `forward` m ahead by the time it is back at the hand
+   */
+  serveToss(a: Athlete, forward = 0.25, above = 1.15): boolean {
     const h = this.host;
     if (!h.canServe(a)) return false;
     if (a.state !== 'ground') return false;
@@ -914,10 +1094,10 @@ export class ContactSystem {
     const r = a.hitSide(_r);
     const p = { x: a.pos.x + f.x * 0.3 + r.x * 0.12, y: a.pos.y + a.height * 0.82, z: a.pos.z + f.z * 0.3 + r.z * 0.12 };
     // toss to ~1.1 m above standing reach, drifting forward for a jump serve approach
-    const apex = a.standReach + 1.15;
+    const apex = a.standReach + above;
     const vy = Math.sqrt(2 * BALL.gravity * (apex - p.y));
     const tUp = vy / BALL.gravity;
-    const fwd = 0.25 / (tUp * 2);
+    const fwd = forward / (tUp * 2);
     h.ball.launch(p, { x: f.x * fwd + r.x * 0.05, y: vy, z: f.z * fwd + r.z * 0.05 }, { x: 0, y: 0, z: 0 }, 0, h.simTime);
     h.ball.lastTouch = { athlete: a, kind: 'feed', t: h.simTime - 1, side: a.side };
     a.startAction('toss', h.simTime);

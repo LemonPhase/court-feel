@@ -263,6 +263,9 @@ await page.evaluate(() => {
   };
   window.start = (mode, pos, fp, bot = 'perfect', call = 0) => {
     g.settings.firstPerson = fp;
+    // every run starts from the same random state: what a run does can't depend on how long the
+    // menu's autopilot ran before the test took over (machine speed) or on the drills run before it
+    g.rng.reseed(2024);
     g.startMode(mode, pos);
     window.__menu.showStart(false);
     if (call) g.mode.selectCall?.(call);
@@ -357,6 +360,10 @@ for (const [mode, pos, call = 0] of runs) {
       window.start(mode, pos, false, 'perfect', call);
       const g = window.__court;
       for (let i = 0; i < 60 * 30; i++) g.play(1 / 60);
+      // a rally plays on (up to 90 s) until the user has played the ball: whether the setter picks
+      // the user on the first sets is a roll of the seeded dice, which any AI change re-rolls
+      // (the seed-2024 MB run is first set at 59.8 s)
+      for (let i = 0; mode === 'rally' && i < 60 * 60 && !window.log.some((l) => l.who === 'me'); i++) g.play(1 / 60);
       const mine = window.log.filter((l) => l.who === 'me');
       const grades = {};
       for (const m of mine) grades[m.kind + ':' + m.grade] = (grades[m.kind + ':' + m.grade] || 0) + 1;

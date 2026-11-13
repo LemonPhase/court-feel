@@ -3,10 +3,10 @@ import { AI, BALL, CONTACT, COURT, PLAYER } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
-import { quickSpot, type AttackLane } from '../game/plays';
+import { attackHeight, quickSpot, type AttackLane } from '../game/plays';
 import { planApproach, planQuick, planToPoint, riseTime, type ApproachPlan } from './approach';
 import { moveTo, netYaw, stop, type Brain } from './brain';
-import { ContactSystem, type SetResult } from '../game/contact';
+import { blockHands, ContactSystem, type SetResult } from '../game/contact';
 import { solveSpeedToFloor } from '../physics/solve';
 import type { V3 } from '../physics/ball';
 import { openShot, type BlockHands, type Digger } from './openShot';
@@ -25,23 +25,27 @@ export class HitterBrain implements Brain {
   isMySet: (g: Game) => boolean = () => false;
   /** opposing blockers to read */
   blockers: () => Athlete[] = () => [];
-  /** everyone on the other side who could dig it (off your green set the hitter finds the open spot) */
+  /** everyone on the other side who could dig it (the hitter looks for the open spot) */
   defenders: () => Athlete[] = () => [];
+  /** was the set we are about to hit run off a pass in system (the whole court in view)? */
+  inSystem: () => boolean = () => true;
   tipChance = 0.08;
   private swung = false;
   private err = 0;
   /** stay at the ready spot instead of the approach start (e.g. while defending) */
   holdSpot: { x: number; z: number } | null = null;
   /**
-   * Quick hitters: while a pass is on its way to our setter, when and where
+   * Quick and fast-set hitters: while a pass is on its way to our setter, when and where
    * the setter will touch it (null otherwise). The middle runs on the pass and
-   * leaves the floor with the setter's touch; if the set goes elsewhere the
-   * jump was a decoy.
+   * leaves the floor with the setter's touch; a pin hitter on a fast set is mid-run then.
+   * If the set goes elsewhere the run was a decoy.
    */
   passToSetter: ((g: Game) => { t: number; x: number } | null) | null = null;
   /** a middle's call: how far along the net in front of the setter the quick is hit (shoot, back quick) */
   inFront: number | undefined = undefined;
   private quickFor: unknown = null;
+  /** this approach is a pin hitter's fast set, run before the setter touches the ball */
+  tempo = false;
   enabled = true;
   lastShot = '';
 
@@ -56,6 +60,17 @@ export class HitterBrain implements Brain {
     this.swung = false;
     this.quickFor = null;
     this.pendingRun = null;
+    this.tempo = false;
+  }
+
+  /**
+   * A pin hitter running a fast set: where and when the hand will meet the ball (the setter
+   * sends it there in that time, as for a quick). Null when not running one.
+   */
+  get tempoBall(): { t: number; contact: THREE.Vector3 } | null {
+    const p = this.plan;
+    if (!this.tempo || !p || (this.phase !== 'approach' && this.phase !== 'load' && this.phase !== 'air')) return null;
+    return { t: p.tc, contact: p.contact };
   }
 
   /** when this hitter will release its plant (for the setter's read), if planned */
@@ -118,17 +133,28 @@ export class HitterBrain implements Brain {
             break;
           }
         }
-        if (this.lane.quick && this.passToSetter && g.ball.active && a.state === 'ground' && lt !== this.quickFor && lt?.athlete !== a) {
+        // (a quick or a fast set starts from off the net: one still at the net after a block keeps backing off)
+        const offNet = Math.abs(a.pos.z) >= AI.transition.approachOff;
+        if (this.passToSetter && offNet && g.ball.active && a.state === 'ground' && lt !== this.quickFor && lt?.athlete !== a) {
           const ps = this.passToSetter(g);
           // the middle backs off the net to its approach start before the quick (ps.t: its takeoff)
           if (ps && ps.t - now > 0.3 && this.readyToRun(spot, now, ps.t)) {
             this.quickFor = lt;
-            const plan = planQuick(a, now, quickSpot(ps.x, a.side, this.inFront), ps.t, face, face);
+            // a pin hitter runs a fast set (a go, a fast back) on some good passes: already
+            // running when the setter touches it, met AI.tempo.flight after the touch
+            const fast = !this.lane.quick && g.rng.next() < AI.tempo.share;
+            const contact = new THREE.Vector3(this.lane.x, attackHeight(a), this.lane.z);
+            const plan = this.lane.quick
+              ? planQuick(a, now, quickSpot(ps.x, a.side, this.inFront), ps.t, face, face)
+              : fast
+                ? planToPoint(a, now, contact, ps.t + AI.tempo.flight, face, face)
+                : null;
             if (plan && plan.error < 0.6) {
               this.plan = plan;
+              this.tempo = !this.lane.quick;
               this.phase = 'approach';
               this.swung = false;
-              this.err = g.rng.gauss() * (0.012 + (1 - this.skill) * 0.06);
+              this.err = g.rng.gauss() * (AI.attackErr + (1 - this.skill) * 0.06);
               break;
             }
           }
@@ -139,10 +165,11 @@ export class HitterBrain implements Brain {
           const airYaw = yawFromDir(aim.x - this.lane.x, aim.z - this.lane.z);
           this.plan = planApproach(a, pred, now, face, airYaw);
           if (this.plan) {
+            this.tempo = false;
             this.phase = 'approach';
             this.swung = false;
             const s = 1 - this.skill;
-            this.err = g.rng.gauss() * (0.012 + s * 0.06);
+            this.err = g.rng.gauss() * (AI.attackErr + s * 0.06);
           }
         }
         break;
@@ -184,19 +211,21 @@ export class HitterBrain implements Brain {
           const us = this.userSet(g);
           const err = us?.green ? 0 : us ? this.err * (1 + (AI.badSetErr - 1) * (1 - us.quality)) : this.err;
           const tipChance = us?.green ? 0 : us ? this.tipChance * (1 + (AI.badSetTip - 1) * (1 - us.quality)) : this.tipChance;
-          if (info && now >= info.t - lead + err - 1e-4) {
-            // off your green set the hitter sees the whole court; off a good one, a defence reading it as usual
-            const read = us?.green ? AI.greenSetDigDelay : us?.grade === 'Good' ? AI.reactionTime : null;
-            const aim = this.chooseAim(g, info.ball.x, us?.green ?? false, info.ball, info.t, read);
+          // a late arm still swings (graded late through aiErr): a hitter never lets the set drop past
+          if (info && now >= info.t - lead + Math.min(err, 0) - 1e-4) {
+            const aim = this.chooseAim(g, info.ball.x, info.ball, info.t, us);
             a.aiAim.copy(aim);
-            const tip = g.rng.next() < tipChance;
-            if (tip) {
+            // a roll shot over a closed block is a soft swing (the contact rolls it when it goes deep)
+            const roll = this.lastShot === 'roll';
+            const push = this.lastShot === 'recycle';
+            const tip = roll || push || g.rng.next() < tipChance;
+            if (tip && !roll && !push) {
               // tips go short, just over the block
               a.aiAim.set(clamp(aim.x * 0.5, -3.5, 3.5), aim.y, -a.side * (1.5 + g.rng.next() * 1.5));
               this.lastShot = 'tip';
             }
             // release the wind-up (AI holds long enough for full power); no wind-up = full swing
-            if (!g.contact.releaseWindup(a, { aiErr: err, tip })) g.contact.startSwing(a, { aiErr: err, tip });
+            if (!g.contact.releaseWindup(a, { aiErr: err, tip, push })) g.contact.startSwing(a, { aiErr: err, tip, push });
             this.swung = true;
           }
         }
@@ -218,10 +247,9 @@ export class HitterBrain implements Brain {
 
   /**
    * The open spot for a full-speed spike from `from` (see openShot), against the defence as it
-   * stands: they can move `read` s after the hit (a late start off a green set, their reaction
-   * off a good one).
+   * stands: they can move `read` s after the hit (a blocker in the air comes down first).
    */
-  private openSpot(g: Game, from: V3, tHit: number, read: number) {
+  private openSpot(g: Game, from: V3, tHit: number, read: number, misread: boolean) {
     const a = this.athlete;
     const diggers: Digger[] = this.defenders().map((d) => {
       // a blocker in the air comes down first
@@ -235,17 +263,14 @@ export class HitterBrain implements Brain {
     // each blocker at the net: where their hands will be as the ball crosses, and how high: in the
     // air, the top of this jump; still on the floor, rising from a jump taken right now
     const blocks: BlockHands[] = this.blockers()
-      .filter((b) => Math.abs(b.pos.z) < 1.4)
+      .filter((b) => Math.abs(b.pos.z) < 1.4 && !(misread && b.isUser))
       .map((b) => {
         const hands = b.standReach + 0.04;
-        const x = b.pos.x + b.vel.x * (0.05 + Math.abs(a.pos.z) / 20);
+        const x = b.pos.x + b.reachX + b.vel.x * (0.05 + Math.abs(a.pos.z) / 20);
         if (b.state === 'air') {
           const top = hands + (b.vel.y > 0 ? b.pos.y + (b.vel.y * b.vel.y) / (2 * BALL.gravity) : b.pos.y);
           return { x, top: () => top };
         }
-        // (they may take off while the hitter swings, so count from now, after the jump's load
-        // unless they are loading already; past the top of a jump taken then they could time one
-        // to be at its top)
         const lead = Math.max(0, tHit - g.simTime) - (b.state === 'load' ? 0 : PLAYER.loadMin);
         const v0 = Math.sqrt(2 * BALL.gravity * b.jumpMax);
         const rise = (tau: number) => (tau <= 0 ? 0 : tau >= v0 / BALL.gravity ? b.jumpMax : v0 * tau - 0.5 * BALL.gravity * tau * tau);
@@ -256,20 +281,31 @@ export class HitterBrain implements Brain {
   }
 
   /**
-   * Pick a shot: line, cross or seam (a middle: zone 1 or 5), steering away from where the block
-   * is. Off your set (`read`: when their defence can move) the hitter looks for the open spot
-   * first: off a green set every one is open; off a good one, often none is. Off a green set the
-   * hitter never swings through the block's hands.
+   * Pick a shot. A hitter who sees the court (in system; out of system `AI.openShotOut` of the
+   * time) hits the open spot if there is one: round the block or over it, where no defender gets a
+   * platform under it in time. Otherwise their usual shots: line, cross, a sharp angle, the seam
+   * (a middle: steep and short, behind the off-blocker), steering away from the block's hands;
+   * against a closed block a roll shot over it or a wipe off the outside hand.
+   * Off your set (`us`) your touch decides: off a green set their defence starts late, every spot
+   * the hitter finds is open and it never swings through the block's hands or uses the block; off
+   * an early or late one it doesn't look for the open spot.
    */
-  chooseAim(g: Game, hitX: number, green = false, from?: V3, tHit = g.simTime, read: number | null = null): THREE.Vector3 {
+  chooseAim(g: Game, hitX: number, from?: V3, tHit = g.simTime, us: SetResult | null = null): THREE.Vector3 {
     const a = this.athlete;
     const opp = -a.side; // the other court
     const hw = COURT.halfWidth;
-    // off your set the hitter looks for the open spot, round the block or over it
-    if (read !== null && from) {
-      const open = this.openSpot(g, from, tHit, read);
-      // (off a good set, only one that is open: otherwise their usual shots)
-      if (open && (green || open.margin >= AI.openShotMargin)) {
+    const green = us?.green ?? false;
+    const sees = this.inSystem();
+    // (playability: now and then the user's block is misread, as if it weren't there)
+    const userUp = this.blockers().some((b) => b.isUser && Math.abs(b.pos.z) < 1.4);
+    const misread = userUp && g.rng.next() < AI.userBlockMisread;
+    // off your early or late set there is no open spot: the setter's touch decides the point
+    const badSet = !!us && !green && us.grade !== 'Good';
+    if (from && !badSet && (green || sees || g.rng.next() < AI.openShotOut)) {
+      // off your green set their defence starts late (AI.greenSetDigDelay) and the hitter takes any spot it finds
+      const open = this.openSpot(g, from, tHit, green ? AI.greenSetDigDelay : AI.defence.hitReact, misread);
+      // the hitter goes for the hardest spot to dig even when it isn't quite open
+      if (open && (green || open.margin >= -AI.openShotStretch)) {
         this.lastShot = 'open';
         return new THREE.Vector3(open.x, 0, open.z);
       }
@@ -281,9 +317,13 @@ export class HitterBrain implements Brain {
     const zone1X = opp * (hw - 1.2);
     const options = this.lane.quick
       ? [
-          // a middle hits the deep corners: zone 1 (their right back) or zone 5 (their left back)
-          { x: zone1X, z: opp * 7.3, w: 1, name: 'zone 1' },
-          { x: -zone1X, z: opp * 7.3, w: 1, name: 'zone 5' },
+          // a middle is met right over the net: it hits down, steep and short, into the hole behind
+          // the off-blocker and in front of the back row; now and then deep to zone 1 or 5
+          { x: -zone1X, z: opp * AI.quickShot.cut, w: 1, name: 'cut' },
+          { x: zone1X, z: opp * AI.quickShot.cut, w: 1, name: 'cut' },
+          { x: hitX * 0.5, z: opp * AI.quickShot.down, w: 1, name: 'down' },
+          { x: zone1X, z: opp * 7.3, w: AI.quickShot.deep, name: 'zone 1' },
+          { x: -zone1X, z: opp * 7.3, w: AI.quickShot.deep, name: 'zone 5' },
         ]
       : [
           { x: lineX, z: opp * 7.6, w: 1, name: 'line' },
@@ -311,7 +351,7 @@ export class HitterBrain implements Brain {
     }
     // avoid the block: penalise shots whose direction passes over a blocker's hands
     const up = this.blockers()
-      .filter((b) => Math.abs(b.pos.z) < 1.4)
+      .filter((b) => Math.abs(b.pos.z) < 1.4 && !(misread && b.isUser))
       .sort((p, q) => p.pos.x - q.pos.x);
     for (const b of up) {
       for (const o of options) {
@@ -320,7 +360,7 @@ export class HitterBrain implements Brain {
         const cx = hitX + (o.x - hitX) * f;
         // off a green set: where the blocker's hands will be as the ball crosses (they may still be
         // moving; a spike travels ~20 m/s, so a pipe from the 3 m line gives the block longer)
-        const bx = green ? b.pos.x + b.vel.x * (0.05 + Math.abs(a.pos.z) / 20) : b.pos.x;
+        const bx = b.pos.x + b.reachX + (green ? b.vel.x * (0.05 + Math.abs(a.pos.z) / 20) : 0);
         if (Math.abs(cx - bx) < CONTACT.blockHalfWidth + BALL.radius + (green ? 0.45 : 0.3)) o.w *= green ? 0 : 0.15;
       }
     }
@@ -331,7 +371,7 @@ export class HitterBrain implements Brain {
       for (const o of options) {
         const f = Math.abs(a.pos.z) / (Math.abs(a.pos.z) + Math.abs(o.z));
         const cx = hitX + (o.x - hitX) * f;
-        const dmin = Math.min(...up.map((b) => Math.abs(cx - b.pos.x)));
+        const dmin = Math.min(...up.map((b) => Math.abs(cx - (b.pos.x + b.reachX))));
         if (dmin > farD) {
           farD = dmin;
           far = o;
@@ -342,8 +382,10 @@ export class HitterBrain implements Brain {
     // a double block that did not close: hit through the seam
     if (!this.lane.quick) {
       for (let i = 0; i + 1 < up.length; i++) {
-        const gap = up[i + 1].pos.x - up[i].pos.x - 2 * CONTACT.blockHalfWidth;
-        const gx = (up[i].pos.x + up[i + 1].pos.x) / 2;
+        const xa = up[i].pos.x + up[i].reachX;
+        const xb = up[i + 1].pos.x + up[i + 1].reachX;
+        const gap = xb - xa - 2 * CONTACT.blockHalfWidth;
+        const gx = (xa + xb) / 2;
         if (gap < 0.3 || Math.abs(gx - hitX) > 2.5) continue;
         // extend the line from the contact through the seam to a deep spot on their court
         const dz = Math.abs(a.pos.z);
@@ -352,14 +394,34 @@ export class HitterBrain implements Brain {
         if (Math.abs(tx) < hw - 0.3) options.push({ x: tx, z: opp * 6.5, w: 1.1, name: 'seam' });
       }
     }
+    // a closed block in front: wipe it off the outside hand, or roll it over into the court. Off a
+    // bad pass (a high ball into a full block) the hitter uses the block every time it is up
+    const covered = options.every((o) => o.w < 0.2);
+    if (!green && (covered || !sees) && up.length && !this.lane.quick) {
+      const outer = up.reduce((p, q) => (Math.abs(blockHands(q).x) > Math.abs(blockHands(p).x) ? q : p));
+      const hx = blockHands(outer).x;
+      const out = Math.sign(hx || 1);
+      // through the outer edge of the outside hand, on to a spot just out past their sideline
+      const edge = hx + out * CONTACT.blockHalfWidth * 0.85;
+      const dz = Math.abs(a.pos.z);
+      const tx = hitX + (edge - hitX) * ((dz + 6) / Math.max(0.3, dz));
+      options.push({ x: tx, z: opp * 6, w: AI.toolShot, name: 'tool' });
+      options.push({ x: hitX * 0.3, z: opp * 5.2, w: AI.rollShot, name: 'roll' });
+      // or play it softly off the hands of the inside blocker, for our cover to pick up and go again
+      const inner = up.reduce((p, q) => (Math.abs(blockHands(q).x) < Math.abs(blockHands(p).x) ? q : p));
+      const ix = blockHands(inner).x;
+      options.push({ x: ix, z: opp * 0.2, w: AI.recycleShot, name: 'recycle' });
+    }
     const total = options.reduce((s, o) => s + o.w, 0);
     let r = g.rng.next() * total;
     for (const o of options) {
       r -= o.w;
       if (r <= 0) {
         this.lastShot = o.name;
-        const x = o.x + g.rng.gauss() * 0.4;
-        const z = o.z + g.rng.gauss() * 0.4;
+        // (a push at the hands is aimed finely, just behind the net)
+        const n = o.name === 'recycle' ? 0.1 : 0.4;
+        const x = o.x + g.rng.gauss() * n;
+        const z = o.z + g.rng.gauss() * n * (o.name === 'recycle' ? 0 : 1);
         // off a green set the hitter takes a controlled swing: the shot stays inside the lines
         if (green) return new THREE.Vector3(clamp(x, -hw + 0.3, hw - 0.3), 0, opp * clamp(Math.abs(z), 1.5, COURT.halfLength - 0.5));
         return new THREE.Vector3(x, 0, z);

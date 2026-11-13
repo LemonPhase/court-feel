@@ -5,9 +5,11 @@ import { bodyStats, type CustomBody } from './body';
 import type { SetTouch } from './setTiming';
 import { angleLerp, clamp, clamp01, damp, dirFromYaw, lerp, rightFromYaw, wrapAngle } from '../core/mathx';
 
-export type AState = 'ground' | 'load' | 'air' | 'land';
+export type AState = 'ground' | 'load' | 'air' | 'land' | 'dive';
 export type ActionKind = 'swing' | 'windup' | 'block' | 'pass' | 'set' | 'toss' | 'serve';
 export type Grade = 'Perfect' | 'Good' | 'Early' | 'Late' | 'Miss';
+/** how a first ball is played: the platform in front, the platform out to one side, overhand, or diving */
+export type PassForm = 'platform' | 'side' | 'hands' | 'dive';
 
 export interface Action {
   kind: ActionKind;
@@ -22,6 +24,8 @@ export interface Action {
   grade: Grade | null;
   /** extra info (tip, power, etc.) */
   tip: boolean;
+  /** a soft push straight into the block's hands, to play it off them (a tip with a flat arc) */
+  push: boolean;
   /** whiffed swing */
   miss: boolean;
   /** 0..1 progress handled by the animator */
@@ -50,6 +54,8 @@ export interface Action {
   catchErr: number;
   /** set: the touch, fixed at the catch */
   touch: SetTouch | null;
+  /** a pass: the form it is played with (the AI picks overhand; the contact finds a side or diving touch) */
+  form: PassForm;
 }
 
 export interface AthleteCmd {
@@ -118,6 +124,12 @@ export class Athlete {
   lastTouchT = -10;
   /** how long (s) the feet have been still on the floor (below TIMING.setStillSpeed): a setter who beat the ball to the spot */
   stillT = 0;
+  /** a block's hands reaching sideways from the body (m along the net, world x): a late blocker stretching for the seam */
+  reachX = 0;
+  /** when the last split step started (the animator hops and lands into a deeper stance; no effect on movement) */
+  splitT = -10;
+  /** a low covering stance, 0..1 (set by the AI while it covers its hitter; the animator eases into it, no effect on movement) */
+  low = 0;
   /** 'ready' body lean */
   readyAmount = 1;
   /** look target for head IK (set by game) */
@@ -183,6 +195,7 @@ export class Athlete {
     this.action = null;
     this.lastAction = null;
     this.airNudge.set(0, 0, 0);
+    this.reachX = 0;
   }
 
   get grounded(): boolean {
@@ -310,8 +323,8 @@ export class Athlete {
     const st = this.stats;
     const cmd = this.cmd;
 
-    // ---- facing (in the air the body barely rotates: the arm aims, not the hips)
-    if (cmd.faceYaw !== null && Number.isFinite(cmd.faceYaw)) {
+    // ---- facing (in the air the body barely rotates: the arm aims, not the hips; a dive keeps its line)
+    if (this.state !== 'dive' && cmd.faceYaw !== null && Number.isFinite(cmd.faceYaw)) {
       let want = cmd.faceYaw;
       let rate = PLAYER.bodyTurnRate;
       if (this.state === 'air') {
@@ -372,6 +385,16 @@ export class Athlete {
       }
       const ready = this.loadT >= PLAYER.loadMin;
       if ((this.loadRelease && ready) || this.loadT >= PLAYER.loadMax) this.takeoff();
+    } else if (this.state === 'dive') {
+      // hands-first along the floor: the slide brakes to a stop, then the player gets up
+      const sp = this.speed;
+      const k = sp > 1e-5 ? Math.max(0, sp - PLAYER.diveDecel * dt) / sp : 0;
+      this.vel.x *= k;
+      this.vel.z *= k;
+      if (this.stateT >= PLAYER.diveTime) {
+        this.state = 'land';
+        this.stateT = 0;
+      }
     } else if (this.state === 'air') {
       // tiny air control + assist nudge
       const ac = PLAYER.airControl * dt;
@@ -437,6 +460,21 @@ export class Athlete {
     this.ryaw = angleLerp(this.prevYaw, this.yaw, alpha);
   }
 
+  /**
+   * Throw the body at a ball out of reach (AI defenders): hands-first along `yaw`, at
+   * `PLAYER.diveSpeed` at least, sliding on the floor; up again `PLAYER.diveTime` later.
+   */
+  dive(yaw: number): void {
+    if (this.state !== 'ground' && this.state !== 'land') return;
+    this.state = 'dive';
+    this.stateT = 0;
+    this.yaw = yaw;
+    const d = dirFromYaw(yaw, _f);
+    const along = Math.max(PLAYER.diveSpeed, this.vel.x * d.x + this.vel.z * d.z);
+    this.vel.x = d.x * along;
+    this.vel.z = d.z * along;
+  }
+
   /** begin an action (animation + contact bookkeeping read it) */
   startAction(kind: ActionKind, t: number): Action {
     if (this.action) this.lastAction = this.action;
@@ -450,6 +488,7 @@ export class Athlete {
       resolved: false,
       grade: null,
       tip: false,
+      push: false,
       miss: false,
       hand: 'R',
       aim: new THREE.Vector3(0, 0, -1),
@@ -466,6 +505,7 @@ export class Athlete {
       good: 0,
       catchErr: 0,
       touch: null,
+      form: 'platform',
     };
     this.action = act;
     return act;

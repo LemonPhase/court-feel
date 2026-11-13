@@ -1,13 +1,14 @@
 import * as THREE from 'three';
-import { AI, COURT } from '../../config';
+import { AI } from '../../config';
 import { netYaw } from '../../ai/brain';
+import { serveAim } from '../../ai/server';
 import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
 import { yawFromDir } from '../../core/mathx';
 import { Athlete } from '../athlete';
 import { applyCalls, CALL_COLOR, callOptions, callSheet, callSpot, startCallRuns, type CallHitters } from '../callRuns';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
-import { needsGoodPass, SET_PLAYS, SETTER_SPOT, SETTER_TARGET, type SetPlay } from '../plays';
+import { BACKUP_TARGET, needsGoodPass, SET_PLAYS, SETTER_SPOT, type SetPlay } from '../plays';
 import { SETTER_KEYS, SetterCalls, type SetterKey } from '../setterCalls';
 import { kbd, makeFloorRing, Mode } from './mode';
 
@@ -79,6 +80,8 @@ export class MiniRally extends Mode {
       const brain = a && !a.isUser ? this.home.brains.get(a)?.hitter : null;
       if (a && brain) this.hitters.set(k, { a, brain });
     }
+    // your pins run your calls (startCallRuns), never a fast set of their own off your pass
+    if (this.userSetter) for (const [k, h] of this.hitters) if (k !== 'MB') h.brain.passToSetter = null;
     this.pickRing = makeFloorRing(0xffffff, 1.0);
     this.pickRing.visible = false;
     this.add(this.pickRing);
@@ -149,6 +152,11 @@ export class MiniRally extends Mode {
   private get yourBackupSet(): boolean {
     const me = this.g.me;
     return this.home.touches === 1 && this.home.secondBy === me && me !== this.home.players.get('S');
+  }
+
+  /** a ball that isn't the setter's to set (HELP, or a third ball nobody can attack) was given to the user */
+  private get yourFreeBall(): boolean {
+    return this.home.freeBall(this.g) === this.g.me;
   }
 
   /** the setter's read of the pass we are on, if they have called it */
@@ -248,12 +256,17 @@ export class MiniRally extends Mode {
     const team = a.side === 1 ? this.home : this.away;
     const s = a.side;
     if (team.touches >= 2) {
-      // third contact without an attack: free ball deep into their court
+      // third contact without an attack: a free ball over, deep into their court (the AI aims it
+      // where it is hard to play: a deep corner, or short over the net)
+      if (!a.isUser && a.state !== 'dive' && a.speed < AI.freeOver.aimSpeed) return team.freeOverTarget();
       return { x: (this.g.rng.next() - 0.5) * 5, y: 0.5, z: -s * 6.5, apex: 5.2 };
     }
+    // an AI dive keeps the ball alive and no more: a bit up, toward the middle (a team-mate plays it)
+    if (a.state === 'dive' && !a.isUser) return team.diveUpTarget(this.g.ball.pos);
     // a first ball goes to the setter target (or, played by the setter himself, high to the 3 m line)
     if (team.touches === 0) return team.firstBallTarget(a);
-    return { x: SETTER_TARGET.x * s, y: 2.35, z: SETTER_TARGET.z * s, apex: 4.1 };
+    // a second ball nobody could set: high to the 3 m line, for a free ball over from there
+    return { x: BACKUP_TARGET.x * s, y: BACKUP_TARGET.y, z: BACKUP_TARGET.z * s, apex: BACKUP_TARGET.apex };
   }
 
   setOptions(a: Athlete) {
@@ -285,10 +298,17 @@ export class MiniRally extends Mode {
     const me = g.me;
     if (this.userSetter && this.setterCalls.editing) return this.setterKeysHint();
     if (this.home.receiver === me) return `YOUR BALL · ${kbd('E')} pass / dig`;
+    if (this.yourFreeBall)
+      return this.home.touches === 1
+        ? `YOUR BALL · the setter can't get there · ${kbd('E')} bump it high / ${kbd('RMB')} set a pin`
+        : `YOUR BALL · nobody can attack it · ${kbd('E')} bump it over`;
     if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set')
       return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;
     if (me.role === 'S' && this.home.touches === 1) return `Your set · ${this.setterKeysHint()}`;
-    if (this.yourBackupSet) return `YOUR SET · the setter dug it · high ball to a pin · ${this.setterKeysHint()}`;
+    if (this.yourBackupSet) {
+      const dug = this.g.ball.lastTouch?.athlete === this.home.players.get('S');
+      return `YOUR SET · the setter ${dug ? 'dug it' : "can't get there"} · high ball to a pin · ${this.setterKeysHint()}`;
+    }
     // the setter's call on the pass overrides the plan: off a bad pass everything goes up high
     const read = this.hitter && this.home.touches === 1 ? this.read : null;
     const who = read ? this.setterName(read.setter) : 'SETTER';
@@ -318,7 +338,7 @@ export class MiniRally extends Mode {
     const g = this.g;
     const me = g.me;
     const lt = g.ball.lastTouch;
-    if (this.home.receiver === me || this.yourBackupSet) return true;
+    if (this.home.receiver === me || this.yourBackupSet || this.yourFreeBall) return true;
     if (this.home.setFor === me && lt?.kind === 'set' && lt.side === 1) return true;
     return me.role === 'S' && this.home.touches === 1 && lt?.side === 1;
   }
@@ -330,7 +350,7 @@ export class MiniRally extends Mode {
     this.away.step();
     // "your ball" cue (once per ball), also for the second ball when the user backs up the setter
     const backup = this.yourBackupSet;
-    const yours = this.home.receiver === g.me || backup;
+    const yours = this.home.receiver === g.me || backup || this.yourFreeBall;
     // your pick: locked in once our first ball is played, a fresh one after your set
     const lt = g.ball.lastTouch;
     if (lt !== this.callsFor) {
@@ -356,12 +376,16 @@ export class MiniRally extends Mode {
           this.phase = 'serve';
           this.t = 0;
           const recv = this.servingSide === 1 ? this.away : this.home;
-          // aim the serve at a random receiver, sometimes at the user
+          // a jump serve or a float, at the seams, the deep corners, short or at a passer (the user too)
           const passers = (['OH1', 'OH2', 'L'] as const).map((s) => recv.players.get(s)).filter((a) => a !== undefined);
-          const tgt = passers[Math.floor(g.rng.next() * passers.length)];
-          const aim = new THREE.Vector3(tgt.pos.x + g.rng.gauss() * 0.9, 0, tgt.pos.z + g.rng.gauss() * 0.9);
-          aim.x = Math.max(-COURT.halfWidth + 0.4, Math.min(COURT.halfWidth - 0.4, aim.x));
-          (this.servingSide === 1 ? this.home : this.away).serve(aim);
+          const jump = g.rng.next() < AI.serve.jump;
+          const aim = serveAim(
+            passers.map((a) => a.pos),
+            recv.side,
+            g.rng,
+            jump,
+          );
+          (this.servingSide === 1 ? this.home : this.away).serve(aim, jump);
         }
         break;
       case 'serve':
@@ -381,8 +405,9 @@ export class MiniRally extends Mode {
             return;
           }
         }
-        if (this.t > 25 || (g.ball.state.rest && this.t > 1)) {
-          this.reason = g.ball.state.rest ? 'BALL DOWN' : 'LONG RALLY';
+        // a rally has no time limit: it ends on a fault, the judge's call, or a ball that has come to rest
+        if (g.ball.state.rest && this.t > 1) {
+          this.reason = 'BALL DOWN';
           this.endPoint(g.ball.pos.z > 0 ? -1 : 1);
         }
         break;

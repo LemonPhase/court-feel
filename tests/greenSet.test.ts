@@ -209,9 +209,9 @@ describe('transition: the middle backs off the net before the quick', () => {
     expect(Math.abs(r.leftFloor - 1.8)).toBeLessThan(0.12);
   });
 
-  it('with no time to back off, it goes from where it is', () => {
+  it('with no time to get off the net first, it runs no quick (never a standing quick)', () => {
     const r = transition(AI.transitionLatest - 0.1);
-    expect(r.zAtRun).toBeLessThan(1.2);
-    expect(r.leftFloor).toBeGreaterThan(0);
+    expect(r.zAtRun).toBeLessThan(0);
+    expect(r.leftFloor).toBeLessThan(0);
   });
 });

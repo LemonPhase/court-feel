@@ -31,9 +31,15 @@ export class SetterBrain implements Brain {
   private v = new THREE.Vector3();
   private p: V3 = { x: 0, y: 0, z: 0 };
   accuracy = AI.setterAccuracy;
+  /** how hard this set is for a backup setter (0-1, `AI.backupSet`): it misses by that much more (never a set to the user) */
+  sloppy = 0;
   /** bump-set this ball (forearms) instead of hand-setting it: a libero in the front zone (see handSetAllowed) */
   private bump = false;
   private bumpFor: unknown = null;
+  /** playing this ball with the forearms (a bump set), not the hands */
+  get bumping(): boolean {
+    return this.bump;
+  }
 
   constructor(
     public athlete: Athlete,
@@ -114,10 +120,19 @@ export class SetterBrain implements Brain {
     // imprecision: grows when the setter was moving
     const err = this.accuracy * (0.4 + Math.min(1.5, a.speed) * 0.5);
     const t = { x: call.target.x + g.rng.gauss() * err * 0.5, y: call.target.y, z: call.target.z + g.rng.gauss() * err * 0.3 };
+    let apex = call.apex;
+    const miss = call.hitter?.isUser ? 0 : this.sloppy;
+    if (miss > 0 && !call.time) {
+      const M = AI.backupSet.miss;
+      t.x += g.rng.gauss() * M.x * miss;
+      // (never over the net)
+      t.z = a.side * Math.max(0.4, a.side * t.z + g.rng.gauss() * M.z * miss);
+      apex += g.rng.gauss() * M.apex * miss;
+    }
     const out = { x: 0, y: 0, z: 0 };
     const from = { x: bp.x, y: bp.y, z: bp.z };
     if (call.time) solveFixedTime(from, t, Math.max(0.15, call.time + g.rng.gauss() * err * 0.06), { x: 0, y: 0, z: 0 }, out);
-    else solveApex(from, t, call.apex + g.rng.gauss() * err * 0.2, { x: 0, y: 0, z: 0 }, out);
+    else solveApex(from, t, apex + g.rng.gauss() * err * 0.2, { x: 0, y: 0, z: 0 }, out);
     ball.hit(out, { x: 0, y: 0, z: 0 }, 0, g.simTime);
     ball.lastTouch = { athlete: a, kind: 'set', t: g.simTime, side: a.side };
     a.lastTouchT = g.simTime;

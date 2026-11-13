@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { TIMING } from '../config';
-import { clamp, clamp01, damp, easeOutCubic, lerp, smooth01, smoothstep, wrapAngle } from '../core/mathx';
+import { AI, BALL, CONTACT, PLAYER, TIMING } from '../config';
+import { clamp, clamp01, damp, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import { orientBone, twoBoneIK } from './ik';
 import { buildRig, type BoneName, type Kit, type Rig } from './rig';
@@ -113,8 +113,12 @@ export class AthleteView {
   private feet: [FootState, FootState];
   private gaitPhase = 0;
   private gaitW = 0;
+  /** how far into the low covering stance the body is (eased from Athlete.low) */
+  private lowW = 0;
   private lastPos = v3();
   private velS = v3();
+  /** the split step's hop this frame (m): the body and the feet leave the floor together */
+  private hop = 0;
   private body = { drop: 0, spineX: 0, chestX: 0, chestY: 0, hipsY: 0, hipsX: 0, chestZ: 0 };
   private headYaw = 0;
   private headPitch = 0;
@@ -223,6 +227,12 @@ export class AthleteView {
     const B = rig.bones;
     this.root.position.copy(a.rpos);
     this.root.rotation.y = a.ryaw;
+    // split step: after a short load the whole body leaves the floor, a ballistic hop that lands on
+    // their hitter's contact (the feet go up with it, below)
+    const SS = AI.splitStep;
+    const ssT = tr - a.splitT - SS.dip;
+    this.hop = a.state === 'ground' && ssT > 0 && ssT < SS.air ? 0.5 * BALL.gravity * ssT * (SS.air - ssT) : 0;
+    this.root.position.y += this.hop;
     if (!this.initialized || this.lastPos.distanceToSquared(a.rpos) > 4) {
       this.initialized = true;
       this.resetFeet();
@@ -276,7 +286,7 @@ export class AthleteView {
     let chestX = -0.06;
     let chestY = 0;
     let hipsY = 0;
-    const hipsX = 0;
+    let hipsX = 0;
     let chestZ = 0;
     let bodyRate = 10;
 
@@ -296,6 +306,18 @@ export class AthleteView {
       hipsY = twist;
       chestY = -twist * 1.4;
       chestZ = clamp(-vLocal.x / 12, -0.12, 0.12) * g;
+      // split step: a quick load before the hop, then landing into a deeper stance on the contact
+      if (ssT > -SS.dip && ssT < 0) drop += 0.025 * H * Math.sin((Math.PI * (ssT + SS.dip)) / SS.dip);
+      const settle = ssT - SS.air;
+      if (settle > 0 && settle < SS.settle) {
+        const k = Math.sin((Math.PI * settle) / SS.settle);
+        drop += 0.045 * H * k;
+        spineX -= 0.1 * k;
+      }
+      // covering the hitter: low, hips back, chest over the knees (eased; upright again on the run)
+      this.lowW = lerp(this.lowW, a.low * (1 - g), damp(6, dt));
+      drop += 0.13 * H * this.lowW;
+      spineX -= 0.32 * this.lowW;
     }
     // land absorb
     if (st === 'land' || (st === 'ground' && tSinceLand < 0.45)) {
@@ -369,7 +391,7 @@ export class AthleteView {
       hipsY = lerp(hipsY, hs * W.hipsY, p);
       bodyRate = Math.max(bodyRate, 22);
     }
-    const passAct = act && act.kind === 'pass' ? act : null;
+    const passAct = act && act.kind === 'pass' && act.form !== 'hands' ? act : null;
     if (passAct && st !== 'air') {
       const p = smooth01((tr - passAct.t0) / 0.1);
       drop = lerp(drop, 0.13 * H, p);
@@ -377,9 +399,26 @@ export class AthleteView {
       chestX = lerp(chestX, -0.1, p);
       chestY = lerp(chestY, 0, p);
       hipsY = lerp(hipsY, 0, p);
+      // a ball going by to one side: lean out over the platform, lower
+      const lat = this.ballSide();
+      const side = passAct.resolved ? (passAct.form === 'side' ? lat : 0) : Math.abs(lat) > 0.3 ? lat : 0;
+      chestZ = lerp(chestZ, clamp(-side * 0.45, -0.32, 0.32), p);
+      drop += Math.min(0.05 * H, Math.abs(side) * 0.06 * H) * p;
       bodyRate = 25;
     }
-    const setAct = act && act.kind === 'set' ? act : null;
+    // a dive: down onto the floor hands-first, the body stretched out along it; then up again
+    if (st === 'dive') {
+      const p = this.diveP();
+      drop = lerp(drop, this.rig.dims.hipY - 0.26, p);
+      hipsX = lerp(hipsX, -1.35, p);
+      spineX = lerp(spineX, 0.12, p);
+      chestX = lerp(chestX, 0.08, p);
+      chestY = lerp(chestY, 0, p);
+      hipsY = lerp(hipsY, 0, p);
+      chestZ = lerp(chestZ, 0, p);
+      bodyRate = 30;
+    }
+    const setAct = act && (act.kind === 'set' || (act.kind === 'pass' && act.form === 'hands')) ? act : null;
     if (setAct) {
       const p = smooth01((tr - setAct.t0) / 0.12);
       if (st !== 'air') drop = lerp(drop, 0.075 * H, p);
@@ -395,6 +434,8 @@ export class AthleteView {
       chestX = lerp(chestX, 0.0, p);
       chestY = lerp(chestY, 0, p);
       hipsY = lerp(hipsY, 0, p);
+      // leaning into a sideways reach
+      chestZ = lerp(chestZ, clamp(-a.reachX * Math.cos(a.ryaw) * 0.4, -0.16, 0.16), p);
       if (st !== 'air' && st !== 'load') drop = lerp(drop, 0.05 * H, p);
       bodyRate = 25;
     }
@@ -469,7 +510,20 @@ export class AthleteView {
     // the hitting side's leg (right for a righty): plants first, tucks most in the air
     const hs = a.hand;
 
-    if (st === 'air') {
+    if (st === 'dive') {
+      // stretched out behind along the floor, toes down
+      const p = this.diveP();
+      for (let i = 0; i < 2; i++) {
+        const s = i === 0 ? -1 : 1;
+        const f = this.feet[i];
+        this.bodyToWorld(s * 0.09 * H, 0, -(d.thigh + d.shin) * 0.99 * p + 0.02 * H * (1 - p), _t3);
+        _t4.set(a.rpos.x + _t3.x, ankleY + 0.06 * p, a.rpos.z + _t3.z);
+        f.cur.lerp(_t4, damp(18, dt));
+        f.pitch = lerp(f.pitch, 1.3 * p, damp(12, dt));
+        f.plant.set(f.cur.x, ankleY, f.cur.z);
+        f.stepping = false;
+      }
+    } else if (st === 'air') {
       // body-relative leg pose
       const tSince = tr - a.takeoffT;
       const rise = smooth01(tSince / 0.14);
@@ -569,7 +623,7 @@ export class AthleteView {
             f.t += dt;
             const p = smooth01(f.t / f.dur);
             f.cur.lerpVectors(f.from, f.to, p);
-            f.cur.y = ankleY + Math.sin(Math.PI * p) * 0.045 * H;
+            f.cur.y = ankleY + Math.sin(Math.PI * p) * 0.045 * H + this.hop;
             if (p >= 1) {
               f.stepping = false;
               f.plant.copy(f.to);
@@ -577,7 +631,7 @@ export class AthleteView {
             }
           } else {
             f.cur.lerp(f.plant, damp(25, dt));
-            f.cur.y = ankleY;
+            f.cur.y = ankleY + this.hop;
           }
           f.pitch = lerp(f.pitch, 0, damp(10, dt));
         } else {
@@ -600,7 +654,7 @@ export class AthleteView {
           const lat = baseLat + dirLat * along;
           const fwd = dirFwd * along + 0.02 * H;
           this.bodyToWorld(lat, 0, fwd, _t3);
-          _t4.set(a.rpos.x + _t3.x, ankleY + lift, a.rpos.z + _t3.z);
+          _t4.set(a.rpos.x + _t3.x, ankleY + lift + this.hop, a.rpos.z + _t3.z);
           f.cur.lerp(_t4, damp(lerp(12, 40, g), dt));
           f.pitch = lerp(f.pitch, pitch * clamp01(speed / 2.5), damp(15, dt));
           f.plant.set(f.cur.x, ankleY, f.cur.z);
@@ -624,7 +678,9 @@ export class AthleteView {
       const foot = B[`foot${L}` as BoneName];
       const f = this.feet[i];
       // knee points forward and slightly out
-      this.bodyToWorld(s * 0.25, 0.05, 1, _pole);
+      // (stretched out in a dive, the knees point at the floor)
+      const dp = st === 'dive' ? this.diveP() : 0;
+      this.bodyToWorld(s * 0.25, lerp(0.05, 0.3, dp), lerp(1, -0.6, dp), _pole);
       twoBoneIK(thigh, shin, foot.position, f.cur, _pole);
       // foot orientation: yaw with body (+ slight toe-out), pitch from gait/air
       const yaw = this.athlete.ryaw - s * 0.12;
@@ -805,15 +861,24 @@ export class AthleteView {
         this.key('block', _a, _b);
         if (st === 'air') _a.z += 0.06 * H * smooth01((tr - act.t0) / 0.18); // press over the net
         _a.x += 0.012 * H;
+        // a late blocker stretches sideways for the seam: both hands go that way, a little lower
+        _a.x += a.reachX * Math.cos(a.ryaw) * s;
+        _a.y -= Math.abs(a.reachX) * CONTACT.blockReachDrop;
         w.lerp(_a, p);
         pole.lerp(_b, p);
         rate = 30;
         palmFwd = p;
       }
-      if (act && act.kind === 'pass') {
+      if (act && act.kind === 'pass' && act.form !== 'hands') {
         const p = smooth01((tr - act.t0) / 0.07);
         this.key('pass', _a, _b);
         _a.x += 0.008 * H; // hands just apart
+        // diving: the arms stretch out ahead, just off the floor
+        if (st === 'dive') {
+          const dp = this.diveP();
+          _a.y = lerp(_a.y, -0.07 * H, dp);
+          _a.z = lerp(_a.z, 0.36 * H, dp);
+        }
         // follow-through lift after contact
         if (act.resolved && act.contactT > 0) _a.y += 0.06 * H * smooth01((tr - act.contactT) / 0.2);
         w.lerp(_a, p);
@@ -823,7 +888,7 @@ export class AthleteView {
         ikWorld = this.reachForBall(s, w, 0.7, 0.5, _g);
         if (ikWorld) ikBlend = reachBlend;
       }
-      if (act && act.kind === 'set') {
+      if (act && (act.kind === 'set' || (act.kind === 'pass' && act.form === 'hands'))) {
         const released = act.resolved && act.contactT > 0;
         const p = smooth01((tr - act.t0) / 0.1);
         this.key('setPrep', _a, _b);
@@ -953,6 +1018,21 @@ export class AthleteView {
   }
 
   /** pull the wrist target towards the ball when it is near */
+  /** 0..1 how far into a dive the body is: down onto the floor, held, then back up */
+  private diveP(): number {
+    const t = this.athlete.stateT;
+    return smooth01(t / PLAYER.diveDown) * (1 - smooth01((t - (PLAYER.diveTime - 0.4)) / 0.4));
+  }
+
+  /** how far the ball is to the body's right (+) or left (-), m (0 without a ball) */
+  private ballSide(): number {
+    const a = this.athlete;
+    const b = a.ballPos;
+    if (!b) return 0;
+    const r = rightFromYaw(a.ryaw, _f1);
+    return (b.x - a.rpos.x) * r.x + (b.z - a.rpos.z) * r.z;
+  }
+
   private reachForBall(s: number, wLocal: V, near: number, maxPull: number, out: V): V | null {
     const a = this.athlete;
     const ball = a.ballPos;
