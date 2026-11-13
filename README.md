@@ -508,12 +508,61 @@ contact rules do not know it is there.
   (a hand may reach across only above it, as a block does), a landing lean
   stops short of the net, and toes and knees stay behind the centre line. The
   mesh goes in with a ball driven into it and settles when the ball lets go.
+* **Venues.** The same court stands in five places, chosen under Settings,
+  Court (see [Venues](#venues)).
 * **The hall.** Two tiers of seats with a crowd in the half-light, an LED ribbon
   round the balcony, boards round the free zone, roof lamps, and a varnished
   floor that mirrors the players, the net and the boards. On a slow machine the
   game drops MSAA first and the floor mirror last (F3 shows the quality level).
 * **First person.** Your own arm dissolves where it passes close to the lens,
   so the swing crosses the view without a cut-off sleeve in it.
+
+### Venues
+
+Settings, Court, **Venue** moves the court. The court, the net, the lines, the
+free zone, the athletes and the AI are the same in all five: a drill plays the
+same contacts at the same times in every one. `venue=<id>` on a link shows a
+venue for that visit without changing the saved one.
+
+| Venue | `venue=` | What it is |
+|---|---|---|
+| Club hall | `hall` | The default: two tiers under a roof, a varnished maple floor. |
+| Games arena | `games` | A final: a laid synthetic court in colour blocks, a balcony of 18 rows in the dark with phone lights, one frame of light over the edge of the field of play, the wordmark on the floor. The marks are invented. |
+| Seaside | `seaside` | A painted hard court on a platform by the sea at golden hour: timber bleachers, palms, the sun low over the water. No floor mirror. |
+| After hours | `afterhours` | The training gym at night: every other lamp on, the moon in the windows, nobody watching and no crowd sound. |
+| Rooftop | `rooftop` | A court on a city roof under a full sky of stars: a ball fence, festoon lights, the skyline. |
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/venue-games-arena.jpg" alt="Games arena from the top of one end during a rally: a coral court on indigo, a rectangle of light hung over it, tiers of crowd in the dark with phone lights">
+      <b>Games arena.</b>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/venue-seaside.jpg" alt="Seaside: a blue court on terracotta at golden hour, long shadows, timber bleachers, palms and the sea behind">
+      <b>Seaside.</b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/venue-after-hours.jpg" alt="After hours: an empty wooden gym at night, half the lamps on, tall windows, benches along the walls">
+      <b>After hours.</b>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/venue-rooftop.jpg" alt="Rooftop: a green court on a city roof at night, festoon lights along the fence, lit towers and stars behind">
+      <b>Rooftop.</b>
+    </td>
+  </tr>
+</table>
+
+Two things are true to the place rather than the same everywhere
+([decision record 0009](docs/adr/0009-a-venue-is-looks-and-sound-except-for-the-open-sky.md)):
+
+* **Outdoors there is no ceiling.** Under a roof a ball that reaches 12.5 m is
+  out. At the seaside and on the rooftop it keeps flying and is judged where it
+  comes down.
+* **The beach has a hard court.** The ball bounces and the players move as they
+  do on a hard floor, so the floor is one: sand starts outside the boards.
 
 ## Tuning the feel
 
@@ -534,11 +583,12 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `CHARACTER` | How athletes are drawn: rim and side fill light, the arm swing of a jump (`jumpSwing`), how early hands go to where the ball will be (`meet`), the passing stance and what the platform does after the touch (`pass`), hand shapes (`hand`: how the fingers curl and spread loose, flat, on the ball and closed), where a palm meets the ball, how far arms, head, knees and toes keep from the net (`netClear`), idle breathing |
 | `ARENA` | The hall: floor mirror (size, strength, blur), the stands (`bowl`: tiers, rows, seats, how brightly the crowd is lit), how the net mesh goes in with a ball that is in it and settles after, lights, the final grade |
+| `VENUES` | The five venues: floor colours and how much the floor mirrors, the sky, the lights, haze, grade, the athletes' rim light, the crowd's light and sound, the boards, and whether the sky is open (`openSky`: no ceiling) |
 | `BALL_LOOK` | How deep the ball's seams look and how much it glows by itself |
 | `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); who the setter sets (`setWeight`) and how often the pipe (`pipe`); an overpass (`overpass`), an AI hitter misreading the user's block (`userBlockMisread`), who takes a ball (`pick`: first there takes it, the seam goes to the libero or you, the setter only when nobody else is close, a ball off a block or a second ball the libero gets to is the libero's); where an AI free ball over goes (`freeOver`: a deep corner or short, wherever they aren't); perimeter defence read spots and reaction times (`defence`), early transition and the front row's transition off the net after a block (`transition`, `approachOff`: no quick from the net) and covering our hitter in the real 3-2 spots (`cover`: when, the middle at the net, the setter on the 3 m line, the back row behind and deep, how fast a coverer reads a ball off the block); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, run-up, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool, roll and recycle shots (`toolShot`, `rollShot`, `recycleShot`); the libero's set off a hard ball (`backupSet`: how much it misses, when it bumps instead; never a set to the user), what an AI dive does with the ball (`diveUp`: a bit up, toward the middle) and when a free ball is aimed (`freeOver.aimSpeed`), a setter too late for the hands digging it (`lateSet`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`); first balls overhand (`overhand`), dives (`dive`, `stretch`: a last-ditch dive at a ball just past the hands) and a second player running at a ball the first may not reach (`scramble`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
-slow-mo assist, landing marker, replays, camera shake, volume, hints, your
+slow-mo assist, landing marker, replays, camera shake, volume, hints, the venue, your
 hitting hand, and your custom height / vert / spike power per position) are in the pause menu and
 persist in `localStorage`. Camera shake also scales the
 impact FOV punch and camera kick (0 turns them off). Stored settings are
@@ -597,7 +647,7 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   playwright install chromium`.
 * URL shortcuts for quick testing: `?mode=spike&pos=OH&cam=fp&bot=perfect`
   (modes: free, spike, block, receive, setter, rally; bots: perfect, good,
-  sloppy, tip; `&hand=left` plays as a lefty). Unknown values are ignored: an
+  sloppy, tip; `&hand=left` plays as a lefty, `&venue=seaside` moves the court for that visit). Unknown values are ignored: an
   unknown mode opens the menu, an unknown position falls back to OH.
   `?tutorial=0` starts the first-run lesson at the welcome (0 welcome,
   1 together, 2 slow motion, 3 full speed). `cam=fp` and `touch=1`
@@ -641,7 +691,8 @@ src/game/              game loop, athlete kinematics, contact/timing system, jud
 src/ai/                setter, hitter, blocker, server, team coordinator
 src/fx/                particles, trails, effects director, replay, post-processing
 src/audio/             Web Audio synthesis
-src/world/             arena, stands and crowd, floor mirror, procedural textures
+src/world/             arena, the venues (stands and crowd, sky, what stands round the court), floor mirror,
+                       procedural textures
 src/ui/                HUD, menus (start screen sections, pause, Settings and Athlete sheets), each drill's
                        menu text and keys, icons, touch controls overlay, crash screen, debug overlay
 tests/                 unit tests

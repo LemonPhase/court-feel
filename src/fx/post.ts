@@ -68,6 +68,7 @@ export class Post {
   readonly composer: EffectComposer;
   readonly bloom: UnrealBloomPass;
   private renderPass: RenderPass;
+  private grade: ShaderPass;
   enabled = true;
   /** drawn before the main view each frame (the floor's mirror image) */
   preRender: (() => void) | null = null;
@@ -90,7 +91,8 @@ export class Post {
     );
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
-    this.composer.addPass(new ShaderPass(GradeShader));
+    this.grade = new ShaderPass(GradeShader);
+    this.composer.addPass(this.grade);
   }
 
   /** change MSAA on the HDR targets (they are re-created on next use) */
@@ -101,6 +103,13 @@ export class Post {
         rt.dispose();
       }
     }
+  }
+
+  /** the venue's grade: darker corners, contrast, saturation */
+  setGrade(g: { vignette: number; contrast: number; saturation: number }): void {
+    this.grade.uniforms.uVignette.value = g.vignette;
+    this.grade.uniforms.uContrast.value = g.contrast;
+    this.grade.uniforms.uSaturation.value = g.saturation;
   }
 
   setCamera(cam: THREE.Camera): void {

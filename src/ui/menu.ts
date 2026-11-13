@@ -3,6 +3,8 @@ import {
   isPositionId,
   POSITIONS,
   SETTING_RANGES,
+  VENUE_IDS,
+  VENUES,
   type BodyOverride,
   type BooleanSettingKey,
   type NumericSettingKey,
@@ -1064,6 +1066,13 @@ export class Menu {
         ["Men's 2.43 m", "Women's 2.24 m"],
         () => (s.womenNet ? 1 : 0),
         (i) => (s.womenNet = i === 1),
+      ),
+      seg(
+        'Venue',
+        VENUE_IDS.map((id) => VENUES[id].name),
+        () => VENUE_IDS.indexOf(s.venue),
+        (i) => (s.venue = VENUE_IDS[i]),
+        'Where the court stands. The court and the net are the same everywhere. Outdoors there is no ceiling.',
       ),
     ]);
 

@@ -37,6 +37,7 @@ export class AudioEngine {
   private pink!: AudioBuffer;
   private crowdBed: { gain: GainNode; filter: BiquadFilterNode } | null = null;
   private volume = AUDIO.master;
+  private crowdShare = 1;
   private lastSqueak = 0;
   private lastStep = 0;
   muted = false;
@@ -120,7 +121,7 @@ export class AudioEngine {
       this.sfx.gain.value = AUDIO.sfx * 0.8;
       this.sfx.connect(limiter);
       this.crowdBus = ctx.createGain();
-      this.crowdBus.gain.value = AUDIO.crowd;
+      this.crowdBus.gain.value = AUDIO.crowd * this.crowdShare;
       this.crowdBus.connect(this.master);
       this.reverb = ctx.createConvolver();
       this.reverb.buffer = this.makeImpulse(2.0, 3.0);
@@ -171,6 +172,12 @@ export class AudioEngine {
       this.pink = this.makeNoise(4, true);
       this.startCrowd();
     }
+  }
+
+  /** the venue's crowd: a share of the crowd level (an empty gym has none) */
+  setCrowdShare(share: number): void {
+    this.crowdShare = share;
+    if (this.ctx && this.crowdBus) this.crowdBus.gain.setTargetAtTime(AUDIO.crowd * share, this.ctx.currentTime, 0.2);
   }
 
   setVolume(v: number): void {

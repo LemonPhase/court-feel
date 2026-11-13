@@ -3,7 +3,9 @@ import { ARENA, COURT } from '../config';
 import { FloorReflection, REFLECT_LAYER } from './floorReflection';
 import { mergeGeometries } from './geo';
 import { netPress } from './netPress';
-import { buildBowl } from './stands';
+import { VENUE } from './venue';
+import { makeSkyDome, makeSkyTexture } from './sky';
+import { buildVenue } from './venues';
 import { makeAntennaTexture, makeBoardTexture, makeNetTexture, makeWoodTextures } from './textures';
 
 /**
@@ -15,7 +17,7 @@ export class Arena {
   readonly group = new THREE.Group();
   netTop: number = COURT.netHeightMen;
   private netGroup = new THREE.Group();
-  private crowdMat!: THREE.ShaderMaterial;
+  private crowdMat: THREE.ShaderMaterial | null = null;
   private excitement = 0;
   private time = 0;
   keyLight!: THREE.DirectionalLight;
@@ -31,6 +33,7 @@ export class Arena {
   private netHitNext = 0;
   /** the floor and what is painted on it: not part of its own mirror image */
   private unmirrored: THREE.Object3D[] = [];
+  private skyTex: THREE.Texture | null = null;
   /** objects the TP camera must not pass through (net + posts) */
   readonly cameraBlockers: THREE.Box3[] = [];
 
@@ -38,7 +41,14 @@ export class Arena {
     private renderer: THREE.WebGLRenderer,
     private scene: THREE.Scene,
   ) {
-    this.reflection = new FloorReflection(renderer, scene);
+    this.reflection = new FloorReflection(renderer, scene, VENUE.floor.mirror);
+    // the venue sets the exposure, the haze and, outdoors, the sky
+    renderer.toneMappingExposure = VENUE.exposure;
+    scene.fog = new THREE.Fog(VENUE.fog.color, VENUE.fog.near, VENUE.fog.far);
+    if (VENUE.sky) {
+      this.skyTex = makeSkyTexture(VENUE.sky);
+      this.group.add(makeSkyDome(this.skyTex));
+    }
     this.buildFloor();
     this.buildLines();
     this.buildNet();
@@ -59,23 +69,22 @@ export class Arena {
     const { map, rough, gray } = makeWoodTextures(4);
     const fullX = COURT.arenaHalfX * 2;
     const fullZ = COURT.arenaHalfZ * 2;
+    const F = VENUE.floor;
     const mkMat = (color: number, roughness: number, tile = 4, painted = false) => {
       const m = (painted ? gray : map).clone();
       const r = rough.clone();
       m.needsUpdate = r.needsUpdate = true;
-      const mat = new THREE.MeshStandardMaterial({
-        color,
-        map: m,
-        roughnessMap: r,
-        roughness,
-        metalness: 0,
-        envMapIntensity: 1,
-      });
+      // a laid or painted court has no boards: one even colour, one roughness
+      const mat = new THREE.MeshStandardMaterial(
+        F.wood
+          ? { color, map: m, roughnessMap: r, roughness, metalness: 0, envMapIntensity: 1 }
+          : { color, roughness, metalness: 0, envMapIntensity: 1 },
+      );
       this.reflection.apply(mat);
       return { mat, m, r, tile };
     };
     // natural wood everywhere
-    const base = mkMat(0xf2e2d0, 1.4);
+    const base = mkMat(F.base, F.rough[0]);
     base.m.repeat.set(fullX / 4, fullZ / 4);
     base.r.repeat.copy(base.m.repeat);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(fullX, fullZ), base.mat);
@@ -88,8 +97,8 @@ export class Arena {
     // free zone paint (deep blue, still glossy so reflections read)
     const fzX = COURT.halfWidth + COURT.freeZoneSide;
     const fzZ = COURT.halfLength + COURT.freeZoneEnd;
-    const free = mkMat(0x2a63c4, 1.3, 4, true);
-    const court = mkMat(0xffe0c0, 1.2);
+    const free = mkMat(F.free, F.rough[1], 4, F.free !== F.base);
+    const court = mkMat(F.court, F.rough[2]);
     const paint = (mat: THREE.MeshStandardMaterial, x0: number, x1: number, z0: number, z1: number, y: number, tex: THREE.Texture[]) => {
       const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
       // world-aligned UVs so planks line up with the base floor
@@ -329,12 +338,13 @@ export class Arena {
 
   // ---------------------------------------------------------------- surroundings
   private buildBoards(): void {
-    const tex = makeBoardTexture();
+    if (!VENUE.boards) return;
+    const tex = makeBoardTexture(VENUE.boards);
     const mat = new THREE.MeshStandardMaterial({
       map: tex,
       emissive: 0xffffff,
       emissiveMap: tex,
-      emissiveIntensity: 0.55,
+      emissiveIntensity: VENUE.boardGlow,
       roughness: 0.4,
     });
     const fzX = COURT.halfWidth + COURT.freeZoneSide + 0.6;
@@ -359,20 +369,19 @@ export class Arena {
   }
 
   private buildStands(): void {
-    const bowl = buildBowl(this.group);
-    this.crowdMat = bowl.crowd;
+    this.crowdMat = buildVenue(this.group, VENUE);
   }
 
   private buildLights(): void {
-    const L = ARENA.light;
-    const hemi = new THREE.HemisphereLight(0xe2e9ff, 0xb08c62, L.hemi);
+    const L = VENUE.light;
+    const hemi = new THREE.HemisphereLight(L.hemiSky, L.hemiGround, L.hemi);
     this.group.add(hemi);
     // key light nearly overhead: the arena look, a readable shadow under each player and no
     // hotspot on the floor. Faces get their light in the athletes' own shader (CHARACTER.sideFill):
     // two low lights from behind the baselines lit them too, and put a glare patch on the varnish
     // in front of the camera
-    const key = new THREE.DirectionalLight(0xfff4e6, L.key);
-    key.position.set(1.5, 24, 3.5);
+    const key = new THREE.DirectionalLight(L.keyColor, L.key);
+    key.position.set(...L.keyPos);
     key.target.position.set(0, 0, 0);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -382,14 +391,15 @@ export class Arena {
     sc.top = 14.5;
     sc.bottom = -14.5;
     sc.near = 5;
-    sc.far = 40;
+    // a low sun stands further off along the floor than the roof lights do
+    sc.far = Math.max(40, Math.hypot(...L.keyPos) + 24);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.03;
     key.shadow.radius = 4;
     this.group.add(key, key.target);
     this.keyLight = key;
     // two soft fills from the long sides (no shadows)
-    const f1 = new THREE.DirectionalLight(0xdde6ff, L.fill);
+    const f1 = new THREE.DirectionalLight(L.fillColor, L.fill);
     f1.position.set(-10, 18, -5);
     const f2 = new THREE.DirectionalLight(0xfff0dd, L.fill * 0.85);
     f2.position.set(10, 18, 7);
@@ -398,6 +408,7 @@ export class Arena {
 
   /** Bake a simple room into a PMREM env map for floor and ball reflections. */
   private buildEnvironment(): void {
+    if (this.skyTex) return this.buildSkyEnvironment(this.skyTex);
     const envScene = new THREE.Scene();
     envScene.background = new THREE.Color(0x10131c);
     const box = new THREE.Mesh(new THREE.BoxGeometry(60, 18, 60), new THREE.MeshBasicMaterial({ color: 0x1a1f2c, side: THREE.BackSide }));
@@ -446,8 +457,47 @@ export class Arena {
     const rt = pmrem.fromScene(envScene, 0.035, 0.1, 100);
     this.envMap = rt.texture;
     this.scene.environment = rt.texture;
-    this.scene.environmentIntensity = ARENA.light.env;
+    this.scene.environmentIntensity = VENUE.light.env;
     pmrem.dispose();
+  }
+
+  /** Outdoors the reflections come from the sky itself, the ground under it and the lit court */
+  private buildSkyEnvironment(sky: THREE.Texture): void {
+    const envScene = new THREE.Scene();
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(90, 32, 16), new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide })));
+    const groundMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(VENUE.sky!.ground) });
+    const g = new THREE.Mesh(new THREE.CircleGeometry(88, 24), groundMat);
+    g.rotation.x = -Math.PI / 2;
+    g.position.y = -0.5;
+    envScene.add(g);
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const rt = pmrem.fromScene(envScene, 0.035, 0.1, 100);
+    this.envMap = rt.texture;
+    this.scene.environment = rt.texture;
+    this.scene.environmentIntensity = VENUE.light.env;
+    pmrem.dispose();
+  }
+
+  /** Take the arena out of the scene and free what it holds on the GPU (the venue is being changed). */
+  dispose(): void {
+    this.scene.remove(this.group);
+    const seen = new Set<THREE.Material>();
+    this.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      for (const mat of Array.isArray(m.material) ? m.material : m.material ? [m.material] : []) {
+        if (seen.has(mat)) continue;
+        seen.add(mat);
+        for (const v of Object.values(mat)) if (v instanceof THREE.Texture) v.dispose();
+        mat.dispose();
+      }
+      const light = o as THREE.DirectionalLight;
+      if (light.isDirectionalLight) light.shadow.map?.dispose();
+    });
+    this.skyTex?.dispose();
+    this.envMap?.dispose();
+    this.scene.environment = null;
+    this.reflection.target.dispose();
   }
 
   /**

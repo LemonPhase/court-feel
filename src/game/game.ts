@@ -1,11 +1,13 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings } from '../config';
+import { ASSIST, CAMERA, CHARACTER, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings, type VenueId } from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
 import { clamp01, damp, lerp, Rng } from '../core/mathx';
 import { CameraRig, type FollowTarget } from '../camera/cameraRig';
+import { BODY_LIGHT } from '../character/bodyMaterial';
 import { Arena } from '../world/arena';
+import { setVenue, VENUE, VENUE_ID } from '../world/venue';
 import { REFLECT_LAYER } from '../world/floorReflection';
 import { Post } from '../fx/post';
 import { Athlete, handSign } from './athlete';
@@ -56,7 +58,7 @@ export class Game {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly rig: CameraRig;
-  readonly arena: Arena;
+  arena: Arena;
   readonly post: Post;
   readonly input: Input;
   readonly user: UserController;
@@ -125,6 +127,8 @@ export class Game {
   /** consecutive frames that threw */
   private failedFrames = 0;
   private aimReticle: THREE.Mesh;
+  /** the venue setting as last applied (a change to it ends a link's override) */
+  private venueSetting: VenueId;
   private idealCache: IdealInfo = { t: 0, d: 0, ball: new THREE.Vector3(), point: new THREE.Vector3() };
   private idealValid = false;
   /** last timing info for the debug overlay */
@@ -133,7 +137,11 @@ export class Game {
   constructor(
     private container: HTMLElement,
     public settings: Settings,
+    /** a venue asked for by the link: it wins over the saved one until the player picks a venue in Settings */
+    private venueOverride: VenueId | null = null,
   ) {
+    this.venueSetting = settings.venue;
+    setVenue(venueOverride ?? settings.venue);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
@@ -153,6 +161,7 @@ export class Game {
     this.arena = new Arena(this.renderer, this.scene);
     this.rig.blockers = this.arena.cameraBlockers;
     this.post = new Post(this.renderer, this.scene, this.rig.camera);
+    this.applyVenue();
     this.post.preRender = () => this.arena.reflection.render(this.rig.camera);
     this.input = new Input(this.renderer.domElement);
     this.user = new UserController(this.input, this.rig);
@@ -397,11 +406,41 @@ export class Game {
     this.ball.hide();
   }
 
+  // ------------------------------------------------------------ venue
+  /** what the venue sets outside the arena itself: the athletes' light, the grade, the crowd's sound, and whether the sky is open */
+  private applyVenue(): void {
+    BODY_LIGHT.rim.value = CHARACTER.rim * VENUE.body.rim;
+    BODY_LIGHT.side.value = CHARACTER.sideFill * VENUE.body.side;
+    this.post.setGrade(VENUE.grade);
+    // the one thing a venue changes about play (docs/adr/0009): outdoors nothing stops the ball overhead
+    this.env.ceiling = VENUE.openSky ? null : COURT.ceiling;
+    this.fx?.audio.setCrowdShare(VENUE.crowdSound);
+  }
+
+  /** rebuild what stands round the court (the court, the net and everyone on it stay where they are) */
+  private changeVenue(id: VenueId): void {
+    const netTop = this.arena.netTop;
+    this.arena.dispose();
+    setVenue(id);
+    this.arena = new Arena(this.renderer, this.scene);
+    this.arena.setNetHeight(netTop);
+    this.applyVenue();
+    this.ball.version++;
+    // the mirror's size and the quality level's choices belong to the arena that was thrown away
+    this.setQuality(this.quality);
+  }
+
   // ------------------------------------------------------------ settings
   applySettings(): void {
     const s = this.settings;
     this.rig.baseFov = s.fov;
     this.rig.shakeScale = s.shake;
+    if (s.venue !== this.venueSetting) {
+      this.venueSetting = s.venue;
+      this.venueOverride = null;
+    }
+    const venue = this.venueOverride ?? s.venue;
+    if (venue !== VENUE_ID) this.changeVenue(venue);
     this.arena.setNetHeight(s.womenNet ? COURT.netHeightWomen : COURT.netHeightMen);
     this.rig.netTop = this.arena.netTop;
     this.env.netTop = this.arena.netTop;

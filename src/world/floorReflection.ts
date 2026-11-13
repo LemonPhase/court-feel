@@ -23,7 +23,11 @@ export class FloorReflection {
   constructor(
     private renderer: THREE.WebGLRenderer,
     private scene: THREE.Scene,
+    /** share of the configured strength this floor mirrors with (a matt court mirrors less; 0 skips the pass) */
+    private share = 1,
   ) {
+    this.strength.value = ARENA.reflection.strength * share;
+    this.enabled = share > 0;
     this.target = new THREE.WebGLRenderTarget(4, 4, {
       type: THREE.HalfFloatType,
       generateMipmaps: true,
@@ -43,9 +47,9 @@ export class FloorReflection {
   }
 
   setEnabled(on: boolean): void {
-    this.enabled = on;
-    this.map.value = on ? this.target.texture : this.black;
-    this.strength.value = on ? ARENA.reflection.strength : 0;
+    this.enabled = on && this.share > 0;
+    this.map.value = this.enabled ? this.target.texture : this.black;
+    this.strength.value = this.enabled ? ARENA.reflection.strength * this.share : 0;
   }
 
   /** draw the mirror image for this camera (call before the main view is drawn) */

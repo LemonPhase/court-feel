@@ -15,6 +15,9 @@ export interface BodyMaterial extends THREE.MeshStandardMaterial {
   nearFade: THREE.Vector2;
 }
 
+/** the rim and the side fill are one pair of values for every athlete: the venue sets them (roof light, a low sun, night) */
+export const BODY_LIGHT = { rim: { value: CHARACTER.rim }, side: { value: CHARACTER.sideFill } };
+
 export function makeBodyMaterial(atlas: THREE.Texture | null): BodyMaterial {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -25,8 +28,8 @@ export function makeBodyMaterial(atlas: THREE.Texture | null): BodyMaterial {
   }) as BodyMaterial;
   mat.nearFade = new THREE.Vector2(0, 0);
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uRim = { value: CHARACTER.rim };
-    shader.uniforms.uSide = { value: CHARACTER.sideFill };
+    shader.uniforms.uRim = BODY_LIGHT.rim;
+    shader.uniforms.uSide = BODY_LIGHT.side;
     shader.uniforms.uNearFade = { value: mat.nearFade };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aRough;\nvarying float vRough;')

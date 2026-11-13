@@ -540,14 +540,8 @@ export function makeWallTexture(): THREE.CanvasTexture {
 }
 
 /** LED boards round the free zone: dark panels with the wordmark and the drills, in the two teams' colours (no real brands). Tiles every 8 m. */
-export function makeBoardTexture(): THREE.CanvasTexture {
+export function makeBoardTexture(panels: [string, string, string, string][]): THREE.CanvasTexture {
   const [c, ctx] = canvas(1024, 96);
-  const panels: [string, string, string, string][] = [
-    ['#0a1c4a', '#16408f', 'COURT FEEL', '#ffffff'],
-    ['#8f141c', '#d8343c', 'SPIKE', '#ffffff'],
-    ['#0a1c4a', '#16408f', 'TRUE TO THE COURT', '#ffd45c'],
-    ['#0e1626', '#1c2740', 'BLOCK', '#7fb4ff'],
-  ];
   const w = 1024 / panels.length;
   panels.forEach(([a, b, text, fg], i) => {
     const g = ctx.createLinearGradient(i * w, 0, i * w + w, 96);
