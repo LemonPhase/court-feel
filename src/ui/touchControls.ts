@@ -318,7 +318,7 @@ export class TouchControls {
 
   private buildChips(): void {
     const g = this.g;
-    for (const id of ['feed', 'auto', 'vsblock', 'd1', 'd2', 'd3', 'd4', 'd5'] as PadButton[]) this.buttons.delete(id);
+    for (const id of ['feed', 'auto', 'vsblock', 'd1', 'd2', 'd3', 'd4'] as PadButton[]) this.buttons.delete(id);
     this.chips.innerHTML = '';
     const chip = (id: PadButton, label: string) => {
       const e = el('div', 't-tap t-chip', this.chips, label);
@@ -326,7 +326,7 @@ export class TouchControls {
       this.buttons.set(id, e);
     };
     const toss = this.buttons.get('toss')!;
-    toss.style.display = g.modeId === 'free' ? '' : 'none';
+    toss.style.display = g.modeId === 'free' || g.modeId === 'serve' ? '' : 'none';
     // tutorial reps: no set-call chips and no block toggle (one Outside story, block off)
     const calls = !g.tutorial.active && (g.modeId === 'spike' || g.modeId === 'rally') && SET_PLAYS[g.position];
     if (calls) {
@@ -336,9 +336,15 @@ export class TouchControls {
       chip('d3', '3');
     }
     if (g.modeId === 'spike' && !g.tutorial.active) chip('vsblock', 'VS BLOCK');
+    if (g.modeId === 'serve') {
+      el('span', 't-chip-l', this.chips, 'SERVE');
+      chip('d1', '1');
+      chip('d2', '2');
+      chip('d3', '3');
+    }
     if (g.modeId === 'free') {
       el('span', 't-chip-l', this.chips, 'FEED');
-      for (let i = 1; i <= 5; i++) chip(`d${i}` as PadButton, String(i));
+      for (let i = 1; i <= 4; i++) chip(`d${i}` as PadButton, String(i));
       chip('feed', 'FEED');
       chip('auto', 'AUTO');
     }

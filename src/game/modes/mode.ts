@@ -7,14 +7,18 @@ import type { Outcome } from '../judge';
 import { makeRingTexture } from '../../world/textures';
 import { drillBall } from '../attempt';
 
-export type ModeId = 'free' | 'spike' | 'block' | 'receive' | 'setter' | 'rally';
+export type ModeId = 'free' | 'spike' | 'block' | 'receive' | 'setter' | 'serve' | 'rally';
 
 export const MODE_INFO: Record<ModeId, { title: string; blurb: string }> = {
-  free: { title: 'Free Play', blurb: 'A ball machine feeds you. Practise anything: spike, pass, block, set, serve.' },
+  free: { title: 'Free Play', blurb: 'A ball machine feeds you. Practise anything: spike, pass, block, set.' },
   spike: { title: 'Spike Drill', blurb: 'The setter sets you rep after rep. Timing, power and placement are scored.' },
   block: { title: 'Block Drill', blurb: 'An opposing hitter attacks. Read the set, move, time the block.' },
   receive: { title: 'Serve Receive / Dig', blurb: 'Pass serves and dig attacks to the setter target.' },
   setter: { title: 'Setter Drill', blurb: 'Run the offence: set your hitters and watch them finish.' },
+  serve: {
+    title: 'Serve Drill',
+    blurb: 'Standing float, jump float or jump serve at a team in serve receive. Rated by the pass you force.',
+  },
   rally: { title: 'Mini Rally', blurb: 'Six-a-side rallies in your chosen position. Win the point.' },
 };
 

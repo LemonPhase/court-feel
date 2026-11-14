@@ -1239,7 +1239,7 @@ export class TeamAI {
     const server = this.players.get(this.userSlot === 'OH2' ? 'OPP' : 'OH2')!;
     const b = this.brains.get(server)!;
     b.job = 'serve';
-    b.server.serve(target, this.side * -2.5, jump);
+    b.server.serve(target, this.side * -2.5, jump ? 'jump' : 'float');
     return server;
   }
 }

@@ -17,7 +17,13 @@ describe('menu: where each mode lives', () => {
 
   it('the six-a-side rally is a game, and the single-skill drills are under Train', () => {
     expect(PLAY_MODES).toContain('rally');
-    for (const id of ['spike', 'block', 'receive', 'setter', 'free'] as ModeId[]) expect(TRAIN_MODES).toContain(id);
+    for (const id of ['spike', 'block', 'receive', 'setter', 'serve', 'free'] as ModeId[]) expect(TRAIN_MODES).toContain(id);
+  });
+
+  it('the Serve Drill names its three serves, the toss, and the run-up, jump and swing of a spike', () => {
+    const keys = DRILL_INFO.serve.keys.map((k) => k.k);
+    expect(keys).toEqual(expect.arrayContaining(['1  2  3', 'Q', 'Shift + W', 'Space', 'Left mouse']));
+    expect(DRILL_INFO.serve.touch.map((k) => k.k)).toEqual(expect.arrayContaining(['SERVE', 'TOSS', 'JUMP', 'HIT']));
   });
 
   it('every mode says what it is and lists its own keys, for the keyboard and for touch', () => {

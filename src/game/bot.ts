@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { BALL, PLAYER, SIM, TIMING } from '../config';
 import { Athlete } from './athlete';
-import { AIM_DEPTH, aimPitchRange, ContactSystem } from './contact';
+import { AIM_DEPTH, aimPitchFor, aimPitchRange, ContactSystem } from './contact';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Game } from './game';
-import { planQuick, type ApproachPlan } from '../ai/approach';
+import { planApproach, planQuick, type ApproachPlan } from '../ai/approach';
 import { quickSpot, setterTouchY } from './plays';
 import type { TeamAI } from '../ai/team';
 
@@ -21,6 +21,7 @@ interface DrillView {
   earlyPlan?: ApproachPlan | null;
   earlyFor?: unknown;
   setOptions?(a: Athlete): { target: V3 }[];
+  canServe?(a: Athlete): boolean;
 }
 const drillView = (g: Game): DrillView | null => g.mode as unknown as DrillView | null;
 
@@ -514,5 +515,171 @@ export class TouchBot {
     me.cmd.moveX = this.mx;
     me.cmd.moveZ = this.mz;
     me.cmd.sprint = Math.hypot(this.mx, this.mz) > 0.9;
+  }
+}
+
+/** where the serve autopilot aims, in turn: deep to zone 5, deep to zone 1, the middle of the court */
+const SERVE_AIMS: readonly { x: number; z: number }[] = [
+  { x: -3, z: -7.3 },
+  { x: 3, z: -7.3 },
+  { x: 0, z: -6.5 },
+];
+
+/**
+ * Serve-drill autopilot: tosses (Q) the serve the drill has picked, and for a jump float or a jump
+ * serve runs in under the toss and jumps (Space), then holds and releases the attack button so
+ * the hand meets the ball as it comes down. Every button goes through Input, as a player's do.
+ */
+export class ServeBot {
+  private phase: 'wait' | 'toss' | 'approach' | 'load' | 'air' | 'done' = 'wait';
+  private t = 0;
+  private plan: ApproachPlan | null = null;
+  private pressAt = 0;
+  private holding = false;
+  private fired = false;
+  private offset = 0;
+  private served = 0;
+  private aim = SERVE_AIMS[0];
+  private mx = 0;
+  private mz = 0;
+  private sprint = false;
+
+  constructor(
+    private g: Game,
+    private quality: BotQuality = 'perfect',
+  ) {}
+
+  private to(phase: ServeBot['phase']): void {
+    this.phase = phase;
+    this.t = 0;
+  }
+
+  /** look where the serve is aimed, from `from` (the feet, or the ball once the arm is swinging) */
+  private look(from: { x: number; z: number }): void {
+    const g = this.g;
+    g.rig.pitch = aimPitchFor(Math.abs(this.aim.z), g.rig.mode === 'fp');
+    g.rig.yaw = yawFromDir(this.aim.x - from.x, this.aim.z - from.z);
+  }
+
+  /** wind up as the ball comes into reach and release so the hand meets it; true once released */
+  private swing(): boolean {
+    const g = this.g;
+    const me = g.me;
+    const now = g.simTime;
+    const info = g.contact.ideal(me, now, 0.9);
+    if (!info) return false;
+    this.look(me.pos);
+    // a full wind-up, started in time for it
+    if (!this.holding && info.t - now < TIMING.chargeFull + 0.15) {
+      g.input.down('Mouse0');
+      this.holding = true;
+    }
+    const w = me.action?.kind === 'windup' ? me.action : null;
+    const fire = info.t - ContactSystem.swingLead(w ? ContactSystem.chargeFor(now - w.t0) : 0) + this.offset;
+    if (this.holding && now >= fire - 1e-4) {
+      g.input.up('Mouse0');
+      this.holding = false;
+      return true;
+    }
+    return false;
+  }
+
+  step(dt: number): void {
+    const g = this.g;
+    const me = g.me;
+    const now = g.simTime;
+    const inp = g.input;
+    this.t += dt;
+    this.mx = this.mz = 0;
+    this.sprint = false;
+    const standing = g.serveKind === 'float';
+    switch (this.phase) {
+      case 'wait': {
+        // behind the end line, standing still, with the ball in hand
+        if (!drillView(g)?.canServe?.(me) || me.state !== 'ground' || me.speed > 0.2) {
+          this.t = 0;
+          break;
+        }
+        this.aim = SERVE_AIMS[this.served % SERVE_AIMS.length];
+        // a standing serve is tossed the way it will be hit; a run-up goes straight in and aims in the air
+        if (standing) this.look(me.pos);
+        else g.rig.yaw = 0;
+        if (this.t > 0.5) {
+          inp.down('KeyQ');
+          const q = this.quality;
+          const rnd = g.rng.next() * 2 - 1;
+          this.offset = q === 'perfect' ? 0 : q === 'good' ? rnd * 0.05 : rnd * 0.13;
+          this.fired = false;
+          this.plan = null;
+          this.to('toss');
+        }
+        break;
+      }
+      case 'toss': {
+        inp.up('KeyQ');
+        if (g.contact.serving !== me) {
+          // the toss was not taken (or has come down): start again
+          if (this.t > 0.3) this.to('done');
+          break;
+        }
+        if (standing) {
+          if (this.swing()) {
+            this.fired = true;
+            this.to('done');
+          }
+          break;
+        }
+        this.plan = planApproach(me, g.ball.ensurePrediction(g.env, now), now, 0, 0);
+        if (this.plan) this.to('approach');
+        break;
+      }
+      case 'approach': {
+        const plan = this.plan!;
+        g.rig.yaw = 0;
+        if (now >= plan.tStart - 1e-6) {
+          this.mx = plan.dir.x;
+          this.mz = plan.dir.z;
+          this.sprint = true;
+        }
+        if (now >= plan.tPress - 1e-3) {
+          inp.down('Space');
+          this.pressAt = now;
+          this.to('load');
+        }
+        break;
+      }
+      case 'load':
+        // the wind-up starts on the plant, as for a spike
+        if (!this.holding) {
+          inp.down('Mouse0');
+          this.holding = true;
+        }
+        if (now - this.pressAt >= this.plan!.hold) {
+          inp.up('Space');
+          this.to('air');
+        }
+        break;
+      case 'air':
+        if (!this.fired && me.state === 'air' && this.swing()) this.fired = true;
+        if (this.t > 0.2 && (me.state === 'land' || me.state === 'ground')) this.to('done');
+        break;
+      case 'done':
+        for (const k of ['KeyQ', 'Space', 'Mouse0']) inp.up(k);
+        this.holding = false;
+        if (this.fired) this.served++;
+        this.fired = false;
+        this.to('wait');
+        break;
+    }
+    // a serve that never came off (a plan the feet could not keep): let go of everything and start again
+    if (this.phase !== 'wait' && this.t > 4) this.to('done');
+  }
+
+  /** override the keyboard movement mapping */
+  after(): void {
+    const me = this.g.me;
+    me.cmd.moveX = this.mx;
+    me.cmd.moveZ = this.mz;
+    me.cmd.sprint = this.sprint;
   }
 }

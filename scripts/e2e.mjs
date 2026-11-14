@@ -3,7 +3,7 @@
 // the real input path, takes FP/TP screenshots of key moments, and checks:
 //   - no console errors or warnings, no page errors
 //   - every drill's bot makes its contacts, mostly Perfect; rallies produce points
-//   - spike-drill set calls take effect (each call sets its own play)
+//   - spike-drill set calls take effect (each call sets its own play); the serve drill's three serves too
 //   - the Perfect-spike replay starts; touch controls drive the athlete
 //   - bad quick-start links and corrupted saved settings still load and play; menus are keyboard-usable;
 //     a crash leaves the crash screen in control of the keyboard and mouse
@@ -350,6 +350,10 @@ const runs = [
   ['block', 'MB'],
   ['receive', 'L'],
   ['setter', 'S'],
+  // serve drill: the standing float, and keys 2 and 3 (jump float, jump serve)
+  ['serve', 'OH'],
+  ['serve', 'OH', 1],
+  ['serve', 'OH', 2],
   ['free', 'OH'],
   ['rally', 'MB'],
   ['rally', 'L'],
@@ -374,6 +378,9 @@ for (const [mode, pos, call = 0] of runs) {
         away: g.mode.scoreAway,
         // the set call in effect (spike drill): proves selectCall reached the drill
         play: g.mode.play?.name ?? null,
+        // the serve picked (serve drill), and how hard the user's serves were hit
+        serve: g.mode.kind ?? null,
+        serveKmh: Math.max(0, ...mine.filter((m) => m.kind === 'serve').map((m) => m.kmh)),
         myContacts: grades,
         outcomes: window.log.filter((l) => l.outcome).length,
         events: window.log.length,
@@ -385,7 +392,7 @@ for (const [mode, pos, call = 0] of runs) {
   report.modes[key] = r;
   console.log(mode, pos + (call ? ` call${call + 1}` : ''), JSON.stringify(r));
   // what each drill's bot has to touch; the perfect bot should mostly grade Perfect
-  const kind = { spike: 'spike', free: 'spike', block: 'block', receive: 'pass', setter: 'set' }[mode];
+  const kind = { spike: 'spike', free: 'spike', block: 'block', receive: 'pass', setter: 'set', serve: 'serve' }[mode];
   const count = (k, grade) =>
     Object.entries(r.myContacts)
       .filter(([g]) => g.startsWith(k + ':') && (!grade || g.endsWith(':' + grade)))
@@ -395,8 +402,10 @@ for (const [mode, pos, call = 0] of runs) {
     check(all >= 1, `${key}: the bot makes ${kind} contacts`, r.myContacts);
     check(count(kind, 'Perfect') * 2 >= all, `${key}: at least half of the bot's ${kind} contacts are Perfect`, r.myContacts);
   }
-  if (mode === 'spike' || mode === 'block' || mode === 'receive' || mode === 'setter')
+  if (mode === 'spike' || mode === 'block' || mode === 'receive' || mode === 'setter' || mode === 'serve')
     check(r.reps >= 1, `${key}: at least one rep completes`, r);
+  // a served ball is rated by the pass it forces: clean serves at a team in serve receive score at least 1 each
+  if (mode === 'serve') check(r.score >= r.reps, `${key}: the bot's serves are in and rated`, r);
   if (mode === 'rally') {
     check(r.outcomes >= 1, `${key}: the rally produces points`, r);
     check(Object.keys(r.myContacts).length >= 1, `${key}: the user's athlete plays the ball`, r);
@@ -406,6 +415,21 @@ for (const [mode, pos, call = 0] of runs) {
 for (const pos of ['OH', 'MB', 'OPP']) {
   const plays = [report.modes[`spike_${pos}`], report.modes[`spike_${pos}_call2`], report.modes[`spike_${pos}_call3`]].map((m) => m?.play);
   check(new Set(plays).size === 3 && plays.every(Boolean), `spike drill ${pos}: calls 1 / 2 / 3 set different plays`, plays);
+}
+
+// keys 1 / 2 / 3 pick three different serves, each hit harder than the one before
+{
+  const serves = [report.modes.serve_OH, report.modes.serve_OH_call2, report.modes.serve_OH_call3];
+  check(
+    serves.map((m) => m?.serve).join() === 'float,jumpFloat,jump',
+    'serve drill: keys 1 / 2 / 3 pick the float, the jump float and the jump serve',
+    serves.map((m) => m?.serve),
+  );
+  check(
+    serves[0]?.serveKmh < serves[1]?.serveKmh && serves[1]?.serveKmh < serves[2]?.serveKmh,
+    'serve drill: the jump float is faster than the float, and the jump serve faster than both',
+    serves.map((m) => m?.serveKmh),
+  );
 }
 
 // ---- block FP + rally screenshots
@@ -598,7 +622,7 @@ const soak = await page.evaluate(async (secs) => {
     textures: g.renderer.info.memory.textures,
     programs: g.renderer.info.programs?.length ?? 0,
   });
-  const modes = ['rally', 'spike', 'block', 'receive', 'setter', 'free'];
+  const modes = ['rally', 'spike', 'block', 'receive', 'setter', 'serve', 'free'];
   // warm up: every mode once (first-use shaders and pools), then measure from the rally
   for (const m of modes) {
     window.start(m, 'OH', false, 'good');

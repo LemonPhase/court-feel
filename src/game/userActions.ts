@@ -83,7 +83,7 @@ export class UserActions {
 
   private toss(): boolean {
     const g = this.g;
-    return g.contact.serveToss(g.me);
+    return g.contact.serveToss(g.me, g.serveKind);
   }
 
   /** per fixed step: zone contacts for held actions */
