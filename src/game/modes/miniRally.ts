@@ -1,9 +1,10 @@
-import { AI } from '../../config';
+import { AI, FLASHBACK, LEVELS } from '../../config';
 import { netYaw } from '../../ai/brain';
 import { serveAim } from '../../ai/server';
 import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
 import { Athlete } from '../athlete';
 import type { ContactEvent } from '../contact';
+import { Flashback } from '../flashback';
 import type { Outcome } from '../judge';
 import { BACKUP_TARGET, needsGoodPass, SET_PLAYS, type SetPlay } from '../plays';
 import { kbd, Mode } from './mode';
@@ -26,14 +27,24 @@ export class MiniRally extends Mode {
   private lastReceiverMsg: unknown = null;
   private reason = '';
   private userTouches = 0;
+  /** take that ball again: the rally's touches, and the offer after the user's own mistake (not part of what it puts back) */
+  readonly flash = new Flashback();
+  /** how many times a rally this level lets the user take a ball again */
+  private again = 0;
+  /** the ball in the air was the user's to play, as of the last step */
+  private ballWasMine = false;
   /** set calls for the user's position (keys 1-3), if it has any */
   private plays: SetPlay[] | null = null;
   private callIdx = 0;
 
   setup(): void {
     const g = this.g;
-    this.home = new TeamAI(1, g);
-    this.away = new TeamAI(-1, g);
+    // both teams play in the league the user picked: the match stays even without them, so the score is about what they add
+    const level = LEVELS[g.settings.level];
+    // (an all-AI probe has no user to give a ball again)
+    this.again = g.autoUser ? 0 : level.again;
+    this.home = new TeamAI(1, g, g.probeLevels?.home ?? level);
+    this.away = new TeamAI(-1, g, g.probeLevels?.away ?? level);
     this.home.opponents = this.away;
     this.away.opponents = this.home;
     this.home.onRead = (r) => this.setterCall(r);
@@ -56,7 +67,7 @@ export class MiniRally extends Mode {
       this.spawned.push(a);
       this.away.add(slot, a, false);
     }
-    g.hud.setTitle('Mini Rally · you are the ' + g.me.stats.name);
+    g.hud.setTitle(`Mini Rally · ${level.name} · you are the ${g.me.stats.name}`);
     this.plays = g.autoUser ? null : (SET_PLAYS[this.position] ?? null);
     this.callIdx = 0;
     this.servingSide = -1;
@@ -154,6 +165,7 @@ export class MiniRally extends Mode {
     this.phase = 'prepare';
     this.t = 0;
     this.userTouches = 0;
+    this.flash.reset();
     g.hud.clearCall();
     this.updateScore();
   }
@@ -164,6 +176,7 @@ export class MiniRally extends Mode {
   }
 
   frame(_dt: number): void {
+    if (this.flash.offered && this.g.input.consumePress('KeyZ')) this.takeAgain();
     if (!this.plays) return;
     for (let i = 0; i < this.plays.length; i++) if (this.g.input.consumePress('Digit' + (i + 1))) this.selectCall(i);
   }
@@ -211,6 +224,7 @@ export class MiniRally extends Mode {
   hint(): string {
     const g = this.g;
     const me = g.me;
+    if (this.flash.offered) return `YOUR MISTAKE · ${kbd('Z')} take that ball again · the point is taken back`;
     if (this.home.receiver === me) return `YOUR BALL · ${kbd('E')} pass / dig`;
     if (this.yourFreeBall)
       return this.home.touches === 1
@@ -243,6 +257,29 @@ export class MiniRally extends Mode {
     this.prepare();
   }
 
+  againOffered(): boolean {
+    return this.flash.offered;
+  }
+
+  /**
+   * Take that ball again: the rally goes back to the start of the play the user's mistake was in,
+   * exactly as it was (this mode's own score, phase and serve included), and stands still for a
+   * moment before the same ball flies.
+   */
+  private takeAgain(): void {
+    const g = this.g;
+    const to = this.flash.target;
+    const save = this.flash.take();
+    if (!save || !to) return;
+    g.restoreSim(save, FLASHBACK.hold);
+    g.hud.clearCall();
+    g.hud.setStreak(this.streak);
+    g.hud.showBanner('AGAIN · the same ball', 'neutral', FLASHBACK.hold + 0.5);
+    g.hud.message(this.again === Infinity ? 'The point is taken back' : 'The point is taken back · once a rally', FLASHBACK.hold + 0.8);
+    this.updateScore();
+    g.events.emit('flashback', { t: g.simTime, kind: to.kind });
+  }
+
   ballDead(): boolean {
     return !this.g.ballLive || super.ballDead();
   }
@@ -260,6 +297,7 @@ export class MiniRally extends Mode {
   step(dt: number): void {
     const g = this.g;
     this.t += dt;
+    this.ballWasMine = g.ballLive && this.userBall();
     this.home.step();
     this.away.step();
     // "your ball" cue (once per ball), also for the second ball when the user backs up the setter
@@ -278,14 +316,16 @@ export class MiniRally extends Mode {
           const recv = this.servingSide === 1 ? this.away : this.home;
           // a jump serve or a float, at the seams, the deep corners, short or at a passer (the user too)
           const passers = (['OH1', 'OH2', 'L'] as const).map((s) => recv.players.get(s)).filter((a) => a !== undefined);
-          const jump = g.rng.next() < AI.serve.jump;
+          const serving = this.servingSide === 1 ? this.home : this.away;
+          const jump = g.rng.next() < serving.level.serve.jump;
           const aim = serveAim(
             passers.map((a) => a.pos),
             recv.side,
             g.rng,
             jump,
+            serving.level.serve,
           );
-          (this.servingSide === 1 ? this.home : this.away).serve(aim, jump);
+          serving.serve(aim, jump);
         }
         break;
       case 'serve':
@@ -313,9 +353,12 @@ export class MiniRally extends Mode {
         break;
       }
       case 'dead':
-        if (this.t > 2.6) this.prepare();
+        // (an offer to take the ball again stays up a little longer than the banner)
+        if (this.t > (this.flash.offered ? FLASHBACK.offer : 2.6)) this.prepare();
         break;
     }
+    // every touch of a live rally is remembered with the simulation as it stands at the end of this step
+    if (this.again > 0 && g.ballLive) this.flash.observe(g.ball.lastTouch, () => g.saveSim(), FLASHBACK.touches);
   }
 
   onContact(ev: ContactEvent): void {
@@ -325,7 +368,10 @@ export class MiniRally extends Mode {
       this.t = 0;
       g.ballLive = true;
     }
-    if (ev.athlete === g.me && ev.grade !== 'Miss') this.userTouches++;
+    if (ev.athlete === g.me && ev.grade !== 'Miss') {
+      this.userTouches++;
+      this.flash.contact(g.ball.lastTouch, ev.kind, ev.grade, ev.note === 'Shanked');
+    }
   }
 
   onOutcome(o: Outcome): void {
@@ -361,6 +407,9 @@ export class MiniRally extends Mode {
     this.bumpStreak(mine);
     this.score = this.scoreHome;
     g.hud.showBanner(`${mine ? 'POINT YOU' : 'POINT THEM'} · ${this.reason}`, mine ? 'good' : 'bad');
+    // lost on the user's own mistake: a learner's league offers the same ball again
+    if (!mine && this.flash.lost(g.me, g.ball.lastTouch, this.ballWasMine || this.userBall(), this.again))
+      g.hud.message('Z · take that ball again', FLASHBACK.offer);
     g.crowd(mine ? (this.reason === 'YOUR KILL' ? 1.2 : 0.7) : 0.25, mine);
     this.updateScore();
     // everyone relaxes towards their spots while the banner shows

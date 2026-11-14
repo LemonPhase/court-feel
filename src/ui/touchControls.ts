@@ -25,6 +25,7 @@ export const TOUCH_KEY_LABELS: Record<string, string> = {
   V: 'CAM',
   N: 'RESET',
   R: 'REPLAY',
+  Z: 'AGAIN',
   B: 'VS BLOCK',
   F: 'FEED',
   T: 'AUTO',
@@ -78,6 +79,7 @@ export class TouchControls {
   private pauseBtn: HTMLDivElement;
   private skipBtn: HTMLDivElement;
   private replayBtn: HTMLElement;
+  private againBtn: HTMLElement;
   private lastCharge = -1;
   private visible = false;
 
@@ -109,6 +111,7 @@ export class TouchControls {
     this.pauseBtn = el('div', 't-tap t-pause', top, '<span>❚❚</span>');
     this.pauseBtn.dataset.tap = 'pause';
     for (const [id, label] of [
+      ['again', 'AGAIN'],
       ['replay', 'REPLAY'],
       ['cam', 'CAM'],
       ['reset', 'RESET'],
@@ -118,6 +121,8 @@ export class TouchControls {
       this.buttons.set(id, e);
     }
     this.replayBtn = this.buttons.get('replay')!;
+    this.againBtn = this.buttons.get('again')!;
+    this.againBtn.style.display = 'none';
     this.chips = el('div', 't-chips', this.root);
     el('div', 't-rotate', this.root, 'Turn your phone sideways');
 
@@ -295,6 +300,14 @@ export class TouchControls {
     const replay = g.replayAvailable() && !g.fx.replaying;
     const rd = replay ? '' : 'none';
     if (this.replayBtn.style.display !== rd) this.replayBtn.style.display = rd;
+    // the same ball again, while the offer stands after your own mistake. It takes RESET's place in the
+    // row (the next serve is coming anyway), so the row is no wider over the title than it was
+    const again = g.againOffered() && !g.fx.replaying;
+    const ad = again ? '' : 'none';
+    if (this.againBtn.style.display !== ad) this.againBtn.style.display = ad;
+    const reset = this.buttons.get('reset')!;
+    const sd = again ? 'none' : '';
+    if (reset.style.display !== sd) reset.style.display = sd;
     // drill context: set calls / feed types / toss
     const key = `${g.modeId}:${g.position}:${g.tutorial.active ? 'tut' : ''}`;
     if (key !== this.chipsFor) {

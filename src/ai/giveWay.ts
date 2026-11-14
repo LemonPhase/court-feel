@@ -8,9 +8,6 @@ export interface Mate {
   firm: boolean;
 }
 
-/** the side each player picked to pass each team-mate on, kept until they are clear (no dithering) */
-const sides = new WeakMap<Athlete, WeakMap<Athlete, 1 | -1>>();
-
 /**
  * Steer `a` (walking to a spot) around its team-mates: for each, look ahead along both paths (its
  * command at its own top speed, their actual velocity) to where they come closest, and if that is
@@ -23,8 +20,8 @@ const sides = new WeakMap<Athlete, WeakMap<Athlete, 1 | -1>>();
 export function giveWay(a: Athlete, mates: readonly Mate[]): void {
   if (a.state !== 'ground' && a.state !== 'land') return;
   const G = AI.giveWay;
-  let mine = sides.get(a);
-  if (!mine) sides.set(a, (mine = new WeakMap()));
+  // the side picked to pass each team-mate on, kept until they are clear (no dithering)
+  const mine = a.passSide;
   const top = a.cmd.sprint ? a.stats.approachSpeed : a.stats.shuffleSpeed;
   const wx = a.cmd.moveX * top;
   const wz = a.cmd.moveZ * top;

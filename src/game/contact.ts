@@ -824,8 +824,9 @@ export class ContactSystem {
     const toolEdge = userHit ? CONTACT.userToolEdge : CONTACT.toolEdge;
     const toolEdgeP = userHit ? CONTACT.userToolEdgeP : CONTACT.toolEdgeP;
     const edge = Math.abs(off) > halfW * toolEdge && Math.sign(off) === Math.sign(hands.x) && h.rand() < toolEdgeP;
-    // AI blockers convert fewer of their good blocks into stuffs than the user
-    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;
+    // AI blockers convert fewer of their good blocks into stuffs than the user, and fewer still at a lower level of play
+    const stuff = a.level.block.stuff;
+    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? stuff.perfect : stuff.good;
     if (!edge && incoming < CONTACT.recycleSpeed && h.rand() < (rank >= 2 ? CONTACT.recycleP : CONTACT.recyclePLate)) {
       // a soft ball into a good block comes back off the hands to the hitter's side, slow and up:
       // their cover picks it up and they go again (recycling)

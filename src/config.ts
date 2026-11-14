@@ -577,6 +577,10 @@ export const AUDIO = {
   crowd: 0.55,
 };
 
+/**
+ * The AI's numbers. The ones a level of play changes (`LEVELS`, below) are the Pro values here:
+ * `LEVELS.pro` is built from them, so a change to one of them is a change to Pro.
+ */
 export const AI = {
   reactionTime: 0.18,
   /**
@@ -757,7 +761,6 @@ export const AI = {
     reach: 0.4,
     reachTime: 0.12,
   },
-  defenderSkill: 0.7,
   setterAccuracy: 0.15,
   /**
    * Mini Rally: the setter reads the pass this long (s) after it is played and calls it
@@ -894,6 +897,348 @@ export const AI = {
   outOfSystemApex: 0.4,
 };
 
+/**
+ * Levels of play (docs/adr/0008): a level is a league. It sets how every AI player on court, on
+ * both teams, reads, reacts, times a touch and chooses, and how high, fast and hard their bodies
+ * are. It never changes the rules of the touch (`TIMING`, `CONTACT`, `BALL`, `ASSIST`): a Perfect
+ * is the same Perfect at every level, for the user and for the AI. The user's own body is their
+ * Athlete setting at every level.
+ *
+ * Pro is the Mini Rally as tuned against men's numbers (docs/adr/0007): its values are the `AI`
+ * numbers above. The three lower levels are spelled out, not scaled down from Pro, because they
+ * differ in kind: Rec has no jump serves, no fast sets and no dives.
+ *
+ * Each skill moves with the skill it plays against, so a league stays balanced with itself: the
+ * serve with the reception, the speed of the sets with the middle's read, the power of the spike
+ * with the defender's reaction, the hitter's jump with the block's, the hitter's eye for the open
+ * spot with the defence's read of the set, tips with dives.
+ *
+ * Where the numbers come from: four rounds of all-AI rallies (`npm run levels`, 9000 s a level,
+ * seeds 2024 / 7 / 11), tuned until a Pro side that swings on time and plays its usual shots,
+ * without looking for the open spot, scored on about 60% of its attacks against a Rec side, 49%
+ * against Club, 40% against National and 28% against Pro (about 3 points of noise). The user's
+ * own spike scores more than that at every level: the playability bends in their favour
+ * (`CONTACT.userSpikeShank`, `userToolEdge`, `AI.userBlockMisread`) are not in an all-AI rally.
+ * Reaction times: about 0.2-0.25 s for a trained player (docs/adr/0005), longer for one who
+ * watches the ball. Not yet played by a volleyball player at each level.
+ */
+export type LevelId = 'rec' | 'club' | 'national' | 'pro';
+
+export interface Level {
+  id: LevelId;
+  name: string;
+  /** one line for the menu: who these players are */
+  blurb: string;
+  /**
+   * How many times in a rally the user may take a ball again after their own mistake (`FLASHBACK`):
+   * a learner's league gives the same toss again, as a coach does in practice; a match does not.
+   */
+  again: number;
+  /** multipliers on an AI player's position stats (`POSITIONS`); height stays as it is */
+  body: {
+    /** approach jump (the block jump is a fraction of it, so the block comes down with it) */
+    jump: number;
+    /** spike and serve power */
+    power: number;
+    /** approach speed, shuffle speed and acceleration */
+    speed: number;
+    /** ball control (a lower one passes and digs less accurately) */
+    ballControl: number;
+  };
+  serve: {
+    /** share of jump serves; the rest are standing floats */
+    jump: number;
+    /** swing timing error (s, 1 sd) of a float / a jump serve: a mistimed AI serve is a slower, easier one */
+    floatErr: number;
+    jumpErr: number;
+    /** where the serve is aimed (weights): the seam between two passers, a deep corner, short, at a passer */
+    seam: number;
+    deep: number;
+    short: number;
+    body: number;
+    /** scatter (m, 1 sd) around that aim */
+    spread: number;
+  };
+  pass: {
+    /** platform timing error on an easy ball (s, 1 sd) */
+    timingErr: number;
+    /** that error grows by this factor at a ball arriving at 22 m/s or more (from 12 m/s up): the best lead on a dig is `TIMING.digLead`, so a big error means the platform arrives after the ball */
+    pressure: number;
+    /** a ball that will land up to this far (m) out is still played: poor judges play balls that were going out */
+    outJudge: number;
+    /** how often a defender dives for a ball the platform can't get to on foot (0: never) */
+    dive: number;
+    /** a ball the one sent would reach with less than this (s) to spare: a team-mate runs at it too (null: nobody does) */
+    scramble: number | null;
+  };
+  defence: {
+    /** time (s, ± 1 sd) before a defender goes to its perimeter read spot after their set (Infinity: the defence holds its base) */
+    react: number;
+    reactSd: number;
+    /** how far off (m, 1 sd) that read of where the set goes starts */
+    readErr: number;
+    /** time (s, ± 1 sd) before a defender moves after their hit: the strongest lever on a hard spike, which is on the floor about 0.3 s after it is hit */
+    hitReact: number;
+    hitReactSd: number;
+    /** a coverer's reaction (s) to a ball off the block */
+    coverReact: number;
+    /** time (s) after an easy first ball before the setter releases and the front row leaves the net */
+    transitionRead: number;
+    /** the reaction time (s) counted when working out who gets to a ball first */
+    pickReact: number;
+  };
+  block: {
+    /** the middle blocker (`src/ai/middle.ts`) */
+    middle: {
+      /** time (s, ± 1 sd) before it acts on their pass or set: decides whether the double block forms */
+      react: number;
+      reactSd: number;
+      /** how far off (m, 1 sd) its read of the set starts */
+      readErr: number;
+      /** off a good pass: how often it commits on the quick, or cheats towards a pin (a side that can't read guesses more) */
+      commit: number;
+      cheat: number;
+      /** late, it still jumps from up to this far (m) from where it wanted to be; further away it stays down */
+      lateReach: number;
+      /** how close (m, centre to centre) it closes on the pin blocker: hands reach `AI.defence.handHalf` either side, so over 0.65 leaves a seam */
+      closeGap: number;
+    };
+    /** a pin blocker (`src/ai/blocker.ts`): its reaction to the set (s), how far off it sets its hands (m, 1 sd) and its jump timing error (s, 1 sd) */
+    pin: { react: number; readErr: number; jumpErr: number };
+    /** how often a Perfect / a Good AI block puts the ball down (a stuff); the rest come off the hands soft */
+    stuff: { perfect: number; good: number };
+  };
+  set: {
+    /** set scatter (see `SetterBrain`): it grows when the setter is moving */
+    accuracy: number;
+    /** a pass taken further than this (m) from the setter's spot is out of system: a high ball, no quick */
+    outOfSystem: number;
+    /** how much (m) higher that high ball goes */
+    outOfSystemApex: number;
+    /** who gets the ball (weights): the outside against the opposite's 1 */
+    outside: number;
+    /** the quick, off a good pass and off a perfect one (within `AI.quickWeight.perfectOff`) */
+    quickGood: number;
+    quickPerfect: number;
+    /** the pipe, in and out of system */
+    pipeIn: number;
+    pipeOut: number;
+    /** share of good passes a pin hitter runs a fast set on */
+    tempo: number;
+  };
+  attack: {
+    /** swing timing error (s, 1 sd): Early sails long, Late goes into the net */
+    timingErr: number;
+    /** how often a hitter looks for the open spot, in and out of system */
+    openIn: number;
+    openOut: number;
+    /** it takes a spot the quickest defender gets to up to this much (s) in time */
+    openStretch: number;
+    /** share of swings that are tips */
+    tip: number;
+    /** against a closed block (weights): wipe it off the outside hand, roll it over, play it off the inside hands */
+    tool: number;
+    roll: number;
+    recycle: number;
+  };
+}
+
+export const LEVELS: Record<LevelId, Level> = {
+  rec: {
+    id: 'rec',
+    name: 'Rec',
+    blurb: 'A social league. Floats, high balls, nobody dives.',
+    again: Infinity,
+    // a recreational men's approach jump is about 0.6 m and a good spike about 80 km/h
+    body: { jump: 0.72, power: 0.75, speed: 0.88, ballControl: 0.55 },
+    serve: { jump: 0, floatErr: 0.11, jumpErr: 0.14, seam: 0.1, deep: 0.1, short: 0, body: 0.8, spread: 1.2 },
+    pass: { timingErr: 0.12, pressure: 1.8, outJudge: 0.8, dive: 0, scramble: null },
+    defence: {
+      react: Infinity,
+      reactSd: 0.1,
+      readErr: 1.6,
+      hitReact: 0.36,
+      hitReactSd: 0.07,
+      coverReact: 0.35,
+      transitionRead: 0.6,
+      pickReact: 0.3,
+    },
+    block: {
+      middle: { react: 0.45, reactSd: 0.08, readErr: 1.4, commit: 0, cheat: 0, lateReach: 0.6, closeGap: 1.0 },
+      pin: { react: 0.5, readErr: 1.2, jumpErr: 0.155 },
+      stuff: { perfect: 0.15, good: 0.05 },
+    },
+    set: {
+      accuracy: 0.6,
+      outOfSystem: 1.0,
+      outOfSystemApex: 0.8,
+      outside: 3,
+      quickGood: 0.1,
+      quickPerfect: 0.25,
+      pipeIn: 0,
+      pipeOut: 0,
+      tempo: 0,
+    },
+    attack: { timingErr: 0.1, openIn: 0.1, openOut: 0, openStretch: 0, tip: 0.25, tool: 0.2, roll: 1.0, recycle: 0 },
+  },
+  club: {
+    id: 'club',
+    name: 'Club',
+    blurb: 'A regional club. A late middle, a defence that reads late.',
+    again: 1,
+    body: { jump: 0.84, power: 0.82, speed: 0.93, ballControl: 0.75 },
+    serve: { jump: 0.15, floatErr: 0.09, jumpErr: 0.12, seam: 0.25, deep: 0.2, short: 0.05, body: 0.5, spread: 0.9 },
+    pass: { timingErr: 0.104, pressure: 1.6, outJudge: 0.5, dive: 0.2, scramble: null },
+    defence: {
+      react: 0.45,
+      reactSd: 0.07,
+      readErr: 1.4,
+      hitReact: 0.32,
+      hitReactSd: 0.06,
+      coverReact: 0.25,
+      transitionRead: 0.45,
+      pickReact: 0.24,
+    },
+    block: {
+      middle: { react: 0.32, reactSd: 0.06, readErr: 1.2, commit: 0.1, cheat: 0.2, lateReach: 1.0, closeGap: 0.85 },
+      pin: { react: 0.37, readErr: 0.85, jumpErr: 0.11 },
+      stuff: { perfect: 0.2, good: 0.08 },
+    },
+    set: {
+      accuracy: 0.4,
+      outOfSystem: 1.3,
+      outOfSystemApex: 0.6,
+      outside: 2.4,
+      quickGood: 0.3,
+      quickPerfect: 0.5,
+      pipeIn: 0.1,
+      pipeOut: 0,
+      tempo: 0.15,
+    },
+    attack: { timingErr: 0.09, openIn: 0.45, openOut: 0.15, openStretch: 0.05, tip: 0.15, tool: 0.5, roll: 0.7, recycle: 0.2 },
+  },
+  national: {
+    id: 'national',
+    name: 'National',
+    blurb: 'A national league. Jump serves, quicks, fast sets.',
+    again: 0,
+    body: { jump: 0.93, power: 0.92, speed: 0.97, ballControl: 0.9 },
+    serve: { jump: 0.4, floatErr: 0.08, jumpErr: 0.11, seam: 0.4, deep: 0.25, short: 0.1, body: 0.25, spread: 0.7 },
+    pass: { timingErr: 0.09, pressure: 1.3, outJudge: 0.3, dive: 0.6, scramble: 0 },
+    defence: {
+      react: 0.3,
+      reactSd: 0.055,
+      readErr: 1.1,
+      hitReact: 0.29,
+      hitReactSd: 0.05,
+      coverReact: 0.18,
+      transitionRead: 0.35,
+      pickReact: 0.2,
+    },
+    block: {
+      middle: { react: 0.2, reactSd: 0.05, readErr: 1.0, commit: 0.1, cheat: 0.12, lateReach: 1.5, closeGap: 0.7 },
+      pin: { react: 0.295, readErr: 0.64, jumpErr: 0.083 },
+      stuff: { perfect: 0.28, good: 0.12 },
+    },
+    set: {
+      accuracy: 0.22,
+      outOfSystem: 1.5,
+      outOfSystemApex: 0.45,
+      outside: 2,
+      quickGood: 0.45,
+      quickPerfect: 0.7,
+      pipeIn: 0.25,
+      pipeOut: 0.05,
+      tempo: 0.35,
+    },
+    attack: { timingErr: 0.07, openIn: 0.8, openOut: 0.35, openStretch: 0.1, tip: 0.1, tool: 0.8, roll: 0.4, recycle: 0.6 },
+  },
+  pro: {
+    id: 'pro',
+    name: 'Pro',
+    blurb: 'Men’s numbers. A closed double block, a defence that dives.',
+    again: 0,
+    body: { jump: 1, power: 1, speed: 1, ballControl: 1 },
+    serve: {
+      jump: AI.serve.jump,
+      floatErr: AI.serve.floatErr,
+      jumpErr: AI.serve.jumpErr,
+      seam: AI.serve.seam,
+      deep: AI.serve.deep,
+      short: AI.serve.short,
+      body: AI.serve.body,
+      spread: AI.serve.spread,
+    },
+    pass: { timingErr: 0.066, pressure: AI.passPressure, outJudge: AI.outJudge, dive: 1, scramble: AI.scramble },
+    defence: {
+      react: AI.defence.react,
+      reactSd: AI.defence.reactSd,
+      readErr: AI.defence.readErr,
+      hitReact: AI.defence.hitReact,
+      hitReactSd: AI.defence.hitReactSd,
+      coverReact: AI.cover.react,
+      transitionRead: AI.transition.read,
+      pickReact: AI.reactionTime,
+    },
+    block: {
+      middle: {
+        react: AI.middle.react,
+        reactSd: AI.middle.reactSd,
+        readErr: AI.middle.readErr,
+        commit: AI.middle.commit,
+        cheat: AI.middle.cheat,
+        lateReach: AI.middle.lateReach,
+        closeGap: AI.middle.closeGap,
+      },
+      // what `BlockerBrain` makes of `AI.blockerSkill` (0.5): the pin blocker this level was measured with
+      pin: { react: 0.245, readErr: 0.5, jumpErr: 0.065 },
+      // AI blockers turn fewer of their good blocks into stuffs than the user (who stuffs every Perfect one)
+      stuff: { perfect: 0.36, good: 0.16 },
+    },
+    set: {
+      accuracy: AI.setterAccuracy,
+      outOfSystem: AI.outOfSystem,
+      outOfSystemApex: AI.outOfSystemApex,
+      outside: AI.setWeight.outside,
+      quickGood: AI.quickWeight.good,
+      quickPerfect: AI.quickWeight.perfect,
+      pipeIn: AI.pipe.inSystem,
+      pipeOut: AI.pipe.outOfSystem,
+      tempo: AI.tempo.share,
+    },
+    attack: {
+      timingErr: AI.attackErr,
+      openIn: 1,
+      openOut: AI.openShotOut,
+      openStretch: AI.openShotStretch,
+      tip: 0.08,
+      tool: AI.toolShot,
+      roll: AI.rollShot,
+      recycle: AI.recycleShot,
+    },
+  },
+};
+
+/**
+ * Take that ball again (game/flashback.ts, docs/adr/0009): when a Mini Rally ends on the user's own
+ * mistake, a level that allows it (`Level.again`) offers the same ball again. The rally goes back
+ * to the start of that play and the lost point is taken back.
+ */
+export const FLASHBACK = {
+  /** the offer stays up this long (s) after the point, before the next serve */
+  offer: 5,
+  /** after a flashback the court stands still this long (s, real time) before the ball flies again: time to see it and find the keys */
+  hold: 1.2,
+  /** how many of a rally's last touches are remembered (a flashback goes back one to three) */
+  touches: 12,
+};
+
+/** the levels in order, easiest first (the menu's row) */
+export const LEVEL_IDS: readonly LevelId[] = ['rec', 'club', 'national', 'pro'];
+
+/** a level id from outside the type system (URL, storage): own keys of LEVELS only */
+export const isLevelId = (v: unknown): v is LevelId => typeof v === 'string' && Object.hasOwn(LEVELS, v);
+
 /** the hand you spike, tip and serve with; passing, setting and blocking use both hands */
 export type Hand = 'right' | 'left';
 
@@ -919,6 +1264,8 @@ export interface Settings {
   bodies: Partial<Record<PositionId, BodyOverride>>;
   /** your hitting hand, one for every position (the AI stays right-handed); timing, power and reach are the same for both */
   hand: Hand;
+  /** the Mini Rally's level of play: the league both teams play in (`LEVELS`) */
+  level: LevelId;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -938,6 +1285,8 @@ export const DEFAULT_SETTINGS: Settings = {
   touchSensitivity: 1.0,
   bodies: {},
   hand: 'right',
+  // Pro until the lower levels have been played: it is the game as it was before levels
+  level: 'pro',
 };
 
 export type NumericSettingKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];

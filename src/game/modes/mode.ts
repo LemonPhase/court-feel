@@ -46,6 +46,10 @@ export abstract class Mode {
   abstract hint(): string;
   /** N key: restart / skip the current rep. `snap` puts the athlete on the ground at the start (tutorial Skip). */
   restartRep(_snap = false): void {}
+  /** the rally has just ended on the user's own mistake and the same ball is on offer again (Z) */
+  againOffered(): boolean {
+    return false;
+  }
   /** no live play is going on (the ball is down or between reps): replays may be watched */
   ballDead(): boolean {
     const b = this.g.ball;

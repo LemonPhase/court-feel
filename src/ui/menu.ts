@@ -1,6 +1,8 @@
 import {
   BODY,
   isPositionId,
+  LEVEL_IDS,
+  LEVELS,
   POSITIONS,
   SETTING_RANGES,
   type BodyOverride,
@@ -599,7 +601,34 @@ export class Menu {
         },
       ),
     );
-    setup.append(this.posPicker(), net);
+    // the league both teams play in: it takes effect when the rally starts
+    const level = h('div', 'block');
+    const levelNote = h('div', 'block-note');
+    level.append(
+      txt('div', 'eyebrow', 'Level'),
+      this.chipGroup(
+        'Level of play',
+        LEVEL_IDS.map((id) => LEVELS[id].name),
+        () => LEVEL_IDS.indexOf(this.settings.level),
+        (i) => {
+          this.settings.level = LEVEL_IDS[i];
+          this.cb.settingsChanged();
+        },
+      ),
+      levelNote,
+    );
+    this.syncs.push(() => {
+      const l = LEVELS[this.settings.level];
+      // (the lower levels give the same ball again after your own mistake)
+      const again =
+        l.again === Infinity
+          ? ' Your own mistake: take that ball again.'
+          : l.again > 0
+            ? ' Your own mistake: take that ball again, once a rally.'
+            : '';
+      levelNote.textContent = l.blurb + again;
+    });
+    setup.append(this.posPicker(), level, net);
     mid.append(calls, setup);
     const foot = h('div', 'panel-foot');
     const go = this.playButton('PLAY', () => this.go(mode));
@@ -1069,7 +1098,7 @@ export class Menu {
 
     show(Math.min(this.settingsTab, tabs.length - 1));
 
-    // every group back to the defaults, in two presses (the athlete is not touched)
+    // every group back to the defaults, in two presses (the athlete and the Mini Rally's level, which are not set here, are not touched)
     const reset = btn('ghost-btn', 'Reset to defaults');
     let armed = false;
     reset.onclick = () => {
@@ -1079,7 +1108,7 @@ export class Menu {
         return;
       }
       const d = defaultSettings(systemPrefersReducedMotion());
-      Object.assign(s, { ...d, bodies: s.bodies, hand: s.hand });
+      Object.assign(s, { ...d, bodies: s.bodies, hand: s.hand, level: s.level });
       changed();
       this.openSheet('settings');
     };

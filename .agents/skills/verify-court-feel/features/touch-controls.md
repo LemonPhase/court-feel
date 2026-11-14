@@ -42,6 +42,7 @@ Preconditions:
 
 ## Gotchas
 
+- `AGAIN` (`.touch [data-btn="again"]`) is shown only while a ball can be taken again (`g.againOffered()`: the Mini Rally at Rec and Club, for about 5 seconds after the player's own mistake), in the place of `RESET`. The hint then starts `YOUR MISTAKE · AGAIN take that ball again`. Press it with `court touch start 4 '.touch [data-btn="again"]'`, `court step 0.05` and `court touch end 4`: the state line shows `"banner":"AGAIN · the same ball"` and the point taken back ([Mini Rally](./mini-rally.md) has the recipe that gets to the offer).
 - `REPLAY` (`.touch [data-btn="replay"]`) is shown only while the last attempt can be replayed (`g.replayAvailable()`), misses included. The hint then ends `REPLAY last attempt`. Press it with `court touch start 4 '.touch [data-btn="replay"]'` and `court touch end 4`; any later touch skips the replay.
 - `court tap` works on menu controls only. The pad's buttons take no pointer events of their own (the pad reads every touch by position), so `court tap .t-jump` times out. Use `court touch start <id> <selector>` and `court touch end <id>`.
 - The set-call chips and the other top-row buttons for a drill are built on the first frame after it starts. On the manual clock, run the recipe's `court shot` (or a `court step`) before touching them, or `court touch start` finds no chip.

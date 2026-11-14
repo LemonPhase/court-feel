@@ -1,5 +1,18 @@
 import { copyBall, makeBall, stepBall, type BallEnv, type BallState, type CollisionEvent, type V3 } from './ball';
 
+export interface PredictionSave {
+  pos: Float32Array;
+  vel: Float32Array;
+  count: number;
+  t0: number;
+  landT: number;
+  land: V3;
+  netCrossT: number;
+  netCross: V3;
+  events: (CollisionEvent & { t: number })[];
+  version: number;
+}
+
 /**
  * Deterministic look-ahead of the ball, using exactly the same step function
  * as the live simulation (so the landing marker, AI and timing windows agree
@@ -30,6 +43,40 @@ export class BallPredictor {
     const n = Math.ceil(horizon / dt) + 1;
     this.pos = new Float32Array(n * 3);
     this.vel = new Float32Array(n * 3);
+  }
+
+  /**
+   * The prediction as it stands, to be put back later (a flashback). Working it out again from the
+   * same ball gives the same path but times that differ in the last bit, and the players who read
+   * it would drift apart from what they did the first time.
+   */
+  save(): PredictionSave {
+    return {
+      pos: this.pos.slice(0, this.count * 3),
+      vel: this.vel.slice(0, this.count * 3),
+      count: this.count,
+      t0: this.t0,
+      landT: this.landT,
+      land: { ...this.land },
+      netCrossT: this.netCrossT,
+      netCross: { ...this.netCross },
+      events: this.events.map((e) => ({ ...e })),
+      version: this.version,
+    };
+  }
+
+  load(s: PredictionSave): void {
+    this.pos.set(s.pos);
+    this.vel.set(s.vel);
+    this.count = s.count;
+    this.t0 = s.t0;
+    this.landT = s.landT;
+    Object.assign(this.land, s.land);
+    this.netCrossT = s.netCrossT;
+    Object.assign(this.netCross, s.netCross);
+    this.events.length = 0;
+    for (const e of s.events) this.events.push({ ...e });
+    this.version = s.version;
   }
 
   compute(state: BallState, env: BallEnv, t0: number): void {

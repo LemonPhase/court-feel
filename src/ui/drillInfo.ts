@@ -207,6 +207,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
       title: 'In a drill',
       rows: [
         { k: '1  2  3', a: 'Call your set (Spike Drill, Mini Rally; hitters)' },
+        { k: 'Z', a: 'Take that ball again after your own mistake (Mini Rally at Rec and Club)' },
         { k: 'B', a: 'Opposing block: off, single, double (Spike Drill)' },
         { k: '1 to 5', a: 'Feed type (Free Play)' },
         { k: 'F   T', a: 'Feed a ball, auto feed (Free Play)' },
@@ -238,7 +239,10 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
     {
       title: 'Game',
       rows: [
-        { k: 'Top right', a: 'Pause, camera, reset the rep, and REPLAY your last attempt' },
+        {
+          k: 'Top right',
+          a: 'Pause, camera, reset the rep, REPLAY your last attempt, and AGAIN after your own mistake (Mini Rally at Rec and Club)',
+        },
         { k: 'TOSS', a: 'Serve toss (Free Play)' },
       ],
     },

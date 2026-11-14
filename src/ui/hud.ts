@@ -294,6 +294,7 @@ export class Hud {
     [/\bRMB\b/g, 'BLOCK'],
     [/\bpress E\b/g, 'hold PASS'],
     [/\bQ\b/g, 'TOSS'],
+    [/\bZ ·/g, 'AGAIN ·'],
     [/\bF feed\b/g, 'FEED feed'],
     [/\bT auto\b/g, 'AUTO auto'],
     [/with the mouse/g, 'by dragging'],

@@ -291,7 +291,7 @@ app.addEventListener('mousedown', () => {
   if (!game.inMenu && !game.paused && !game.stopped && !game.input.pointerLocked && !game.input.dragLook) game.input.requestLock();
 });
 
-// quick-start links for automation and sharing a drill: ?mode=spike&pos=OH&bot=perfect&cam=fp&hand=left
+// quick-start links for automation and sharing a drill: ?mode=spike&pos=OH&bot=perfect&cam=fp&hand=left (&level=club for the Mini Rally)
 // ?tutorial=N starts the first-run lesson at that step (replay, so it runs even after done)
 enterMenu();
 const q = new URLSearchParams(location.search);
@@ -313,6 +313,7 @@ if (q.get('tutorial') !== null) {
       settings.hand = launch.hand;
       game.applyUserBody();
     }
+    if (launch.level) settings.level = launch.level;
     menu.showStart(false);
     menu.selectPos(launch.pos);
     lastPlay = { mode: launch.mode, pos: launch.pos };

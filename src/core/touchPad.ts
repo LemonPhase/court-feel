@@ -20,7 +20,23 @@ import type { Stick } from './input';
  *                 thumb from JUMP onto HIT without lifting takes off and winds up.
  */
 export type PadButton =
-  'jump' | 'hit' | 'block' | 'pass' | 'toss' | 'cam' | 'reset' | 'replay' | 'vsblock' | 'feed' | 'auto' | 'd1' | 'd2' | 'd3' | 'd4' | 'd5';
+  | 'jump'
+  | 'hit'
+  | 'block'
+  | 'pass'
+  | 'toss'
+  | 'cam'
+  | 'reset'
+  | 'replay'
+  | 'again'
+  | 'vsblock'
+  | 'feed'
+  | 'auto'
+  | 'd1'
+  | 'd2'
+  | 'd3'
+  | 'd4'
+  | 'd5';
 
 /** the slice of Input the pad drives (Input implements it) */
 export interface PadInput {
@@ -54,6 +70,7 @@ export const BUTTON_CODES: Record<PadButton, string[]> = {
   cam: ['KeyV'],
   reset: ['KeyN'],
   replay: ['KeyR'],
+  again: ['KeyZ'],
   vsblock: ['KeyB'],
   feed: ['KeyF'],
   auto: ['KeyT'],

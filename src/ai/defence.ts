@@ -26,7 +26,8 @@ export function attackKind(x: number, off: number): AttackKind {
   return off > D.backOff ? 'back' : 'middle';
 }
 
-export function readSpots(a: Attack): ReadSpots {
+/** `closeGap`: how close our middle closes on its pin blocker (the level's `block.middle.closeGap`): it places the seam the middle back plays */
+export function readSpots(a: Attack, closeGap: number = AI.middle.closeGap): ReadSpots {
   const D = AI.defence;
   const W = COURT.halfWidth;
   if (a.kind === 'middle') {
@@ -47,7 +48,7 @@ export function readSpots(a: Attack): ReadSpots {
   // a pin attack on our right (r = 1) or left (r = -1): the pin blocker shades the line, the middle closes inside
   const r = a.x >= 0 ? 1 : -1;
   const pinBlocker = a.x + r * D.shade;
-  const middle = pinBlocker - r * AI.middle.closeGap;
+  const middle = pinBlocker - r * closeGap;
   const insideHand = middle - r * D.handHalf;
   const seam = (middle + r * D.handHalf + pinBlocker - r * D.handHalf) / 2;
   // where a straight ball from the hitter past `xNet` (at the net) is, `depth` m into our court

@@ -1,6 +1,6 @@
 # Quick-start links
 
-A link with a `mode` parameter skips the start screen and starts that drill directly. Players share these links, so every value is checked: a bad drill opens the start screen, a bad position falls back to Outside Hitter, and a bad camera, autopilot or hand is ignored.
+A link with a `mode` parameter skips the start screen and starts that drill directly. Players share these links, so every value is checked: a bad drill opens the start screen, a bad position falls back to Outside Hitter, and a bad camera, autopilot, hand or level is ignored.
 
 ## Sub-features
 
@@ -8,6 +8,7 @@ A link with a `mode` parameter skips the start screen and starts that drill dire
 - `link-pos` plays the position named by `pos`: `OH`, `OPP`, `MB`, `S`, `L`.
 - `link-cam` overrides the camera with `cam=fp` or `cam=tp`.
 - `link-hand` overrides the hitting hand with `hand=left` or `hand=right`.
+- `link-level` sets the Mini Rally's level of play with `level=rec`, `club`, `national` or `pro` ([Mini Rally](./mini-rally.md) drives it).
 - `link-bot` turns on the autopilot with `bot=perfect`, `good`, `sloppy` or `tip`.
 - `link-touch` forces the touch controls on a desktop with `touch=1`.
 - `link-bad-values` handles unknown values without an error.

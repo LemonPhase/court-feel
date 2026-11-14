@@ -214,6 +214,13 @@ export interface JumpPrediction {
 const _peak = new Map<string, Athlete>();
 
 /**
+ * The planners' scratch athletes. Each is reused from one plan to the next and keeps what the last
+ * simulation left in it, so a plan depends a little on the plans before it: a flashback
+ * (game/flashback.ts) puts them back with the rest of the rally, and the same plans follow.
+ */
+export const planScratch = { sim: _sim, peak: _peak };
+
+/**
  * Forward-simulate a hitter who is planting or airborne (no further input) to
  * the top of the jump, or to `now + minT` if the top comes sooner, and return
  * where the ball should be met then. Null if they are not jumping or land first.
