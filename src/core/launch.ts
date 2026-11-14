@@ -1,4 +1,4 @@
-import { isPositionId, type Hand, type PositionId } from '../config';
+import { isPositionId, isVenueId, type Hand, type PositionId, type VenueId } from '../config';
 import { isBotQuality, type BotQuality } from '../game/bot';
 import { isModeId, type ModeId } from '../game/modes/mode';
 
@@ -34,4 +34,10 @@ export function parseLaunchParams(search: string): LaunchParams | null {
     bot: isBotQuality(bot) ? bot : null,
     hand: hand === 'left' || hand === 'right' ? hand : null,
   };
+}
+
+/** `venue=seaside` on any link draws the court there for this visit (the saved setting is not changed); anything unknown is ignored */
+export function parseVenueParam(search: string): VenueId | null {
+  const venue = new URLSearchParams(search).get('venue');
+  return isVenueId(venue) ? venue : null;
 }

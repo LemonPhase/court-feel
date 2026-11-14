@@ -1,7 +1,12 @@
 import * as THREE from 'three';
-import { COURT } from '../config';
-import { Rng } from '../core/mathx';
-import { makeAntennaTexture, makeBoardTexture, makeCrowdAtlas, makeNetTexture, makeWoodTextures } from './textures';
+import { ARENA, COURT } from '../config';
+import { FloorReflection, REFLECT_LAYER } from './floorReflection';
+import { mergeGeometries } from './geo';
+import { netPress } from './netPress';
+import { VENUE } from './venue';
+import { makeSkyDome, makeSkyTexture, makeStars } from './sky';
+import { buildVenue } from './venues';
+import { makeAntennaTexture, makeBoardTexture, makeNetTexture, makePaintTextures, makeWoodTextures, PAINT_TILE } from './textures';
 
 /**
  * Static arena: floor, court, net system, stands, crowd and lighting.
@@ -12,11 +17,25 @@ export class Arena {
   readonly group = new THREE.Group();
   netTop: number = COURT.netHeightMen;
   private netGroup = new THREE.Group();
-  private crowdMat!: THREE.ShaderMaterial;
+  private crowdMat: THREE.ShaderMaterial | null = null;
   private excitement = 0;
   private time = 0;
   keyLight!: THREE.DirectionalLight;
   envMap: THREE.Texture | null = null;
+  /** the baked reflection `envMap` is the texture of (freed with the arena) */
+  private envTarget: THREE.WebGLRenderTarget | null = null;
+  readonly reflection: FloorReflection;
+  /** where the ball last let go of the mesh: x, y (in the mesh's own frame), how far it had pushed it (m, signed along z), when */
+  private netHits = { value: Array.from({ length: ARENA.net.hits }, () => new THREE.Vector4()) };
+  private netTime = { value: 0 };
+  /** the ball in the mesh right now: x, y (in the mesh's own frame) and how far it pushes the mesh (m, signed along z) */
+  private netBall = { value: new THREE.Vector3() };
+  private pressed = false;
+  private press = { x: 0, y: 0, push: 0 };
+  private netHitNext = 0;
+  /** the floor and what is painted on it: not part of its own mirror image */
+  private unmirrored: THREE.Object3D[] = [];
+  private skyTex: THREE.Texture | null = null;
   /** objects the TP camera must not pass through (net + posts) */
   readonly cameraBlockers: THREE.Box3[] = [];
 
@@ -24,51 +43,86 @@ export class Arena {
     private renderer: THREE.WebGLRenderer,
     private scene: THREE.Scene,
   ) {
+    this.reflection = new FloorReflection(renderer, scene, VENUE.floor.mirror);
+    // the venue sets the exposure, the haze and, outdoors, the sky
+    renderer.toneMappingExposure = VENUE.exposure;
+    scene.fog = new THREE.Fog(VENUE.fog.color, VENUE.fog.near, VENUE.fog.far);
+    if (VENUE.sky) {
+      this.skyTex = makeSkyTexture(VENUE.sky);
+      this.group.add(makeSkyDome(this.skyTex));
+      if (VENUE.sky.stars > 0) this.group.add(makeStars(VENUE.sky, renderer));
+    }
     this.buildFloor();
     this.buildLines();
     this.buildNet();
     this.buildBoards();
     this.buildStands();
-    this.buildRoom();
     this.buildLights();
     this.scene.add(this.group);
     this.buildEnvironment();
+    // everything standing in the hall shows in the floor (the floor itself is taken back out below)
+    this.group.traverse((o) => {
+      if (!o.userData.noMirror) o.layers.enable(REFLECT_LAYER);
+    });
+    for (const o of this.unmirrored) o.layers.disable(REFLECT_LAYER);
   }
 
   // ---------------------------------------------------------------- floor
   private buildFloor(): void {
-    const { map, rough, gray } = makeWoodTextures(4);
     const fullX = COURT.arenaHalfX * 2;
     const fullZ = COURT.arenaHalfZ * 2;
-    const mkMat = (color: number, roughness: number, tile = 4, painted = false) => {
-      const m = (painted ? gray : map).clone();
-      const r = rough.clone();
-      m.needsUpdate = r.needsUpdate = true;
-      const mat = new THREE.MeshStandardMaterial({
-        color,
-        map: m,
-        roughnessMap: r,
-        roughness,
-        metalness: 0,
-        envMapIntensity: 1,
-      });
-      return { mat, m, r, tile };
+    const F = VENUE.floor;
+    // boards indoors; outdoors the grit and the coats of a painted court (the patches' UVs run in 4 m tiles)
+    const gritty = !F.wood && F.grain > 0;
+    const wood = F.wood ? makeWoodTextures(4) : null;
+    const grit = gritty ? makePaintTextures(F.grain) : null;
+    const perTile = gritty ? 4 / PAINT_TILE : 1;
+    const mkMat = (color: number, roughness: number, painted = false) => {
+      // each patch has its own copies, so each can be tiled to its own size
+      const own = (t: THREE.Texture) => {
+        const c = t.clone();
+        c.needsUpdate = true;
+        return c;
+      };
+      let maps: THREE.Texture[] = [];
+      let mat: THREE.MeshStandardMaterial;
+      if (wood) {
+        maps = [own(painted ? wood.gray : wood.map), own(wood.rough)];
+        mat = new THREE.MeshStandardMaterial({ color, map: maps[0], roughnessMap: maps[1], roughness, metalness: 0, envMapIntensity: 1 });
+      } else if (grit) {
+        maps = [own(grit.map), own(grit.rough), own(grit.bump)];
+        mat = new THREE.MeshStandardMaterial({
+          color,
+          map: maps[0],
+          roughnessMap: maps[1],
+          bumpMap: maps[2],
+          bumpScale: ARENA.paintGrit,
+          roughness,
+          metalness: 0,
+          envMapIntensity: 1,
+        });
+      } else {
+        // a laid indoor court has no boards and no grit: one even colour, one roughness, and nothing painted for it
+        mat = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0, envMapIntensity: 1 });
+      }
+      this.reflection.apply(mat);
+      return { mat, maps };
     };
     // natural wood everywhere
-    const base = mkMat(0xf2e2d0, 1.4);
-    base.m.repeat.set(fullX / 4, fullZ / 4);
-    base.r.repeat.copy(base.m.repeat);
+    const base = mkMat(F.base, F.rough[0]);
+    for (const t of base.maps) t.repeat.set((fullX / 4) * perTile, (fullZ / 4) * perTile);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(fullX, fullZ), base.mat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     floor.name = 'floor';
     this.group.add(floor);
+    this.unmirrored.push(floor);
 
     // free zone paint (deep blue, still glossy so reflections read)
     const fzX = COURT.halfWidth + COURT.freeZoneSide;
     const fzZ = COURT.halfLength + COURT.freeZoneEnd;
-    const free = mkMat(0x2a63c4, 1.3, 4, true);
-    const court = mkMat(0xffe0c0, 1.2);
+    const free = mkMat(F.free, F.rough[1], F.free !== F.base);
+    const court = mkMat(F.court, F.rough[2]);
     const paint = (mat: THREE.MeshStandardMaterial, x0: number, x1: number, z0: number, z1: number, y: number, tex: THREE.Texture[]) => {
       const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
       // world-aligned UVs so planks line up with the base floor
@@ -79,12 +133,13 @@ export class Arena {
         const wz = -pos.getY(i) + (z0 + z1) / 2;
         uv.setXY(i, (wx + COURT.arenaHalfX) / 4, (COURT.arenaHalfZ - wz) / 4);
       }
-      for (const t of tex) t.repeat.set(1, 1);
+      for (const t of tex) t.repeat.set(perTile, perTile);
       const m = new THREE.Mesh(g, mat);
       m.rotation.x = -Math.PI / 2;
       m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
       m.receiveShadow = true;
       this.group.add(m);
+      this.unmirrored.push(m);
     };
     free.mat.polygonOffset = true;
     free.mat.polygonOffsetFactor = -1;
@@ -95,12 +150,12 @@ export class Arena {
     const hw = COURT.halfWidth;
     const hl = COURT.halfLength;
     // frame of four rectangles around the court
-    paint(free.mat, -fzX, fzX, -fzZ, -hl, 0.001, [free.m, free.r]);
-    paint(free.mat, -fzX, fzX, hl, fzZ, 0.001, [free.m, free.r]);
-    paint(free.mat, -fzX, -hw, -hl, hl, 0.001, [free.m, free.r]);
-    paint(free.mat, hw, fzX, -hl, hl, 0.001, [free.m, free.r]);
+    paint(free.mat, -fzX, fzX, -fzZ, -hl, 0.001, free.maps);
+    paint(free.mat, -fzX, fzX, hl, fzZ, 0.001, free.maps);
+    paint(free.mat, -fzX, -hw, -hl, hl, 0.001, free.maps);
+    paint(free.mat, hw, fzX, -hl, hl, 0.001, free.maps);
     // court interior
-    paint(court.mat, -hw, hw, -hl, hl, 0.002, [court.m, court.r]);
+    paint(court.mat, -hw, hw, -hl, hl, 0.002, court.maps);
   }
 
   private buildLines(): void {
@@ -143,6 +198,7 @@ export class Arena {
     const lines = new THREE.Mesh(merged, mat);
     lines.receiveShadow = true;
     this.group.add(lines);
+    this.unmirrored.push(lines);
   }
 
   // ---------------------------------------------------------------- net system
@@ -162,7 +218,38 @@ export class Arena {
       roughness: 0.9,
       depthWrite: false,
     });
-    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, nd), netMat);
+    // the mesh gives with the ball: it is pushed as far as the ball has sunk into it, and once the
+    // ball lets go it swings back and settles (the tapes stay put)
+    netMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uNetHits = this.netHits;
+      shader.uniforms.uNetTime = this.netTime;
+      shader.uniforms.uNetBall = this.netBall;
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          '#include <common>\nuniform vec4 uNetHits[ ' + ARENA.net.hits + ' ];\nuniform float uNetTime;\nuniform vec3 uNetBall;',
+        )
+        .replace(
+          '#include <begin_vertex>',
+          /* glsl */ `#include <begin_vertex>
+          {
+            // held along the top and bottom tapes and at the side bands
+            float held = sin( 3.14159 * uv.y ) * smoothstep( 0.0, 0.06, uv.x ) * smoothstep( 1.0, 0.94, uv.x );
+            // under the ball the mesh goes all the way with it, except right at the tapes
+            vec2 db = transformed.xy - uNetBall.xy;
+            transformed.z += uNetBall.z * exp( - dot( db, db ) / ${(ARENA.net.spread ** 2).toFixed(4)} ) * min( 1.0, held * ${ARENA.net.pin.toFixed(1)} );
+            for ( int i = 0; i < ${ARENA.net.hits}; i ++ ) {
+              vec4 hit = uNetHits[ i ];
+              float age = uNetTime - hit.w;
+              if ( hit.z == 0.0 || age < 0.0 || age > ${ARENA.net.life.toFixed(2)} ) continue;
+              vec2 d = transformed.xy - hit.xy;
+              float near = exp( - dot( d, d ) / ${(ARENA.net.spread ** 2).toFixed(4)} );
+              transformed.z += hit.z * near * held * exp( - age * ${ARENA.net.damping.toFixed(2)} ) * cos( age * ${ARENA.net.swing.toFixed(2)} );
+            }
+          }`,
+        );
+    };
+    const net = new THREE.Mesh(new THREE.PlaneGeometry(len, nd, 120, 12), netMat);
     net.position.set(0, top - nd / 2, 0);
     this.netGroup.add(net);
     // white top band (7cm) and bottom band (5cm)
@@ -211,21 +298,40 @@ export class Arena {
       pad.castShadow = true;
       this.netGroup.add(pad);
     }
-    // referee stand on +x side
+    // referee stand on +x side: a frame of tubes, a platform with a padded front, steps up the back
     const ref = new THREE.Group();
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a2f3a, roughness: 0.5, metalness: 0.5 });
-    const plat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.6), frameMat);
-    plat.position.y = 1.4;
-    ref.add(plat);
-    for (const dx of [-0.3, 0.3])
-      for (const dz of [-0.25, 0.25]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.4, 0.05), frameMat);
-        leg.position.set(dx, 0.7, dz);
-        ref.add(leg);
-      }
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0xc8ccd4, roughness: 0.3, metalness: 0.85 });
+    const padMatRef = new THREE.MeshStandardMaterial({ color: 0x1b3f8f, roughness: 0.75 });
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x20242c, roughness: 0.8 });
+    const tubeBetween = (a: THREE.Vector3, b: THREE.Vector3, r = 0.022) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, a.distanceTo(b), 8), frameMat);
+      m.position.copy(a).lerp(b, 0.5);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+      m.castShadow = true;
+      ref.add(m);
+    };
+    const P = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const deckY = 1.25;
+    for (const dz of [-0.3, 0.3]) {
+      // legs splay out towards the floor; the front pair carries on up to the hand rail
+      tubeBetween(P(-0.27, 0, dz * 1.25), P(-0.2, deckY + 0.95, dz));
+      tubeBetween(P(0.5, 0, dz * 1.25), P(0.28, deckY, dz));
+      tubeBetween(P(-0.24, 0.45, dz * 1.12), P(0.4, 0.45, dz * 1.12), 0.016);
+      // steps up the back
+      for (let k = 1; k <= 3; k++) tubeBetween(P(0.5 - k * 0.055, k * 0.31, -0.36), P(0.5 - k * 0.055, k * 0.31, 0.36), 0.016);
+    }
+    tubeBetween(P(-0.2, deckY + 0.95, -0.3), P(-0.2, deckY + 0.95, 0.3));
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.72), deckMat);
+    deck.position.set(0.04, deckY, 0);
+    deck.castShadow = true;
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.0, 0.74), padMatRef);
+    pad.position.set(-0.3, deckY + 0.42, 0);
+    pad.castShadow = true;
+    ref.add(deck, pad);
     ref.position.set(COURT.postX + 0.6, 0, 0);
     this.netGroup.add(ref);
     this.group.add(this.netGroup);
+    this.netGroup.traverse((o) => o.layers.enable(REFLECT_LAYER));
 
     // camera blockers: net slab and posts
     this.cameraBlockers.length = 0;
@@ -256,12 +362,13 @@ export class Arena {
 
   // ---------------------------------------------------------------- surroundings
   private buildBoards(): void {
-    const tex = makeBoardTexture();
+    if (!VENUE.boards) return;
+    const tex = makeBoardTexture(VENUE.boards);
     const mat = new THREE.MeshStandardMaterial({
       map: tex,
       emissive: 0xffffff,
       emissiveMap: tex,
-      emissiveIntensity: 0.55,
+      emissiveIntensity: VENUE.boardGlow,
       roughness: 0.4,
     });
     const fzX = COURT.halfWidth + COURT.freeZoneSide + 0.6;
@@ -286,214 +393,46 @@ export class Arena {
   }
 
   private buildStands(): void {
-    const standMat = new THREE.MeshStandardMaterial({ color: 0x2b3245, roughness: 0.85 });
-    const seatMat = new THREE.MeshStandardMaterial({ color: 0x5b2030, roughness: 0.7 });
-    const rows = 9;
-    const rowDepth = 0.85;
-    const rowRise = 0.48;
-    const seats: { x: number; y: number; z: number; rot: number }[] = [];
-    // all tiers merged into two meshes (one per material): few draw calls
-    const standGeos: THREE.BufferGeometry[] = [];
-    const seatGeos: THREE.BufferGeometry[] = [];
-    const rng = new Rng(5);
-    const sideStart = COURT.halfWidth + COURT.freeZoneSide + 2.2;
-    const endStart = COURT.halfLength + COURT.freeZoneEnd + 2.2;
-    const addBlock = (axis: 'x' | 'z', sign: number, span: number) => {
-      for (let r = 0; r < rows; r++) {
-        const d = (axis === 'x' ? sideStart : endStart) + r * rowDepth;
-        const y = 0.7 + r * rowRise;
-        const g = new THREE.BoxGeometry(axis === 'x' ? rowDepth : span, y, axis === 'x' ? span : rowDepth);
-        if (axis === 'x') g.translate(sign * (d + rowDepth / 2), y / 2, 0);
-        else g.translate(0, y / 2, sign * (d + rowDepth / 2));
-        (r % 2 ? standGeos : seatGeos).push(g);
-        // fans
-        const n = Math.floor(span / 0.55);
-        for (let i = 0; i < n; i++) {
-          if (rng.next() < 0.12) continue; // empty seats
-          const along = -span / 2 + (i + 0.5) * (span / n) + rng.range(-0.08, 0.08);
-          const rot = axis === 'x' ? (sign > 0 ? -Math.PI / 2 : Math.PI / 2) : sign > 0 ? Math.PI : 0;
-          if (axis === 'x') seats.push({ x: sign * (d + rowDepth * 0.45), y: y, z: along, rot });
-          else seats.push({ x: along, y: y, z: sign * (d + rowDepth * 0.45), rot });
-        }
-      }
-    };
-    addBlock('x', -1, 30);
-    addBlock('x', 1, 30);
-    addBlock('z', -1, 2 * (COURT.halfWidth + COURT.freeZoneSide + 1.5));
-    addBlock('z', 1, 2 * (COURT.halfWidth + COURT.freeZoneSide + 1.5));
-    this.group.add(new THREE.Mesh(mergeGeometries(standGeos), standMat), new THREE.Mesh(mergeGeometries(seatGeos), seatMat));
-    this.buildCrowd(seats);
-  }
-
-  private buildCrowd(seats: { x: number; y: number; z: number; rot: number }[]): void {
-    const { tex, cols, rows } = makeCrowdAtlas();
-    const w = 0.55;
-    const h = 0.82;
-    const geo = new THREE.PlaneGeometry(w, h);
-    geo.translate(0, h / 2 - 0.12, 0);
-    const inst = new THREE.InstancedBufferGeometry();
-    inst.index = geo.index;
-    inst.attributes.position = geo.attributes.position;
-    inst.attributes.uv = geo.attributes.uv;
-    const n = seats.length;
-    const offsets = new Float32Array(n * 4); // x y z rot
-    const params = new Float32Array(n * 4); // atlas idx, phase, tint, energy
-    const rng = new Rng(77);
-    seats.forEach((s, i) => {
-      offsets.set([s.x, s.y, s.z, s.rot], i * 4);
-      params.set([Math.floor(rng.next() * cols * rows), rng.range(0, Math.PI * 2), rng.range(0.75, 1.05), rng.range(0.4, 1.2)], i * 4);
-    });
-    inst.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offsets, 4));
-    inst.setAttribute('aParams', new THREE.InstancedBufferAttribute(params, 4));
-    inst.instanceCount = n;
-    this.crowdMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTex: { value: tex },
-        uGrid: { value: new THREE.Vector2(cols, rows) },
-        uTime: { value: 0 },
-        uExcite: { value: 0 },
-      },
-      vertexShader: /* glsl */ `
-        attribute vec4 aOffset;
-        attribute vec4 aParams;
-        uniform float uTime;
-        uniform float uExcite;
-        uniform vec2 uGrid;
-        varying vec2 vUv;
-        varying float vTint;
-        void main() {
-          float idx = aParams.x;
-          float col = mod(idx, uGrid.x);
-          float row = floor(idx / uGrid.x);
-          vUv = (uv + vec2(col, uGrid.y - 1.0 - row)) / uGrid;
-          vTint = aParams.z;
-          float idle = sin(uTime * (1.3 + aParams.w) + aParams.y) * 0.015;
-          float jump = max(0.0, sin(uTime * (7.0 + aParams.w * 3.0) + aParams.y)) * 0.28 * uExcite * aParams.w;
-          vec3 p = position;
-          p.y += idle + jump;
-          float c = cos(aOffset.w), s = sin(aOffset.w);
-          vec3 r = vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c);
-          // fans face the court: rotate the quad
-          vec3 world = r + aOffset.xyz;
-          gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        uniform sampler2D uTex;
-        varying vec2 vUv;
-        varying float vTint;
-        void main() {
-          vec4 c = texture2D(uTex, vUv);
-          if (c.a < 0.5) discard;
-          gl_FragColor = vec4(c.rgb * 0.42 * vTint, 1.0);
-          #include <colorspace_fragment>
-        }
-      `,
-    });
-    const mesh = new THREE.Mesh(inst, this.crowdMat);
-    mesh.frustumCulled = false;
-    this.group.add(mesh);
-  }
-
-  private buildRoom(): void {
-    const X = COURT.arenaHalfX + 6;
-    const Z = COURT.arenaHalfZ + 6;
-    const H = 16;
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x232a3d, roughness: 0.95, side: THREE.BackSide });
-    const room = new THREE.Mesh(new THREE.BoxGeometry(X * 2, H, Z * 2), wallMat);
-    room.position.y = H / 2 - 0.01;
-    this.group.add(room);
-    // ceiling light banks (emissive, kept below bloom threshold)
-    const lightMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.9, 0.92, 0.95) });
-    const lg = new THREE.PlaneGeometry(2.2, 0.6);
-    lg.rotateX(Math.PI / 2);
-    const banks: THREE.BufferGeometry[] = [];
-    for (let i = -3; i <= 3; i++) {
-      for (const sx of [-6, -2, 2, 6]) {
-        const g = lg.clone();
-        g.translate(sx, H - 0.6, i * 5);
-        banks.push(g);
-      }
-    }
-    const bankMesh = new THREE.Mesh(mergeGeometries(banks), lightMat);
-    this.group.add(bankMesh);
-    // centre-hung scoreboard cube
-    const sbMat = new THREE.MeshStandardMaterial({ color: 0x0c0e14, roughness: 0.5, metalness: 0.6 });
-    const sb = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 4.2), sbMat);
-    sb.position.set(0, H - 3.2, 0);
-    this.group.add(sb);
-    const screenMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.16, 0.3, 0.75) });
-    const screens: THREE.BufferGeometry[] = [];
-    for (let k = 0; k < 4; k++) {
-      const a = (k * Math.PI) / 2;
-      const g = new THREE.PlaneGeometry(3.8, 2.0);
-      g.rotateY(a);
-      g.translate(Math.sin(a) * 2.12, H - 3.2, Math.cos(a) * 2.12);
-      screens.push(g);
-    }
-    this.group.add(new THREE.Mesh(mergeGeometries(screens), screenMat));
-    // trusses
-    const trussMat = new THREE.MeshStandardMaterial({ color: 0x30343e, roughness: 0.6, metalness: 0.4 });
-    const trusses: THREE.BufferGeometry[] = [];
-    for (let i = -3; i <= 3; i++) {
-      const g = new THREE.BoxGeometry(X * 2, 0.35, 0.3);
-      g.translate(0, H - 0.3, i * 5);
-      trusses.push(g);
-    }
-    this.group.add(new THREE.Mesh(mergeGeometries(trusses), trussMat));
-    // team banners hanging on the long walls
-    const colors = [0xd23a2a, 0x2456c8, 0xf2b632, 0x22a06b, 0xf5f5f5];
-    const rng = new Rng(3);
-    const byColor = new Map<number, THREE.BufferGeometry[]>();
-    for (const s of [-1, 1]) {
-      for (let i = -4; i <= 4; i++) {
-        const c = colors[Math.floor(rng.next() * colors.length)];
-        const g = new THREE.PlaneGeometry(1.6, 3.2);
-        g.rotateY((-s * Math.PI) / 2);
-        g.translate(s * (X - 0.05), H - 4, i * 4.2);
-        if (!byColor.has(c)) byColor.set(c, []);
-        byColor.get(c)!.push(g);
-      }
-    }
-    for (const [c, geos] of byColor) {
-      this.group.add(
-        new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, side: THREE.DoubleSide })),
-      );
-    }
+    this.crowdMat = buildVenue(this.group, VENUE);
   }
 
   private buildLights(): void {
-    const hemi = new THREE.HemisphereLight(0xdfe6ff, 0x9a7650, 0.42);
+    const L = VENUE.light;
+    const hemi = new THREE.HemisphereLight(L.hemiSky, L.hemiGround, L.hemi);
     this.group.add(hemi);
     // key light nearly overhead: the arena look, a readable shadow under each player and no
-    // hotspot on the floor
-    const key = new THREE.DirectionalLight(0xfff4e6, 2.1);
-    key.position.set(1.5, 24, 3.5);
+    // hotspot on the floor. Faces get their light in the athletes' own shader (CHARACTER.sideFill):
+    // two low lights from behind the baselines lit them too, and put a glare patch on the varnish
+    // in front of the camera
+    const key = new THREE.DirectionalLight(L.keyColor, L.key);
+    key.position.set(...L.keyPos);
     key.target.position.set(0, 0, 0);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     const sc = key.shadow.camera;
-    sc.left = -12;
-    sc.right = 12;
-    sc.top = 15;
-    sc.bottom = -15;
+    sc.left = -11;
+    sc.right = 11;
+    sc.top = 14.5;
+    sc.bottom = -14.5;
     sc.near = 5;
-    sc.far = 40;
+    // a low sun stands further off along the floor than the roof lights do
+    sc.far = Math.max(40, Math.hypot(...L.keyPos) + 24);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.03;
-    key.shadow.radius = 4;
+    key.shadow.radius = L.shadowSoft;
     this.group.add(key, key.target);
     this.keyLight = key;
     // two soft fills from the long sides (no shadows)
-    const f1 = new THREE.DirectionalLight(0xdde6ff, 0.55);
+    const f1 = new THREE.DirectionalLight(L.fillColor, L.fill);
     f1.position.set(-10, 18, -5);
-    const f2 = new THREE.DirectionalLight(0xfff0dd, 0.45);
+    const f2 = new THREE.DirectionalLight(0xfff0dd, L.fill * 0.85);
     f2.position.set(10, 18, 7);
     this.group.add(f1, f2);
   }
 
   /** Bake a simple room into a PMREM env map for floor and ball reflections. */
   private buildEnvironment(): void {
+    if (this.skyTex) return this.buildSkyEnvironment(this.skyTex);
     const envScene = new THREE.Scene();
     envScene.background = new THREE.Color(0x10131c);
     const box = new THREE.Mesh(new THREE.BoxGeometry(60, 18, 60), new THREE.MeshBasicMaterial({ color: 0x1a1f2c, side: THREE.BackSide }));
@@ -538,12 +477,86 @@ export class Arena {
       b.position.set(0, 0.45, sx * 16.1);
       envScene.add(b);
     }
+    this.bakeEnvironment(envScene);
+  }
+
+  /** Outdoors the reflections come from the sky itself, the ground under it and the lit court */
+  private buildSkyEnvironment(sky: THREE.Texture): void {
+    const envScene = new THREE.Scene();
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(90, 32, 16), new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide })));
+    const groundMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(VENUE.sky!.ground) });
+    const g = new THREE.Mesh(new THREE.CircleGeometry(88, 24), groundMat);
+    g.rotation.x = -Math.PI / 2;
+    g.position.y = -0.5;
+    envScene.add(g);
+    this.bakeEnvironment(envScene);
+  }
+
+  /** bake the stand-in scene into the reflection everything is lit by, then free the stand-in: it was drawn once */
+  private bakeEnvironment(envScene: THREE.Scene): void {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const rt = pmrem.fromScene(envScene, 0.035, 0.1, 100);
+    this.envTarget = rt;
     this.envMap = rt.texture;
     this.scene.environment = rt.texture;
-    this.scene.environmentIntensity = 0.45;
+    this.scene.environmentIntensity = VENUE.light.env;
     pmrem.dispose();
+    envScene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      // its materials hold no textures of their own (the sky's is the dome's, and is freed with it)
+      for (const mat of Array.isArray(m.material) ? m.material : m.material ? [m.material] : []) mat.dispose();
+    });
+  }
+
+  /** Take the arena out of the scene and free what it holds on the GPU (the venue is being changed). */
+  dispose(): void {
+    this.scene.remove(this.group);
+    const seen = new Set<THREE.Material>();
+    this.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      for (const mat of Array.isArray(m.material) ? m.material : m.material ? [m.material] : []) {
+        if (seen.has(mat)) continue;
+        seen.add(mat);
+        for (const v of Object.values(mat)) if (v instanceof THREE.Texture) v.dispose();
+        // a shader's textures are in its uniforms (the crowd's atlas)
+        const uniforms = (mat as THREE.ShaderMaterial).uniforms as Record<string, THREE.IUniform> | undefined;
+        if (uniforms) for (const u of Object.values(uniforms)) if (u.value instanceof THREE.Texture) u.value.dispose();
+        mat.dispose();
+      }
+      // the chairs and the festoon bulbs: three frees an instanced mesh's own buffers only when asked
+      if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
+      const light = o as THREE.DirectionalLight;
+      if (light.isDirectionalLight) light.shadow.map?.dispose();
+    });
+    this.skyTex?.dispose();
+    this.envTarget?.dispose();
+    this.envTarget = null;
+    this.envMap = null;
+    this.scene.environment = null;
+    this.reflection.dispose();
+  }
+
+  /**
+   * Where the ball is drawn this frame (null without one): the mesh goes with a ball that is in it,
+   * and swings back from where the ball left it. Looks only: what the ball does in the net is the
+   * physics' business (`BALL.netGive`).
+   */
+  netPress(ball: { x: number; y: number; z: number } | null): void {
+    const at = ball ? netPress(ball, this.netTop, this.press) : null;
+    if (at) {
+      this.netBall.value.set(at.x, at.y, at.push);
+      this.pressed = true;
+      return;
+    }
+    if (!this.pressed) return;
+    // the ball has let go: the mesh swings back from there
+    this.pressed = false;
+    const b = this.netBall.value;
+    this.netHits.value[this.netHitNext].set(b.x, b.y, b.z, this.netTime.value);
+    this.netHitNext = (this.netHitNext + 1) % ARENA.net.hits;
+    b.z = 0;
   }
 
   excite(amount: number): void {
@@ -552,47 +565,11 @@ export class Arena {
 
   update(dt: number): void {
     this.time += dt;
+    this.netTime.value = this.time;
     this.excitement *= Math.exp(-dt * 1.3);
     if (this.crowdMat) {
       this.crowdMat.uniforms.uTime.value = this.time;
       this.crowdMat.uniforms.uExcite.value = Math.min(1, this.excitement);
     }
   }
-}
-
-/** Minimal geometry merge (positions, normals, uvs) to avoid pulling extra deps. */
-export function mergeGeometries(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  let vCount = 0;
-  let iCount = 0;
-  for (const g of geos) {
-    vCount += g.attributes.position.count;
-    iCount += g.index ? g.index.count : g.attributes.position.count;
-  }
-  const pos = new Float32Array(vCount * 3);
-  const nor = new Float32Array(vCount * 3);
-  const uv = new Float32Array(vCount * 2);
-  const idx = new Uint32Array(iCount);
-  let vo = 0;
-  let io = 0;
-  for (const g of geos) {
-    const p = g.attributes.position as THREE.BufferAttribute;
-    const n = g.attributes.normal as THREE.BufferAttribute | undefined;
-    const u = g.attributes.uv as THREE.BufferAttribute | undefined;
-    pos.set(p.array as Float32Array, vo * 3);
-    if (n) nor.set(n.array as Float32Array, vo * 3);
-    if (u) uv.set(u.array as Float32Array, vo * 2);
-    if (g.index) {
-      for (let i = 0; i < g.index.count; i++) idx[io++] = g.index.getX(i) + vo;
-    } else {
-      for (let i = 0; i < p.count; i++) idx[io++] = i + vo;
-    }
-    vo += p.count;
-    g.dispose();
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  out.setIndex(new THREE.BufferAttribute(idx, 1));
-  return out;
 }

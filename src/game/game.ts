@@ -1,11 +1,14 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings } from '../config';
+import { ASSIST, CAMERA, CHARACTER, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings, type VenueId } from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
 import { clamp01, damp, lerp, Rng } from '../core/mathx';
 import { CameraRig, type FollowTarget } from '../camera/cameraRig';
+import { BODY_LIGHT } from '../character/bodyMaterial';
 import { Arena } from '../world/arena';
+import { setVenue, VENUE, VENUE_ID } from '../world/venue';
+import { REFLECT_LAYER } from '../world/floorReflection';
 import { Post } from '../fx/post';
 import { Athlete, handSign } from './athlete';
 import { bodyStats } from './body';
@@ -58,7 +61,7 @@ export class Game {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly rig: CameraRig;
-  readonly arena: Arena;
+  arena: Arena;
   readonly post: Post;
   readonly input: Input;
   readonly user: UserController;
@@ -134,6 +137,8 @@ export class Game {
   /** consecutive frames that threw */
   private failedFrames = 0;
   private aimReticle: THREE.Mesh;
+  /** the venue setting as last applied (a change to it ends a link's override) */
+  private venueSetting: VenueId;
   private idealCache: IdealInfo = { t: 0, d: 0, ball: new THREE.Vector3(), point: new THREE.Vector3() };
   private idealValid = false;
   /** last timing info for the debug overlay */
@@ -142,7 +147,11 @@ export class Game {
   constructor(
     private container: HTMLElement,
     public settings: Settings,
+    /** a venue asked for by the link: it wins over the saved one until the player picks a venue in Settings */
+    private venueOverride: VenueId | null = null,
   ) {
+    this.venueSetting = settings.venue;
+    setVenue(venueOverride ?? settings.venue);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
@@ -162,6 +171,8 @@ export class Game {
     this.arena = new Arena(this.renderer, this.scene);
     this.rig.blockers = this.arena.cameraBlockers;
     this.post = new Post(this.renderer, this.scene, this.rig.camera);
+    this.applyVenue();
+    this.post.preRender = () => this.arena.reflection.render(this.rig.camera);
     this.input = new Input(this.renderer.domElement);
     this.user = new UserController(this.input, this.rig);
     this.debug = new DebugOverlay(container);
@@ -171,6 +182,7 @@ export class Game {
     this.setRing = new SetRing(this.scene);
     this.setSpot = new SetSpot(this.scene);
     this.setBar = new SetBar(this.hud.root);
+    this.ball.mesh.layers.enable(REFLECT_LAYER);
     this.ball.hide();
     this.gizmos = new DebugGizmos(this.scene);
 
@@ -216,6 +228,8 @@ export class Game {
     this.user.athlete = this.me;
     this.actions = new UserActions(this);
     this.fx = new Effects(this, container);
+    // the venue was applied above, before there was a ball or any sound: a saved or linked venue starts with its own
+    this.applyVenueToBallAndSound();
 
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
@@ -230,6 +244,7 @@ export class Game {
     if (kitKind === 'coach') kit = { ...kit, jersey: 0x4a4f5c, jerseyTrim: 0x9aa0ad, shorts: 0x2a2d35, socks: 0x2a2d35, pads: 0x2a2d35 };
     const v = new AthleteView(a, kit);
     this.views.set(a, v);
+    v.rig.mesh.layers.enable(REFLECT_LAYER);
     this.scene.add(v.root);
     // spawned mid-drill (the spike drill's block): the replay records it too, from now on
     this.fx?.replay.addView(v);
@@ -241,9 +256,7 @@ export class Game {
 
   private disposeView(v: AthleteView): void {
     this.scene.remove(v.root);
-    v.rig.mesh.geometry.dispose();
-    v.rig.material.dispose();
-    v.rig.mesh.skeleton.dispose();
+    v.rig.dispose();
   }
 
   removeAthlete(a: Athlete): void {
@@ -353,6 +366,7 @@ export class Game {
     this.disposeView(old);
     const v = new AthleteView(a, old.kit);
     v.onFootstep = old.onFootstep;
+    v.rig.mesh.layers.enable(REFLECT_LAYER);
     this.views.set(a, v);
     this.scene.add(v.root);
     this.eyeInit = false;
@@ -409,11 +423,63 @@ export class Game {
     this.ball.hide();
   }
 
+  // ------------------------------------------------------------ venue
+  /** what the venue sets outside the arena itself: the athletes' light, the grade, and whether the sky is open */
+  private applyVenue(): void {
+    BODY_LIGHT.rim.value = CHARACTER.rim * VENUE.body.rim;
+    BODY_LIGHT.side.value = CHARACTER.sideFill * VENUE.body.side;
+    this.post.setGrade(VENUE.grade);
+    // the one thing a venue changes about play (docs/adr/0009): outdoors nothing stops the ball overhead
+    this.env.ceiling = VENUE.openSky ? null : COURT.ceiling;
+  }
+
+  /** the rest of what a venue sets, on things the constructor builds after the arena: the predictor's reach and the crowd's sound */
+  private applyVenueToBallAndSound(): void {
+    // with no roof a ball can stay up longer than any ball can indoors: look as far ahead as it can fly
+    this.ball.predictor.setHorizon(VENUE.openSky ? SIM.predictHorizonOpenSky : SIM.predictHorizon);
+    this.fx.audio.setCrowdShare(VENUE.crowdSound);
+  }
+
+  /** rebuild what stands round the court (the court, the net and everyone on it stay where they are) */
+  private changeVenue(id: VenueId): void {
+    const netTop = this.arena.netTop;
+    this.arena.dispose();
+    setVenue(id);
+    this.arena = new Arena(this.renderer, this.scene);
+    this.arena.setNetHeight(netTop);
+    this.applyVenue();
+    this.applyVenueToBallAndSound();
+    this.ball.version++;
+    // the mirror's size and the quality level's choices belong to the arena that was thrown away
+    this.setQuality(this.quality);
+  }
+
+  /** the venue the court is standing in */
+  get venue(): VenueId {
+    return VENUE_ID;
+  }
+
+  /**
+   * The player picked a venue in Settings: that pick is saved and it ends a link's `venue=`, even when it
+   * is the venue that was already saved (otherwise the saved one could not be chosen back from a link).
+   */
+  pickVenue(id: VenueId): void {
+    this.settings.venue = id;
+    this.venueSetting = id;
+    this.venueOverride = null;
+  }
+
   // ------------------------------------------------------------ settings
   applySettings(): void {
     const s = this.settings;
     this.rig.baseFov = s.fov;
     this.rig.shakeScale = s.shake;
+    if (s.venue !== this.venueSetting) {
+      this.venueSetting = s.venue;
+      this.venueOverride = null;
+    }
+    const venue = this.venueOverride ?? s.venue;
+    if (venue !== VENUE_ID) this.changeVenue(venue);
     this.arena.setNetHeight(s.womenNet ? COURT.netHeightWomen : COURT.netHeightMen);
     this.rig.netTop = this.arena.netTop;
     this.env.netTop = this.arena.netTop;
@@ -440,6 +506,8 @@ export class Game {
     const h = this.container.clientHeight;
     this.renderer.setSize(w, h);
     this.post.setSize(w, h);
+    const pr = this.renderer.getPixelRatio();
+    this.arena.reflection.setSize(w * pr, h * pr);
     this.rig.resize(w / h);
   }
 
@@ -540,7 +608,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------ quality governor
-  /** 0 = full (MSAA, 1.5x DPR cap), 1 = no MSAA + 1x DPR, 2 = 0.8x scale + 1024 shadows */
+  /** 0 = full (MSAA, 1.5x DPR cap), 1 = no MSAA + 1x DPR, 2 = 0.8x scale + 1024 shadows + no floor mirror */
   quality = 0;
   private qAcc = 0;
   private qFrames = 0;
@@ -570,6 +638,7 @@ export class Game {
     this.qCooldown = 4;
     const dpr = window.devicePixelRatio || 1;
     this.post.setSamples(this.quality === 0 ? 4 : 0);
+    this.arena.reflection.setEnabled(this.quality < 2);
     this.renderer.setPixelRatio(this.quality === 0 ? Math.min(dpr, 1.5) : this.quality === 1 ? Math.min(dpr, 1) : 0.8);
     this.post.composer.setPixelRatio(this.renderer.getPixelRatio());
     const sm = this.arena.keyLight.shadow;
@@ -640,6 +709,7 @@ export class Game {
     this.setBar.hide();
     this.setSpot.hide();
     this.mode?.replayFrame();
+    this.arena.netPress(this.ball.mesh.visible ? this.ball.mesh.position : null);
     this.rig.update(dt, null);
     this.fx.update(dt * this.fx.replay.speed);
     this.arena.update(dt);
@@ -853,15 +923,21 @@ export class Game {
     if (this.userViewDirty) this.rebuildUserView();
     const alpha = this.accum / (1 / SIM.hz);
     for (const a of this.athletes) a.interpolate(alpha);
-    this.ball.interpolate(alpha);
+    this.ball.interpolate(alpha, this.hitStop > 0);
+    // the net's mesh goes with a ball that is in it
+    this.arena.netPress(this.ball.active ? this.ball.rpos : null);
     const step = 1 / SIM.hz;
     const tr = this.simTime - step * (1 - alpha);
     const animDt = Math.max(0, tr - this.lastRenderSimT);
     this.lastRenderSimT = tr;
     for (const [a, v] of this.views) {
       a.ballPos = this.ball.active ? this.ball.rpos : null;
+      a.ballVel = this.ball.active ? this.ball.state.v : null;
+      v.passZone = this.contact.platformPoint(a, v.passZone ?? new THREE.Vector3());
+      v.setZone = this.contact.handsPoint(a, v.setZone ?? new THREE.Vector3());
       if (this.ball.active) a.lookAt.copy(this.ball.rpos);
       v.setFirstPerson(a.isUser && this.rig.mode === 'fp' && !this.inMenu);
+      v.netTop = this.env.netTop;
       v.update(animDt, tr);
     }
     this.ball.updateVisuals(realDt, this.simTime, this.env);

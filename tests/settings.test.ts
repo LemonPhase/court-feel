@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SETTINGS, isPositionId, SETTING_RANGES } from '../src/config';
-import { parseLaunchParams } from '../src/core/launch';
+import { DEFAULT_SETTINGS, isPositionId, SETTING_RANGES, VENUE_IDS, VENUES } from '../src/config';
+import { parseLaunchParams, parseVenueParam } from '../src/core/launch';
 import { defaultSettings, loadSettings, sanitizeSettings, VALIDATED_KEYS } from '../src/core/settings';
 import { isModeId } from '../src/game/modes/mode';
 
@@ -128,5 +128,25 @@ describe('quick-start links', () => {
       expect(isModeId(k), k).toBe(false);
       expect(isPositionId(k), k).toBe(false);
     }
+  });
+});
+
+describe('the venue', () => {
+  it('a saved venue is kept only if it is one of the venues', () => {
+    expect(sanitizeSettings({ venue: 'seaside' }).venue).toBe('seaside');
+    expect(sanitizeSettings({ venue: 'moon' }).venue).toBe(DEFAULT_SETTINGS.venue);
+    expect(sanitizeSettings({ venue: 3 }).venue).toBe('hall');
+  });
+
+  it('a link can ask for a venue, with or without a drill; an unknown one is ignored', () => {
+    expect(parseVenueParam('?venue=rooftop')).toBe('rooftop');
+    expect(parseVenueParam('?mode=rally&pos=OH&venue=games')).toBe('games');
+    expect(parseVenueParam('?venue=toString')).toBeNull();
+    expect(parseVenueParam('?mode=spike')).toBeNull();
+  });
+
+  it('only the open-air venues have no ceiling, and only the empty gym has no crowd', () => {
+    expect(VENUE_IDS.filter((id) => VENUES[id].openSky)).toEqual(['seaside', 'rooftop']);
+    expect(VENUE_IDS.filter((id) => VENUES[id].crowdSound === 0)).toEqual(['afterhours']);
   });
 });

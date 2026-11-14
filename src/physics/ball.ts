@@ -30,6 +30,8 @@ export interface BallState {
 
 export interface BallEnv {
   netTop: number;
+  /** height the ball is stopped at (m). Absent: the hall's `COURT.ceiling`. null: open sky, nothing stops it. */
+  ceiling?: number | null;
 }
 
 export type CollisionKind = 'floor' | 'net' | 'tape' | 'antenna' | 'post' | 'board' | 'wall' | 'ceiling';
@@ -149,7 +151,7 @@ function subStep(s: BallState, h: number, env: BallEnv, events?: CollisionEvent[
   collideAntennae(s, env, events);
   collidePosts(s, events);
   collideFloor(s, h, events);
-  collideBounds(s, events);
+  collideBounds(s, env, events);
 }
 
 function emit(events: CollisionEvent[] | undefined, kind: CollisionKind, p: V3, impact: number) {
@@ -336,7 +338,7 @@ function collidePosts(s: BallState, events?: CollisionEvent[]): void {
   }
 }
 
-function collideBounds(s: BallState, events?: CollisionEvent[]): void {
+function collideBounds(s: BallState, env: BallEnv, events?: CollisionEvent[]): void {
   const { p, v } = s;
   // LED boards around the free zone
   if (p.y < BOARD_H + R) {
@@ -375,12 +377,13 @@ function collideBounds(s: BallState, events?: CollisionEvent[]): void {
     }
     p.z = sz * (Z - R);
   }
-  if (p.y > COURT.ceiling - R) {
+  const ceiling = env.ceiling === undefined ? COURT.ceiling : env.ceiling;
+  if (ceiling !== null && p.y > ceiling - R) {
     if (v.y > 0) {
       emit(events, 'ceiling', p, v.y);
       v.y = -v.y * 0.3;
     }
-    p.y = COURT.ceiling - R;
+    p.y = ceiling - R;
   }
 }
 

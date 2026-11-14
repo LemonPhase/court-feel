@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FX } from '../config';
+import { BALL, FX } from '../config';
 import { clamp, clamp01, lerp, smooth01 } from '../core/mathx';
 import type { Game } from '../game/game';
 import type { AthleteView } from '../character/athleteView';
@@ -265,6 +265,8 @@ export class Effects {
             // the harder it was hit, the longer the freeze and the bigger the punch
             const pw = AudioEngine.powerFromSpeed(e.speed);
             g.hitStop = (FX.hitStopPerfect + FX.hitStopPower * pw) * FX.intensity;
+            // the frame that is held shows the ball on the hand, where it was touched
+            g.ball.holdDrawn(p.x, p.y, p.z);
             g.rig.addTrauma(FX.shakePerfect * FX.intensity);
             g.rig.punchFov(-FX.fovPunch * (0.5 + 0.5 * pw) * (g.rig.mode === 'fp' ? FX.fpPunchScale : 1) * FX.intensity);
             g.rig.kick(-FX.kickContact * pw * FX.intensity, 0);
@@ -297,7 +299,10 @@ export class Effects {
         });
         if (user || this.near(p, 6)) {
           g.rig.addTrauma(FX.shakeBlock * (stuff ? 1 : 0.5) * (user ? 1 : 0.4));
-          if (user && stuff) g.hitStop = FX.hitStopBlock;
+          if (user && stuff) {
+            g.hitStop = FX.hitStopBlock;
+            g.ball.holdDrawn(p.x, p.y, p.z);
+          }
         }
         if (stuff) g.crowd(user ? 1.0 : 0.5, true);
         break;
@@ -396,6 +401,8 @@ export class Effects {
           // your own kill lands: the arena jolts and the moment holds for a beat
           g.rig.kick(0, -FX.kickImpact * pw * clamp01(1.5 - dist / 18) * FX.intensity);
           g.hitStop = Math.max(g.hitStop, FX.hitStopImpact * pw * FX.intensity);
+          // ...with the ball on the floor
+          g.ball.holdDrawn(d.x, BALL.radius, d.z);
         }
       }
     } else if (e.kind === 'block' && fromReplay) {

@@ -5,11 +5,14 @@ import {
   SET_LEVEL_IDS,
   SET_LEVELS,
   SETTING_RANGES,
+  VENUE_IDS,
+  VENUES,
   type BodyOverride,
   type BooleanSettingKey,
   type NumericSettingKey,
   type PositionId,
   type Settings,
+  type VenueId,
 } from '../config';
 import { BUILD_LABEL } from '../core/build';
 import { defaultSettings, systemPrefersReducedMotion } from '../core/settings';
@@ -133,6 +136,10 @@ export interface MenuCallbacks {
   restart(): void;
   quit(): void;
   settingsChanged(): void;
+  /** the venue the court is standing in: a link's `venue=` can make it differ from the saved one */
+  venue(): VenueId;
+  /** a venue was picked in Settings: save it, and end a link's `venue=` */
+  pickVenue(id: VenueId): void;
 }
 
 /**
@@ -1074,6 +1081,14 @@ export class Menu {
         ["Men's 2.43 m", "Women's 2.24 m"],
         () => (s.womenNet ? 1 : 0),
         (i) => (s.womenNet = i === 1),
+      ),
+      seg(
+        'Venue',
+        VENUE_IDS.map((id) => VENUES[id].name),
+        // the venue the court is standing in, which a link's `venue=` can make differ from the saved one
+        () => VENUE_IDS.indexOf(this.cb.venue()),
+        (i) => this.cb.pickVenue(VENUE_IDS[i]),
+        'Where the court stands. The court and the net are the same everywhere. Outdoors there is no ceiling.',
       ),
     ]);
 

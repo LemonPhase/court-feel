@@ -261,3 +261,62 @@ describe('determinism and integration', () => {
     expect(pred.netCrossT).toBeGreaterThan(10);
   });
 });
+
+describe('the ceiling and the open sky', () => {
+  /** a dig sent almost straight up, hard enough to climb past the hall's 12.5 m */
+  const skyBall = () => ballAt({ x: 0, y: 1, z: 4 }, { x: 0, y: 19, z: -0.6 });
+
+  it('under a roof a ball that reaches 12.5 m hits the ceiling', () => {
+    const { events, apexY } = simulateToFloor(skyBall(), 8);
+    expect(events.some((e) => e.kind === 'ceiling')).toBe(true);
+    expect(apexY).toBeLessThanOrEqual(COURT.ceiling);
+  });
+
+  it('outdoors nothing is up there: the same ball climbs past 12.5 m and comes down in the court', () => {
+    const b = skyBall();
+    const open = { netTop: COURT.netHeightMen, ceiling: null };
+    const events: CollisionEvent[] = [];
+    let apex = b.p.y;
+    for (let t = 0; t < 8 && !events.some((e) => e.kind === 'floor'); t += DT) {
+      stepBall(b, DT, open, events);
+      apex = Math.max(apex, b.p.y);
+    }
+    expect(apex).toBeGreaterThan(COURT.ceiling);
+    expect(events.some((e) => e.kind === 'ceiling')).toBe(false);
+    const floor = events.find((e) => e.kind === 'floor')!;
+    expect(Math.abs(floor.x)).toBeLessThan(COURT.halfWidth);
+    expect(Math.abs(floor.z)).toBeLessThan(COURT.halfLength);
+  });
+
+  it('a ball that never gets near 12.5 m flies the same path with or without a roof', () => {
+    const a = ballAt({ x: -2, y: 2.4, z: 1 }, { x: 3, y: 7, z: -4 });
+    const b = ballAt({ x: -2, y: 2.4, z: 1 }, { x: 3, y: 7, z: -4 });
+    for (let i = 0; i < 90; i++) {
+      stepBall(a, DT, env);
+      stepBall(b, DT, { netTop: COURT.netHeightMen, ceiling: null });
+    }
+    expect(b.p).toEqual(a.p);
+    expect(b.v).toEqual(a.v);
+  });
+
+  it('outdoors a ball shanked 21 m up is in the air longer than any ball under a roof, and its landing is still known', () => {
+    const shank = () => ballAt({ x: 0, y: 1, z: 4 }, { x: 0, y: 25, z: -0.3 });
+    const open = { netTop: COURT.netHeightMen, ceiling: null };
+    const predictor = new BallPredictor(DT, SIM.predictHorizonOpenSky);
+    // the horizon a roof allows is too short for it
+    predictor.setHorizon(SIM.predictHorizon);
+    predictor.compute(shank(), open, 0);
+    expect(predictor.landT).toBe(-1);
+    predictor.setHorizon(SIM.predictHorizonOpenSky);
+    predictor.compute(shank(), open, 0);
+    expect(predictor.landT).toBeGreaterThan(SIM.predictHorizon);
+    expect(predictor.landT).toBeLessThan(SIM.predictHorizonOpenSky);
+  });
+
+  it('under a roof the same shank is down well inside the indoor horizon', () => {
+    const predictor = new BallPredictor(DT, SIM.predictHorizon);
+    predictor.compute(ballAt({ x: 0, y: 1, z: 4 }, { x: 0, y: 25, z: -0.3 }), env, 0);
+    expect(predictor.landT).toBeGreaterThan(0);
+    expect(predictor.landT).toBeLessThan(SIM.predictHorizon);
+  });
+});
