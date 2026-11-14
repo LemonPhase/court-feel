@@ -915,8 +915,8 @@ export const AI = {
  *
  * Where the numbers come from: four rounds of all-AI rallies (`npm run levels`, 9000 s a level,
  * seeds 2024 / 7 / 11), tuned until a Pro side that swings on time and plays its usual shots,
- * without looking for the open spot, scored on about 63% of its attacks against a Rec side, 50%
- * against Club, 40% against National and 31% against Pro (about 3 points of noise). The user's
+ * without looking for the open spot, scored on about 60% of its attacks against a Rec side, 49%
+ * against Club, 40% against National and 28% against Pro (about 3 points of noise). The user's
  * own spike scores more than that at every level: the playability bends in their favour
  * (`CONTACT.userSpikeShank`, `userToolEdge`, `AI.userBlockMisread`) are not in an all-AI rally.
  * Reaction times: about 0.2-0.25 s for a trained player (docs/adr/0005), longer for one who
