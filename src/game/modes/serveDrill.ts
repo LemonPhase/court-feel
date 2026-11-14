@@ -134,18 +134,20 @@ export class ServeDrill extends Mode {
 
   hint(): string {
     const pick = `${kbd('1')}${kbd('2')}${kbd('3')} serve`;
-    // a hard topspin serve aimed short is in the net: it is aimed at the back of their court
-    const deep = this.kind === 'jump' ? ' · aim deep' : '';
+    // you aim where you look. In first person the higher the look the deeper the aim (level is at the foot of the net);
+    // a hard topspin serve aimed short is in the net, so it goes at the back of their court
+    const fp = this.g.rig.mode === 'fp';
+    const aim = fp ? 'the higher you look, the deeper you aim' : this.kind === 'jump' ? 'aim deep' : 'aim with the mouse';
     if (this.phase === 'ready') {
       if (this.g.userReturning) return `Back behind the end line · ${pick}`;
       return this.kind === 'float'
-        ? `${kbd('Q')} toss · hold ${kbd('LMB')}, release as the ball comes down · aim with the mouse · ${pick}`
-        : `${kbd('Q')} toss · ${kbd('Shift')}+${kbd('W')} run in under it · ${kbd('Space')} jump · hold/release ${kbd('LMB')}${deep} · ${pick}`;
+        ? `${kbd('Q')} toss · hold ${kbd('LMB')}, release as the ball comes down · ${aim} · ${pick}`
+        : `${kbd('Q')} toss · ${kbd('Shift')}+${kbd('W')} run in under it · ${kbd('Space')} jump · hold/release ${kbd('LMB')} · ${aim} · ${pick}`;
     }
     if (this.phase === 'toss')
       return this.kind === 'float'
-        ? `Hold ${kbd('LMB')}, release as the ball comes down`
-        : `${kbd('Shift')}+${kbd('W')} run in · ${kbd('Space')} jump behind the line · hold/release ${kbd('LMB')}${deep}`;
+        ? `Hold ${kbd('LMB')}, release as the ball comes down · ${aim}`
+        : `${kbd('Shift')}+${kbd('W')} run in · ${kbd('Space')} jump behind the line · hold/release ${kbd('LMB')} · ${aim}`;
     return `${pick} · ${kbd('N')} next serve · ${kbd('V')} camera`;
   }
 
