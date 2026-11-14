@@ -19,6 +19,8 @@ canvas { display: block; outline: none; }
 .hud-grade { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; opacity: 0;
   transition: opacity 0.25s; }
 .hud-grade.show { opacity: 1; }
+.hud-grade.aside { left: 22%; top: 40%; }
+.hud-grade.aside .hud-grade-text { font-size: 44px; }
 .hud-grade-text { font-weight: 900; font-style: italic; font-size: 60px; letter-spacing: 0.04em; line-height: 1;
   -webkit-text-stroke: 1px rgba(0,0,0,0.35); }
 .hud-grade-sub { font-weight: 700; font-size: 18px; margin-top: 6px; letter-spacing: 0.06em; }

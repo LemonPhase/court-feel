@@ -319,9 +319,12 @@ export class Hud {
     this.banner.classList.remove('show');
   }
 
+  /** show the grade to one side, off the line a served ball flies down (the Serve Drill) */
+  gradeAside = false;
+
   showGrade(g: Grade, sub: string): void {
     this.gradeText.textContent = g === 'Miss' ? 'MISS' : g.toUpperCase();
-    this.grade.className = 'hud-grade show ' + GRADE_CLASS[g];
+    this.grade.className = 'hud-grade show ' + GRADE_CLASS[g] + (this.gradeAside ? ' aside' : '');
     this.gradeSub.textContent = sub;
     // restart animation
     void this.grade.offsetWidth;

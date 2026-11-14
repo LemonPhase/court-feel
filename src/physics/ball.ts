@@ -123,58 +123,67 @@ function draw(seed: number, k: number): number {
   return x - Math.floor(x);
 }
 
-const _push = { lat: 0, up: 0 };
+const _push = { lat: 0, up: 0, full: 0 };
 
-/** the k-th push of a float: sideways and up, each -1..1 */
-function floatPush(seed: number, k: number, out: { lat: number; up: number }): void {
+/**
+ * The float's push at `t` s after the hit: sideways and up, each -1..1 (0, 0 while it flies
+ * true). The ball flies true for a moment, then breaks, again and again, each on its own draw.
+ */
+function floatPush(seed: number, t: number, out: { lat: number; up: number; full: number }): void {
   const F = BALL.float;
-  const angle = draw(seed, k * 3 + 1) * Math.PI * 2;
-  const strength = F.strengthMin + (1 - F.strengthMin) * draw(seed, k * 3 + 2);
-  out.lat = Math.cos(angle) * strength;
-  out.up = Math.sin(angle) * strength * F.vertical;
+  out.lat = 0;
+  out.up = 0;
+  out.full = 0;
+  let t0 = 0;
+  for (let k = 0; k < 24; k++) {
+    // it flies true, then it breaks
+    t0 += F.quietMin + (F.quietMax - F.quietMin) * draw(seed, k * 4);
+    if (t < t0) return;
+    const hold = F.breakMin + (F.breakMax - F.breakMin) * draw(seed, k * 4 + 1);
+    if (t < t0 + hold) {
+      // left, right, or straight down
+      const way = draw(seed, k * 4 + 2);
+      const strength = F.strengthMin + (1 - F.strengthMin) * draw(seed, k * 4 + 3);
+      // a break comes on and lets go quickly, not in one step
+      const push = strength * smooth01((t - t0) / F.edge) * smooth01((t0 + hold - t) / F.edge);
+      if (way < F.down) out.up = -push;
+      else out.lat = way < (1 + F.down) / 2 ? push : -push;
+      out.full = strength;
+      return;
+    }
+    t0 += hold;
+  }
 }
 
 /**
- * The float (see `BALL.float`): the seams' push across the flight, which breaks to a new
- * direction every fraction of a second, and the jump in drag once the ball is under its
- * critical speed. Added to `out`.
+ * How hard a floating ball is breaking right now, 0 (it is flying true, or it does not float) to
+ * 1: the strength of the break it is in, times how cleanly it was hit. For the effects that show
+ * a break; the flight itself is `aeroAccel`.
+ */
+export function floatBreaking(s: BallState): number {
+  if (s.knuckle <= 0 || s.rest || Math.hypot(s.v.x, s.v.y, s.v.z) <= BALL.float.speedLo) return 0;
+  floatPush(s.seed, s.kt, _push);
+  return _push.full * s.knuckle;
+}
+
+/**
+ * The float (see `BALL.float`): the breaks across the flight, and the jump in drag once the ball
+ * is under its critical speed. Added to `out`.
  */
 function floatAccel(s: BallState, sp: number, out: V3): void {
   const F = BALL.float;
   const v = s.v;
-  // which push the ball is in: they follow one another from the hit
-  let k = 0;
-  let t0 = 0;
-  let hold = F.holdMin + (F.holdMax - F.holdMin) * draw(s.seed, 0);
-  while (s.kt >= t0 + hold && k < 40) {
-    t0 += hold;
-    k++;
-    hold = F.holdMin + (F.holdMax - F.holdMin) * draw(s.seed, k * 3);
+  floatPush(s.seed, s.kt, _push);
+  if (_push.lat !== 0 || _push.up !== 0) {
+    const a = K_SIDE * F.cs * s.knuckle * smooth01((sp - F.speedLo) / (F.speedFull - F.speedLo)) * sp * sp;
+    // across the flight: level and square to it (px, pz), and square to both (mostly up)
+    const hl = Math.hypot(v.x, v.z) || 1;
+    const px = -v.z / hl;
+    const pz = v.x / hl;
+    out.x += a * (_push.lat * px - (_push.up * pz * v.y) / sp);
+    out.y += (a * _push.up * hl) / sp;
+    out.z += a * (_push.lat * pz + (_push.up * px * v.y) / sp);
   }
-  floatPush(s.seed, k, _push);
-  let lat = _push.lat;
-  let up = _push.up;
-  // a break is quick, not instant: the push turns from the last one over `blend`
-  const b = smooth01((s.kt - t0) / F.blend);
-  if (b < 1) {
-    let lat0 = 0;
-    let up0 = 0;
-    if (k > 0) {
-      floatPush(s.seed, k - 1, _push);
-      lat0 = _push.lat;
-      up0 = _push.up;
-    }
-    lat = lat0 + (lat - lat0) * b;
-    up = up0 + (up - up0) * b;
-  }
-  const a = K_SIDE * F.cs * s.knuckle * smooth01((sp - F.speedLo) / (F.speedFull - F.speedLo)) * sp * sp;
-  // across the flight: level and square to it (px, pz), and square to both (mostly up)
-  const hl = Math.hypot(v.x, v.z) || 1;
-  const px = -v.z / hl;
-  const pz = v.x / hl;
-  out.x += a * (lat * px - (up * pz * v.y) / sp);
-  out.y += (a * up * hl) / sp;
-  out.z += a * (lat * pz + (up * px * v.y) / sp);
   // under its critical speed the ball dies
   const critical = F.crisisLo + (F.crisisHi - F.crisisLo) * draw(s.seed, 97);
   const die = K_DRAG * F.dieDrag * s.knuckle * smooth01((critical - sp) / F.crisisWidth);

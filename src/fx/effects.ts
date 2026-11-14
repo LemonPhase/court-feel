@@ -169,6 +169,14 @@ export class Effects {
       if (e.kind === 'set') this.audio.set();
       if (e.kind === 'pass' || e.kind === 'dig') this.audio.pass(0.5);
     });
+    ev.on('floatBreak', (e) => {
+      // a float breaking is hard to see from behind the server: a ring pops round the ball where it turns
+      const b = g.ball.pos;
+      const v = g.ball.vel;
+      const data = { x: b.x, y: b.y, z: b.z, vx: v.x, vy: v.y, vz: v.z, s: e.strength };
+      this.playEvent({ t: g.simTime, kind: 'float', data }, false);
+      this.replay.addEvent(g.simTime, 'float', data);
+    });
     ev.on('ballEvent', (e) => {
       if (e.kind === 'floor') {
         this.noteBallDown(e.x, e.z);
@@ -369,6 +377,9 @@ export class Effects {
         const far = clamp01((dist - 1.0) / 2.5);
         this.airRing(at, dir, Math.min(0.95, dist * 0.6) * (0.6 + 0.4 * pw), lerp(0.3, 0.6, far) * (0.5 + 0.5 * pw));
       }
+    } else if (e.kind === 'float') {
+      const at = new THREE.Vector3(d.x, d.y, d.z);
+      this.airRing(at, new THREE.Vector3(d.vx, d.vy, d.vz), FX.floatBreak.size * d.s, FX.floatBreak.strength * d.s * FX.intensity);
     } else if (e.kind === 'impact') {
       const q = d.q;
       const perfect = d.perfect > 0.5;

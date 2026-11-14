@@ -39,6 +39,13 @@ export class CameraRig {
   yaw = 0;
   pitch = -0.12;
   baseFov: number = CAMERA.fov;
+  /**
+   * How far the first- or third-person view is zoomed in on what the player is watching: 1 is the
+   * normal view, less narrows the field of view to that share (the Serve Drill watches a serve go).
+   * Eased in and out at `CAMERA.zoomRate`.
+   */
+  zoom = 1;
+  private zoomNow = 1;
   private fovBoost = 0;
   private pivot = new THREE.Vector3();
   private pivotInit = false;
@@ -179,7 +186,7 @@ export class CameraRig {
       const minZ = CAMERA.fpNear + CAMERA.fpNetGap;
       if (Math.abs(cam.position.x) < COURT.postX + 0.5 && cam.position.z * t.side < minZ) cam.position.z = t.side * minZ;
       cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
-      this.setFov(this.baseFov + this.fovBoost + this.fovKick, dt, false);
+      this.setFov((this.baseFov + this.fovBoost + this.fovKick) * this.zoomed(dt), dt, false);
       this.applyShake(CAMERA.fpShakeScale);
       this.applyKick();
       this.tpCamToPivot = 0;
@@ -236,9 +243,14 @@ export class CameraRig {
     cam.position.z = clamp(cam.position.z, -COURT.arenaHalfZ + 1, COURT.arenaHalfZ - 1);
     cam.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
     this.tpCamToPivot = cam.position.distanceTo(this.pivot);
-    this.setFov(this.baseFov + this.fovBoost * 0.6 + this.fovKick, dt, false);
+    this.setFov((this.baseFov + this.fovBoost * 0.6 + this.fovKick) * this.zoomed(dt), dt, false);
     this.applyShake(1);
     this.applyKick();
+  }
+
+  private zoomed(dt: number): number {
+    this.zoomNow = lerp(this.zoomNow, this.zoom, damp(CAMERA.zoomRate, dt));
+    return this.zoomNow;
   }
 
   private setFov(f: number, dt: number, smooth: boolean): void {

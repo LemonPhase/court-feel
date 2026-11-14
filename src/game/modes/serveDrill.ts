@@ -86,6 +86,7 @@ export class ServeDrill extends Mode {
     g.placeUser(this.start.x, this.start.z, 0);
     if (!g.settings.firstPerson) g.rig.pitch = aimPitchFor(SERVE_DRILL.lookDepth, false);
     this.reset();
+    g.hud.gradeAside = true;
     g.hud.setTitle('Serve Drill');
     this.updateScore();
     // (on touch the key names become the buttons': "toss: Q" reads "toss: TOSS")
@@ -181,8 +182,17 @@ export class ServeDrill extends Mode {
     this.toStart();
   }
 
+  teardown(): void {
+    this.g.rig.zoom = 1;
+    this.g.hud.gradeAside = false;
+    super.teardown();
+  }
+
   frame(dt: number): void {
     const g = this.g;
+    // watch the serve go: the third-person view narrows while it is in the air (in first person
+    // the look is still up at the toss, and a narrower view would lose the ball sooner)
+    g.rig.zoom = this.phase === 'flight' && g.rig.mode === 'tp' ? SERVE_DRILL.watchZoom : 1;
     for (let i = 0; i < SERVE_KINDS.length; i++) if (g.input.consumePress('Digit' + (i + 1))) this.selectCall(i);
     this.guide.update(
       {

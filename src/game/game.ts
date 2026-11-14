@@ -55,6 +55,8 @@ export type GameEvents = {
   aiContact: { athlete: Athlete; kind: TouchKind; speed: number };
   outcome: Outcome;
   ballEvent: { kind: string; x: number; y: number; z: number; impact: number };
+  /** a float serve has just broken (`BALL.float`): how hard, 0..1 */
+  floatBreak: { strength: number };
   crowd: { amount: number; cheer: boolean };
   step: { athlete: Athlete; speed: number };
   land: { athlete: Athlete; impact: number };
@@ -851,6 +853,7 @@ export class Game {
     }
     this.ball.step(dt, this.env);
     for (const e of this.ball.events) this.events.emit('ballEvent', e);
+    if (this.ball.broke > 0) this.events.emit('floatBreak', { strength: this.ball.broke });
     const out = this.judge.step(this.ball, this.ball.events, this.env.netTop);
     if (out) {
       this.events.emit('outcome', out);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BALL, BALL_LOOK, SIM } from '../config';
 import { clamp01, damp, lerp } from '../core/mathx';
-import { copyBall, makeBall, R, stepBall, type BallEnv, type BallState, type CollisionEvent } from '../physics/ball';
+import { copyBall, floatBreaking, makeBall, R, stepBall, type BallEnv, type BallState, type CollisionEvent } from '../physics/ball';
 import { FloatRead } from '../physics/floatRead';
 import { BallPredictor } from '../physics/predict';
 import { makeBallTextures, makeBlobTexture, makeRingTexture } from '../world/textures';
@@ -164,6 +164,7 @@ export class BallEntity {
     s.kt = 0;
     s.rest = false;
     this.floatRead.reset();
+    this.breaking = 0;
     copyBall(s, this.prev);
     this.prevQ.copy(this.q);
     this.version++;
@@ -188,10 +189,14 @@ export class BallEntity {
     s.kt = 0;
     s.rest = false;
     this.floatRead.reset();
+    this.breaking = 0;
     this.version++;
     this.lastLaunchT = t;
   }
 
+  /** how hard the float is breaking (0: flying true), and on the step a break starts, how hard that break is */
+  private breaking = 0;
+  broke = 0;
   /** what can be seen of a floating ball's path (`BALL.float`) */
   private floatRead = new FloatRead(1 / SIM.hz);
   private readAge = 0;
@@ -231,6 +236,10 @@ export class BallEntity {
       }
     }
     stepBall(this.state, dt, env, this.events);
+    // a float has just broken (it was flying true a step ago): the effects mark it
+    const breaking = floatBreaking(this.state);
+    this.broke = breaking > 0 && this.breaking === 0 ? breaking : 0;
+    this.breaking = breaking;
     // integrate visual rotation
     const w = this.state.w;
     const wm = Math.hypot(w.x, w.y, w.z);
