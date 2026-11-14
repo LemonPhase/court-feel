@@ -4,9 +4,9 @@ import { FloorReflection, REFLECT_LAYER } from './floorReflection';
 import { mergeGeometries } from './geo';
 import { netPress } from './netPress';
 import { VENUE } from './venue';
-import { makeSkyDome, makeSkyTexture } from './sky';
+import { makeSkyDome, makeSkyTexture, makeStars } from './sky';
 import { buildVenue } from './venues';
-import { makeAntennaTexture, makeBoardTexture, makeNetTexture, makeWoodTextures } from './textures';
+import { makeAntennaTexture, makeBoardTexture, makeNetTexture, makePaintTextures, makeWoodTextures, PAINT_TILE } from './textures';
 
 /**
  * Static arena: floor, court, net system, stands, crowd and lighting.
@@ -48,6 +48,7 @@ export class Arena {
     if (VENUE.sky) {
       this.skyTex = makeSkyTexture(VENUE.sky);
       this.group.add(makeSkyDome(this.skyTex));
+      if (VENUE.sky.stars > 0) this.group.add(makeStars(VENUE.sky, renderer));
     }
     this.buildFloor();
     this.buildLines();
@@ -66,27 +67,36 @@ export class Arena {
 
   // ---------------------------------------------------------------- floor
   private buildFloor(): void {
-    const { map, rough, gray } = makeWoodTextures(4);
     const fullX = COURT.arenaHalfX * 2;
     const fullZ = COURT.arenaHalfZ * 2;
     const F = VENUE.floor;
+    // boards indoors; outdoors the grit and the coats of a painted court (the patches' UVs run in 4 m tiles)
+    const gritty = !F.wood && F.grain > 0;
+    const grit = gritty ? makePaintTextures(F.grain) : null;
+    const { map, rough, gray } = grit ? { ...grit, gray: null } : makeWoodTextures(4);
+    const bump = grit ? grit.bump : null;
+    const perTile = gritty ? 4 / PAINT_TILE : 1;
     const mkMat = (color: number, roughness: number, tile = 4, painted = false) => {
-      const m = (painted ? gray : map).clone();
+      const m = (painted && gray ? gray : map).clone();
       const r = rough.clone();
-      m.needsUpdate = r.needsUpdate = true;
-      // a laid or painted court has no boards: one even colour, one roughness
+      const b = bump ? bump.clone() : r;
+      m.needsUpdate = r.needsUpdate = b.needsUpdate = true;
+      // a laid indoor court has no boards and no grit: one even colour, one roughness
       const mat = new THREE.MeshStandardMaterial(
         F.wood
           ? { color, map: m, roughnessMap: r, roughness, metalness: 0, envMapIntensity: 1 }
-          : { color, roughness, metalness: 0, envMapIntensity: 1 },
+          : gritty
+            ? { color, map: m, roughnessMap: r, bumpMap: b, bumpScale: ARENA.paintGrit, roughness, metalness: 0, envMapIntensity: 1 }
+            : { color, roughness, metalness: 0, envMapIntensity: 1 },
       );
       this.reflection.apply(mat);
-      return { mat, m, r, tile };
+      return { mat, m, r, b, tile };
     };
     // natural wood everywhere
     const base = mkMat(F.base, F.rough[0]);
-    base.m.repeat.set(fullX / 4, fullZ / 4);
+    base.m.repeat.set((fullX / 4) * perTile, (fullZ / 4) * perTile);
     base.r.repeat.copy(base.m.repeat);
+    base.b.repeat.copy(base.m.repeat);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(fullX, fullZ), base.mat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -109,7 +119,7 @@ export class Arena {
         const wz = -pos.getY(i) + (z0 + z1) / 2;
         uv.setXY(i, (wx + COURT.arenaHalfX) / 4, (COURT.arenaHalfZ - wz) / 4);
       }
-      for (const t of tex) t.repeat.set(1, 1);
+      for (const t of tex) t.repeat.set(perTile, perTile);
       const m = new THREE.Mesh(g, mat);
       m.rotation.x = -Math.PI / 2;
       m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
@@ -126,12 +136,12 @@ export class Arena {
     const hw = COURT.halfWidth;
     const hl = COURT.halfLength;
     // frame of four rectangles around the court
-    paint(free.mat, -fzX, fzX, -fzZ, -hl, 0.001, [free.m, free.r]);
-    paint(free.mat, -fzX, fzX, hl, fzZ, 0.001, [free.m, free.r]);
-    paint(free.mat, -fzX, -hw, -hl, hl, 0.001, [free.m, free.r]);
-    paint(free.mat, hw, fzX, -hl, hl, 0.001, [free.m, free.r]);
+    paint(free.mat, -fzX, fzX, -fzZ, -hl, 0.001, [free.m, free.r, free.b]);
+    paint(free.mat, -fzX, fzX, hl, fzZ, 0.001, [free.m, free.r, free.b]);
+    paint(free.mat, -fzX, -hw, -hl, hl, 0.001, [free.m, free.r, free.b]);
+    paint(free.mat, hw, fzX, -hl, hl, 0.001, [free.m, free.r, free.b]);
     // court interior
-    paint(court.mat, -hw, hw, -hl, hl, 0.002, [court.m, court.r]);
+    paint(court.mat, -hw, hw, -hl, hl, 0.002, [court.m, court.r, court.b]);
   }
 
   private buildLines(): void {
@@ -395,7 +405,7 @@ export class Arena {
     sc.far = Math.max(40, Math.hypot(...L.keyPos) + 24);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.03;
-    key.shadow.radius = 4;
+    key.shadow.radius = L.shadowSoft;
     this.group.add(key, key.target);
     this.keyLight = key;
     // two soft fills from the long sides (no shadows)

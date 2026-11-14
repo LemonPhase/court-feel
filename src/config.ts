@@ -564,6 +564,8 @@ export const ARENA = {
   net: { spread: 0.25, pin: 3, swing: 12, damping: 6, life: 1.2, hits: 4 },
   /** the finished picture: darker corners (0 = none), an S-curve of contrast (0 = none), saturation (1 = as rendered) */
   grade: { vignette: 0.32, contrast: 0.16, saturation: 1.06 },
+  /** how deep the grit of a painted outdoor court reads in a low light (the bump scale; by eye, on the seaside court at golden hour) */
+  paintGrit: 0.5,
   /** light on the court: sky and floor-bounce fill, the key from the roof, and two soft fills from the long sides */
   light: {
     hemi: 0.5,
@@ -604,6 +606,11 @@ export interface VenueSpec {
     rough: [number, number, number];
     /** the floor mirror, as a share of `ARENA.reflection.strength` (0 = off, and its pass is skipped) */
     mirror: number;
+    /**
+     * the surface of a painted outdoor court, seen close: the grit in the acrylic and the uneven roller coats,
+     * as a share of full strength (0 = one even colour, as a laid indoor court is)
+     */
+    grain: number;
   };
   /** the sky dome, or null under a roof. Sun and moon: azimuth from -z towards +x and elevation (rad), size (rad) */
   sky: null | {
@@ -629,6 +636,8 @@ export interface VenueSpec {
     fillColor: number;
     fill: number;
     env: number;
+    /** how soft the edge of a cast shadow is (the blur radius, in shadow-map texels): roof lights are wide, the sun is not */
+    shadowSoft: number;
   };
   fog: { color: number; near: number; far: number };
   grade: { vignette: number; contrast: number; saturation: number };
@@ -656,7 +665,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
     build: 'hall',
     openSky: false,
     crowdSound: 1,
-    floor: { wood: true, base: 0xf2e2d0, free: 0x2a63c4, court: 0xffe0c0, rough: [1.4, 1.3, 1.2], mirror: 1 },
+    floor: { wood: true, base: 0xf2e2d0, free: 0x2a63c4, court: 0xffe0c0, rough: [1.4, 1.3, 1.2], mirror: 1, grain: 0 },
     sky: null,
     light: {
       hemiSky: 0xe2e9ff,
@@ -668,6 +677,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
       fillColor: 0xdde6ff,
       fill: ARENA.light.fill,
       env: ARENA.light.env,
+      shadowSoft: 4,
     },
     fog: { color: 0x0b0d14, near: 38, far: 90 },
     grade: ARENA.grade,
@@ -683,7 +693,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
     build: 'games',
     openSky: false,
     crowdSound: 1.25,
-    floor: { wood: false, base: 0x161b66, free: 0x232a94, court: 0xe0674f, rough: [0.62, 0.6, 0.55], mirror: 0.35 },
+    floor: { wood: false, base: 0x161b66, free: 0x232a94, court: 0xe0674f, rough: [0.62, 0.6, 0.55], mirror: 0.35, grain: 0 },
     sky: null,
     light: {
       hemiSky: 0xdfe4ff,
@@ -695,6 +705,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
       fillColor: 0xe6e0ff,
       fill: 0.45,
       env: 0.4,
+      shadowSoft: 4,
     },
     fog: { color: 0x07081a, near: 70, far: 200 },
     grade: { vignette: 0.42, contrast: 0.2, saturation: 1.12 },
@@ -715,7 +726,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
     build: 'seaside',
     openSky: true,
     crowdSound: 0.6,
-    floor: { wood: false, base: 0xb86a4c, free: 0xc9694a, court: 0x2f86b4, rough: [0.85, 0.82, 0.8], mirror: 0 },
+    floor: { wood: false, base: 0xb86a4c, free: 0xc9694a, court: 0x2f86b4, rough: [0.85, 0.82, 0.8], mirror: 0, grain: 1 },
     sky: {
       zenith: 0x2a4688,
       mid: 0xb87a92,
@@ -736,6 +747,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
       fillColor: 0x9fb4e8,
       fill: 0.35,
       env: 0.8,
+      shadowSoft: 1.6,
     },
     fog: { color: 0xe8a878, near: 60, far: 260 },
     grade: { vignette: 0.26, contrast: 0.14, saturation: 1.1 },
@@ -756,7 +768,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
     build: 'gym',
     openSky: false,
     crowdSound: 0,
-    floor: { wood: true, base: 0xe6cfae, free: 0xe6cfae, court: 0xf2dcbc, rough: [1.1, 1.1, 1.05], mirror: 1.15 },
+    floor: { wood: true, base: 0xe6cfae, free: 0xe6cfae, court: 0xf2dcbc, rough: [1.1, 1.1, 1.05], mirror: 1.15, grain: 0 },
     sky: null,
     light: {
       hemiSky: 0x8fa4d8,
@@ -768,6 +780,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
       fillColor: 0x8fa8e8,
       fill: 0.32,
       env: 0.3,
+      shadowSoft: 4,
     },
     fog: { color: 0x0a0b10, near: 38, far: 90 },
     grade: { vignette: 0.44, contrast: 0.2, saturation: 1.0 },
@@ -783,7 +796,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
     build: 'rooftop',
     openSky: true,
     crowdSound: 0.45,
-    floor: { wood: false, base: 0x4a5160, free: 0x39465c, court: 0x2f8a66, rough: [0.9, 0.8, 0.78], mirror: 0.12 },
+    floor: { wood: false, base: 0x4a5160, free: 0x39465c, court: 0x2f8a66, rough: [0.9, 0.8, 0.78], mirror: 0.12, grain: 0.8 },
     sky: {
       zenith: 0x040716,
       mid: 0x0a1030,
@@ -804,6 +817,7 @@ export const VENUES: Record<VenueId, VenueSpec> = {
       fillColor: 0xa9b4ff,
       fill: 0.5,
       env: 0.5,
+      shadowSoft: 2.4,
     },
     fog: { color: 0x141630, near: 60, far: 260 },
     grade: { vignette: 0.34, contrast: 0.18, saturation: 1.1 },

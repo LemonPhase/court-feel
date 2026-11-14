@@ -104,6 +104,91 @@ export function makeWoodTextures(tileMetres = 4): { map: THREE.CanvasTexture; ro
 }
 
 /** Net mesh: 10cm squares of dark cord, knotted at the crossings. Tile covers 1m x 1m. */
+/**
+ * A painted hard court seen close: grit in the acrylic, and coats that went on a little unevenly.
+ * `map` is near white (it multiplies the paint's colour), `rough` varies the sheen, `bump` is the grit.
+ * One tile is `PAINT_TILE` metres and wraps on every edge.
+ */
+export const PAINT_TILE = 2;
+export function makePaintTextures(strength: number): { map: THREE.CanvasTexture; rough: THREE.CanvasTexture; bump: THREE.CanvasTexture } {
+  const size = 1024;
+  const [c, ctx] = canvas(size, size);
+  const [rc, rctx] = canvas(size, size);
+  const [bc, bctx] = canvas(size, size);
+  const rng = new Rng(77);
+  ctx.fillStyle = 'rgb(238,238,238)';
+  ctx.fillRect(0, 0, size, size);
+  rctx.fillStyle = 'rgb(236,236,236)';
+  rctx.fillRect(0, 0, size, size);
+  bctx.fillStyle = 'rgb(128,128,128)';
+  bctx.fillRect(0, 0, size, size);
+  // a soft patch, drawn again across each edge it crosses so the tile wraps
+  const patch = (g: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number, rot: number, rgb: string, a: number) => {
+    for (const ox of [-size, 0, size]) {
+      for (const oy of [-size, 0, size]) {
+        if (x + ox < -rx || x + ox > size + rx || y + oy < -rx || y + oy > size + rx) continue;
+        g.save();
+        g.translate(x + ox, y + oy);
+        g.rotate(rot);
+        g.scale(rx, ry);
+        const grd = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+        grd.addColorStop(0, `rgba(${rgb},${a})`);
+        grd.addColorStop(1, `rgba(${rgb},0)`);
+        g.fillStyle = grd;
+        g.beginPath();
+        g.arc(0, 0, 1, 0, Math.PI * 2);
+        g.fill();
+        g.restore();
+      }
+    }
+  };
+  // the coats: long faint passes of the roller, lighter and darker, and where one dried duller
+  for (let i = 0; i < 150; i++) {
+    const x = rng.range(0, size);
+    const y = rng.range(0, size);
+    const light = rng.next() < 0.5;
+    patch(
+      ctx,
+      x,
+      y,
+      rng.range(90, 300),
+      rng.range(20, 70),
+      rng.range(-0.12, 0.12),
+      light ? '255,255,255' : '150,150,150',
+      rng.range(0.02, 0.07) * strength,
+    );
+    patch(
+      rctx,
+      x,
+      y,
+      rng.range(80, 260),
+      rng.range(30, 90),
+      rng.range(-0.2, 0.2),
+      light ? '255,255,255' : '170,170,170',
+      rng.range(0.1, 0.3) * strength,
+    );
+  }
+  // the grit: sand in the paint, a couple of millimetres across
+  for (let i = 0; i < 90000; i++) {
+    const x = rng.range(0, size);
+    const y = rng.range(0, size);
+    const r = rng.range(0.5, 1.3);
+    const up = rng.next() < 0.5;
+    ctx.fillStyle = up ? `rgba(255,255,255,${0.2 * strength})` : `rgba(90,90,90,${0.16 * strength})`;
+    ctx.fillRect(x, y, r, r);
+    bctx.fillStyle = up ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
+    bctx.fillRect(x, y, r, r);
+  }
+  const wrap = (cv: HTMLCanvasElement, srgb: boolean) => {
+    const t = new THREE.CanvasTexture(cv);
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    return t;
+  };
+  return { map: wrap(c, true), rough: wrap(rc, false), bump: wrap(bc, false) };
+}
+
 export function makeNetTexture(): THREE.CanvasTexture {
   const size = 512;
   const [c, ctx] = canvas(size, size);

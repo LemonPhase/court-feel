@@ -17,7 +17,7 @@ function dirToUv(az: number, el: number): [number, number] {
   return [u, Math.acos(y) / Math.PI];
 }
 
-/** The sky, painted once: a gradient from the zenith to the horizon, stars, a sun or a moon, streaks of cloud */
+/** The sky, painted once: a gradient from the zenith to the horizon, a sun or a moon, banks of cloud (the stars are `makeStars`) */
 export function makeSkyTexture(sky: Sky): THREE.CanvasTexture {
   const W = 2048;
   const H = 1024;
@@ -35,50 +35,43 @@ export function makeSkyTexture(sky: Sky): THREE.CanvasTexture {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
   const rng = new Rng(11);
-  // stars: even over the dome, thinning towards the haze at the horizon, with a denser band across it
-  for (let i = 0; i < sky.stars; i++) {
-    const band = i % 3 === 0;
-    let el = Math.asin(rng.next());
-    let az = rng.range(0, Math.PI * 2);
-    if (band) {
-      // a great circle tilted across the sky
-      const t = rng.range(0, Math.PI * 2);
-      const off = rng.gauss() * 0.09;
-      const bx = Math.cos(t);
-      const by = Math.sin(t) * 0.82 + off * 0.5;
-      const bz = Math.sin(t) * 0.57 - off;
-      if (by <= 0.02) continue;
-      el = Math.asin(Math.min(1, by));
-      az = Math.atan2(bx, -bz);
-    }
-    const [u, v] = dirToUv(az, el);
-    const fade = Math.min(1, el / 0.35);
-    const mag = Math.pow(rng.next(), band ? 5 : 3.2);
-    const a = sky.starLight * fade * (0.25 + 0.75 * mag);
-    const r = 0.35 + mag * 0.75;
-    ctx.fillStyle = css(rng.next() < 0.2 ? 0xffe2c0 : rng.next() < 0.3 ? 0xc6d6ff : 0xffffff, a);
-    // wider near the zenith, where the mapping squeezes the columns together
-    const stretch = Math.min(3, 1 / Math.max(0.3, Math.cos(el)));
-    ctx.beginPath();
-    ctx.ellipse(u * W, v * H, r * stretch, r, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
   if (sky.clouds !== null) {
-    for (let i = 0; i < 46; i++) {
-      const [u, v] = dirToUv(rng.range(0, Math.PI * 2), rng.range(0.03, 0.34));
-      const w = rng.range(60, 240);
-      const h = rng.range(5, 16);
-      const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-      grd.addColorStop(0, css(sky.clouds, rng.range(0.16, 0.4)));
-      grd.addColorStop(1, css(sky.clouds, 0));
-      ctx.save();
-      ctx.translate(u * W, v * H);
-      ctx.scale(w, h);
-      ctx.fillStyle = grd;
-      ctx.beginPath();
-      ctx.arc(0, 0, 1, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+    // banks of cloud low over the horizon: each a run of overlapping puffs, dusky above, lit from below by the low sun
+    const dusk = ((sky.mid >> 16) & 255) * 0.6 + 40;
+    const shade = `${dusk | 0},${(((sky.mid >> 8) & 255) * 0.55 + 30) | 0},${((sky.mid & 255) * 0.6 + 40) | 0}`;
+    const lit = `${(sky.clouds >> 16) & 255},${(sky.clouds >> 8) & 255},${sky.clouds & 255}`;
+    const puff = (x: number, y: number, w: number, h: number, rgb: string, a: number) => {
+      for (const wrap of [-W, 0, W]) {
+        if (x + wrap < -w || x + wrap > W + w) continue;
+        ctx.save();
+        ctx.translate(x + wrap, y);
+        ctx.scale(w, h);
+        const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+        grd.addColorStop(0, `rgba(${rgb},${a})`);
+        grd.addColorStop(0.6, `rgba(${rgb},${a * 0.55})`);
+        grd.addColorStop(1, `rgba(${rgb},0)`);
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    };
+    for (let i = 0; i < 30; i++) {
+      const [u, v] = dirToUv(rng.range(0, Math.PI * 2), rng.range(0.035, 0.36));
+      const len = rng.range(90, 300);
+      const thick = rng.range(4, 11) * (1 + (0.5 - v) * 6);
+      const n = Math.round(len / 14);
+      const tilt = rng.range(-0.03, 0.03);
+      for (let k = 0; k < n; k++) {
+        const t = k / (n - 1) - 0.5;
+        const taper = 1 - (2 * t) ** 2 * 0.75;
+        const x = u * W + t * len + rng.range(-5, 5);
+        const y = v * H + t * len * tilt + rng.range(-1.5, 1.5);
+        const w = rng.range(16, 34);
+        puff(x, y - thick * 0.25, w, thick * taper, shade, rng.range(0.1, 0.2));
+        puff(x, y + thick * 0.3, w * 0.9, thick * taper * 0.5, lit, rng.range(0.14, 0.3));
+      }
     }
   }
   if (sky.disc) {
@@ -133,4 +126,77 @@ export function makeSkyDome(tex: THREE.Texture): THREE.Mesh {
   };
   dome.userData.noMirror = true;
   return dome;
+}
+
+/**
+ * The stars: points, not paint. Painted on the dome they were a few texels each and came out as soft blobs;
+ * a point is as sharp as the screen is. Even over the dome, thinning into the haze at the horizon, with a
+ * denser band across it. They travel with the lens, as the dome does, and are drawn straight after it.
+ */
+export function makeStars(sky: Sky, renderer: THREE.WebGLRenderer): THREE.Points {
+  const rng = new Rng(11);
+  const pos: number[] = [];
+  const col: number[] = [];
+  const size: number[] = [];
+  const tint = new THREE.Color();
+  for (let i = 0; i < sky.stars; i++) {
+    const band = i % 3 === 0;
+    let el = Math.asin(rng.next());
+    let az = rng.range(0, Math.PI * 2);
+    if (band) {
+      // a great circle tilted across the sky
+      const t = rng.range(0, Math.PI * 2);
+      const off = rng.gauss() * 0.09;
+      const bx = Math.cos(t);
+      const by = Math.sin(t) * 0.82 + off * 0.5;
+      const bz = Math.sin(t) * 0.57 - off;
+      if (by <= 0.02) continue;
+      el = Math.asin(Math.min(1, by));
+      az = Math.atan2(bx, -bz);
+    }
+    const fade = Math.min(1, el / 0.35);
+    const mag = Math.pow(rng.next(), band ? 5 : 3.2);
+    const a = sky.starLight * fade * (0.3 + 0.7 * mag);
+    tint.set(rng.next() < 0.2 ? 0xffe2c0 : rng.next() < 0.3 ? 0xc6d6ff : 0xffffff);
+    pos.push(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+    col.push(tint.r * a, tint.g * a, tint.b * a);
+    size.push(1.3 + mag * 2.2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('aColor', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('aSize', new THREE.Float32BufferAttribute(size, 1));
+  const uPx = { value: 1 };
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uPx },
+    vertexShader: `
+      attribute vec3 aColor;
+      attribute float aSize;
+      uniform float uPx;
+      varying vec3 vColor;
+      void main() {
+        vColor = aColor;
+        // a direction, not a place: the view's rotation only
+        vec4 mv = viewMatrix * vec4( position, 0.0 );
+        gl_Position = projectionMatrix * vec4( mv.xyz, 1.0 );
+        gl_PointSize = aSize * uPx;
+      }`,
+    fragmentShader: `
+      varying vec3 vColor;
+      void main() {
+        float d = length( gl_PointCoord - 0.5 ) * 2.0;
+        gl_FragColor = vec4( vColor * smoothstep( 1.0, 0.35, d ), 1.0 );
+      }`,
+    blending: THREE.AdditiveBlending,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const stars = new THREE.Points(g, mat);
+  stars.renderOrder = -9;
+  stars.frustumCulled = false;
+  stars.onBeforeRender = () => {
+    uPx.value = renderer.getPixelRatio();
+  };
+  stars.userData.noMirror = true;
+  return stars;
 }

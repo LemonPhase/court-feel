@@ -342,9 +342,47 @@ function seaside(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
   sand.receiveShadow = true;
   sand.userData.noMirror = true;
   group.add(sand);
+  // the swell: long low ridges running along the shore, which break the sun's path on the water into glitter
+  const swellTex = paint(512, 512, (ctx) => {
+    ctx.fillStyle = 'rgb(128,128,128)';
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 900; i++) {
+      const x = rng.range(0, 512);
+      const y = rng.range(0, 512);
+      const w = rng.range(30, 130);
+      const h = rng.range(1.5, 5);
+      const up = rng.next() < 0.5;
+      for (const ox of [-512, 0, 512]) {
+        for (const oy of [-512, 0, 512]) {
+          if (x + ox < -w || x + ox > 512 + w || y + oy < -h || y + oy > 512 + h) continue;
+          ctx.save();
+          ctx.translate(x + ox, y + oy);
+          ctx.scale(w, h);
+          const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+          g.addColorStop(0, up ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)');
+          g.addColorStop(1, up ? 'rgba(255,255,255,0)' : 'rgba(0,0,0,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(0, 0, 1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+  });
+  swellTex.colorSpace = THREE.NoColorSpace;
+  swellTex.repeat.set(22, 7);
+  swellTex.anisotropy = 8;
   const sea = new THREE.Mesh(
     ground(-far, -far, far, shore, -0.2),
-    new THREE.MeshStandardMaterial({ color: 0x176a8a, roughness: 0.2, metalness: 0, envMapIntensity: 0.75 }),
+    new THREE.MeshStandardMaterial({
+      color: 0x176a8a,
+      roughness: 0.16,
+      metalness: 0,
+      envMapIntensity: 0.75,
+      bumpMap: swellTex,
+      bumpScale: 2.2,
+    }),
   );
   sea.userData.noMirror = true;
   group.add(sea);
@@ -353,58 +391,86 @@ function seaside(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
   add(group, [ground(-far, shore - 1.1, far, shore - 0.5, -0.02), ground(-far, shore - 7, far, shore - 6.6, -0.15)], glow(0.9, 0.93, 0.95));
 
   // palms: a leaning trunk and a crown of drooping fronds
+  const frng = new Rng(5);
   const frondTex = paint(
-    64,
-    256,
+    128,
+    512,
     (ctx) => {
-      ctx.clearRect(0, 0, 64, 256);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
+      ctx.clearRect(0, 0, 128, 512);
+      ctx.fillStyle = '#ffffff';
+      // the rib, tapering to the tip
       ctx.beginPath();
-      ctx.moveTo(32, 256);
-      ctx.lineTo(32, 0);
-      ctx.stroke();
-      ctx.lineWidth = 2.4;
-      for (let y = 250; y > 6; y -= 7) {
-        const reach = 30 * Math.sin((y / 256) * Math.PI) ** 0.6;
-        for (const s of [-1, 1]) {
+      ctx.moveTo(60, 512);
+      ctx.lineTo(68, 512);
+      ctx.lineTo(65, 0);
+      ctx.lineTo(63, 0);
+      ctx.fill();
+      // leaflets: blades that leave the rib wide and run to a point, swept towards the tip
+      for (let y = 500; y > 10; y -= 9) {
+        const t = y / 512;
+        const reach = 62 * Math.sin(t * Math.PI) ** 0.55;
+        for (const sd of [-1, 1]) {
+          const tipX = 64 + sd * reach * frng.range(0.82, 1);
+          const tipY = y - reach * frng.range(0.45, 0.7) - 6;
           ctx.beginPath();
-          ctx.moveTo(32, y);
-          ctx.lineTo(32 + s * reach, y - 16);
-          ctx.stroke();
+          ctx.moveTo(64, y + 4);
+          ctx.lineTo(tipX, tipY);
+          ctx.lineTo(64, y - 5);
+          ctx.fill();
         }
       }
     },
     false,
   );
+  frondTex.anisotropy = 8;
+  // the trunk: the rings the old fronds left, lighter and darker up its length
+  const barkTex = paint(64, 256, (ctx) => {
+    ctx.fillStyle = '#d8d8d8';
+    ctx.fillRect(0, 0, 64, 256);
+    for (let y = 0; y < 256; y += 16) {
+      ctx.fillStyle = `rgba(0,0,0,${frng.range(0.25, 0.45)})`;
+      ctx.fillRect(0, y, 64, 3);
+      ctx.fillStyle = `rgba(255,255,255,${frng.range(0.05, 0.25)})`;
+      ctx.fillRect(0, y + 3, 64, 5);
+    }
+    for (let i = 0; i < 300; i++) {
+      ctx.fillStyle = `rgba(0,0,0,${frng.range(0.05, 0.2)})`;
+      ctx.fillRect(frng.range(0, 64), frng.range(0, 256), 1.5, frng.range(3, 10));
+    }
+  });
+  barkTex.repeat.set(1, 5);
   const trunks: THREE.BufferGeometry[] = [];
   const fronds: THREE.BufferGeometry[] = [];
   const palm = (x: number, z: number, h: number, lean: number, dir: number) => {
-    const segs = 7;
-    let tx = x;
-    let tz = z;
-    for (let k = 0; k < segs; k++) {
-      const t0 = k / segs;
-      const t1 = (k + 1) / segs;
-      const g = new THREE.CylinderGeometry(0.2 - 0.07 * t1, 0.22 - 0.07 * t0, h / segs + 0.05, 7);
-      const off = lean * (t1 * t1 - t0 * t0);
-      g.translate(tx + (Math.cos(dir) * off) / 2, (t0 + t1) * 0.5 * h, tz + (Math.sin(dir) * off) / 2);
-      tx += Math.cos(dir) * off;
-      tz += Math.sin(dir) * off;
-      trunks.push(g);
+    // one trunk, bent smoothly towards its lean and swelling at the foot
+    const g = new THREE.CylinderGeometry(0.11, 0.2, h, 9, 12, true);
+    g.translate(0, h / 2, 0);
+    const tp = g.attributes.position as THREE.BufferAttribute;
+    for (let v = 0; v < tp.count; v++) {
+      const t = tp.getY(v) / h;
+      const foot = 1 + 0.6 * Math.max(0, 1 - t * 9);
+      tp.setXYZ(v, tp.getX(v) * foot + Math.cos(dir) * lean * t * t, tp.getY(v), tp.getZ(v) * foot + Math.sin(dir) * lean * t * t);
     }
-    const n = 11;
+    g.computeVertexNormals();
+    g.translate(x, 0, z);
+    trunks.push(g);
+    const tx = x + Math.cos(dir) * lean;
+    const tz = z + Math.sin(dir) * lean;
+    const n = 13;
     for (let i = 0; i < n; i++) {
-      const len = rng.range(3.0, 4.2);
-      const g = new THREE.PlaneGeometry(1.1, len, 1, 6);
+      const len = rng.range(3.2, 4.4);
+      const g = new THREE.PlaneGeometry(1.5, len, 2, 10);
       const pos = g.attributes.position as THREE.BufferAttribute;
-      const lift = rng.range(0.5, 1.5);
+      // the young fronds stand up in the middle of the crown, the old ones hang
+      const lift = i % 3 === 0 ? rng.range(1.6, 2.4) : rng.range(0.4, 1.4);
       for (let v = 0; v < pos.count; v++) {
         const t = pos.getY(v) / len + 0.5;
-        pos.setXYZ(v, pos.getX(v), lift * Math.sin(t * 2.2) - t * t * 2.3, t * len);
+        const px = pos.getX(v);
+        // folded along the rib, the leaflets hanging either side of it
+        pos.setXYZ(v, px * 0.8, lift * Math.sin(t * 2.2) - t * t * 2.3 - Math.abs(px) * 0.55, t * len);
       }
       g.rotateY((i / n) * Math.PI * 2 + rng.range(-0.25, 0.25));
-      g.translate(tx, h, tz);
+      g.translate(tx, h - 0.1, tz);
       fronds.push(g);
     }
   };
@@ -426,11 +492,11 @@ function seaside(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
   ];
   for (const [x, z] of spots)
     palm(x + rng.range(-1.5, 1.5), z + rng.range(-1.5, 1.5), rng.range(7, 11), rng.range(0.6, 2.4), rng.range(0, 6.28));
-  add(group, trunks, lit(0x7a5c3c, 0.95), { shadow: true });
+  add(group, trunks, new THREE.MeshStandardMaterial({ color: 0x8a6a46, map: barkTex, roughness: 0.95 }), { shadow: true });
   const crown = add(
     group,
     fronds,
-    new THREE.MeshStandardMaterial({ color: 0x3f8a46, map: frondTex, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.8 }),
+    new THREE.MeshStandardMaterial({ color: 0x3f8a46, map: frondTex, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 0.8 }),
     {
       shadow: true,
     },
@@ -662,13 +728,17 @@ function rooftop(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
   );
   add(group, [tank, tankRoof], lit(0x6a4a34, 0.8), { shadow: true });
   add(group, [...steel, ...legs], new THREE.MeshStandardMaterial({ color: 0x2a2e38, roughness: 0.5, metalness: 0.5 }));
-  const meshTex = paint(32, 32, (ctx) => {
-    ctx.clearRect(0, 0, 32, 32);
-    ctx.strokeStyle = 'rgba(190,200,220,0.9)';
-    ctx.lineWidth = 1.3;
+  const meshTex = paint(128, 128, (ctx) => {
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.strokeStyle = 'rgba(205,214,232,1)';
+    ctx.lineWidth = 5;
     for (const [a, b, c, d] of [
-      [0, 0, 32, 32],
-      [32, 0, 0, 32],
+      [-8, -8, 136, 136],
+      [136, -8, -8, 136],
+      [-72, 56, 72, 200],
+      [56, -72, 200, 72],
+      [56, 200, 200, 56],
+      [-72, 72, 72, -72],
     ]) {
       ctx.beginPath();
       ctx.moveTo(a, b);
@@ -676,11 +746,12 @@ function rooftop(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
       ctx.stroke();
     }
   });
+  meshTex.anisotropy = 8;
   const fence: THREE.BufferGeometry[] = [];
   const panel = (len: number, place: (g: THREE.BufferGeometry) => void) => {
     const g = new THREE.PlaneGeometry(len, fenceTop - 1.1);
     const uv = g.attributes.uv as THREE.BufferAttribute;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * len * 4, uv.getY(i) * (fenceTop - 1.1) * 4);
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * len * 3, uv.getY(i) * (fenceTop - 1.1) * 3);
     place(g);
     fence.push(g);
   };
@@ -694,7 +765,7 @@ function rooftop(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
     new THREE.MeshBasicMaterial({
       map: meshTex,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.5,
       side: THREE.DoubleSide,
       depthWrite: false,
       color: 0x8f9ab8,
@@ -743,22 +814,67 @@ function rooftop(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
   add(group, heads, new THREE.MeshBasicMaterial({ color: new THREE.Color(0.96, 0.93, 0.85), side: THREE.DoubleSide }));
 
   // the city: towers all round, windows lit, fading into the dusk
-  const winTex = paint(256, 512, (ctx) => {
-    ctx.fillStyle = '#10131f';
-    ctx.fillRect(0, 0, 256, 512);
+  const winTex = paint(1024, 2048, (ctx) => {
+    const cell = 128;
     const cols = 8;
     const rows = 16;
+    ctx.fillStyle = '#10131f';
+    ctx.fillRect(0, 0, 1024, 2048);
+    // the face of the building: a slab line at every floor, a pier between every bay
+    for (let r = 0; r < rows; r++) {
+      ctx.fillStyle = '#191d2c';
+      ctx.fillRect(0, r * cell, 1024, 10);
+      ctx.fillStyle = '#0a0c15';
+      ctx.fillRect(0, r * cell + 10, 1024, 3);
+    }
+    for (let c = 0; c < cols; c++) {
+      ctx.fillStyle = '#151927';
+      ctx.fillRect(c * cell - 5, 0, 10, 2048);
+    }
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
+        const x = c * cell + 24;
+        const y = r * cell + 30;
+        const w = 80;
+        const h = 76;
         const v = rng.next();
-        if (v > 0.42) continue;
-        ctx.fillStyle = v < 0.07 ? '#bfe0ff' : v < 0.25 ? '#ffd89a' : '#b98a4a';
-        ctx.globalAlpha = rng.range(0.5, 1);
-        ctx.fillRect(c * 32 + 7, r * 32 + 8, 18, 15);
+        // the frame, then the glass
+        ctx.fillStyle = '#07080e';
+        ctx.fillRect(x - 3, y - 3, w + 6, h + 6);
+        if (v > 0.42) {
+          // dark: the night sky in the glass
+          const g = ctx.createLinearGradient(0, y, 0, y + h);
+          g.addColorStop(0, '#1c2440');
+          g.addColorStop(1, '#121628');
+          ctx.fillStyle = g;
+          ctx.fillRect(x, y, w, h);
+        } else {
+          const [top, low] = v < 0.07 ? ['#d4ecff', '#8fb8e0'] : v < 0.25 ? ['#ffe6b0', '#e8b468'] : ['#d8a45c', '#9a6c34'];
+          const g = ctx.createLinearGradient(0, y, 0, y + h);
+          g.addColorStop(0, top);
+          g.addColorStop(1, low);
+          ctx.globalAlpha = rng.range(0.55, 1);
+          ctx.fillStyle = g;
+          ctx.fillRect(x, y, w, h);
+          ctx.globalAlpha = 1;
+          // a blind part of the way down, or something standing in the room
+          if (rng.next() < 0.45) {
+            ctx.fillStyle = 'rgba(255,244,220,0.28)';
+            ctx.fillRect(x, y, w, h * rng.range(0.2, 0.7));
+          } else if (rng.next() < 0.4) {
+            ctx.fillStyle = 'rgba(20,14,10,0.55)';
+            const tall = rng.range(18, 40);
+            ctx.fillRect(x + rng.range(6, 50), y + h - tall, rng.range(10, 24), tall);
+          }
+        }
+        // the bars of the window
+        ctx.fillStyle = '#07080e';
+        ctx.fillRect(x + w / 2 - 1.5, y, 3, h);
+        ctx.fillRect(x, y + h * 0.36, w, 2.5);
       }
     }
-    ctx.globalAlpha = 1;
   });
+  winTex.anisotropy = 8;
   const towers: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 90; i++) {
     const a = rng.range(0, Math.PI * 2);
@@ -776,7 +892,8 @@ function rooftop(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
   }
   const city = new THREE.Mesh(
     mergeGeometries(towers),
-    new THREE.MeshBasicMaterial({ map: winTex, color: new THREE.Color(0.85, 0.85, 0.9) }),
+    // held down a little: the ball flies in front of these windows
+    new THREE.MeshBasicMaterial({ map: winTex, color: new THREE.Color(0.72, 0.72, 0.78) }),
   );
   city.userData.noMirror = true;
   group.add(city);
