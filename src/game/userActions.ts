@@ -31,7 +31,8 @@ export class UserActions {
       const act = this.g.me.action;
       if (act && (act.kind === 'block' || act.kind === 'set') && act.held) {
         act.held = false;
-        act.releaseT = this.g.simTime;
+        // the set's push is timed to the frame you saw (the bar fills in slow-mo)
+        act.releaseT = act.kind === 'set' ? this.g.inputTime() : this.g.simTime;
       }
     };
     u.handlers.pass = () => (this.g.tutorial.quiet() ? true : this.pass());
@@ -65,7 +66,7 @@ export class UserActions {
     if (me.action && me.action.kind === 'swing' && !me.action.resolved) return false;
     if (me.action && me.action.kind === 'windup') return false;
     if (g.contact.wantsSet(me)) {
-      me.startAction('set', g.simTime);
+      g.contact.pressSet(me, g.inputTime());
       return true;
     }
     me.startAction('block', g.simTime);
@@ -96,8 +97,11 @@ export class UserActions {
       if (act.kind === 'pass') g.contact.tryPass(a, act);
       else if (act.kind === 'set') g.contact.trySet(a, act);
       else if (act.kind === 'block') g.contact.tryBlock(a, act);
-      // a tapped pass/set expires
-      if ((act.kind === 'pass' || act.kind === 'set') && !act.resolved && g.simTime - act.t0 > 0.85 && !act.held) a.endAction();
+      if (act.resolved || a.action !== act) continue;
+      // a tapped pass expires; a set never caught ends once the ball has gone by (no second press for it)
+      if (act.kind === 'pass' && !act.held && g.simTime - act.t0 > 0.85) a.endAction();
+      else if (act.kind === 'set' && !act.absorbing && (act.idealT > 0 ? g.simTime > act.idealT + 0.3 : g.simTime - act.t0 > 2))
+        a.endAction();
     }
   }
 }

@@ -13,6 +13,8 @@ export interface Touch {
   kind: TouchKind;
   t: number;
   side: 1 | -1 | 0;
+  /** an attack off the user's green set: the hitter hid the shot until the hand (their defence starts late) */
+  green?: boolean;
 }
 
 /**

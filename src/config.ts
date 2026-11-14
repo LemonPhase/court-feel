@@ -279,13 +279,54 @@ export const TIMING = {
   digLead: 0.13,
   digPerfect: 0.07,
   digGood: 0.15,
+  /** an AI's overhand first ball: ideal lead between starting the touch and the ball reaching the hands */
   setLead: 0.18,
-  setPerfect: 0.08,
-  setGood: 0.16,
+  /**
+   * Sets: one press per ball. Press RMB as the ball reaches your hands (the catch), hold while it
+   * loads in your hands (the bar fills), release at the top of the bar (the push). The ball sits
+   * in the hands this long (game s) before the ideal push. A real set touch is shorter (under
+   * 0.1 s); this is longer so the bar has room, and the set slow-mo stretches it on screen (it
+   * fills in setLoad / ASSIST.setSlowmoLoad real seconds on every level). Levels: SET_LEVELS.
+   */
+  setLoad: 0.15,
+  /** held this long (game s) past the top of the bar: the push goes anyway, late */
+  setHoldMax: 0.1,
+  /** a catch this early or more (game s, beyond the level's clean catch) costs the touch the most */
+  setCatchEarly: 0.3,
+  /** a catch this late or more (game s, beyond the clean catch) costs the touch the most (the ball is at your chin) */
+  setCatchLate: 0.08,
+  /** feet stopped this long before the ball arrives costs the touch nothing */
+  setFeetReady: 0.3,
+  /** slower than this (m/s) counts as stopped */
+  setStillSpeed: 0.5,
+  /** while it loads, the hands give with the ball at this speed (m/s) */
+  setAbsorbSpeed: 0.6,
   /** block: fraction of max jump height at contact */
   blockPerfectHeight: 0.88,
   blockGoodHeight: 0.66,
   blockArmTime: 0.12,
+};
+
+export type SetLevel = 'easy' | 'normal' | 'hard' | 'elite';
+export const SET_LEVEL_IDS: readonly SetLevel[] = ['easy', 'normal', 'hard', 'elite'];
+
+/**
+ * Set difficulty (Settings: Set difficulty). Every level has the same bar, the same slow-mo
+ * (ASSIST.setSlowmoCatch / setSlowmoLoad) and the same top of the bar, so the timing you practise
+ * on one carries to the next: a harder level only narrows the windows around it. Game seconds
+ * throughout; on screen they are divided by the slow-mo (Easy's ±15 ms green is ±60 ms on screen
+ * at quarter speed).
+ * - `green`: the green half-window around the top of the bar, with your best and your worst touch
+ * - `goodMul`: a good (white) set reaches this many green half-windows either side
+ * - `catch`: a catch this close to the ball reaching your hands is clean (at the catch slow-mo)
+ * The whole green never spans less than a 60 fps frame of game time (4.2 ms at quarter speed), so
+ * there is always a frame that lands in it.
+ */
+export const SET_LEVELS: Record<SetLevel, { label: string; green: [number, number]; goodMul: number; catch: number }> = {
+  easy: { label: 'Easy', green: [0.015, 0.007], goodMul: 3, catch: 0.08 },
+  normal: { label: 'Normal', green: [0.0095, 0.0048], goodMul: 2.5, catch: 0.05 },
+  hard: { label: 'Hard', green: [0.0055, 0.0033], goodMul: 2, catch: 0.03 },
+  elite: { label: 'Elite', green: [0.003, 0.0023], goodMul: 1.5, catch: 0.015 },
 };
 
 export const CONTACT = {
@@ -294,6 +335,32 @@ export const CONTACT = {
   spikeReachStretch: 0.62,
   passRadius: 0.55,
   setRadius: 0.48,
+  /**
+   * Your touch scales the set's green window: each part multiplies it, down to these floors.
+   * Feet still moving, an early or late catch, the ball off-centre on the hands (beyond
+   * `setCentreOk` m, up to the edge of the reach), and a hard set: a back set, a long set (per
+   * metre beyond `setLongFrom`), a fast tempo, a pass far off the net (`AI.outOfSystem`).
+   */
+  setTouch: {
+    feetMin: 0.65,
+    catchMin: 0.5,
+    centreMin: 0.6,
+    backSet: 0.85,
+    fastTempo: 0.85,
+    longPerM: 0.05,
+    longMin: 0.8,
+    outOfSystem: 0.75,
+  },
+  setCentreOk: 0.15,
+  setLongFrom: 3,
+  /** set spread (m, 1 sd along the net; off the net and in height are smaller): green, then good from best to worst */
+  setSpreadGreen: 0.03,
+  setSpreadGood: [0.1, 0.4] as [number, number],
+  /** early / late: the set comes up short (early) or flat and long (late) by up to this much (m), plus this spread */
+  setMissShift: 1.3,
+  setMissSpread: 0.5,
+  /** early / late: the apex is this much (m) lower at worst (pushed before the ball loaded, or taken low) */
+  setMissApexDrop: 0.6,
   /**
    * half-width of the block's hands along the net (ball centre within this + ball radius).
    * Matches the pose: wrists ~0.15 m off the midline plus a palm, so the gap between the
@@ -414,6 +481,15 @@ export const ASSIST = {
   /** slow-mo assist (settings toggle): timescale while lining up a contact, and how early it kicks in */
   slowmoScale: 0.55,
   slowmoWindow: 0.35,
+  /**
+   * set slow-mo (settings toggle, on by default), the same on every level so the bar always looks
+   * the same: from `setSlowmoWindow` s before the ball reaches your hands the game runs at
+   * `setSlowmoCatch`; while the ball loads in your hands, at `setSlowmoLoad` (the bar fills in
+   * TIMING.setLoad / setSlowmoLoad = 0.6 s on screen)
+   */
+  setSlowmoWindow: 0.35,
+  setSlowmoCatch: 0.5,
+  setSlowmoLoad: 0.25,
 };
 
 export const CAMERA = {
@@ -963,6 +1039,21 @@ export const CHARACTER = {
 };
 
 export const FX = {
+  /**
+   * The set's timing ring (Settings: Set timing ring): it closes onto the ball and is `atContact`
+   * ball radii across as the ball reaches your hands (just outside the ball, so nothing covers it).
+   * Its radius is that times e^(perSecond x time to go), shown from `showFor` s before; the green
+   * band is your window, the faint band your good one; no band is drawn over the ball itself.
+   */
+  setRing: { perSecond: 4, atContact: 1.6, showFor: 0.9, greenOpacity: 0.32, goodOpacity: 0.12 },
+  /**
+   * The set bar beside the ball (2K's meter): px tall and wide, the gap (px) from the ball's edge,
+   * where the top of the bar (the ideal push) sits as a fraction of its height, and how long
+   * (real s) it stays up after the push.
+   */
+  setBar: { height: 96, width: 10, gap: 18, target: 0.8, linger: 0.7 },
+  /** where to stand for the set: a floor spot this wide (m), green once your feet are within `CONTACT.setCentreOk` */
+  setSpot: { radius: 0.32 },
   /** where your feet go (the plant spot of an approach): ring radius (m), and the lesson's arrows towards it */
   floorSpot: {
     radius: 0.36,
@@ -1352,8 +1443,35 @@ export const AI = {
   passPressure: 1.0,
   /** a pass the setter takes further than this (m) from their spot is out of system: high balls only, no quick */
   outOfSystem: 1.6,
+  /**
+   * Transition: a hitter still at the net when their team digs (they were blocking) backs off to
+   * their approach start before a tempo run (the quick, a called go / 3 / fast back / back 2).
+   * Within `transitionReady` m of it they are ready to run; with less than `transitionLatest` s to
+   * their takeoff left they go from wherever they are (the quick and a fast set still need
+   * `transition.approachOff` m off the net: never a standing quick).
+   */
+  transitionReady: 0.5,
+  transitionLatest: 0.95,
   /** an out-of-system set (and a backup's set, when the setter played the first ball) goes this much (m) higher */
   outOfSystemApex: 0.4,
+  /**
+   * Your green set is a point. An exact set at the called tempo gives the block nothing early:
+   * their middle guesses wrong (on a pin set it stays home for the quick; on the quick or the pipe
+   * it goes `greenBlockGuess` m to the other side, with a pin), and the wings start their read `greenSetReadDelay` s late, misread `greenSetReadErr` times
+   * more and jump `greenSetJumpLate` s late. Their diggers start `greenSetDigDelay` s late (the
+   * hitter hid the shot until the hand), and your hitter swings perfectly at an open spot.
+   */
+  greenBlockGuess: 2.2,
+  greenSetReadDelay: 0.3,
+  greenSetReadErr: 2.5,
+  greenSetJumpLate: 0.12,
+  greenSetDigDelay: 0.5,
+  /**
+   * A bad set (your early / late push) is harder to hit: your hitter's timing error grows by up
+   * to this factor and they tip or roll it this many times more often.
+   */
+  badSetErr: 3.5,
+  badSetTip: 4,
 };
 
 /** the hand you spike, tip and serve with; passing, setting and blocking use both hands */
@@ -1366,6 +1484,12 @@ export interface Settings {
   invertY: boolean;
   womenNet: boolean;
   slowmoAssist: boolean;
+  /** time slows for your set's catch and release (on by default; the same on every level) */
+  setSlowmo: boolean;
+  /** the timing ring that closes on the ball as it reaches your hands when you set */
+  setRing: boolean;
+  /** set difficulty: how wide the green, the good band and the clean catch are (SET_LEVELS) */
+  setLevel: SetLevel;
   aimAssist: number;
   landingMarker: boolean;
   replays: boolean;
@@ -1391,6 +1515,9 @@ export const DEFAULT_SETTINGS: Settings = {
   invertY: false,
   womenNet: false,
   slowmoAssist: false,
+  setSlowmo: true,
+  setRing: true,
+  setLevel: 'easy',
   aimAssist: ASSIST.aim,
   landingMarker: true,
   replays: true,

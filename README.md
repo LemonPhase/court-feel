@@ -199,13 +199,15 @@ Settings → Hints, which is on by default.
 | Shift | Approach / sprint |
 | Space | Plant and jump. **Hold** to load a stronger jump, release to take off (auto at 0.3 s) |
 | Left mouse | Attack. **Press and hold** to wind up (the arm draws back and a ring around the crosshair fills: the longer you hold, the harder the hit, full power at ~0.3 s), **release** to swing — timing is graded on the release: Perfect from about 0.12 s to 0.025 s before the ball reaches your hand (a fully drawn arm comes through a touch faster), Good on either side, and the late side is the forgiving one: releasing just as the ball arrives is still Good. A quick **tap** = tip (short) or roll shot (deep). Landing without releasing drops the swing. Also hits your serve. |
-| Right mouse | Block (hands up, they press over the net in the air). When the ball is dropping onto you from your own side it **sets** instead — look at the hitter you want. |
+| Right mouse | Block (hands up, they press over the net in the air). When the ball is dropping onto you from your own side it **sets** instead: press as the ball reaches your hands (the catch), hold while the bar beside the ball fills, release in the green (the push). One press per ball. See "The timed set" below. |
 | E | Bump / pass / dig (press early so the platform is ready; hold it) |
 | Q | Serve toss (Free Play, feed 5 = serve practice), then hold and release Left mouse to hit — standing = float serve, jump = topspin serve |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Replay your last attempt in slow motion once the ball is dead: a clean contact, a poor one, a swing or a block that found no ball, or a ball that was yours and dropped untouched. Any key skips it; the game carries on where it was. |
 | N | Reset / skip the current rep (Mini Rally: re-serve) |
 | 1 / 2 / 3 | Spike Drill and Mini Rally: set call for the next ball (outside, middle, opposite — see below) |
+| 1 / 2 / 3 / 4 | When you set (Setter Drill, Mini Rally as the setter or libero): pick the hitter (outside, middle, opposite, pipe). Press the picked one again to ask for a high ball (again: back to their call). No key: the hitter you look at. |
+| C | When you set (Setter Drill, Mini Rally as the setter): open the call sheet; while it is open, 1 / 2 / 3 step through that hitter's calls. Leave it alone and every call stays as it is. The pass locks it. |
 | B | Spike Drill: opposing block off / single / double, with its shadow drawn on their floor (see below) |
 | Esc | Pause / settings |
 | F3 | Debug overlay: FPS, physics step time, ball state, timing window, contact gizmos |
@@ -225,10 +227,10 @@ Hold the phone sideways.
 | Right thumb, drag anywhere | Look / aim, exactly like the mouse (Settings → Touch aim sensitivity). |
 | **JUMP** | Hold to load, release to take off (auto at 0.3 s). Roll the thumb from JUMP onto HIT without lifting: you take off and the wind-up starts. |
 | **HIT** | Hold to wind up (the ring around your thumb fills), release to swing, tap = tip. Drag while holding to aim. While you are loading or in the air, **the whole right half of the screen is HIT**, so the thumb does not have to find the button after the jump. |
-| **BLOCK** | Hands up and load a jump; release to take off. The hands stay up until you land. When the ball is dropping onto you from your side the button reads **SET** and sets instead (no jump). |
+| **BLOCK** | Hands up and load a jump; release to take off. The hands stay up until you land. When the ball is dropping onto you from your side the button reads **SET** and sets instead (no jump): press as the ball reaches your hands, release in the green. |
 | **PASS** | Hold: platform ready. |
 | **TOSS** | Serve toss (Free Play). |
-| Top right | Pause, camera toggle, reset rep, and REPLAY when your last attempt can be watched again. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill) or feed types (Free Play). |
+| Top right | Pause, camera toggle, reset rep, and REPLAY when your last attempt can be watched again. Top left: set calls (Spike Drill, Mini Rally), SET TO chips when you set (tap a hitter to pick, again for a high ball; CALLS opens the call sheet, then the chips change calls), the opposing block toggle (Spike Drill) or feed types (Free Play). |
 
 Haptics (Android) tick at full charge and on a graded contact. Tunables are in
 `TOUCH` in `src/config.ts` (stick radius, run threshold, look scale, the
@@ -324,9 +326,17 @@ screen show them. Only your player uses them; AI players keep the defaults.
 4. **Serve Receive / Dig** — float serves and attacks come at you; pass to the
    green setter target. Passes are rated 0–3; your setter and hitter finish
    good passes.
-5. **Setter Drill** — passes come in; look at a hitter (outside, quick, back
-   set — the target ring lights up) and press right mouse as the ball drops.
-   Your hitters attack against a live blocker.
+5. **Setter Drill** — passes come in. Pick a hitter with **1 / 2 / 3 / 4**
+   (outside, middle, opposite, pipe; the floor ring lights up and the call
+   sheet at the bottom shows who you are setting), or just look at one.
+   **C** opens the call sheet: 1 / 2 / 3 then step through that hitter's
+   calls, the same ones hitters use (outside high / go / 3, middle 1 / shoot /
+   back quick, opposite back / fast / back 2); the fast calls run before you
+   touch it. Get to the spot on the floor, press right mouse as the ball
+   reaches your hands, release in the green. Your hitters attack against a
+   live blocker and a back row of three diggers: a **green** set is a point, a
+   good one often is, and an early or late one very rarely (DUG). One pass in
+   four comes off the net: then there is no middle and every call goes up high.
 6. **Mini Rally** — 6 v 6 with you in your position. The AI receives, sets
    (often to you), attacks, blocks and digs: AI defenders also dig to the side,
    pass slow balls overhand and dive for balls they can't reach on foot. A dive
@@ -418,10 +428,74 @@ screen show them. Only your player uses them; AI players keep the defaults.
    The libero sets the second ball, and it is always out of system (**HIGH!**, from
    the libero): a high ball to a pin, never a quick or a fast set. Like a real
    libero, they hand-set only from behind the 3 m line and bump-set in front of
-   it. When you are the libero, that set is yours ("Your set!"): RMB, look at a
-   hitter.
+   it. When you are the libero, that set is yours ("Your set!"): pick a pin
+   with 1 or 3 (or look at one) and time it with RMB, as a setter does.
+
+   **When you are the setter**, keys **1 / 2 / 3 / 4** pick your outside,
+   middle, opposite or the pipe (no key: whoever you look at), and the set is
+   timed as in the Setter Drill. The call sheet sits at the bottom of the
+   screen: **C** opens it to change your hitters' calls between points or
+   while the other team has the ball, like calling plays in NBA 2K, and your
+   AI hitters run what you call (a go, a shoot, a back 2...); leave it alone
+   and they keep their calls. After blocking, they back off the net to the
+   start of their run before they go. Once the pass is up, a ring on the floor
+   in the hitter's colour shows the spot you are setting to. Off a pass far off
+   the net there is no middle and everything goes up high.
 
 The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
+
+### The timed set
+
+Setting works like a jump shot in NBA 2K, with one press per ball:
+
+1. **Get to the spot.** While the ball is yours to set, a ring on the floor
+   shows where your feet should be (under where the ball comes down through
+   your hands, not where it would land). It turns green when you are on it.
+2. **The catch.** Press right mouse (SET on touch) as the ball reaches your
+   hands. A ring around the ball closes onto it and reaches its green band at
+   that moment; it is amber until you press. A press too early or too late
+   costs you some of the green below. You cannot press again for the same
+   ball, so spamming the button does not find the timing.
+3. **The push.** The ball sits in your hands while a bar beside it fills; the
+   game slows down while it does. Release in the green band at the top of the
+   bar. Held too long, it goes anyway, late.
+
+Inside the **green** it is a perfect set, and a point. It goes exactly to your
+hitter at the called tempo, so the block gets nothing early: their middle guesses
+wrong (on a set to a pin it stays home for the quick; on the quick or the pipe it
+goes with a pin) and the wings read it late. Your hitter swings perfectly, round
+the block or over it, into an open spot, a different one each time, where nobody
+can get a platform under it: a perfect set lets them hide the shot until the
+hand, so the diggers start late. A **good** set (the white band) is a little off
+its spot (up to about 0.4 m): your hitter still looks for an open spot, but the
+defence reads it as usual and often there is none. **Early** and **late** pushes
+miss in their own way (early comes up short, late goes flat and long, by up to
+1.3 m); your hitter times them worse, tips or rolls them more often, and they
+very rarely score.
+
+How big the green is depends on your touch, the way a coach grades a setter:
+your **feet** stopped on the spot (about 0.3 s before the ball arrives), a
+clean **catch**, the ball **centred** on your hands, and how **hard** the set is
+(a back set, a long set, a fast tempo, a pass off the net). And on the level
+(Settings: **Set difficulty**). Every level has the same bar, the same slow-mo
+and the same top of the bar, so the timing you learn on Easy is the timing on
+Elite; a harder level only narrows the windows around it:
+
+| Level | Green on screen (best / worst touch) | Good on screen (best touch) | Clean catch on screen |
+|---|---|---|---|
+| Easy (default) | ±60 / ±28 ms | ±180 ms | ±160 ms |
+| Normal | ±38 / ±19 ms | ±95 ms | ±100 ms |
+| Hard | ±22 / ±13 ms | ±44 ms | ±60 ms |
+| Elite | ±12 / ±9 ms | ±18 ms | ±30 ms |
+
+The ball stays in your hands 0.15 s of game time, longer than a real set touch
+(under 0.1 s), so the bar has room; the slow-mo (half speed for the catch,
+quarter speed while the ball loads) is what makes it feel long: the bar fills in
+about 0.6 s on screen.
+Settings: **Set slow-mo** turns the slow-down off (the same bar in 0.15 s:
+expert only), **Set ring and bar** hides both cues. The HUD shows GREEN, or the
+timing in ms of game time and what shrank your window ("+12 ms · OH Go · caught
+early").
 
 ### Replays
 
@@ -465,9 +539,10 @@ jump, the touch on their hands and the block shadow from your contact point.
   your hand, the bigger it gets: a longer freeze with the ball squashed on your
   hand and a camera punch, a shock ring, and a contact and floor slam that boom
   through the arena (the sound follows the ball speed continuously, so a soft
-  shot stays soft). Passes and sets are graded
-  on how early your platform/hands were ready; blocks on how high you were
-  when the ball arrived.
+  shot stays soft). Passes are graded on how early your platform was ready;
+  sets on the catch and the release of your push, in a window your touch and
+  the level set (see "The timed set"); blocks on how high you were when the
+  ball arrived.
 * **Buffering.** Presses that can't happen yet (e.g. jump while landing) are
   held for 120 ms.
 * **Assist.** Aim assist (settings, 0–100%) adds a little reach and a gentle
@@ -570,25 +645,26 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 
 | Section | What it controls |
 |---|---|
-| `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
+| `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/dig lead times, the set (how long the ball loads in the hands, `setLoad`; how long it can be held; how an early or late catch costs the touch; the feet ready time), block height thresholds, input buffer |
+| `SET_LEVELS` | The set difficulty levels: the green window (best and worst touch), the good multiple, the clean catch (the slow-mo is the same on every level, in `ASSIST`) |
 | `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
-| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early loses its topspin (`serveEarlySpin`), the user's spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`), a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the AI hitter's push into the hands (`pushSpeed`, `pushDrop`), where a covered ball is dug (`covered`: out of system), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape) |
-| `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
+| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early loses its topspin (`serveEarlySpin`), the user's spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`), a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the AI hitter's push into the hands (`pushSpeed`, `pushDrop`), where a covered ball is dug (`covered`: out of system), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape), what shrinks the set window (`setTouch`) and how a set misses (spread, short / long, apex) |
+| `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist, the set slow-mo (when it starts, how slow for the catch and while the ball loads) |
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`), the dive (`diveSpeed`, `diveDecel`, `diveArm`, `diveDown`, `diveTime`) |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
-| `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
+| `FX` | The set's catch ring, bar and floor spot, hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `CHARACTER` | How athletes are drawn: rim and side fill light, the arm swing of a jump (`jumpSwing`), how early hands go to where the ball will be (`meet`), the passing stance and what the platform does after the touch (`pass`), hand shapes (`hand`: how the fingers curl and spread loose, flat, on the ball and closed), where a palm meets the ball, how far arms, head, knees and toes keep from the net (`netClear`), idle breathing |
 | `ARENA` | The hall: floor mirror (size, strength, blur), the stands (`bowl`: tiers, rows, seats, how brightly the crowd is lit), how the net mesh goes in with a ball that is in it and settles after, lights, the final grade |
 | `VENUES` | The five venues: floor colours and how much the floor mirrors, the sky, the lights, haze, grade, the athletes' rim light, the crowd's light and sound, the boards, and whether the sky is open (`openSky`: no ceiling) |
 | `BALL_LOOK` | How deep the ball's seams look and how much it glows by itself |
-| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); who the setter sets (`setWeight`) and how often the pipe (`pipe`); an overpass (`overpass`), an AI hitter misreading the user's block (`userBlockMisread`), who takes a ball (`pick`: first there takes it, the seam goes to the libero or you, the setter only when nobody else is close, a ball off a block or a second ball the libero gets to is the libero's); where an AI free ball over goes (`freeOver`: a deep corner or short, wherever they aren't); perimeter defence read spots and reaction times (`defence`), early transition and the front row's transition off the net after a block (`transition`, `approachOff`: no quick from the net) and covering our hitter in the real 3-2 spots (`cover`: when, the middle at the net, the setter on the 3 m line, the back row behind and deep, how fast a coverer reads a ball off the block); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, run-up, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool, roll and recycle shots (`toolShot`, `rollShot`, `recycleShot`); the libero's set off a hard ball (`backupSet`: how much it misses, when it bumps instead; never a set to the user), what an AI dive does with the ball (`diveUp`: a bit up, toward the middle) and when a free ball is aimed (`freeOver.aimSpeed`), a setter too late for the hands digging it (`lateSet`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`); first balls overhand (`overhand`), dives (`dive`, `stretch`: a last-ditch dive at a ball just past the hands) and a second player running at a ball the first may not reach (`scramble`) |
+| `AI` | Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); who the setter sets (`setWeight`) and how often the pipe (`pipe`); an overpass (`overpass`), an AI hitter misreading the user's block (`userBlockMisread`), who takes a ball (`pick`: first there takes it, the seam goes to the libero or you, the setter only when nobody else is close, a ball off a block or a second ball the libero gets to is the libero's); where an AI free ball over goes (`freeOver`: a deep corner or short, wherever they aren't); perimeter defence read spots and reaction times (`defence`), early transition and the front row's transition off the net after a block (`transition`, `approachOff`: no quick from the net) and covering our hitter in the real 3-2 spots (`cover`: when, the middle at the net, the setter on the 3 m line, the back row behind and deep, how fast a coverer reads a ball off the block); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, run-up, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool, roll and recycle shots (`toolShot`, `rollShot`, `recycleShot`); the libero's set off a hard ball (`backupSet`: how much it misses, when it bumps instead; never a set to the user), what an AI dive does with the ball (`diveUp`: a bit up, toward the middle) and when a free ball is aimed (`freeOver.aimSpeed`), a setter too late for the hands digging it (`lateSet`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`); first balls overhand (`overhand`), dives (`dive`, `stretch`: a last-ditch dive at a ball just past the hands) and a second player running at a ball the first may not reach (`scramble`); your green set as a point (their middle's wrong guess, the wings' late read, the diggers' late start: `greenSet*`, `greenBlockGuess`) and how much harder your bad set is to hit (`badSetErr`, `badSetTip`); when a hitter backing off the net is ready for a called tempo run (`transitionReady`, `transitionLatest`) |
 
 Player-facing settings (sensitivity, FOV, invert Y, net height, aim assist,
-slow-mo assist, landing marker, replays, camera shake, volume, hints, the venue, your
+slow-mo assist, set difficulty, set slow-mo, set ring and bar, landing marker, replays, camera shake, volume, hints, the venue, your
 hitting hand, and your custom height / vert / spike power per position) are in the pause menu and
 persist in `localStorage`. Camera shake also scales the
 impact FOV punch and camera kick (0 turns them off). Stored settings are
@@ -612,7 +688,19 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   base defence while it flies, a touch on it by the serving team is a fault), the second ball when
   the setter digs (high to the 3 m line, the libero backs up out of system and bump-sets in front of
   the 3 m line, the user libero's set), the spike timing grades driven through the real
-  contact system (press, hold, release), hold-to-charge power, the set calls
+  contact system (press, hold, release), the timed set (one press per ball:
+  spamming cannot restart the catch, a tap is a push far too early; the ball
+  sits in the hands for the load; your touch sizes the window: feet, the catch,
+  centring, back / long / fast / off the net; each level harder around the same
+  top of the bar, Elite still
+  never luck at 60 fps; green at the top of the bar; early short, late flat and
+  long; a key picks the hitter wherever you look; where to stand puts the ball
+  on your hands), the setter's keys and call sheet, a green set is a point (the
+  open spot is out of every digger's reach, in different zones, round a single
+  block, the pipe too; their middle stays home on a green set to a pin and goes
+  with it on a normal one), the transition (a middle at the net backs off to its
+  approach start before the quick, or goes from where it is when there is no
+  time), hold-to-charge power, the set calls
   (pins inside the antennae, shoot / back quick geometry, a back quick meeting
   the hitter), middles hitting zone 1 / 5, hit-sound power, the impact
   camera punch and kick, the spike animation (hand on the ball at contact,
