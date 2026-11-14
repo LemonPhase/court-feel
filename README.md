@@ -330,7 +330,9 @@ screen show them. Only your player uses them; AI players keep the defaults.
    Their middle runs a quick on every ball: to stop it, jump with them
    (commit) — if the set goes outside, you were fooled by the decoy.
 4. **Serve Receive / Dig** — float serves and attacks come at you; pass to the
-   green setter target. Passes are rated 0–3; your setter and hitter finish
+   green setter target. The floats move in the air (see the Serve Drill): the
+   landing marker shows where the ball was heading a moment ago, not where it
+   will break. Passes are rated 0–3; your setter and hitter finish
    good passes.
 5. **Setter Drill** — passes come in; look at a hitter (outside, quick, back
    set — the target ring lights up) and press right mouse as the ball drops.
@@ -341,8 +343,8 @@ screen show them. Only your player uses them; AI players keep the defaults.
 
    | | Toss (Q) | Then | Ball |
    |---|---|---|---|
-   | **1 Standing float** | Low, in front of the hitting shoulder | Hold the left mouse, release as it comes down | About 60 km/h, no spin, it wobbles |
-   | **2 Jump float** | Low, two steps ahead | A short run-up (Shift + W), jump (Space), release | About 70 km/h, no spin, flatter from higher up |
+   | **1 Standing float** | Low, in front of the hitting shoulder | Hold the left mouse, release as it comes down | About 60 km/h, no spin: it floats a little and dies short |
+   | **2 Jump float** | Low, two steps ahead | A short run-up (Shift + W), jump (Space), release | About 70 km/h, no spin, flatter from higher up: it floats most |
    | **3 Jump serve** | High and far ahead | A full spike approach under it, jump, full swing | 90 km/h and more, heavy topspin |
 
    Each serve has one toss, the same every time: a server grooves a toss, they
@@ -353,6 +355,21 @@ screen show them. Only your player uses them; AI players keep the defaults.
    hit off the floor is a slow topspin serve. With the landing marker on, a
    spot shows where your feet should be at the hit and GO says when a full
    run-up starts.
+
+   **A float floats.** A ball hit with no spin near its critical speed is
+   pushed sideways by its own seams: the push holds for a moment, breaks
+   another way one to three times before it reaches the passers, and once the
+   ball slows under its critical speed it dies and drops short. Which way is
+   drawn for every serve; you cannot choose it and nobody can read it ahead.
+   How much it floats is how cleanly you hit it: a Perfect contact has no
+   spin at all (a jump float then comes down a ball's width or two to one
+   side of where it was heading), a Good one floats about half as much, and a
+   mishit turns the ball over so it hardly floats. Passers, and the landing
+   marker, only see where a float was heading a fifth of a second ago, so
+   they are sent to the wrong spot, reach, dive, or have the platform up
+   early for a ball that died: more passes off the net, out of system and
+   shanked, and now and then an ace. It also means a float is not aimed at a
+   line.
 
    A serve is rated by the pass it forces, the way coaches chart serves:
    **0** a fault, **1** passed to target, **2** passed off the net, **3** out
@@ -611,14 +628,14 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 |---|---|
 | `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
 | `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
-| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early loses its topspin (`serveEarlySpin`; the player's three serves are under `SERVE`), the user's spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`), a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the AI hitter's push into the hands (`pushSpeed`, `pushDrop`), where a covered ball is dug (`covered`: out of system), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape) |
+| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early loses its topspin (`serveEarlySpin`; the player's three serves are under `SERVE`), the user's spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`), a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the AI hitter's push into the hands (`pushSpeed`, `pushDrop`), where a covered ball is dug (`covered`: out of system), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape; `floatSafe`, `floatSafeTries` for its float), how much a float floats by the grade of its contact (`floatClean`) |
 | `SERVE` | The player's three serves: each one's toss (how far ahead, how high) and where the Serve Drill stands you (`back`), the jump float's speed and the run-up that gives it (`jumpFloatSpeed`, `floatRun`), a jump serve hit off the floor (`standingSpin`), the foot fault (`foot`), no hitting a toss on its way up (`tossRising`). `SERVE_DRILL`: the drill's start spot and its timings |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`), the dive (`diveSpeed`, `diveDecel`, `diveArm`, `diveDown`, `diveTime`) |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
-| `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
+| `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the float (`float`: the side force of a no-spin ball, how long a push holds before it breaks, the critical speed under which it dies, and how old everyone's read of a floating ball is); the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `CHARACTER` | How athletes are drawn: rim and side fill light, the arm swing of a jump (`jumpSwing`), how early hands go to where the ball will be (`meet`), the passing stance and what the platform does after the touch (`pass`), hand shapes (`hand`: how the fingers curl and spread loose, flat, on the ball and closed), where a palm meets the ball, how far arms, head, knees and toes keep from the net (`netClear`), idle breathing |

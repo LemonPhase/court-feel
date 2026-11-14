@@ -34,10 +34,12 @@ class Ball {
     }
     return this.predictor;
   }
-  hit(v: any, w: any, knuckle = 0) {
+  hit(v: any, w: any, knuckle = 0, _t = 0, seed = 0) {
     Object.assign(this.state.v, v);
     Object.assign(this.state.w, w);
     this.state.knuckle = knuckle;
+    this.state.seed = seed;
+    this.state.kt = 0;
     this.version++;
   }
   launch(p: any, v: any, w: any) {
@@ -67,6 +69,12 @@ export interface ServeRunOptions {
    */
   user?: { back: number };
   role?: 'OH' | 'OPP' | 'MB' | 'S' | 'L';
+  /** the contact system's dice (0.5 every time unless given: no spread on the aim) */
+  rand?: () => number;
+  /** a float's draw, in place of the one the contact made: which way it breaks, and when */
+  seed?: number;
+  /** how much the served ball floats, in place of what the contact gave it (0: the flight it was aimed with) */
+  knuckle?: number;
 }
 
 /**
@@ -74,7 +82,7 @@ export interface ServeRunOptions {
  * swing, then the served ball's flight to the floor.
  */
 export function serveRun(o: ServeRunOptions = {}) {
-  const { kind = 'jump', sd = 0, aim = new THREE.Vector3(-3.5, 0, -7.5), user, role = 'OH', jump, toss } = o;
+  const { kind = 'jump', sd = 0, aim = new THREE.Vector3(-3.5, 0, -7.5), user, role = 'OH', jump, toss, rand = () => 0.5 } = o;
   const ball = new Ball();
   const events: ContactEvent[] = [];
   const host = {
@@ -84,7 +92,7 @@ export function serveRun(o: ServeRunOptions = {}) {
     aimAssist: () => 0,
     aimTargetFor: (a: Athlete, out: THREE.Vector3) => out.copy(a.aiAim),
     emitContact: (e: ContactEvent) => events.push(e),
-    rand: () => 0.5,
+    rand,
     passTarget: () => ({ x: 0, y: 2.35, z: 0.9, apex: 4 }),
     setOptions: () => [],
     canServe: () => true,
@@ -142,6 +150,10 @@ export function serveRun(o: ServeRunOptions = {}) {
     host.simTime += DT;
     a.step(DT, host.simTime);
     contact.step([a]);
+    if (!r.e && events.length) {
+      if (o.seed !== undefined) ball.state.seed = o.seed;
+      if (o.knuckle !== undefined) ball.state.knuckle = o.knuckle;
+    }
     const z0 = ball.pos.z;
     stepBall(ball.state, DT, host.env);
     if (Number.isNaN(r.tossT) && ball.lastTouch?.kind === 'feed') r.tossT = host.simTime;

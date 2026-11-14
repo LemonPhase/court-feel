@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALL } from '../../config';
+import { CONTACT } from '../../config';
 import { solveApex, solveSpeedToFloor } from '../../physics/solve';
 import type { ContactEvent } from '../contact';
 import type { Outcome } from '../judge';
@@ -182,7 +182,7 @@ export class FreePlay extends Mode {
         from.y = 2.9;
         solveSpeedToFloor(from, tx, tz, 16 + g.rng.next() * 2, 0, v, w, land, -0.4, 0.6);
         w = { x: 0, y: 0, z: 0 };
-        knuckle = BALL.floatWobble;
+        knuckle = CONTACT.floatClean[2];
         break;
       }
       case 'attack': {
@@ -196,7 +196,7 @@ export class FreePlay extends Mode {
     // aim the barrel
     const yaw = Math.atan2(-v.x, -v.z);
     this.machine.barrel.rotation.set(Math.atan2(v.y, Math.hypot(v.x, v.z)), yaw - m.rotation.y, 0, 'YXZ');
-    g.ball.launch(from, v, w, knuckle, g.simTime);
+    g.ball.launch(from, v, w, knuckle, g.simTime, g.rng.next() * 1000);
     g.ball.lastTouch = { athlete: null, kind: this.feed === 'set' ? 'set' : 'feed', t: g.simTime, side: this.feed === 'set' ? 1 : -1 };
     g.judge.arm(g.ball);
     this.lastWasMachine = true;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BALL, BALL_LOOK, SIM } from '../config';
 import { clamp01, damp, lerp } from '../core/mathx';
 import { copyBall, makeBall, R, stepBall, type BallEnv, type BallState, type CollisionEvent } from '../physics/ball';
+import { FloatRead } from '../physics/floatRead';
 import { BallPredictor } from '../physics/predict';
 import { makeBallTextures, makeBlobTexture, makeRingTexture } from '../world/textures';
 import type { Athlete } from './athlete';
@@ -146,6 +147,7 @@ export class BallEntity {
     w = { x: 0, y: 0, z: 0 },
     knuckle = 0,
     t = 0,
+    seed = 0,
   ): void {
     const s = this.state;
     s.p.x = p.x;
@@ -158,8 +160,10 @@ export class BallEntity {
     s.w.y = w.y;
     s.w.z = w.z;
     s.knuckle = knuckle;
+    s.seed = seed;
     s.kt = 0;
     s.rest = false;
+    this.floatRead.reset();
     copyBall(s, this.prev);
     this.prevQ.copy(this.q);
     this.version++;
@@ -167,8 +171,11 @@ export class BallEntity {
     this.lastLaunchT = t;
   }
 
-  /** change velocity in place (contact), keeping interpolation continuous */
-  hit(v: { x: number; y: number; z: number }, w: { x: number; y: number; z: number }, knuckle = 0, t = 0): void {
+  /**
+   * change velocity in place (contact), keeping interpolation continuous. `knuckle` and `seed`: a
+   * ball hit without spin floats (`BALL.float`)
+   */
+  hit(v: { x: number; y: number; z: number }, w: { x: number; y: number; z: number }, knuckle = 0, t = 0, seed = 0): void {
     const s = this.state;
     s.v.x = v.x;
     s.v.y = v.y;
@@ -177,16 +184,34 @@ export class BallEntity {
     s.w.y = w.y;
     s.w.z = w.z;
     s.knuckle = knuckle;
+    s.seed = seed;
     s.kt = 0;
     s.rest = false;
+    this.floatRead.reset();
     this.version++;
     this.lastLaunchT = t;
   }
 
-  /** make sure the prediction reflects the current state */
+  /** what can be seen of a floating ball's path (`BALL.float`) */
+  private floatRead = new FloatRead(1 / SIM.hz);
+  private readAge = 0;
+
+  /** the ball floats: its path cannot be read ahead */
+  get floating(): boolean {
+    return this.state.knuckle > 0 && !this.state.rest;
+  }
+
+  /**
+   * Make sure the prediction reflects the current state. For a float it is a read, not the
+   * truth: the path the ball was on `BALL.float.read` s ago (or at the hit, if that is more
+   * recent) with no push to come, looked at again every `BALL.float.readSteps` steps.
+   */
   ensurePrediction(env: BallEnv, t: number): BallPredictor {
     if (this.predictedVersion !== this.version) {
-      this.predictor.compute(this.state, env, t);
+      if (this.floating) {
+        const read = this.floatRead.from(this.state);
+        this.predictor.compute(read.state, env, t - read.age);
+      } else this.predictor.compute(this.state, env, t);
       this.predictedVersion = this.version;
     }
     return this.predictor;
@@ -197,6 +222,14 @@ export class BallEntity {
     this.prevQ.copy(this.q);
     this.events.length = 0;
     if (!this.active) return;
+    if (this.floating) {
+      // remember where it was heading, and look again now and then
+      this.floatRead.keep(this.state);
+      if (++this.readAge >= BALL.float.readSteps) {
+        this.readAge = 0;
+        this.version++;
+      }
+    }
     stepBall(this.state, dt, env, this.events);
     // integrate visual rotation
     const w = this.state.w;

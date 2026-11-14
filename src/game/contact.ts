@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ASSIST, BALL, CONTACT, COURT, PLAYER, SERVE, TIMING, type ServeKind } from '../config';
 import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
-import { netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
+import { flyUntilY, netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
 import { Athlete, type Action, type Grade, type PassForm } from './athlete';
 import type { BallEntity, TouchKind } from './ballEntity';
 
@@ -415,7 +415,13 @@ export class ContactSystem {
         solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
       }
       if (safeServe) speed = this.overTheTape(p0, target, out, w, margin);
-      ball.hit(out, { x: 0, y: 0, z: 0 }, BALL.floatWobble * (rank === 3 ? 1.2 : 0.8), h.simTime);
+      // how much it floats is how cleanly it was hit: no spin at all on a Perfect contact, a little
+      // on a Good one, and a mishit turns the ball over so it hardly floats. Which way it breaks is
+      // drawn here, once, and nobody is told
+      const float = { knuckle: CONTACT.floatClean[rank] ?? 0, seed: h.rand() * 1000 };
+      // the AI never misses a serve: its float is one that stays over the tape and inside the lines
+      if (safeServe) this.safeFloat(p0, out, float);
+      ball.hit(out, { x: 0, y: 0, z: 0 }, float.knuckle, h.simTime, float.seed);
     } else {
       // (a jump serve hit with the feet on the floor is a topspin serve with less behind it)
       const base = serve
@@ -472,6 +478,28 @@ export class ContactSystem {
       serve: serve ? kind : undefined,
       footFault,
     });
+  }
+
+  /**
+   * The AI never misses a serve, and a float goes its own way: draw the float again (up to
+   * `CONTACT.floatSafeTries` times, then with less float each time) until the flight it will
+   * really have clears the tape and comes down `CONTACT.floatSafe` m inside the lines.
+   */
+  private safeFloat(p0: V3, v: V3, float: { knuckle: number; seed: number }): void {
+    const netTop = this.host.env.netTop;
+    const zero = { x: 0, y: 0, z: 0 };
+    const land = { x: 0, y: 0, z: 0 };
+    for (let k = 0; float.knuckle > 0; k++) {
+      const c = netClearance(p0, v, zero, float);
+      flyUntilY(p0, v, zero, R, land, 4, float);
+      const inside =
+        Math.abs(land.x) < COURT.halfWidth - CONTACT.floatSafe &&
+        Math.abs(land.z) < COURT.halfLength - CONTACT.floatSafe &&
+        Math.sign(land.z) !== Math.sign(p0.z);
+      if (c && c.y > netTop + R + CONTACT.floatSafe && inside) return;
+      float.seed = this.host.rand() * 1000;
+      if (k >= CONTACT.floatSafeTries) float.knuckle = float.knuckle > 0.1 ? float.knuckle * 0.5 : 0;
+    }
   }
 
   /**

@@ -192,10 +192,12 @@ function ownToss(a: Athlete, kind: ServeKind, when: 'up' | 'down'): ContactEvent
       }
       return predictor;
     },
-    hit(v: object, w: object, knuckle = 0) {
+    hit(v: object, w: object, knuckle = 0, _t = 0, seed = 0) {
       Object.assign(state.v, v);
       Object.assign(state.w, w);
       state.knuckle = knuckle;
+      state.seed = seed;
+      state.kt = 0;
       version++;
     },
     launch(p: object, v: object, w: object) {
