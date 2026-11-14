@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { ASSIST, BALL, CONTACT, COURT, PLAYER, TIMING } from '../config';
+import { ASSIST, BALL, CONTACT, COURT, PLAYER, SERVE, TIMING, type ServeKind } from '../config';
 import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
-import { netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
+import { flyUntilY, netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
 import { Athlete, type Action, type Grade, type PassForm } from './athlete';
 import type { BallEntity, TouchKind } from './ballEntity';
 
@@ -22,6 +22,10 @@ export interface ContactEvent {
   target: THREE.Vector3;
   /** swing power 0..1 from the wind-up hold (spikes / serves) */
   power?: number;
+  /** a serve: which one it was (the toss it was hit off) */
+  serve?: ServeKind;
+  /** a serve hit, or jumped at, from on or over the end line or outside the service zone (`SERVE.foot`) */
+  footFault?: boolean;
   /** a pass or dig: how it was played (the platform in front, out to the side, overhand, diving) */
   form?: PassForm;
 }
@@ -87,6 +91,13 @@ export class ContactSystem {
   private _p = new THREE.Vector3();
   private _q = new THREE.Vector3();
   private _b: V3 = { x: 0, y: 0, z: 0 };
+  private _b2: V3 = { x: 0, y: 0, z: 0 };
+
+  /** the ball in the air is `a`'s own serve toss, not yet hit */
+  private ownToss(a: Athlete): boolean {
+    const lt = this.host.ball.lastTouch;
+    return this.serving === a && !!lt && lt.athlete === a && lt.kind === 'feed';
+  }
 
   /** search the next `horizon` seconds for the moment the ball is closest to the athlete's ideal point */
   ideal(a: Athlete, from: number, horizon = TIMING.contactLookahead, out?: IdealInfo): IdealInfo | null {
@@ -110,9 +121,15 @@ export class ContactSystem {
       }
       tAth = Math.max(tAth, t);
     };
+    // your own toss is met at its top or on its way down, never on its way up (`SERVE.tossRising`)
+    const toss = this.ownToss(a);
     for (let t = from; t <= from + horizon; t += dt) {
       if (pred.landT > 0 && t > pred.landT) break;
       pred.posAt(t, this._b);
+      if (toss) {
+        pred.posAt(t + dt, this._b2);
+        if (this._b2.y - this._b.y > SERVE.tossRising * dt) continue;
+      }
       stepTo(t);
       const el = t - h.simTime;
       this._a.set(a.pos.x + a.vel.x * el, airborne ? y : a.pos.y, a.pos.z + a.vel.z * el);
@@ -220,6 +237,10 @@ export class ContactSystem {
   step(athletes: Athlete[]): void {
     const h = this.host;
     const t = h.simTime;
+    // a toss that came down unhit, or a ball somebody else has played since: nobody is serving any more
+    const lt = h.ball.lastTouch;
+    if (this.serving && (!h.ball.active || lt?.athlete !== this.serving || lt.kind !== 'feed' || h.ball.pos.y <= R + 0.02))
+      this.serving = null;
     for (const a of athletes) {
       const act = a.action;
       if (act && act.kind === 'windup') {
@@ -263,10 +284,12 @@ export class ContactSystem {
     const reach = this.reach(a);
     const stretch = CONTACT.spikeReachStretch + h.aimAssist(a) * ASSIST.reachBonus;
     const lastTouchedBySelf = ball.lastTouch?.athlete === a && h.simTime - ball.lastTouch.t < 1.0;
-    if (!ball.active || dc > stretch || lastTouchedBySelf) {
+    // a toss still on its way up: the hand goes through under it
+    const tossRising = this.ownToss(a) && ball.vel.y > SERVE.tossRising;
+    if (!ball.active || dc > stretch || lastTouchedBySelf || tossRising) {
       act.miss = true;
       act.grade = 'Miss';
-      act.note = dc > stretch ? (act.err < 0 ? 'Swung early' : 'Swung late') : '';
+      act.note = tossRising ? 'Swung early' : dc > stretch ? (act.err < 0 ? 'Swung early' : 'Swung late') : '';
       act.contactPoint.copy(this._p);
       h.emitContact({
         athlete: a,
@@ -315,6 +338,10 @@ export class ContactSystem {
     const lt0 = ball.lastTouch;
     const serve = this.serving === a && !!lt0 && lt0.athlete === a && lt0.kind === 'feed';
     this.serving = null;
+    // the serve picked before the toss gives the ball its spin; the body gives it its height and pace
+    const kind = this.serveKind;
+    const inAir = a.state === 'air';
+    const footFault = serve && a.isUser && serveFootFault(a);
     // ---- tap vs wind-up (a serve is always a full swing)
     const tip = !serve && act.tip;
     act.tip = tip;
@@ -365,10 +392,15 @@ export class ContactSystem {
       solveApex({ x: bp.x, y: bp.y, z: bp.z }, { x: target.x, y: R, z: target.z }, apex, w, out);
       speed = Math.hypot(out.x, out.y, out.z);
       ball.hit(out, w, 0, h.simTime);
-    } else if (serve && a.state !== 'air') {
-      // standing float serve: no spin, knuckles
+    } else if (serve && !SERVE[kind].spin) {
+      // float serve: no spin, knuckles. Off a jump it is hit harder the more run-up went into the
+      // jump (a hop off the spot adds height, not pace), and from higher up it flies flatter
+      const run = inAir ? clamp01(a.loadApproach / (pos.approachSpeed * SERVE.floatRun)) : 0;
       speed =
-        CONTACT.serveFloatSpeed * (rank === 3 ? 1.08 : rank === 2 ? 1 : 0.88) * lerp(0.9, 1.05, pos.power - 0.75) * lerp(0.85, 1, power);
+        lerp(CONTACT.serveFloatSpeed, SERVE.jumpFloatSpeed, run) *
+        (rank === 3 ? 1.08 : rank === 2 ? 1 : 0.88) *
+        lerp(0.9, 1.05, pos.power - 0.75) *
+        lerp(0.85, 1, power);
       const land = { x: 0, y: 0, z: 0 };
       const p0 = { x: bp.x, y: bp.y, z: bp.z };
       solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
@@ -383,9 +415,22 @@ export class ContactSystem {
         solveSpeedToFloor(p0, target.x, target.z, speed, 0, out, w, land, -0.6, 0.7);
       }
       if (safeServe) speed = this.overTheTape(p0, target, out, w, margin);
-      ball.hit(out, { x: 0, y: 0, z: 0 }, BALL.floatWobble * (rank === 3 ? 1.2 : 0.8), h.simTime);
+      // how much it floats is how cleanly it was hit: no spin at all on a Perfect contact, a little
+      // on a Good one, and a mishit turns the ball over so it hardly floats. Which way it breaks is
+      // drawn here, once, and nobody is told
+      const float = { knuckle: CONTACT.floatClean[rank] ?? 0, seed: h.rand() * 1000 };
+      // the AI never misses a serve: its float is one that stays over the tape and inside the lines
+      if (safeServe) this.safeFloat(p0, out, float);
+      ball.hit(out, { x: 0, y: 0, z: 0 }, float.knuckle, h.simTime, float.seed);
     } else {
-      const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
+      // (a jump serve hit with the feet on the floor is a topspin serve with less behind it)
+      const base = serve
+        ? CONTACT.serveJumpSpeed * (inAir ? 1 : SERVE.standingSpin)
+        : rank === 3
+          ? CONTACT.spikePerfect
+          : rank === 2
+            ? CONTACT.spikeGood
+            : CONTACT.spikeOk;
       const gradeK = serve ? (rank === 3 ? 1.1 : rank === 2 ? 1 : 0.8) : 1;
       speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1) * power;
       // a serve's topspin comes from the same arm speed as its pace: a slower, mistimed swing spins it less
@@ -430,7 +475,31 @@ export class ContactSystem {
       tip,
       target,
       power: tip ? 0 : charge,
+      serve: serve ? kind : undefined,
+      footFault,
     });
+  }
+
+  /**
+   * The AI never misses a serve, and a float goes its own way: draw the float again (up to
+   * `CONTACT.floatSafeTries` times, then with less float each time) until the flight it will
+   * really have clears the tape and comes down `CONTACT.floatSafe` m inside the lines.
+   */
+  private safeFloat(p0: V3, v: V3, float: { knuckle: number; seed: number }): void {
+    const netTop = this.host.env.netTop;
+    const zero = { x: 0, y: 0, z: 0 };
+    const land = { x: 0, y: 0, z: 0 };
+    for (let k = 0; float.knuckle > 0; k++) {
+      const c = netClearance(p0, v, zero, float);
+      flyUntilY(p0, v, zero, R, land, 4, float);
+      const inside =
+        Math.abs(land.x) < COURT.halfWidth - CONTACT.floatSafe &&
+        Math.abs(land.z) < COURT.halfLength - CONTACT.floatSafe &&
+        Math.sign(land.z) !== Math.sign(p0.z);
+      if (c && c.y > netTop + R + CONTACT.floatSafe && inside) return;
+      float.seed = this.host.rand() * 1000;
+      if (k >= CONTACT.floatSafeTries) float.knuckle = float.knuckle > 0.1 ? float.knuckle * 0.5 : 0;
+    }
   }
 
   /**
@@ -882,10 +951,12 @@ export class ContactSystem {
   }
 
   /**
-   * Q: toss for a serve (ball appears in the tossing hand), `above` m over the standing reach and
-   * `forward` m ahead by the time it is back at the hand
+   * Q: the toss of the serve picked (`SERVE[kind]`, unless the server has their own: the ball
+   * appears in the tossing hand and goes `tossHigh` m over the standing reach, `toss` m ahead by
+   * the time it is back at the hand)
    */
-  serveToss(a: Athlete, forward = 0.25, above = 1.15): boolean {
+  serveToss(a: Athlete, kind: ServeKind = 'float', own: { toss: number; tossHigh: number } = SERVE[kind]): boolean {
+    const { toss: forward, tossHigh: above } = own;
     const h = this.host;
     if (!h.canServe(a)) return false;
     if (a.state !== 'ground') return false;
@@ -893,7 +964,7 @@ export class ContactSystem {
     // the toss goes up in front of the hitting shoulder (a lefty tosses with the right hand to the left)
     const r = a.hitSide(_r);
     const p = { x: a.pos.x + f.x * 0.3 + r.x * 0.12, y: a.pos.y + a.height * 0.82, z: a.pos.z + f.z * 0.3 + r.z * 0.12 };
-    // toss to ~1.1 m above standing reach, drifting forward for a jump serve approach
+    // up over the standing reach, drifting forward into the run-up of a jump float or a jump serve
     const apex = a.standReach + above;
     const vy = Math.sqrt(2 * BALL.gravity * (apex - p.y));
     const tUp = vy / BALL.gravity;
@@ -902,10 +973,19 @@ export class ContactSystem {
     h.ball.lastTouch = { athlete: a, kind: 'feed', t: h.simTime - 1, side: a.side };
     a.startAction('toss', h.simTime);
     this.serving = a;
+    this.serveKind = kind;
     return true;
   }
   /** the athlete whose toss is in the air (next swing is a serve) */
   serving: Athlete | null = null;
+  /** which serve that toss was for */
+  serveKind: ServeKind = 'float';
+}
+
+/** FIVB rule 12.4.3, see `SERVE.foot`: the feet at the hit, or where they left the floor for a jump serve */
+export function serveFootFault(a: Athlete): boolean {
+  const feet = a.state === 'air' ? a.takeoffPos : a.pos;
+  return feet.z * a.side < COURT.halfLength + SERVE.foot || Math.abs(feet.x) > COURT.halfWidth;
 }
 
 const _f = new THREE.Vector3();
@@ -925,6 +1005,12 @@ export function aimPitchRange(fp: boolean): [number, number] {
   return fp ? [-0.25, 1.15] : [-0.75, 0.05];
 }
 export const AIM_DEPTH: [number, number] = [1.0, 9.6];
+
+/** the camera pitch that aims `depth` m into their court (the inverse of `aimTargetFromLook`'s depth) */
+export function aimPitchFor(depth: number, fp: boolean): number {
+  const [lo, hi] = aimPitchRange(fp);
+  return lerp(lo, hi, clamp01((depth - AIM_DEPTH[0]) / (AIM_DEPTH[1] - AIM_DEPTH[0])));
+}
 
 /**
  * Map the camera look onto a floor target: yaw gives the direction, pitch

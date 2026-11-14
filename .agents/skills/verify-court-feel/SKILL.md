@@ -135,10 +135,10 @@ Test hooks. They are not user input. Say so when a proof uses one:
 | Settings row | `.set-row:has-text("Field of view") input` for a slider, `role=switch[name="Invert Y"]` for an on/off setting, `.set-row:has-text("Net height") .chip:has-text("Women")` for a choice |
 | Athlete sheet | `.pos-card:has(.pos-short:text-is("MB"))` with `OH`, `OPP`, `MB`, `S`, `L`, `role=button[name="Left"]` and `Right`, `.body-set input[data-body="height"]` with `height`, `jump`, `power` |
 | The court | `#app > canvas` |
-| Touch pad | `.t-jump`, `.t-hit`, `.t-block`, `.t-pass`, `.t-pause`, `.touch [data-btn="cam"]` with `cam`, `reset`, `replay`, `d1`, `d2`, `d3`, `vsblock` |
+| Touch pad | `.t-jump`, `.t-hit`, `.t-block`, `.t-pass`, `.t-pause`, `.touch [data-btn="cam"]` with `cam`, `reset`, `replay`, `d1`, `d2`, `d3`, `vsblock`; `.t-toss` (Serve Drill, Free Play) |
 | Crash screen | `role=alertdialog`, `role=button[name="RELOAD"]`, `role=button[name="Copy details"]` |
 
-In-play keys: `w a s d`, `Shift`, `Space`, `e` pass, `q` toss, `v` camera, `r` replay, `n` reset rep, `b` block (Spike Drill), `1 2 3` set call, `f` and `t` (Free Play), `F3` debug overlay.
+In-play keys: `w a s d`, `Shift`, `Space`, `e` pass, `q` toss, `v` camera, `r` replay, `n` reset rep, `b` block (Spike Drill), `1 2 3` set call (Spike Drill, Mini Rally) or serve (Serve Drill), `f` and `t` (Free Play), `F3` debug overlay.
 
 ## Evidence
 

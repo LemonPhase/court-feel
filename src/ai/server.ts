@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, COURT } from '../config';
+import { AI, COURT, SERVE, type ServeKind } from '../config';
 import type { Rng } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
@@ -8,9 +8,10 @@ import { planApproach, type ApproachPlan } from './approach';
 import { moveTo, netYaw, stop, type Brain } from './brain';
 
 /**
- * AI server: walks behind the end line, tosses, and serves at a target through the normal
- * contact system: a standing float, or (`AI.serve.jump` of the time) a jump serve, tossed
- * forward and met at the top of a short run-up and jump.
+ * A server: walks behind the end line, tosses, and serves at a target through the normal
+ * contact system: a standing float, or a jump float or a jump serve, tossed forward and met at
+ * the top of a run-up and jump. The Mini Rally's AI serves a float or (`AI.serve.jump` of the
+ * time) a jump serve.
  */
 export class ServerBrain implements Brain {
   phase: 'idle' | 'walk' | 'wait' | 'toss' | 'approach' | 'load' | 'air' | 'done' = 'idle';
@@ -18,18 +19,30 @@ export class ServerBrain implements Brain {
   private err = 0;
   target = new THREE.Vector3();
   spotX = 0;
-  /** this serve is a jump serve */
+  /** which serve this is */
+  kind: ServeKind = 'float';
+  /** it is met in the air, off a run-up */
   jump = false;
+  /** where the server starts, m behind the end line, and how far they walk into the toss from there */
+  back: number = SERVE.float.back;
+  walkIn = 0;
+  /** the toss: the serve's own, or the AI's lower and longer one for its jump serve (`AI.serve`) */
+  toss: { toss: number; tossHigh: number } = SERVE.float;
   private plan: ApproachPlan | null = null;
   private swung = false;
 
   constructor(public athlete: Athlete) {}
 
   /** begin a serve sequence aimed at `target` (floor point) */
-  serve(target: THREE.Vector3, spotX = this.spotX, jump = false): void {
+  serve(target: THREE.Vector3, spotX = this.spotX, kind: ServeKind = 'float'): void {
     this.target.copy(target);
     this.spotX = spotX;
-    this.jump = jump;
+    this.kind = kind;
+    this.jump = kind !== 'float';
+    // a jump server starts further back: the walk into the toss, the run-up and the toss forward take them to the line
+    this.back = kind === 'jump' ? AI.serve.jumpBack : SERVE[kind].back;
+    this.walkIn = kind === 'jump' ? AI.serve.jumpStep : 0;
+    this.toss = kind === 'jump' ? { toss: AI.serve.jumpToss, tossHigh: AI.serve.jumpTossHigh } : SERVE[kind];
     this.phase = 'walk';
     this.t = 0;
     this.plan = null;
@@ -37,8 +50,7 @@ export class ServerBrain implements Brain {
   }
 
   get spot() {
-    // a jump server starts further back: the run-up and the toss forward take them to the line
-    return { x: this.spotX, z: this.athlete.side * (COURT.halfLength + (this.jump ? AI.serve.jumpBack : 1.1)) };
+    return { x: this.spotX, z: this.athlete.side * (COURT.halfLength + this.back) };
   }
 
   step(dt: number, g: Game): void {
@@ -61,13 +73,13 @@ export class ServerBrain implements Brain {
       }
       case 'wait':
         stop(a, face);
-        if (this.t > 0.7 && this.jump && Math.abs(this.spot.z) - Math.abs(a.pos.z) < AI.serve.jumpStep) {
+        if (this.t > 0.7 && Math.abs(this.spot.z) - Math.abs(a.pos.z) < this.walkIn) {
           // a jump server walks into the toss: the first step of the run-up comes before the ball leaves the hand
           a.cmd.moveZ = -a.side;
           break;
         }
         if (this.t > 0.7) {
-          if (this.jump ? g.contact.serveToss(a, AI.serve.jumpToss, AI.serve.jumpTossHigh) : g.contact.serveToss(a)) {
+          if (g.contact.serveToss(a, this.kind, this.toss)) {
             this.phase = 'toss';
             const e = g.rng.gauss() * (this.jump ? AI.serve.jumpErr : AI.serve.floatErr);
             this.err = Math.max(-AI.serve.errMax, Math.min(AI.serve.errMax, e));

@@ -10,7 +10,7 @@ const H = 1 / 240;
 const tmp: BallState = makeBall();
 const acc: V3 = { x: 0, y: 0, z: 0 };
 
-function launch(p0: V3, v0: V3, w0: V3, knuckle = 0): BallState {
+function launch(p0: V3, v0: V3, w0: V3, knuckle = 0, seed = 0): BallState {
   tmp.p.x = p0.x;
   tmp.p.y = p0.y;
   tmp.p.z = p0.z;
@@ -21,6 +21,7 @@ function launch(p0: V3, v0: V3, w0: V3, knuckle = 0): BallState {
   tmp.w.y = w0.y;
   tmp.w.z = w0.z;
   tmp.knuckle = knuckle;
+  tmp.seed = seed;
   tmp.kt = 0;
   tmp.rest = false;
   return tmp;
@@ -34,6 +35,7 @@ function freeStep(s: BallState, h: number): void {
   s.p.x += s.v.x * h;
   s.p.y += s.v.y * h;
   s.p.z += s.v.z * h;
+  s.kt += h;
   const d = Math.exp(-h / BALL.spinDecayTime);
   s.w.x *= d;
   s.w.y *= d;
@@ -96,9 +98,12 @@ export function shotFan(y0: number, speed: number, spinRate: number, n = 80, min
   return fan;
 }
 
-/** fly until the ball descends to height y (or maxT). Returns time, position into out. */
-export function flyUntilY(p0: V3, v0: V3, w0: V3, y: number, out: V3, maxT = 4): number {
-  const s = launch(p0, v0, w0);
+/**
+ * fly until the ball descends to height y (or maxT). Returns time, position into out.
+ * `float`: fly it as that float (see `netClearance`).
+ */
+export function flyUntilY(p0: V3, v0: V3, w0: V3, y: number, out: V3, maxT = 4, float?: { knuckle: number; seed: number }): number {
+  const s = launch(p0, v0, w0, float?.knuckle, float?.seed);
   let t = 0;
   while (t < maxT) {
     const py = s.p.y;
@@ -224,8 +229,12 @@ export function solveSpeedToFloor(
 }
 
 /** minimal y the ball has while crossing z = 0 for a free flight (or null if never crosses) */
-export function netClearance(p0: V3, v0: V3, w0: V3): { y: number; x: number } | null {
-  const s = launch(p0, v0, w0);
+/**
+ * Where the ball crosses the net plane (null: it comes down first). `float`: fly it as that float
+ * (`BallState.knuckle` and `seed`); without it the flight is the one the hit was aimed with, no push.
+ */
+export function netClearance(p0: V3, v0: V3, w0: V3, float?: { knuckle: number; seed: number }): { y: number; x: number } | null {
+  const s = launch(p0, v0, w0, float?.knuckle, float?.seed);
   let t = 0;
   while (t < 4) {
     const pz = s.p.z;

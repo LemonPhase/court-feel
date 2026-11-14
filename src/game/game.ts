@@ -1,5 +1,18 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, CHARACTER, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings, type VenueId } from '../config';
+import {
+  ASSIST,
+  CAMERA,
+  CHARACTER,
+  COURT,
+  PLAYER,
+  SIM,
+  TIMING,
+  TUTORIAL,
+  type PositionId,
+  type ServeKind,
+  type Settings,
+  type VenueId,
+} from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
 import { saveSettings } from '../core/settings';
@@ -29,7 +42,7 @@ import { createMode } from './modes/registry';
 import { makeRingTexture } from '../world/textures';
 import { UserActions } from './userActions';
 import { defaultPassTarget, defaultSetOptions } from './plays';
-import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
+import { BlockBot, isBotQuality, ServeBot, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
 import { reached, Tutorial, type TutorialBegin } from './tutorial';
 
@@ -117,6 +130,8 @@ export class Game {
   ballLive = false;
   /** test hook: the user's athlete is driven by the team AI */
   autoUser = false;
+  /** the serve the player has picked (keys 1-3 in the Serve drill): their next toss is that serve's toss */
+  serveKind: ServeKind = 'float';
   /**
    * Errors caught by the game: a frame or an event handler that threw. `fatal` means the
    * game has stopped (frames kept throwing). Without a handler they go to the console.
@@ -364,6 +379,8 @@ export class Game {
     this.mode?.teardown();
     this.bot = null;
     this.ballLive = false;
+    this.serveKind = 'float';
+    this.contact.serving = null;
     this.me.isUser = true;
     this.input.releaseAll();
     this.judge.disarm();
@@ -743,7 +760,9 @@ export class Game {
           ? new TouchBot(this, 'pass', quality)
           : this.modeId === 'setter' || (this.modeId === 'rally' && role === 'S')
             ? new TouchBot(this, 'set', quality)
-            : new SpikeBot(this, quality);
+            : this.modeId === 'serve'
+              ? new ServeBot(this, quality)
+              : new SpikeBot(this, quality);
   }
 
   /** start-screen background: the bot runs the spike drill under an orbiting camera */
@@ -978,7 +997,14 @@ export class Game {
   private updateAimReticle(dt: number): void {
     const me = this.me;
     const mat = this.aimReticle.material as THREE.MeshBasicMaterial;
-    const show = !this.inMenu && (me.state === 'air' || me.state === 'load' || me.action?.kind === 'toss' || me.action?.kind === 'windup');
+    // (a serve is aimed from the toss to the hit: the run-up under a jump serve's toss is longer than the toss's own pose)
+    const show =
+      !this.inMenu &&
+      (me.state === 'air' ||
+        me.state === 'load' ||
+        me.action?.kind === 'toss' ||
+        me.action?.kind === 'windup' ||
+        this.contact.serving === me);
     mat.opacity = lerp(mat.opacity, show ? 0.75 : 0, damp(12, dt));
     this.aimReticle.visible = mat.opacity > 0.02;
     if (this.aimReticle.visible) {

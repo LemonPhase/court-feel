@@ -111,11 +111,21 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
+      <img src="docs/screenshots/serve-drill-jump-serve.jpg" alt="Serve Drill from behind the server: in the air over the end line, the arm through the ball, PERFECT 95 km/h full power, six receivers waiting on the far court">
+      <b>Your serve.</b> Standing float, jump float or jump serve: the toss, then a spike's run-up, jump and swing. This one took off a metre behind the end line.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/mini-rally-jump-serve.jpg" alt="Mini Rally from behind the libero: a team-mate in the air behind the end line, sparks on the ball at the top of a jump serve">
+      <b>And theirs.</b> In the Mini Rally six serves in ten are jump serves, at the seams and the deep corners.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
       <img src="docs/screenshots/phone-touch-controls.jpg" alt="Phone in landscape: joystick on the left, PASS, BLOCK, JUMP and HIT buttons on the right, set call chips at the top">
       <b>On your phone.</b> A joystick for your feet, drag to aim, hold to jump and hold to swing. The timing windows are the same as on a keyboard.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/start-screen.jpg" alt="Start screen, Train: the five drills in a list, the Spike Drill's panel with its own keys, the five positions to play it as, and PLAY; the venue, athlete and settings pills at the top right">
+      <img src="docs/screenshots/start-screen.jpg" alt="Start screen, Train: the six drills in a list, the Spike Drill's panel with its own keys, the five positions to play it as, and PLAY; the venue, athlete and settings pills at the top right">
       <b>Pick a drill.</b> Each drill shows what it scores, its own keys and the position you play it as.
     </td>
   </tr>
@@ -142,7 +152,7 @@ The start screen has four sections:
 | Section | What is there |
 |---|---|
 | **Home** | One press back into your last drill and position (**Continue**). On a first visit: the tutorial. |
-| **Train** | The five drills. The one you pick shows what it scores, its own keys and **Play as** (your position). |
+| **Train** | The six drills. The one you pick shows what it scores, its own keys and **Play as** (your position). |
 | **Play** | The games: Mini Rally today. Sets and full matches will go here. |
 | **Learn** | The tutorial, and every control for the keyboard and for touch. |
 
@@ -198,18 +208,18 @@ Settings → Hints, which is on by default.
 | W A S D | Move (accelerates and decelerates; forward is fastest, backpedal slowest) |
 | Shift | Approach / sprint |
 | Space | Plant and jump. **Hold** to load a stronger jump, release to take off (auto at 0.3 s) |
-| Left mouse | Attack. **Press and hold** to wind up (the arm draws back and a ring around the crosshair fills: the longer you hold, the harder the hit, full power at ~0.3 s), **release** to swing — timing is graded on the release: Perfect from about 0.12 s to 0.025 s before the ball reaches your hand (a fully drawn arm comes through a touch faster), Good on either side, and the late side is the forgiving one: releasing just as the ball arrives is still Good. A quick **tap** = tip (short) or roll shot (deep). Landing without releasing drops the swing. Also hits your serve. |
+| Left mouse | Attack. **Press and hold** to wind up (the arm draws back and a ring around the crosshair fills: the longer you hold, the harder the hit, full power at ~0.3 s), **release** to swing — timing is graded on the release: Perfect from about 0.12 s to 0.025 s before the ball reaches your hand (a fully drawn arm comes through a touch faster), Good on either side, and the late side is the forgiving one: releasing just as the ball arrives is still Good. A quick **tap** = tip (short) or roll shot (deep). Landing without releasing drops the swing. Also hits your serve: release as the toss comes down (a toss still on its way up cannot be hit). |
 | Right mouse | Block (hands up, they press over the net in the air). When the ball is dropping onto you from your own side it **sets** instead — look at the hitter you want. |
 | E | Bump / pass / dig (press early so the platform is ready; hold it) |
-| Q | Serve toss (Free Play, feed 5 = serve practice), then hold and release Left mouse to hit — standing = float serve, jump = topspin serve |
+| Q | Serve toss (Serve Drill; Free Play too). It is the toss of the serve you picked with 1 / 2 / 3. Then serve it with the spike's controls: run in (Shift + W) and jump (Space) for a jump float or a jump serve, hold and release Left mouse to hit |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Replay your last attempt in slow motion once the ball is dead: a clean contact, a poor one, a swing or a block that found no ball, or a ball that was yours and dropped untouched. Any key skips it; the game carries on where it was. |
 | N | Reset / skip the current rep (Mini Rally: re-serve) |
-| 1 / 2 / 3 | Spike Drill and Mini Rally: set call for the next ball (outside, middle, opposite — see below) |
+| 1 / 2 / 3 | Spike Drill and Mini Rally: set call for the next ball (outside, middle, opposite — see below). Serve Drill: your serve (standing float, jump float, jump serve) |
 | B | Spike Drill: opposing block off / single / double, with its shadow drawn on their floor (see below) |
 | Esc | Pause / settings |
 | F3 | Debug overlay: FPS, physics step time, ball state, timing window, contact gizmos |
-| Free Play only | 1-5 feed type (set / free ball / float serve / hard attack / **serve practice**), F feed now, T auto-feed |
+| Free Play only | 1-4 feed type (set / free ball / float serve / hard attack), F feed now, T auto-feed |
 
 ### Touch (phone / tablet)
 
@@ -227,8 +237,8 @@ Hold the phone sideways.
 | **HIT** | Hold to wind up (the ring around your thumb fills), release to swing, tap = tip. Drag while holding to aim. While you are loading or in the air, **the whole right half of the screen is HIT**, so the thumb does not have to find the button after the jump. |
 | **BLOCK** | Hands up and load a jump; release to take off. The hands stay up until you land. When the ball is dropping onto you from your side the button reads **SET** and sets instead (no jump). |
 | **PASS** | Hold: platform ready. |
-| **TOSS** | Serve toss (Free Play). |
-| Top right | Pause, camera toggle, reset rep, and REPLAY when your last attempt can be watched again. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill) or feed types (Free Play). |
+| **TOSS** | Serve toss (Serve Drill, Free Play). |
+| Top right | Pause, camera toggle, reset rep, and REPLAY when your last attempt can be watched again. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill), your serve (Serve Drill) or feed types (Free Play). |
 
 Haptics (Android) tick at full charge and on a graded contact. Tunables are in
 `TOUCH` in `src/config.ts` (stick radius, run threshold, look scale, the
@@ -283,9 +293,7 @@ screen show them. Only your player uses them; AI players keep the defaults.
 ## Modes
 
 1. **Free Play** — a ball machine feeds you (set, free ball, float serve, hard
-   attack). Spike, pass, block, set or serve your own. Feed **5** is serve
-   practice: you start behind the end line, toss with Q and hit with the left
-   mouse (jump for a topspin jump serve) at a target zone.
+   attack). Spike, pass, block or set, or toss one up yourself (Q).
 2. **Spike Drill** — a coach tosses to the setter, the setter sets your lane.
    Score = timing grade + power (km/h) + kill + hitting the highlighted target
    zone. A spot on the floor shows where your feet should be at contact (it
@@ -322,12 +330,57 @@ screen show them. Only your player uses them; AI players keep the defaults.
    Their middle runs a quick on every ball: to stop it, jump with them
    (commit) — if the set goes outside, you were fooled by the decoy.
 4. **Serve Receive / Dig** — float serves and attacks come at you; pass to the
-   green setter target. Passes are rated 0–3; your setter and hitter finish
+   green setter target. The floats move in the air (see the Serve Drill): the
+   landing marker shows where the ball was heading a moment ago, not where it
+   will break. Passes are rated 0–3; your setter and hitter finish
    good passes.
 5. **Setter Drill** — passes come in; look at a hitter (outside, quick, back
    set — the target ring lights up) and press right mouse as the ball drops.
    Your hitters attack against a live blocker.
-6. **Mini Rally** — 6 v 6 with you in your position. The AI receives, sets
+6. **Serve Drill** — you serve at six in serve receive. Pick the serve before
+   the toss, as on a court (1 / 2 / 3), and each one is harder to hit and
+   harder to pass than the one before:
+
+   | | Toss (Q) | Then | Ball |
+   |---|---|---|---|
+   | **1 Standing float** | Low, in front of the hitting shoulder | Hold the left mouse, release as it comes down | About 60 km/h, no spin: it floats a little and dies short |
+   | **2 Jump float** | Low, two steps ahead | A short run-up (Shift + W), jump (Space), release | About 70 km/h, no spin, flatter from higher up: it floats most |
+   | **3 Jump serve** | High and far ahead | A full spike approach under it, jump, full swing | 90 km/h and more, heavy topspin |
+
+   Each serve has one toss, the same every time: a server grooves a toss, they
+   do not choose its height each rep. Everything after it is the spike's
+   controls and the spike's timing windows. The toss is hit at its top or on
+   its way down. The spin comes from the serve you picked, the height and pace
+   from your body: a float hit off a hop is a small jump float, a jump serve
+   hit off the floor is a slow topspin serve. With the landing marker on, a
+   spot shows where your feet should be at the hit and GO says when a full
+   run-up starts.
+
+   **A float floats.** A ball hit with no spin near its critical speed is
+   pushed sideways by its own seams: the push holds for a moment, breaks
+   another way one to three times before it reaches the passers, and once the
+   ball slows under its critical speed it dies and drops short. Which way is
+   drawn for every serve; you cannot choose it and nobody can read it ahead.
+   How much it floats is how cleanly you hit it: a Perfect contact has no
+   spin at all (a jump float then comes down a ball's width or two to one
+   side of where it was heading), a Good one floats about half as much, and a
+   mishit turns the ball over so it hardly floats. Passers, and the landing
+   marker, only see where a float was heading a fifth of a second ago, so
+   they are sent to the wrong spot, reach, dive, or have the platform up
+   early for a ball that died: more passes off the net, out of system and
+   shanked, and now and then an ace. It also means a float is not aimed at a
+   line.
+
+   A serve is rated by the pass it forces, the way coaches chart serves:
+   **0** a fault, **1** passed to target, **2** passed off the net, **3** out
+   of system or an overpass, **4** an ace (or a shank nobody saves). Faults
+   are the real ones: in the net, out, a toss you did not hit (one toss only,
+   FIVB rule 12.4.2) and the **foot fault** (rule 12.4.3): on or over the end
+   line at the hit, or at the take-off of a jump serve; landing in the court
+   afterwards is fine. A mistimed float usually still lands in; a jump serve met
+   early loses its topspin and sails long. The receiving team plays its pass
+   out, so you see what your serve let them run.
+7. **Mini Rally** — 6 v 6 with you in your position. The AI receives, sets
    (often to you), attacks, blocks and digs: AI defenders also dig to the side,
    pass slow balls overhand and dive for balls they can't reach on foot. A dive
    (even one at a ball just past their hands) only keeps it alive: it pops up a
@@ -575,13 +628,14 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 |---|---|
 | `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
 | `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
-| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early loses its topspin (`serveEarlySpin`), the user's spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`), a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the AI hitter's push into the hands (`pushSpeed`, `pushDrop`), where a covered ball is dug (`covered`: out of system), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape) |
+| `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early loses its topspin (`serveEarlySpin`; the player's three serves are under `SERVE`), the user's spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`), a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the AI hitter's push into the hands (`pushSpeed`, `pushDrop`), where a covered ball is dug (`covered`: out of system), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape; `floatSafe`, `floatSafeTries` for its float), how much a float floats by the grade of its contact (`floatClean`) |
+| `SERVE` | The player's three serves: each one's toss (how far ahead, how high) and where the Serve Drill stands you (`back`), the jump float's speed and the run-up that gives it (`jumpFloatSpeed`, `floatRun`), a jump serve hit off the floor (`standingSpin`), the foot fault (`foot`), no hitting a toss on its way up (`tossRising`). `SERVE_DRILL`: the drill's start spot and its timings |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`), the dive (`diveSpeed`, `diveDecel`, `diveArm`, `diveDown`, `diveTime`) |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
-| `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
+| `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the float (`float`: the side force of a no-spin ball, how long a push holds before it breaks, the critical speed under which it dies, and how old everyone's read of a floating ball is); the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | Hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `CHARACTER` | How athletes are drawn: rim and side fill light, the arm swing of a jump (`jumpSwing`), how early hands go to where the ball will be (`meet`), the passing stance and what the platform does after the touch (`pass`), hand shapes (`hand`: how the fingers curl and spread loose, flat, on the ball and closed), where a palm meets the ball, how far arms, head, knees and toes keep from the net (`netClear`), idle breathing |

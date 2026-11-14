@@ -94,6 +94,8 @@ export class Athlete {
   takeoffT = 0;
   takeoffY = 0;
   takeoffYaw = 0;
+  /** where the feet left the floor on the last jump (a jump serve is judged there) */
+  readonly takeoffPos = new THREE.Vector3();
   peakY = 0;
   airT = 0;
   landImpact = 0;
@@ -246,6 +248,7 @@ export class Athlete {
     this.takeoffT = this.time;
     this.takeoffYaw = this.yaw;
     this.takeoffY = this.pos.y;
+    this.takeoffPos.copy(this.pos);
     this.peakY = this.pos.y;
     this.airT = 0;
     this.onTakeoff?.(this);

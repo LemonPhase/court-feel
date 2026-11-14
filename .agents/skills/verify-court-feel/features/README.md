@@ -49,6 +49,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Spike Drill](./spike-drill.md) covers a scored rep, set calls, the opposing block, replays, the camera toggle and resetting a rep.
 - [Pause and settings](./pause-settings.md) covers pausing, resuming, restarting, quitting, the quick settings, the Settings sheet and its tabs, the Athlete sheet, resetting to defaults, and persistence.
 - [Quick-start links](./quick-start-links.md) covers the URL parameters and their fallbacks for bad values.
+- [Serve Drill](./serve-drill.md) covers picking one of the three serves, the toss, serving a float, a jump float and a jump serve by hand, the 0 to 4 rating by the pass forced, and the toss and foot faults.
 - [Mini Rally](./mini-rally.md) covers the 6 v 6 rally: the serve, your set call, the point and the score, and re-serving.
 - [Touch controls](./touch-controls.md) covers the phone layout: the stick, the hold buttons, aiming, the top-row buttons and the setting that turns them on.
 
@@ -58,7 +59,7 @@ These are user-facing and have no feature file. A proof that touches one must sa
 
 - The first-run tutorial: `START THE TUTORIAL` on the welcome, the three guided balls (together, slow motion, full speed), `Skip tutorial`, the lesson's button under Learn (`START`, `CONTINUE`, `TAKE IT AGAIN`), `CONTINUE THE TUTORIAL` on the welcome of a lesson left part-way, the end dialog (`KEEP HITTING`, `Choose another drill`) and `?tutorial=N` links. `court state` reports it under `tutorial` and `saved.tutorial`, but no recipe drives it yet.
 - Learn's controls list and its `Keyboard and mouse` and `Touch` chips.
-- Free Play: feed types `1` to `5`, `f` feed now, `t` auto-feed, serve practice with `q`.
+- Free Play: feed types `1` to `4`, `f` feed now, `t` auto-feed, a toss of your own with `q`.
 - Block Drill: reading the set, the block jump, stuff and touch scoring.
 - Serve Receive / Dig: pass ratings 0 to 3, the setter and hitter finishing a good pass.
 - Setter Drill: looking at a hitter and setting with the right mouse button.
