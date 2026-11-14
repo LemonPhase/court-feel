@@ -489,6 +489,12 @@ export class TouchBot {
     const tArr = pred.descendThrough(h, now);
     if (tArr < 0) return;
     pred.posAt(tArr, this.b);
+    // a ball that comes down on the other side is not ours yet (their server's toss, their pass)
+    if (this.kind === 'pass' && this.b.z * me.side < 0) {
+      if (this.pressed) g.input.up(key);
+      this.pressed = false;
+      return;
+    }
     const sx = this.b.x - fx * fwd;
     const sz = this.b.z - fz * fwd;
     const dx = sx - me.pos.x;

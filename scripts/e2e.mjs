@@ -364,10 +364,12 @@ for (const [mode, pos, call = 0] of runs) {
       window.start(mode, pos, false, 'perfect', call);
       const g = window.__court;
       for (let i = 0; i < 60 * 30; i++) g.play(1 / 60);
-      // a rally plays on (up to 90 s) until the user has played the ball: whether the setter picks
-      // the user on the first sets is a roll of the seeded dice, which any AI change re-rolls
-      // (the seed-2024 MB run is first set at 59.8 s)
-      for (let i = 0; mode === 'rally' && i < 60 * 60 && !window.log.some((l) => l.who === 'me'); i++) g.play(1 / 60);
+      // a rally plays on (up to 90 s) until the user has played the ball and a point has ended: whether
+      // the setter picks the user on the first sets, and how long the first rally lasts, are rolls of the
+      // seeded dice, which any AI change re-rolls (the seed-2024 MB run is first set at 59.8 s, and the
+      // L run's first rally has lasted 30 s)
+      const played = () => window.log.some((l) => l.who === 'me') && window.log.some((l) => l.outcome);
+      for (let i = 0; mode === 'rally' && i < 60 * 60 && !played(); i++) g.play(1 / 60);
       const mine = window.log.filter((l) => l.who === 'me');
       const grades = {};
       for (const m of mine) grades[m.kind + ':' + m.grade] = (grades[m.kind + ':' + m.grade] || 0) + 1;
@@ -379,7 +381,7 @@ for (const [mode, pos, call = 0] of runs) {
         // the set call in effect (spike drill): proves selectCall reached the drill
         play: g.mode.play?.name ?? null,
         // the serve picked (serve drill), and how hard the user's serves were hit
-        serve: g.mode.kind ?? null,
+        serve: mode === 'serve' ? g.mode.kind : null,
         serveKmh: Math.max(0, ...mine.filter((m) => m.kind === 'serve').map((m) => m.kmh)),
         myContacts: grades,
         outcomes: window.log.filter((l) => l.outcome).length,
