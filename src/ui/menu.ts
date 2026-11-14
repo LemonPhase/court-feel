@@ -10,6 +10,7 @@ import {
   type NumericSettingKey,
   type PositionId,
   type Settings,
+  type VenueId,
 } from '../config';
 import { BUILD_LABEL } from '../core/build';
 import { defaultSettings, systemPrefersReducedMotion } from '../core/settings';
@@ -133,6 +134,10 @@ export interface MenuCallbacks {
   restart(): void;
   quit(): void;
   settingsChanged(): void;
+  /** the venue the court is standing in: a link's `venue=` can make it differ from the saved one */
+  venue(): VenueId;
+  /** a venue was picked in Settings: save it, and end a link's `venue=` */
+  pickVenue(id: VenueId): void;
 }
 
 /**
@@ -1070,8 +1075,9 @@ export class Menu {
       seg(
         'Venue',
         VENUE_IDS.map((id) => VENUES[id].name),
-        () => VENUE_IDS.indexOf(s.venue),
-        (i) => (s.venue = VENUE_IDS[i]),
+        // the venue the court is standing in, which a link's `venue=` can make differ from the saved one
+        () => VENUE_IDS.indexOf(this.cb.venue()),
+        (i) => this.cb.pickVenue(VENUE_IDS[i]),
         'Where the court stands. The court and the net are the same everywhere. Outdoors there is no ceiling.',
       ),
     ]);

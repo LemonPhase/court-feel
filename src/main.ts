@@ -147,6 +147,8 @@ const menu = new Menu(app, settings, {
     game.applySettings();
     touch.setEnabled(wantsTouch(settings.touchControls));
   },
+  venue: () => game.venue,
+  pickVenue: (id) => game.pickVenue(id),
 });
 window.__menu = menu;
 

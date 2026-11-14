@@ -298,4 +298,25 @@ describe('the ceiling and the open sky', () => {
     expect(b.p).toEqual(a.p);
     expect(b.v).toEqual(a.v);
   });
+
+  it('outdoors a ball shanked 21 m up is in the air longer than any ball under a roof, and its landing is still known', () => {
+    const shank = () => ballAt({ x: 0, y: 1, z: 4 }, { x: 0, y: 25, z: -0.3 });
+    const open = { netTop: COURT.netHeightMen, ceiling: null };
+    const predictor = new BallPredictor(DT, SIM.predictHorizonOpenSky);
+    // the horizon a roof allows is too short for it
+    predictor.setHorizon(SIM.predictHorizon);
+    predictor.compute(shank(), open, 0);
+    expect(predictor.landT).toBe(-1);
+    predictor.setHorizon(SIM.predictHorizonOpenSky);
+    predictor.compute(shank(), open, 0);
+    expect(predictor.landT).toBeGreaterThan(SIM.predictHorizon);
+    expect(predictor.landT).toBeLessThan(SIM.predictHorizonOpenSky);
+  });
+
+  it('under a roof the same shank is down well inside the indoor horizon', () => {
+    const predictor = new BallPredictor(DT, SIM.predictHorizon);
+    predictor.compute(ballAt({ x: 0, y: 1, z: 4 }, { x: 0, y: 25, z: -0.3 }), env, 0);
+    expect(predictor.landT).toBeGreaterThan(0);
+    expect(predictor.landT).toBeLessThan(SIM.predictHorizon);
+  });
 });

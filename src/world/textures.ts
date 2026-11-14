@@ -103,7 +103,6 @@ export function makeWoodTextures(tileMetres = 4): { map: THREE.CanvasTexture; ro
   return { map, rough, gray };
 }
 
-/** Net mesh: 10cm squares of dark cord, knotted at the crossings. Tile covers 1m x 1m. */
 /**
  * A painted hard court seen close: grit in the acrylic, and coats that went on a little unevenly.
  * `map` is near white (it multiplies the paint's colour), `rough` varies the sheen, `bump` is the grit.
@@ -189,6 +188,7 @@ export function makePaintTextures(strength: number): { map: THREE.CanvasTexture;
   return { map: wrap(c, true), rough: wrap(rc, false), bump: wrap(bc, false) };
 }
 
+/** Net mesh: 10cm squares of dark cord, knotted at the crossings. Tile covers 1m x 1m. */
 export function makeNetTexture(): THREE.CanvasTexture {
   const size = 512;
   const [c, ctx] = canvas(size, size);

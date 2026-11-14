@@ -40,6 +40,12 @@ export class FloorReflection {
     this.map = { value: this.target.texture };
   }
 
+  /** free the mirror's image and its stand-in (the arena is being thrown away) */
+  dispose(): void {
+    this.target.dispose();
+    this.black.dispose();
+  }
+
   /** `w`, `h`: drawing-buffer size of the main view in pixels */
   setSize(w: number, h: number): void {
     const s = ARENA.reflection.scale;

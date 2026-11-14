@@ -549,7 +549,9 @@ function seaside(group: THREE.Group, env: VenueSpec): THREE.ShaderMaterial {
 function gym(group: THREE.Group): void {
   const hx = EDGE_X + 0.3;
   const hz = EDGE_Z + 0.3;
-  const h = COURT.ceiling + 0.4;
+  // the lamps hang 2.26 m below the roof and the beams come down 0.9 m: the roof stands high enough that
+  // both clear the 12.5 m a ball may reach, so a high ball goes dead just under the lamps and never flies through one
+  const h = COURT.ceiling + 2.4;
   const wallTex = paint(512, 512, (ctx) => {
     // painted blockwork above timber panelling
     ctx.fillStyle = '#b9b3a2';

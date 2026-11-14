@@ -213,6 +213,8 @@ export class Game {
     this.user.athlete = this.me;
     this.actions = new UserActions(this);
     this.fx = new Effects(this, container);
+    // the venue was applied above, before there was a ball or any sound: a saved or linked venue starts with its own
+    this.applyVenueToBallAndSound();
 
     this.applySettings();
     window.addEventListener('resize', () => this.resize());
@@ -407,14 +409,20 @@ export class Game {
   }
 
   // ------------------------------------------------------------ venue
-  /** what the venue sets outside the arena itself: the athletes' light, the grade, the crowd's sound, and whether the sky is open */
+  /** what the venue sets outside the arena itself: the athletes' light, the grade, and whether the sky is open */
   private applyVenue(): void {
     BODY_LIGHT.rim.value = CHARACTER.rim * VENUE.body.rim;
     BODY_LIGHT.side.value = CHARACTER.sideFill * VENUE.body.side;
     this.post.setGrade(VENUE.grade);
     // the one thing a venue changes about play (docs/adr/0009): outdoors nothing stops the ball overhead
     this.env.ceiling = VENUE.openSky ? null : COURT.ceiling;
-    this.fx?.audio.setCrowdShare(VENUE.crowdSound);
+  }
+
+  /** the rest of what a venue sets, on things the constructor builds after the arena: the predictor's reach and the crowd's sound */
+  private applyVenueToBallAndSound(): void {
+    // with no roof a ball can stay up longer than any ball can indoors: look as far ahead as it can fly
+    this.ball.predictor.setHorizon(VENUE.openSky ? SIM.predictHorizonOpenSky : SIM.predictHorizon);
+    this.fx.audio.setCrowdShare(VENUE.crowdSound);
   }
 
   /** rebuild what stands round the court (the court, the net and everyone on it stay where they are) */
@@ -425,9 +433,25 @@ export class Game {
     this.arena = new Arena(this.renderer, this.scene);
     this.arena.setNetHeight(netTop);
     this.applyVenue();
+    this.applyVenueToBallAndSound();
     this.ball.version++;
     // the mirror's size and the quality level's choices belong to the arena that was thrown away
     this.setQuality(this.quality);
+  }
+
+  /** the venue the court is standing in */
+  get venue(): VenueId {
+    return VENUE_ID;
+  }
+
+  /**
+   * The player picked a venue in Settings: that pick is saved and it ends a link's `venue=`, even when it
+   * is the venue that was already saved (otherwise the saved one could not be chosen back from a link).
+   */
+  pickVenue(id: VenueId): void {
+    this.settings.venue = id;
+    this.venueSetting = id;
+    this.venueOverride = null;
   }
 
   // ------------------------------------------------------------ settings

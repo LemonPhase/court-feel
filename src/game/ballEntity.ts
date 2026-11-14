@@ -35,7 +35,7 @@ export class BallEntity {
   private markerDotBack: THREE.Mesh;
   /** thin post standing on the landing spot: readable from low camera angles where a floor ring is foreshortened */
   private markerPin: THREE.Mesh;
-  readonly predictor = new BallPredictor(1 / SIM.hz, SIM.predictHorizon);
+  readonly predictor = new BallPredictor(1 / SIM.hz, Math.max(SIM.predictHorizon, SIM.predictHorizonOpenSky));
   /** bumped whenever someone changes the velocity (prediction invalidated) */
   version = 0;
   private predictedVersion = -1;

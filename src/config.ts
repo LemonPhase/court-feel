@@ -77,8 +77,14 @@ export const SIM = {
   hz: 120,
   /** clamp for very long frames so we do not spiral */
   maxFrameDt: 0.1,
-  /** how far ahead the ball predictor looks (s) */
+  /** how far ahead the ball predictor looks (s): under the 12.5 m roof no ball stays up longer than about 3.2 s */
   predictHorizon: 4.0,
+  /**
+   * the same outdoors, where nothing stops a ball overhead: one sent up at 25 m/s (a shanked dig of a hard
+   * spike) peaks near 21.5 m and is in the air for 4.15 s, so 4 s would lose its landing. 6 s covers a ball
+   * sent up at well over 30 m/s (timed with `stepBall`; tests/physics.test.ts).
+   */
+  predictHorizonOpenSky: 6.0,
 };
 
 export type PositionId = 'OH' | 'OPP' | 'MB' | 'S' | 'L';

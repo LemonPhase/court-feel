@@ -22,6 +22,8 @@ export class Arena {
   private time = 0;
   keyLight!: THREE.DirectionalLight;
   envMap: THREE.Texture | null = null;
+  /** the baked reflection `envMap` is the texture of (freed with the arena) */
+  private envTarget: THREE.WebGLRenderTarget | null = null;
   readonly reflection: FloorReflection;
   /** where the ball last let go of the mesh: x, y (in the mesh's own frame), how far it had pushed it (m, signed along z), when */
   private netHits = { value: Array.from({ length: ARENA.net.hits }, () => new THREE.Vector4()) };
@@ -72,31 +74,43 @@ export class Arena {
     const F = VENUE.floor;
     // boards indoors; outdoors the grit and the coats of a painted court (the patches' UVs run in 4 m tiles)
     const gritty = !F.wood && F.grain > 0;
+    const wood = F.wood ? makeWoodTextures(4) : null;
     const grit = gritty ? makePaintTextures(F.grain) : null;
-    const { map, rough, gray } = grit ? { ...grit, gray: null } : makeWoodTextures(4);
-    const bump = grit ? grit.bump : null;
     const perTile = gritty ? 4 / PAINT_TILE : 1;
-    const mkMat = (color: number, roughness: number, tile = 4, painted = false) => {
-      const m = (painted && gray ? gray : map).clone();
-      const r = rough.clone();
-      const b = bump ? bump.clone() : r;
-      m.needsUpdate = r.needsUpdate = b.needsUpdate = true;
-      // a laid indoor court has no boards and no grit: one even colour, one roughness
-      const mat = new THREE.MeshStandardMaterial(
-        F.wood
-          ? { color, map: m, roughnessMap: r, roughness, metalness: 0, envMapIntensity: 1 }
-          : gritty
-            ? { color, map: m, roughnessMap: r, bumpMap: b, bumpScale: ARENA.paintGrit, roughness, metalness: 0, envMapIntensity: 1 }
-            : { color, roughness, metalness: 0, envMapIntensity: 1 },
-      );
+    const mkMat = (color: number, roughness: number, painted = false) => {
+      // each patch has its own copies, so each can be tiled to its own size
+      const own = (t: THREE.Texture) => {
+        const c = t.clone();
+        c.needsUpdate = true;
+        return c;
+      };
+      let maps: THREE.Texture[] = [];
+      let mat: THREE.MeshStandardMaterial;
+      if (wood) {
+        maps = [own(painted ? wood.gray : wood.map), own(wood.rough)];
+        mat = new THREE.MeshStandardMaterial({ color, map: maps[0], roughnessMap: maps[1], roughness, metalness: 0, envMapIntensity: 1 });
+      } else if (grit) {
+        maps = [own(grit.map), own(grit.rough), own(grit.bump)];
+        mat = new THREE.MeshStandardMaterial({
+          color,
+          map: maps[0],
+          roughnessMap: maps[1],
+          bumpMap: maps[2],
+          bumpScale: ARENA.paintGrit,
+          roughness,
+          metalness: 0,
+          envMapIntensity: 1,
+        });
+      } else {
+        // a laid indoor court has no boards and no grit: one even colour, one roughness, and nothing painted for it
+        mat = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0, envMapIntensity: 1 });
+      }
       this.reflection.apply(mat);
-      return { mat, m, r, b, tile };
+      return { mat, maps };
     };
     // natural wood everywhere
     const base = mkMat(F.base, F.rough[0]);
-    base.m.repeat.set((fullX / 4) * perTile, (fullZ / 4) * perTile);
-    base.r.repeat.copy(base.m.repeat);
-    base.b.repeat.copy(base.m.repeat);
+    for (const t of base.maps) t.repeat.set((fullX / 4) * perTile, (fullZ / 4) * perTile);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(fullX, fullZ), base.mat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -107,7 +121,7 @@ export class Arena {
     // free zone paint (deep blue, still glossy so reflections read)
     const fzX = COURT.halfWidth + COURT.freeZoneSide;
     const fzZ = COURT.halfLength + COURT.freeZoneEnd;
-    const free = mkMat(F.free, F.rough[1], 4, F.free !== F.base);
+    const free = mkMat(F.free, F.rough[1], F.free !== F.base);
     const court = mkMat(F.court, F.rough[2]);
     const paint = (mat: THREE.MeshStandardMaterial, x0: number, x1: number, z0: number, z1: number, y: number, tex: THREE.Texture[]) => {
       const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
@@ -136,12 +150,12 @@ export class Arena {
     const hw = COURT.halfWidth;
     const hl = COURT.halfLength;
     // frame of four rectangles around the court
-    paint(free.mat, -fzX, fzX, -fzZ, -hl, 0.001, [free.m, free.r, free.b]);
-    paint(free.mat, -fzX, fzX, hl, fzZ, 0.001, [free.m, free.r, free.b]);
-    paint(free.mat, -fzX, -hw, -hl, hl, 0.001, [free.m, free.r, free.b]);
-    paint(free.mat, hw, fzX, -hl, hl, 0.001, [free.m, free.r, free.b]);
+    paint(free.mat, -fzX, fzX, -fzZ, -hl, 0.001, free.maps);
+    paint(free.mat, -fzX, fzX, hl, fzZ, 0.001, free.maps);
+    paint(free.mat, -fzX, -hw, -hl, hl, 0.001, free.maps);
+    paint(free.mat, hw, fzX, -hl, hl, 0.001, free.maps);
     // court interior
-    paint(court.mat, -hw, hw, -hl, hl, 0.002, [court.m, court.r, court.b]);
+    paint(court.mat, -hw, hw, -hl, hl, 0.002, court.maps);
   }
 
   private buildLines(): void {
@@ -463,12 +477,7 @@ export class Arena {
       b.position.set(0, 0.45, sx * 16.1);
       envScene.add(b);
     }
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const rt = pmrem.fromScene(envScene, 0.035, 0.1, 100);
-    this.envMap = rt.texture;
-    this.scene.environment = rt.texture;
-    this.scene.environmentIntensity = VENUE.light.env;
-    pmrem.dispose();
+    this.bakeEnvironment(envScene);
   }
 
   /** Outdoors the reflections come from the sky itself, the ground under it and the lit court */
@@ -480,12 +489,24 @@ export class Arena {
     g.rotation.x = -Math.PI / 2;
     g.position.y = -0.5;
     envScene.add(g);
+    this.bakeEnvironment(envScene);
+  }
+
+  /** bake the stand-in scene into the reflection everything is lit by, then free the stand-in: it was drawn once */
+  private bakeEnvironment(envScene: THREE.Scene): void {
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const rt = pmrem.fromScene(envScene, 0.035, 0.1, 100);
+    this.envTarget = rt;
     this.envMap = rt.texture;
     this.scene.environment = rt.texture;
     this.scene.environmentIntensity = VENUE.light.env;
     pmrem.dispose();
+    envScene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      // its materials hold no textures of their own (the sky's is the dome's, and is freed with it)
+      for (const mat of Array.isArray(m.material) ? m.material : m.material ? [m.material] : []) mat.dispose();
+    });
   }
 
   /** Take the arena out of the scene and free what it holds on the GPU (the venue is being changed). */
@@ -499,15 +520,22 @@ export class Arena {
         if (seen.has(mat)) continue;
         seen.add(mat);
         for (const v of Object.values(mat)) if (v instanceof THREE.Texture) v.dispose();
+        // a shader's textures are in its uniforms (the crowd's atlas)
+        const uniforms = (mat as THREE.ShaderMaterial).uniforms as Record<string, THREE.IUniform> | undefined;
+        if (uniforms) for (const u of Object.values(uniforms)) if (u.value instanceof THREE.Texture) u.value.dispose();
         mat.dispose();
       }
+      // the chairs and the festoon bulbs: three frees an instanced mesh's own buffers only when asked
+      if ((o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).dispose();
       const light = o as THREE.DirectionalLight;
       if (light.isDirectionalLight) light.shadow.map?.dispose();
     });
     this.skyTex?.dispose();
-    this.envMap?.dispose();
+    this.envTarget?.dispose();
+    this.envTarget = null;
+    this.envMap = null;
     this.scene.environment = null;
-    this.reflection.target.dispose();
+    this.reflection.dispose();
   }
 
   /**
