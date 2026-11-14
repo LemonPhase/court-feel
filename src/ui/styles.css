@@ -102,6 +102,13 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .pill { display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 44px; height: 44px; padding: 0 14px; border-radius: 999px; background: rgba(10,12,20,0.6);
   border: 1px solid rgba(255,255,255,0.22); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .pill b { font-style: italic; font-weight: 900; color: var(--gold); }
+.venue-pick { position: relative; }
+.venue-menu { position: absolute; top: 52px; right: 0; z-index: 5; min-width: 180px; padding: 6px; display: flex; flex-direction: column; gap: 2px; border-radius: 14px;
+  background: rgba(10,12,20,0.94); border: 1px solid rgba(255,255,255,0.22); box-shadow: 0 14px 40px rgba(0,0,0,0.5); }
+.venue-menu[hidden] { display: none; }
+.venue-opt { min-height: 44px; padding: 0 14px; border: 0; border-radius: 9px; background: none; text-align: left; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.venue-opt:hover { background: rgba(255,255,255,0.08); }
+.venue-opt.on { color: var(--gold); background: rgba(255,210,63,0.14); font-weight: 700; }
 
 .view { flex: 1; min-height: 0; display: none; gap: 28px; padding: 28px 40px 32px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .view.on { display: flex; }

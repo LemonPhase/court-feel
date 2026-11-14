@@ -115,7 +115,7 @@ Real frames from the game: no paint-overs, no staged cameras.
       <b>On your phone.</b> A joystick for your feet, drag to aim, hold to jump and hold to swing. The timing windows are the same as on a keyboard.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/start-screen.jpg" alt="Start screen, Train: the five drills in a list, and the Spike Drill's panel with its own keys, the five positions to play it as, and PLAY">
+      <img src="docs/screenshots/start-screen.jpg" alt="Start screen, Train: the five drills in a list, the Spike Drill's panel with its own keys, the five positions to play it as, and PLAY; the venue, athlete and settings pills at the top right">
       <b>Pick a drill.</b> Each drill shows what it scores, its own keys and the position you play it as.
     </td>
   </tr>
@@ -508,8 +508,9 @@ contact rules do not know it is there.
   (a hand may reach across only above it, as a block does), a landing lean
   stops short of the net, and toes and knees stay behind the centre line. The
   mesh goes in with a ball driven into it and settles when the ball lets go.
-* **Venues.** The same court stands in five places, chosen under Settings,
-  Court (see [Venues](#venues)).
+* **Venues.** The same court stands in five places, chosen from the venue
+  pill at the top of the start screen or under Settings, Court (see
+  [Venues](#venues)).
 * **The hall.** Two tiers of seats with a crowd in the half-light, an LED ribbon
   round the balcony, boards round the free zone, roof lamps, and a varnished
   floor that mirrors the players, the net and the boards. On a slow machine the
@@ -519,7 +520,9 @@ contact rules do not know it is there.
 
 ### Venues
 
-Settings, Court, **Venue** moves the court. The court, the net, the lines, the
+The venue pill at the top right of the start screen moves the court, and the
+court behind the menu changes as you pick. Settings, Court, **Venue** is the
+same choice, for a change in the middle of a drill. The court, the net, the lines, the
 free zone, the athletes and the AI are the same in all five: a drill plays the
 same contacts at the same times in every one. `venue=<id>` on a link shows a
 venue for that visit without changing the saved one.
