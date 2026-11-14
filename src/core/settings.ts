@@ -2,6 +2,7 @@ import {
   DEFAULT_SETTINGS,
   SETTING_RANGES,
   TOUCH_CONTROL_MODES,
+  isVenueId,
   type BooleanSettingKey,
   type NumericSettingKey,
   type Settings,
@@ -29,6 +30,7 @@ export const VALIDATED_KEYS: readonly (keyof Settings)[] = [
   'touchControls',
   'bodies',
   'hand',
+  'venue',
 ];
 
 /** does the OS ask for reduced motion? (false where matchMedia is unavailable) */
@@ -76,6 +78,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings = DEFAULT_SETT
   const tc = src.touchControls;
   if (TOUCH_CONTROL_MODES.includes(tc as Settings['touchControls'])) out.touchControls = tc as Settings['touchControls'];
   if (src.hand === 'left' || src.hand === 'right') out.hand = src.hand;
+  if (isVenueId(src.venue)) out.venue = src.venue;
   return out;
 }
 

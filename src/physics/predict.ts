@@ -30,11 +30,20 @@ export class BallPredictor {
     const n = Math.ceil(horizon / dt) + 1;
     this.pos = new Float32Array(n * 3);
     this.vel = new Float32Array(n * 3);
+    this.steps = n;
+  }
+
+  /** samples a prediction runs to: the whole buffer unless `setHorizon` asked for less */
+  private steps: number;
+
+  /** look this far ahead (s) from the next `compute` on, up to the horizon the predictor was built with */
+  setHorizon(seconds: number): void {
+    this.steps = Math.min(this.pos.length / 3, Math.ceil(seconds / this.dt) + 1);
   }
 
   compute(state: BallState, env: BallEnv, t0: number): void {
     const s = copyBall(state, this.sim);
-    const n = this.pos.length / 3;
+    const n = this.steps;
     this.t0 = t0;
     this.landT = -1;
     this.netCrossT = -1;

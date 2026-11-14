@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { BALL, SIM } from '../config';
+import { BALL, BALL_LOOK, SIM } from '../config';
 import { clamp01, damp, lerp } from '../core/mathx';
 import { copyBall, makeBall, R, stepBall, type BallEnv, type BallState, type CollisionEvent } from '../physics/ball';
 import { BallPredictor } from '../physics/predict';
-import { makeBallTexture, makeBlobTexture, makeRingTexture } from '../world/textures';
+import { makeBallTextures, makeBlobTexture, makeRingTexture } from '../world/textures';
 import type { Athlete } from './athlete';
 
 export type TouchKind = 'spike' | 'tip' | 'block' | 'pass' | 'dig' | 'set' | 'serve' | 'free' | 'feed';
@@ -35,7 +35,7 @@ export class BallEntity {
   private markerDotBack: THREE.Mesh;
   /** thin post standing on the landing spot: readable from low camera angles where a floor ring is foreshortened */
   private markerPin: THREE.Mesh;
-  readonly predictor = new BallPredictor(1 / SIM.hz, SIM.predictHorizon);
+  readonly predictor = new BallPredictor(1 / SIM.hz, Math.max(SIM.predictHorizon, SIM.predictHorizonOpenSky));
   /** bumped whenever someone changes the velocity (prediction invalidated) */
   version = 0;
   private predictedVersion = -1;
@@ -52,18 +52,20 @@ export class BallEntity {
   lastLaunchT = 0;
 
   constructor(scene: THREE.Scene) {
-    const tex = makeBallTexture();
+    const { map: tex, bump } = makeBallTextures();
     this.mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(R, 32, 20),
+      new THREE.SphereGeometry(R, 48, 32),
       new THREE.MeshStandardMaterial({
         map: tex,
-        roughness: 0.42,
+        bumpMap: bump,
+        bumpScale: BALL_LOOK.seamDepth,
+        roughness: 0.46,
         metalness: 0,
         envMapIntensity: 0.9,
         // a touch of self-illumination keeps the ball readable from below against the ceiling
         emissive: 0xffffff,
         emissiveMap: tex,
-        emissiveIntensity: 0.22,
+        emissiveIntensity: BALL_LOOK.glow,
       }),
     );
     this.mesh.castShadow = true;
@@ -208,10 +210,22 @@ export class BallEntity {
     // were not part of it (they always are: the predictor uses the same step)
   }
 
-  interpolate(alpha: number): void {
-    const a = this.prev.p;
-    const b = this.state.p;
-    this.rpos.set(lerp(a.x, b.x, alpha), lerp(a.y, b.y, alpha), lerp(a.z, b.z, alpha));
+  /**
+   * Where the ball was touched, for the frame a hit-stop holds. A step resolves the contact and then
+   * moves the ball at its new speed, so by the time the frame is drawn a spike is up to half a metre
+   * down its line: the freeze showed the hand at the touch and the ball somewhere past it.
+   */
+  private held: THREE.Vector3 | null = null;
+
+  /** draw the ball at this point for as long as the hit-stop holds the frame (the simulation is not touched) */
+  holdDrawn(x: number, y: number, z: number): void {
+    (this.held ??= new THREE.Vector3()).set(x, y, z);
+  }
+
+  /** `frozen`: a hit-stop is holding this frame */
+  interpolate(alpha: number, frozen = false): void {
+    if (!frozen) this.held = null;
+    drawnBallPos(this.prev.p, this.state.p, alpha, this.held, this.rpos);
     this.mesh.position.copy(this.rpos);
     this.mesh.quaternion.slerpQuaternions(this.prevQ, this.q, alpha);
   }
@@ -280,6 +294,21 @@ export class BallEntity {
     this.markerDotBack.visible = false;
     this.markerPin.visible = false;
   }
+}
+
+/**
+ * Where the ball is drawn: between its last two simulated positions, or, on a frame a hit-stop
+ * holds, where it was touched (`held`).
+ */
+export function drawnBallPos(
+  prev: { x: number; y: number; z: number },
+  cur: { x: number; y: number; z: number },
+  alpha: number,
+  held: { x: number; y: number; z: number } | null,
+  out: THREE.Vector3,
+): THREE.Vector3 {
+  if (held) return out.set(held.x, held.y, held.z);
+  return out.set(lerp(prev.x, cur.x, alpha), lerp(prev.y, cur.y, alpha), lerp(prev.z, cur.z, alpha));
 }
 
 const _axis = new THREE.Vector3();
