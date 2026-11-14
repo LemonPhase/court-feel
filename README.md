@@ -111,7 +111,7 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/serve-drill-jump-serve.jpg" alt="Serve Drill from behind the server: in the air over the end line, the arm through the ball, PERFECT 95 km/h full power, six receivers waiting on the far court">
+      <img src="docs/screenshots/serve-drill-jump-serve.jpg" alt="Serve Drill from behind the server: in the air over the end line, the arm through the ball, PERFECT 95 km/h full power to one side of the flight, six receivers waiting on the far court">
       <b>Your serve.</b> Standing float, jump float or jump serve: the toss, then a spike's run-up, jump and swing. This one took off a metre behind the end line.
     </td>
     <td width="50%" valign="top">
