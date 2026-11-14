@@ -23,6 +23,7 @@ export const ICONS = {
   sound: svg(
     '<path d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3z"/><path d="M15.5 9.2c1.2 1.6 1.2 4 0 5.6"/><path d="M18.2 6.8c2.3 3 2.3 7.4 0 10.4"/>',
   ),
+  venue: svg('<path d="M12 20.5s-6.5-5.9-6.5-10.6a6.5 6.5 0 0 1 13 0c0 4.7-6.5 10.6-6.5 10.6z"/><circle cx="12" cy="9.9" r="2.3"/>'),
   court: svg(
     '<rect x="4.5" y="3.5" width="15" height="17" rx="1"/><path d="M2.5 12h19"/><path d="M4.5 8.5h15M4.5 15.5h15" stroke-width="1.2"/>',
   ),
