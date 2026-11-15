@@ -109,14 +109,14 @@ export const DRILL_INFO: Record<ModeId, DrillInfo> = {
     scored: 'the pass you force, 0 to 4: 0 a fault (net, out, foot fault, a toss not hit), 1 a perfect pass, 4 an ace',
     keys: [
       { k: '1  2  3', a: 'Standing float, jump float, jump serve' },
-      { k: 'Q', a: 'Toss' },
+      { k: 'Q', a: 'Toss. Hold it longer for a higher toss.' },
       { k: 'Left mouse', a: 'Hold to wind up, release as the ball comes down' },
       { k: 'Shift + W', a: 'Jump float, jump serve: run in under the toss' },
       { k: 'Space', a: 'Jump behind the end line. Hold to load.' },
     ],
     touch: [
       { k: 'SERVE', a: 'Top left: standing float, jump float, jump serve' },
-      { k: 'TOSS', a: 'Toss' },
+      { k: 'TOSS', a: 'Toss. Hold it longer for a higher toss.' },
       { k: 'HIT', a: 'Hold to wind up, release as the ball comes down' },
       { k: 'Left thumb', a: 'Jump float, jump serve: push the stick out to run in under the toss' },
       { k: 'JUMP', a: 'Jump behind the end line' },
@@ -203,7 +203,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
       rows: [
         { k: 'Space', a: 'Plant and jump. Hold to load.' },
         { k: 'Left mouse', a: 'Hold to wind up, release to spike. Longer is harder; a tap is a tip.' },
-        { k: 'Q', a: 'Serve toss. Then run, jump and swing as for a spike.' },
+        { k: 'Q', a: 'Serve toss: hold longer for a higher toss. Then run, jump and swing as for a spike.' },
       ],
     },
     {
@@ -260,7 +260,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
       title: 'Game',
       rows: [
         { k: 'Top right', a: 'Pause, camera, reset the rep, and REPLAY your last attempt' },
-        { k: 'TOSS', a: 'Serve toss (Serve Drill, Free Play)' },
+        { k: 'TOSS', a: 'Serve toss: hold longer for a higher toss (Serve Drill, Free Play)' },
       ],
     },
     {

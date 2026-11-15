@@ -90,7 +90,7 @@ export class ServeDrill extends Mode {
     g.hud.setTitle('Serve Drill');
     this.updateScore();
     // (on touch the key names become the buttons': "toss: Q" reads "toss: TOSS")
-    g.hud.message('Pick your serve: 1 2 3 · toss: Q · serve at the seams', 3.5);
+    g.hud.message('Pick your serve: 1 2 3 · hold to toss higher: Q · serve at the seams', 3.5);
   }
 
   /** pick the serve for the next toss (0-based: standing float, jump float, jump serve) */
@@ -142,8 +142,8 @@ export class ServeDrill extends Mode {
     if (this.phase === 'ready') {
       if (this.g.userReturning) return `Back behind the end line · ${pick}`;
       return this.kind === 'float'
-        ? `${kbd('Q')} toss · hold ${kbd('LMB')}, release as the ball comes down · ${aim} · ${pick}`
-        : `${kbd('Q')} toss · ${kbd('Shift')}+${kbd('W')} run in under it · ${kbd('Space')} jump · hold/release ${kbd('LMB')} · ${aim} · ${pick}`;
+        ? `hold ${kbd('Q')}: longer is a higher toss · hold ${kbd('LMB')}, release as the ball comes down · ${aim} · ${pick}`
+        : `hold ${kbd('Q')}: longer is a higher toss · ${kbd('Shift')}+${kbd('W')} run in under it · ${kbd('Space')} jump · hold/release ${kbd('LMB')} · ${aim} · ${pick}`;
     }
     if (this.phase === 'toss')
       return this.kind === 'float'

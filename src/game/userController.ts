@@ -109,7 +109,7 @@ export class UserController {
     rel('Mouse0', 'attack', 'attack');
     rel('Mouse2', 'block', 'block');
     rel('KeyE', 'pass', 'pass');
-    this.input.consumeRelease('KeyQ');
+    rel('KeyQ', 'toss', 'toss');
 
     // ---- retry buffered presses
     if (this.buffer.length) {

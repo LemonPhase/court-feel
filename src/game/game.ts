@@ -979,7 +979,8 @@ export class Game {
     // spike wind-up: power ring, a tick at full charge, a swish on release
     const wind = me.action?.kind === 'windup' ? me.action : null;
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;
-    this.hud.setCharge(wind && !this.inMenu ? charge : null);
+    // (the same ring shows how high a toss being held will go)
+    this.hud.setCharge(this.inMenu ? null : wind ? charge : this.actions.tossHold());
     const collarErr =
       this.idealValid && me.state === 'air' && !this.inMenu
         ? this.simTime + ContactSystem.swingLead(wind ? charge : 0) - this.idealCache.t

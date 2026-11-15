@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BALL, PLAYER, SIM, TIMING } from '../config';
 import { Athlete } from './athlete';
-import { AIM_DEPTH, aimPitchFor, aimPitchRange, ContactSystem } from './contact';
+import { AIM_DEPTH, aimPitchFor, aimPitchRange, ContactSystem, tossGroove } from './contact';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Game } from './game';
@@ -524,11 +524,14 @@ export class TouchBot {
   }
 }
 
-/** where the serve autopilot aims, in turn: deep to zone 5, deep to zone 1, the middle of the court */
+/**
+ * where the serve autopilot aims, in turn: deep to zone 5, deep to zone 1, deep down the middle (a
+ * full-power jump serve aimed shorter than about 7 m is in the tape, and 6.5 m was on the edge of it)
+ */
 const SERVE_AIMS: readonly { x: number; z: number }[] = [
   { x: -3, z: -7.3 },
   { x: 3, z: -7.3 },
-  { x: 0, z: -6.5 },
+  { x: 0, z: -7.5 },
 ];
 
 /**
@@ -622,7 +625,11 @@ export class ServeBot {
         break;
       }
       case 'toss': {
-        inp.up('KeyQ');
+        // hold the toss button for the serve's own height, then let go
+        if (inp.isDown('KeyQ')) {
+          if (this.t >= tossGroove()) inp.up('KeyQ');
+          break;
+        }
         if (g.contact.serving !== me) {
           // the toss was not taken (or has come down): start again
           if (this.t > 0.3) this.to('done');

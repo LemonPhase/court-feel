@@ -1,3 +1,6 @@
+import { SERVE } from '../config';
+import { clamp01 } from '../core/mathx';
+import { tossFor } from './contact';
 import type { Game } from './game';
 
 /**
@@ -42,7 +45,9 @@ export class UserActions {
         act.releaseT = this.g.simTime;
       }
     };
-    u.handlers.toss = () => this.toss();
+    // the toss button is held: the longer, the higher the toss (`SERVE.hold`), tossed on the release
+    u.handlers.toss = () => this.beginToss();
+    u.releaseHandlers.toss = () => this.toss();
   }
 
   /** attack button down: start the wind-up (from the plant, in the air, or under a serve toss) */
@@ -81,9 +86,27 @@ export class UserActions {
     return true;
   }
 
-  private toss(): boolean {
+  /** when the toss button went down (sim time), -1 while it is not held */
+  private tossAt = -1;
+
+  private beginToss(): boolean {
     const g = this.g;
-    return g.contact.serveToss(g.me, g.serveKind);
+    if (!g.contact.canToss(g.me)) return false;
+    this.tossAt = g.simTime;
+    return true;
+  }
+
+  private toss(): void {
+    const g = this.g;
+    if (this.tossAt < 0) return;
+    const hold = g.simTime - this.tossAt;
+    this.tossAt = -1;
+    g.contact.serveToss(g.me, g.serveKind, tossFor(g.serveKind, hold));
+  }
+
+  /** how high the toss being held would go, 0 (a tap) to 1 (the highest), or null while the button is up */
+  tossHold(): number | null {
+    return this.tossAt < 0 ? null : clamp01((this.g.simTime - this.tossAt) / SERVE.hold.full);
   }
 
   /** per fixed step: zone contacts for held actions */

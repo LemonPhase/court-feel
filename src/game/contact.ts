@@ -955,11 +955,15 @@ export class ContactSystem {
    * appears in the tossing hand and goes `tossHigh` m over the standing reach, `toss` m ahead by
    * the time it is back at the hand)
    */
+  /** may `a` toss a serve now (the ball is theirs to serve, and their feet are on the floor) */
+  canToss(a: Athlete): boolean {
+    return this.host.canServe(a) && a.state === 'ground';
+  }
+
   serveToss(a: Athlete, kind: ServeKind = 'float', own: { toss: number; tossHigh: number } = SERVE[kind]): boolean {
     const { toss: forward, tossHigh: above } = own;
     const h = this.host;
-    if (!h.canServe(a)) return false;
-    if (a.state !== 'ground') return false;
+    if (!this.canToss(a)) return false;
     const f = dirFromYaw(a.yaw, _f);
     // the toss goes up in front of the hitting shoulder (a lefty tosses with the right hand to the left)
     const r = a.hitSide(_r);
@@ -980,6 +984,21 @@ export class ContactSystem {
   serving: Athlete | null = null;
   /** which serve that toss was for */
   serveKind: ServeKind = 'float';
+}
+
+/**
+ * The toss of a serve whose toss button was held `hold` s (`SERVE.hold`): the serve's own toss,
+ * lower for a tap and higher the longer the hold. It comes down the same distance ahead.
+ */
+export function tossFor(kind: ServeKind, hold: number): { toss: number; tossHigh: number } {
+  const H = SERVE.hold;
+  return { toss: SERVE[kind].toss, tossHigh: SERVE[kind].tossHigh * lerp(H.low, H.high, clamp01(hold / H.full)) };
+}
+
+/** how long the toss button is held for a serve's own toss height (s) */
+export function tossGroove(): number {
+  const H = SERVE.hold;
+  return (H.full * (1 - H.low)) / (H.high - H.low);
 }
 
 /** FIVB rule 12.4.3, see `SERVE.foot`: the feet at the hit, or where they left the floor for a jump serve */

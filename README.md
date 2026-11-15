@@ -211,7 +211,7 @@ Settings → Hints, which is on by default.
 | Left mouse | Attack. **Press and hold** to wind up (the arm draws back and a ring around the crosshair fills: the longer you hold, the harder the hit, full power at ~0.3 s), **release** to swing — timing is graded on the release: Perfect from about 0.12 s to 0.025 s before the ball reaches your hand (a fully drawn arm comes through a touch faster), Good on either side, and the late side is the forgiving one: releasing just as the ball arrives is still Good. A quick **tap** = tip (short) or roll shot (deep). Landing without releasing drops the swing. Also hits your serve: release as the toss comes down (a toss still on its way up cannot be hit). |
 | Right mouse | Block (hands up, they press over the net in the air). When the ball is dropping onto you from your own side it **sets** instead — look at the hitter you want. |
 | E | Bump / pass / dig (press early so the platform is ready; hold it) |
-| Q | Serve toss (Serve Drill; Free Play too). It is the toss of the serve you picked with 1 / 2 / 3. Then serve it with the spike's controls: run in (Shift + W) and jump (Space) for a jump float or a jump serve, hold and release Left mouse to hit |
+| Q | Serve toss (Serve Drill; Free Play too). **Hold** it: the longer the hold, the higher the toss, tossed when you let go (a tap is the lowest; the ring around the crosshair fills to the highest at 0.8 s). It is the toss of the serve you picked with 1 / 2 / 3. Then serve it with the spike's controls: run in (Shift + W) and jump (Space) for a jump float or a jump serve, hold and release Left mouse to hit |
 | V | Toggle first / third person instantly, any time (even mid-rally) |
 | R | Replay your last attempt in slow motion once the ball is dead: a clean contact, a poor one, a swing or a block that found no ball, or a ball that was yours and dropped untouched. Any key skips it; the game carries on where it was. |
 | N | Reset / skip the current rep (Mini Rally: re-serve) |
@@ -237,7 +237,7 @@ Hold the phone sideways.
 | **HIT** | Hold to wind up (the ring around your thumb fills), release to swing, tap = tip. Drag while holding to aim. While you are loading or in the air, **the whole right half of the screen is HIT**, so the thumb does not have to find the button after the jump. |
 | **BLOCK** | Hands up and load a jump; release to take off. The hands stay up until you land. When the ball is dropping onto you from your side the button reads **SET** and sets instead (no jump). |
 | **PASS** | Hold: platform ready. |
-| **TOSS** | Serve toss (Serve Drill, Free Play). |
+| **TOSS** | Serve toss (Serve Drill, Free Play). Hold it longer for a higher toss. |
 | Top right | Pause, camera toggle, reset rep, and REPLAY when your last attempt can be watched again. Top left: set calls (Spike Drill, Mini Rally), the opposing block toggle (Spike Drill), your serve (Serve Drill) or feed types (Free Play). |
 
 Haptics (Android) tick at full charge and on a graded contact. Tunables are in
@@ -347,9 +347,12 @@ screen show them. Only your player uses them; AI players keep the defaults.
    | **2 Jump float** | Low, two steps ahead | A short run-up (Shift + W), jump (Space), release | About 70 km/h, no spin, flatter from higher up: it floats most |
    | **3 Jump serve** | High and far ahead | A full spike approach under it, jump, full swing | 90 km/h and more, heavy topspin |
 
-   Each serve has one toss, the same every time: a server grooves a toss, they
-   do not choose its height each rep. Everything after it is the spike's
-   controls and the spike's timing windows. The toss is hit at its top or on
+   Each serve has its own toss, and you set how high it goes: hold Q and let
+   go. A tap tosses half the serve's own height, 0.8 s or longer 1.6 times
+   it, and about a third of a second is the serve's own. A higher toss comes
+   down the same distance ahead, with more time under it and a faster ball to
+   meet. (On trial against one fixed toss per serve.) Everything after it is
+   the spike's controls and the spike's timing windows. The toss is hit at its top or on
    its way down. The spin comes from the serve you picked, the height and pace
    from your body: a float hit off a hop is a small jump float, a jump serve
    hit off the floor is a slow topspin serve. With the landing marker on, a
@@ -635,7 +638,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
 | `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
 | `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early loses its topspin (`serveEarlySpin`; the player's three serves are under `SERVE`), the user's spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`), a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the AI hitter's push into the hands (`pushSpeed`, `pushDrop`), where a covered ball is dug (`covered`: out of system), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape; `floatSafe`, `floatSafeTries` for its float), how much a float floats by the grade of its contact (`floatClean`) |
-| `SERVE` | The player's three serves: each one's toss (how far ahead, how high) and where the Serve Drill stands you (`back`), the jump float's speed and the run-up that gives it (`jumpFloatSpeed`, `floatRun`), a jump serve hit off the floor (`standingSpin`), the foot fault (`foot`), no hitting a toss on its way up (`tossRising`). `SERVE_DRILL`: the drill's start spot and its timings |
+| `SERVE` | The player's three serves: each one's toss (how far ahead, how high) and where the Serve Drill stands you (`back`), the jump float's speed and the run-up that gives it (`jumpFloatSpeed`, `floatRun`), a jump serve hit off the floor (`standingSpin`), the foot fault (`foot`), no hitting a toss on its way up (`tossRising`). how the hold on the toss button sets the toss's height (`hold`). `SERVE_DRILL`: the drill's start spot and its timings |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`), the dive (`diveSpeed`, `diveDecel`, `diveArm`, `diveDown`, `diveTime`) |
