@@ -554,16 +554,14 @@ export const SERVE = {
  * goes: a full-power jump serve aimed shorter than about 7 m is in the net (the start screen
  * leaves the camera on mid-court, a spike's aim). In first person you look up at your toss, which
  * aims deep by itself.
- * While your serve is in the air the third-person view narrows to `watchZoom` of its field of view: a server
- * watches the ball go, and at the full field of view a ball 15 m away is a few pixels wide, so a
- * float breaking a ball's width or two could not be seen at all. It eases back when the serve is
- * passed or lands. For the same reason the grade of a serve is shown to one side of the flight,
- * not over it.
+ * The grade of a serve is shown to one side of the flight, not over it: from behind the server the
+ * ball is 15 m away and a few pixels wide, and the grade text sat exactly on its path. (Tried
+ * and taken out for now: narrowing the third-person view to half its field of view while the serve
+ * is in the air, so a float's break could be seen from the end line.)
  */
 export const SERVE_DRILL = {
   x: 2,
   lookDepth: 7.8,
-  watchZoom: 0.5,
   startSlack: 0.5,
   flightMax: 6,
   playMax: 4,
@@ -587,8 +585,6 @@ export const ASSIST = {
 export const CAMERA = {
   fov: 72,
   fovApproachBoost: 6,
-  /** how fast the view eases into and out of a zoom (`CameraRig.zoom`), 1/s */
-  zoomRate: 6,
   near: 0.04,
   /** FP clips anything closer than this (your own shoulder beside the eye) */
   fpNear: 0.22,

@@ -372,10 +372,10 @@ screen show them. Only your player uses them; AI players keep the defaults.
    out of system and shanked, and aces. It also means a float is not aimed at
    a line.
 
-   **The drill watches your serve.** While it is in the air the third-person
-   view zooms in on it (a ball 15 m away is a few pixels wide otherwise), a ring pops round
-   a float where it breaks, and the grade of the hit is shown to one side of
-   the flight, not over it.
+   **Seeing it.** From behind the server the ball is 15 m away, so a break
+   moves it a ball or two on the screen. A ring pops round a float where it
+   breaks, and the grade of the hit is shown to one side of the flight, not
+   over it. The passers show the rest.
 
    A serve is rated by the pass it forces, the way coaches chart serves:
    **0** a fault, **1** passed to target, **2** passed off the net, **3** out
@@ -635,14 +635,14 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `TIMING` | Perfect/Good windows, swing time and stretch, tap threshold, wind-up time to full charge (`chargeFull`), pass/set/dig lead times, block height thresholds, input buffer |
 | `TOUCH` | Touch controls: stick radius and dead zone, run threshold (with hysteresis), aim scale and button dead zone, air-is-HIT, roll-to-HIT, block-jumps |
 | `CONTACT` | Reach radii, spike/tip/serve speeds and spin, power at minimum charge (`chargePowerMin`), pass error by grade and how much it grows with ball speed and a moving passer (`passSpeedErr`, `passMoveErr`), the lunge at a hard-driven ball (`digLunge`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early loses its topspin (`serveEarlySpin`; the player's three serves are under `SERVE`), the user's spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`), a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the AI hitter's push into the hands (`pushSpeed`, `pushDrop`), where a covered ball is dug (`covered`: out of system), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape; `floatSafe`, `floatSafeTries` for its float), how much a float floats by the grade of its contact (`floatClean`) |
-| `SERVE` | The player's three serves: each one's toss (how far ahead, how high) and where the Serve Drill stands you (`back`), the jump float's speed and the run-up that gives it (`jumpFloatSpeed`, `floatRun`), a jump serve hit off the floor (`standingSpin`), the foot fault (`foot`), no hitting a toss on its way up (`tossRising`). `SERVE_DRILL`: the drill's start spot and its timings, and how far the view zooms in on a serve in the air (`watchZoom`) |
+| `SERVE` | The player's three serves: each one's toss (how far ahead, how high) and where the Serve Drill stands you (`back`), the jump float's speed and the run-up that gives it (`jumpFloatSpeed`, `floatRun`), a jump serve hit off the floor (`standingSpin`), the foot fault (`foot`), no hitting a toss on its way up (`tossRising`). `SERVE_DRILL`: the drill's start spot and its timings |
 | `ASSIST` | Default aim assist, air magnet strength, reach bonus, slow-mo assist |
 | `TUTORIAL` | The first-run lesson: its speeds (together, slow motion), how early cues show, how long the coach's lines stay, tries per rep |
 | `PLAYER` | Acceleration/deceleration, plant carry, jump weighting (approach vs load), apex hang, landing recovery, air turning, where team-mates at the net meet shoulder to shoulder (`shoulder`), the dive (`diveSpeed`, `diveDecel`, `diveArm`, `diveDown`, `diveTime`) |
 | `POSITIONS` | Per-position height, jump, speeds, power, ball control |
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the float (`float`: how hard a no-spin ball breaks, how long it flies true between breaks and how long a break lasts, how often it breaks downward, the critical speed under which it dies, and how old everyone's read of a floating ball is); the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
-| `CAMERA` | FOV, approach FOV boost, how fast a zoom eases in and out (`zoomRate`), sensitivity, TP distance/height/framing, shake |
+| `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
 | `FX` | The ring round a float where it breaks (`floatBreak`), hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `CHARACTER` | How athletes are drawn: rim and side fill light, the arm swing of a jump (`jumpSwing`), how early hands go to where the ball will be (`meet`), the passing stance and what the platform does after the touch (`pass`), hand shapes (`hand`: how the fingers curl and spread loose, flat, on the ball and closed), where a palm meets the ball, how far arms, head, knees and toes keep from the net (`netClear`), idle breathing |
 | `ARENA` | The hall: floor mirror (size, strength, blur), the stands (`bowl`: tiers, rows, seats, how brightly the crowd is lit), how the net mesh goes in with a ball that is in it and settles after, lights, the final grade |
