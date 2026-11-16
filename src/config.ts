@@ -408,6 +408,15 @@ export const CONTACT = {
    * tape, and a green or a good one clears the tape by at least `clear` m.
    */
   dump: { maxOff: 1.6, short: { x: -1.2, z: -1.7 }, deep: { x: -3.4, z: -7.6 }, apexShort: 0.5, apexDeep: 1.0, clear: 0.1 },
+  /**
+   * A bump set: a second ball sent to a hitter with the forearms (E), always a high ball. It is
+   * the safe set far from the net or under a low ball: timed like a pass (TIMING.passLead, wide
+   * windows), with no catch and no release. It is never a green set. The three numbers are for a
+   * well-timed touch, one in the good window, and a mistimed one: it comes down within `spread` m
+   * of the spot (a green hand set is within centimetres), and `quality` is how good a ball the
+   * hitter gets (0..1, as setQuality: a good hand set is 0.5-0.9).
+   */
+  bumpSet: { spread: [0.3, 0.7, 1.6] as [number, number, number], quality: [0.7, 0.5, 0.2] as [number, number, number] },
   setCentreOk: 0.15,
   /** set spread (m, 1 sd along the net; off the net and in height are smaller): green, then good from best to worst */
   setSpreadGreen: 0.03,
@@ -1358,6 +1367,13 @@ export const AI = {
    * m (along the net, off the net, apex: one sigma) times the difficulty. A set to the user is always
    * clean (playability: the user's sets stay perfect).
    */
+  /**
+   * A ball a setter has to take `from` m or more off the net is bumped to the hitter with the
+   * forearms, not hand-set (from deep in the court a high ball is pushed with the legs and the
+   * platform). Such a bump set is at least `sloppy` hard to place (0-1, as a backup set's
+   * difficulty; never a set to the user).
+   */
+  bumpSet: { from: 4.5, sloppy: 0.35 },
   backupSet: { base: 0.2, easy: 0.8, offEasy: 3.0, offHard: 6.0, noSet: 0.7, noSetJitter: 0.3, miss: { x: 1.2, z: 0.5, apex: 0.8 } },
   /**
    * An AI dive (Mini Rally) keeps the ball alive and no more: it goes `apex` m above the hands (plus

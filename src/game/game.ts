@@ -249,6 +249,7 @@ export class Game {
       rand: () => this.rng.next(),
       passTarget: (a) => this.mode?.passTarget?.(a) ?? defaultPassTarget(a),
       setOptions: (a) => this.mode?.setOptions?.(a) ?? defaultSetOptions(a),
+      bumpOptions: (a) => this.mode?.bumpOptions?.(a) ?? [],
       setPick: (a) => this.mode?.setPick?.(a) ?? null,
       setLevel: () => this.settings.setLevel,
       canServe: (a) => (this.mode?.canServe ? this.mode.canServe(a) : !this.ball.active || this.ball.state.rest),
@@ -1069,7 +1070,7 @@ export class Game {
     const yours = !this.inMenu && !!this.mode?.userSetsNext?.();
     const barFor = this.setPrev ?? (yours ? this.setComing : null);
     const fp = this.settings.firstPerson;
-    this.setBar.update(barFor, last?.athlete === me ? last : null, this.ball.rpos, this.rig.camera, tr, realDt, cues, fp);
+    this.setBar.update(barFor, last?.athlete === me && !last.bump ? last : null, this.ball.rpos, this.rig.camera, tr, realDt, cues, fp);
     this.setGuide.update(barFor, this.rig.camera, realDt, cues);
     // where to stand for your set, instead of where the ball would land
     const spot = yours && !this.setPrev?.absorbing ? this.contact.setSpot(me, this.spotP) : null;

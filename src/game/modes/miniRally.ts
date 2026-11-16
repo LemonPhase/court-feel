@@ -298,6 +298,16 @@ export class MiniRally extends Mode {
     return backup ? opts.filter((o) => o.key !== 'PIPE') : opts;
   }
 
+  /** the user's second ball bumped with the forearms (E) is a bump set: a high ball to their pick, the outside with no key */
+  bumpOptions(a: Athlete) {
+    const g = this.g;
+    if (a !== g.me || g.autoUser || this.home.touches !== 1) return [];
+    if (!this.userSetsNext() && !this.yourFreeBall) return [];
+    const backup = a !== this.home.players.get('S');
+    const opts = callOptions(g, this.hitters, this.setterCalls, true).filter((o) => !o.fast);
+    return backup ? opts.filter((o) => o.key !== 'PIPE') : opts;
+  }
+
   setPick(a: Athlete): SetPick | null {
     return a === this.g.me ? this.setterCalls.pick : null;
   }
@@ -311,7 +321,7 @@ export class MiniRally extends Mode {
   private setterKeysHint(): string {
     const again = this.outOfSystem ? 'again: their fast set' : 'again: high';
     const pick = this.userSetter ? `${kbd('1')}-${kbd('4')} who · ${again}` : `${kbd('1')} OH ${kbd('3')} OPP`;
-    return `${kbd('RMB')} as it reaches your hands, release in the green · ${pick} · ${kbd('H')} help`;
+    return `${kbd('RMB')} as it reaches your hands, release in the green · ${kbd('E')} bump set · ${pick} · ${kbd('H')} help`;
   }
 
   canServe(a: Athlete): boolean {
@@ -324,7 +334,7 @@ export class MiniRally extends Mode {
     if (this.home.receiver === me) return `YOUR BALL · ${kbd('E')} pass / dig`;
     if (this.yourFreeBall)
       return this.home.touches === 1
-        ? `YOUR BALL · the setter can't get there · ${kbd('E')} bump it high / ${kbd('RMB')} set a pin`
+        ? `YOUR BALL · the setter can't get there · ${kbd('E')} bump set / ${kbd('RMB')} hand set · a pin`
         : `YOUR BALL · nobody can attack it · ${kbd('E')} bump it over`;
     if (this.home.setFor === me && g.ball.lastTouch?.kind === 'set')
       return `SET TO YOU · ${kbd('Shift')}+${kbd('W')} approach · ${kbd('Space')} · hold/release ${kbd('LMB')}`;

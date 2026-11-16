@@ -141,6 +141,12 @@ export class SetterDrill extends Mode {
     return opts;
   }
 
+  /** E on the pass is a bump set: a high ball to your pick (never a quick or a fast set) */
+  bumpOptions(a: Athlete): SetOption[] {
+    if (a !== this.g.me || !this.userSetsNext()) return [];
+    return callOptions(this.g, this.hitters, this.calls, true).filter((o) => !o.fast);
+  }
+
   /** until the pass you can call a play (from the moment the last rep ended): the wheel opens on your calls */
   playCalls(): SetterCalls | null {
     return this.calls.locked ? null : this.calls;
@@ -176,7 +182,7 @@ export class SetterDrill extends Mode {
     const dump = this.calls.frontRow ? ` · ${kbd('5')} dump` : '';
     // the pass is in the air: only what your hands do now
     if (this.phase === 'live' && !this.set) {
-      const again = this.outOfSystem ? 'again: their fast set' : 'again: high';
+      const again = this.outOfSystem ? `again: their fast set · ${kbd('E')} bump set` : 'again: high';
       // the jump set: your body goes up by itself (Settings: Auto jump set), or it is yours
       const jump = this.g.settings.autoJumpSet ? '' : ` · ${kbd('Space')} jump set`;
       return `${kbd('WASD')} to the spot · ${kbd('RMB')} as it reaches your hands, release in the green${jump} · ${kbd('1')}-${kbd('4')} who · ${again}${dump}`;

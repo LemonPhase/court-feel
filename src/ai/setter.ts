@@ -40,6 +40,8 @@ export class SetterBrain implements Brain {
   /** bump-set this ball (forearms) instead of hand-setting it: a libero in the front zone (see handSetAllowed) */
   private bump = false;
   private bumpFor: unknown = null;
+  /** this bump set is from deep in the court (AI.bumpSet): harder to place */
+  private deep = false;
   /** playing this ball with the forearms (a bump set), not the hands */
   get bumping(): boolean {
     return this.bump;
@@ -87,7 +89,10 @@ export class SetterBrain implements Brain {
       this.bumpFor = ball.lastTouch;
       const th = pred.descendThrough(a.height + 0.17, g.simTime);
       if (th > 0) pred.posAt(th, this.p);
-      this.bump = th > 0 && !handSetAllowed(a, this.p.z - fz * 0.14);
+      const z = this.p.z - fz * 0.14;
+      // ... and so does anyone taking it deep in the court
+      this.deep = th > 0 && Math.abs(z) >= AI.bumpSet.from;
+      this.bump = th > 0 && (this.deep || !handSetAllowed(a, z));
     }
     // hands above the forehead, or the platform (as in a forearm pass) for a bump set
     const contactH = this.bump ? a.height * 0.34 : a.height + 0.17;
@@ -136,7 +141,7 @@ export class SetterBrain implements Brain {
     const err = this.accuracy * (0.4 + Math.min(1.5, a.speed) * 0.5);
     const t = { x: call.target.x + g.rng.gauss() * err * 0.5, y: call.target.y, z: call.target.z + g.rng.gauss() * err * 0.3 };
     let apex = call.apex;
-    const miss = call.hitter?.isUser ? 0 : this.sloppy;
+    const miss = call.hitter?.isUser ? 0 : Math.max(this.sloppy, this.bump && this.deep ? AI.bumpSet.sloppy : 0);
     if (miss > 0 && !call.time) {
       const M = AI.backupSet.miss;
       t.x += g.rng.gauss() * M.x * miss;

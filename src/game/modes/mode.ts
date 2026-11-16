@@ -60,6 +60,8 @@ export abstract class Mode {
   }
   passTarget?(a: Athlete): { x: number; y: number; z: number; apex: number };
   setOptions?(a: Athlete): import('../contact').SetOption[];
+  /** the user's bump set: the high balls a second ball bumped with the forearms (E) can go to (none: E passes it) */
+  bumpOptions?(a: Athlete): import('../contact').SetOption[];
   /** what the user setter picked with a key: a hitter, or the dump (null: no key) */
   setPick?(a: Athlete): import('../setterCalls').SetPick | null;
   /** the user setter's calls while a play can still be called (before the pass): the play wheel opens on them */

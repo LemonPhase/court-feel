@@ -65,6 +65,8 @@ export interface ContactHost {
   passTarget(a: Athlete): { x: number; y: number; z: number; apex: number };
   /** set choices for a setter (the aim picks one) */
   setOptions(a: Athlete): SetOption[];
+  /** a second ball this athlete bumps with the forearms goes to one of these (high balls): a bump set. None: it is a pass */
+  bumpOptions?(a: Athlete): SetOption[];
   /** the hitter the setter picked with a key (SetOption.key), or null: the aim picks */
   setPick?(a: Athlete): SetPick | null;
   /** the set difficulty (Settings: Set difficulty; default easy) */
@@ -157,6 +159,8 @@ export interface SetResult {
   pips: SetPips;
   /** a jump set with the dump on: their middle had to honour the setter's own attack until the push (AI.middle.dumpHold) */
   held: boolean;
+  /** a bump set (the forearms, CONTACT.bumpSet): no catch, no release, never green */
+  bump: boolean;
 }
 
 /** a standard normal from a 0..1 source (Box-Muller) */
@@ -784,8 +788,11 @@ export class ContactSystem {
     const moving = clamp01(Math.hypot(a.vel.x, a.vel.z) / a.stats.approachSpeed);
     const pressure = 1 + CONTACT.passSpeedErr * fast + CONTACT.passMoveErr * moving;
     const formErr = form === 'side' ? CONTACT.sideErr : form === 'dive' ? CONTACT.diveErr : form === 'hands' ? CONTACT.handsErr : 1;
-    const err = errBase * (1.3 - skill * 0.5) * (dig ? 1.3 : 1) * pressure * formErr;
-    const T = h.passTarget(a);
+    // a second ball bumped to a hitter: a bump set, a high ball that comes down near the spot
+    const bump = form === 'platform' && !covered && !dig ? this.bumpOption(a, bp) : null;
+    const rank3 = grade === 'Perfect' ? 0 : grade === 'Good' ? 1 : 2;
+    const err = bump ? CONTACT.bumpSet.spread[rank3] * pressure : errBase * (1.3 - skill * 0.5) * (dig ? 1.3 : 1) * pressure * formErr;
+    const T = bump ? { x: bump.target.x, y: bump.target.y, z: bump.target.z, apex: bump.apex } : h.passTarget(a);
     const ang = h.rand() * Math.PI * 2;
     const rad = err * Math.sqrt(h.rand());
     const target = { x: T.x + Math.cos(ang) * rad, y: T.y, z: T.z + Math.sin(ang) * rad * 0.7 };
@@ -807,8 +814,27 @@ export class ContactSystem {
       : Math.max(T.apex + (grade === 'Perfect' ? 0 : (h.rand() - 0.3) * 1.2), bp.y + 0.6) + (form === 'dive' ? 1 : 0);
     solveApex({ x: bp.x, y: bp.y, z: bp.z }, target, apex, { x: 0, y: 0, z: 0 }, out);
     ball.hit(out, { x: (h.rand() - 0.5) * 6, y: 0, z: (h.rand() - 0.5) * 6 }, 0, t);
-    ball.lastTouch = { athlete: a, kind: dig ? 'dig' : 'pass', t, side: a.side };
+    ball.lastTouch = { athlete: a, kind: bump ? 'set' : dig ? 'dig' : 'pass', t, side: a.side };
     a.lastTouchT = t;
+    if (bump) {
+      // never green: the best bump set is a good set
+      if (grade === 'Perfect') grade = 'Good';
+      note = ['Bump set', bump.label, note].filter(Boolean).join(' · ');
+      this.lastSet = bump;
+      this.lastSetResult = {
+        athlete: a,
+        t,
+        grade,
+        green: false,
+        quality: CONTACT.bumpSet.quality[rank3],
+        err: diff,
+        window: perfectW,
+        good: goodW,
+        pips: { feet: true, centre: true, catch: true },
+        held: false,
+        bump: true,
+      };
+    }
     act.resolved = true;
     act.contactT = t;
     act.grade = grade;
@@ -818,12 +844,12 @@ export class ContactSystem {
     h.emitContact({
       athlete: a,
       form,
-      kind: dig ? 'dig' : 'pass',
+      kind: bump ? 'set' : dig ? 'dig' : 'pass',
       grade,
       note,
       speed: Math.hypot(out.x, out.y, out.z),
       point: new THREE.Vector3(bp.x, bp.y, bp.z),
-      quality: GRADE_RANK[grade] / 3,
+      quality: bump ? CONTACT.bumpSet.quality[rank3] : GRADE_RANK[grade] / 3,
       perfect: grade === 'Perfect',
       tip: false,
       target: new THREE.Vector3(target.x, target.y, target.z),
@@ -865,6 +891,12 @@ export class ContactSystem {
       tip: false,
       target: new THREE.Vector3(bp.x + dx * 4, 0, bp.z + dz * 4),
     });
+  }
+
+  /** the hitter a second ball bumped with the forearms goes to (the host's high balls, picked as a hand set's hitter is), or null: it is a pass */
+  private bumpOption(a: Athlete, from: V3): SetOption | null {
+    const opts = this.host.bumpOptions?.(a) ?? [];
+    return opts.length ? this.chooseSetOption(a, opts, from) : null;
   }
 
   /** should the right button set (ball dropping onto us from our own side) */
@@ -1088,6 +1120,7 @@ export class ContactSystem {
       good: win.good,
       pips: setPips(touch, true),
       held: a.state === 'air' && !best.dump && opts.some((o) => o.dump),
+      bump: false,
     };
     h.emitContact({
       athlete: a,
