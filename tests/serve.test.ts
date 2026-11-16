@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COURT, SIM } from '../src/config';
+import { AI, COURT, SIM } from '../src/config';
 import { Rng } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import type { Touch, TouchKind } from '../src/game/ballEntity';
@@ -9,6 +9,8 @@ import { BallPredictor } from '../src/physics/predict';
 import { SLOT_ROLE, SLOTS, TeamAI, type Slot } from '../src/ai/team';
 
 const DT = 1 / SIM.hz;
+// (the book spots: each player's own habit, a little off them every rally, is tested on its own)
+AI.sit.personal = 0;
 
 /**
  * An all-AI Mini Rally team on `side`, set up to serve, on a stand-in for the Game:
@@ -104,8 +106,11 @@ describe.each([1, -1] as const)('our own serve (side %i)', (side) => {
       for (const slot of SLOTS) {
         const b = job(slot);
         jobs.add(b.job);
+        // their base defence spot: the front row on it, the back row moved along the net with the ball
         const spot = team.formSpot('defense', slot);
-        expect(Math.hypot(b.spot.x - spot.x, b.spot.z - spot.z)).toBeLessThan(1e-9);
+        const back = slot === 'S' || slot === 'L' || slot === 'OH2';
+        expect(Math.abs(b.spot.z - spot.z)).toBeLessThan(1e-9);
+        expect(Math.abs(b.spot.x - spot.x)).toBeLessThanOrEqual(back ? AI.sit.ballSideMax + 1e-9 : 1e-9);
       }
       for (const slot of ['OH1', 'MB', 'OPP'] as const) expect(Math.abs(job(slot).spot.z)).toBeLessThan(1);
       return ball.pos.z * side < -COURT.halfLength;

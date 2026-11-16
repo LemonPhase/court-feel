@@ -227,6 +227,9 @@ describe('when our setter plays the first ball (Mini Rally)', () => {
     expect(handSetAllowed(libero, 0.7)).toBe(false);
     // on the line is the front zone
     expect(handSetAllowed(libero, COURT.attackLine)).toBe(false);
+    // a foot on the line is in the front zone: the feet stay clear of it
+    expect(handSetAllowed(libero, COURT.attackLine + 0.1)).toBe(false);
+    expect(handSetAllowed(libero, -(COURT.attackLine + 0.1))).toBe(false);
     expect(handSetAllowed(setter, 0.7)).toBe(true);
   });
 
@@ -243,7 +246,7 @@ describe('when our setter plays the first ball (Mini Rally)', () => {
 });
 
 describe('the pipe (back-row attack, Mini Rally and the libero in the Spike Drill)', () => {
-  it('in system it is met 2 m off the net, and the hitter leaves the floor behind the 3 m line', () => {
+  it('in system it is met a little over 2 m off the net, and the hitter leaves the floor behind the 3 m line, their feet clear of it', () => {
     const lane = laneFor('L', 1);
     const hitter = new Athlete('OH', 1);
     hitter.place(lane.sx, lane.sz, 0);
@@ -259,7 +262,8 @@ describe('the pipe (back-row attack, Mini Rally and the libero in the Spike Dril
     const pred = new BallPredictor(DT, SIM.predictHorizon);
     pred.compute(state, env, 0);
     // the AI hitter's approach, run on the athlete's own kinematics (as HitterBrain does)
-    const plan = planApproach(hitter, pred, 0, 0, 0)!;
+    const behind = COURT.attackLine + AI.backRow.clear;
+    const plan = planApproach(hitter, pred, 0, 0, 0, undefined, behind)!;
     expect(plan).not.toBeNull();
     let takeoffZ = -1;
     hitter.onTakeoff = (a) => (takeoffZ = a.pos.z);
@@ -271,9 +275,47 @@ describe('the pipe (back-row attack, Mini Rally and the libero in the Spike Dril
       t += DT;
       hitter.step(DT, t);
     }
-    expect(plan.contact.z).toBeCloseTo(2.0, 1);
+    expect(plan.contact.z).toBeGreaterThan(2.0);
+    expect(plan.contact.z).toBeLessThan(2.5);
     expect(plan.error).toBeLessThan(0.3);
-    expect(takeoffZ).toBeGreaterThan(COURT.attackLine);
+    expect(takeoffZ).toBeGreaterThanOrEqual(behind - 0.02);
+  });
+
+  it('a pipe set too tight to the net is still jumped at from behind the 3 m line: the hitter reaches for it, the feet stay legal', () => {
+    const lane = laneFor('L', 1);
+    const hitter = new Athlete('OH', 1);
+    hitter.place(lane.sx, lane.sz, 0);
+    const y = attackHeight(hitter);
+    const from = { x: SETTER_SPOT.x, y: 2.6, z: SETTER_SPOT.z };
+    const v = { x: 0, y: 0, z: 0 };
+    // (0.6 m nearer the net than the pipe is meant to be, and high: there is time to get anywhere)
+    solveApex(from, { x: lane.x, y, z: lane.z - 0.6 }, y + lane.apexAbove + 1.5, { x: 0, y: 0, z: 0 }, v);
+    const state = makeBall();
+    Object.assign(state.p, from);
+    Object.assign(state.v, v);
+    const pred = new BallPredictor(DT, SIM.predictHorizon);
+    pred.compute(state, { netTop: COURT.netHeightMen }, 0);
+    const behind = COURT.attackLine + AI.backRow.clear;
+    const free = planApproach(hitter, pred, 0, 0, 0)!;
+    const legal = planApproach(hitter, pred, 0, 0, 0, undefined, behind)!;
+    const takeoff = (plan: typeof legal) => {
+      const a = new Athlete('OH', 1);
+      a.place(lane.sx, lane.sz, 0);
+      let z = -1;
+      a.onTakeoff = (q) => (z = q.pos.z);
+      for (let t = 0; t < plan.tc;) {
+        const running = t >= plan.tStart && t < plan.tPress;
+        a.cmd = { moveX: running ? plan.dir.x : 0, moveZ: running ? plan.dir.z : 0, sprint: running, faceYaw: plan.runYaw };
+        if (t >= plan.tPress && a.state === 'ground') a.jumpPress();
+        if (t >= plan.tPress + plan.hold) a.jumpRelease();
+        t += DT;
+        a.step(DT, t);
+      }
+      return z;
+    };
+    // left to itself the run would take off with the feet on the line
+    expect(takeoff(free)).toBeLessThan(behind - 0.05);
+    expect(takeoff(legal)).toBeGreaterThanOrEqual(behind - 0.02);
   });
 
   it('the outside gets about half the sets, the opposite a quarter, the middle and the pipe the rest (elite men: zone 4 52%, zone 2 26%, zone 3 12%, back row 9%)', () => {

@@ -3,7 +3,7 @@ import { clamp } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Game } from '../game/game';
 import type { V3 } from '../physics/ball';
-import { moveTo, netYaw, stop, type Brain } from './brain';
+import { atNet, moveTo, netYaw, stop, type Brain } from './brain';
 import { greenFools } from './greenBite';
 
 /**
@@ -154,7 +154,9 @@ export class BlockerBrain implements Brain {
           // anyway when it is near enough to take the seam (a late, half-closed block
           // beats watching), but never from the far side of the court.
           const late = this.closer && now >= this.tJump + 0.06 && dx < 0.9;
-          if (a.canJump() && ((now >= this.tJump && dx < 0.8) || late)) {
+          // (one caught off the net, after a transition, runs in first: it goes up late, from the
+          // net, or not at all)
+          if (a.canJump() && atNet(a) && ((now >= this.tJump && dx < 0.8) || late)) {
             a.jumpPress();
             a.jumpRelease();
             a.startAction('block', now);

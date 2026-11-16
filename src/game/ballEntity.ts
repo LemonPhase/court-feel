@@ -15,6 +15,8 @@ export interface Touch {
   side: 1 | -1 | 0;
   /** an attack off the user's green set: the hitter hid the shot until the hand (their defence starts late) */
   green?: boolean;
+  /** a block the ball came back off softly, to the hitter's side (recycled: `CONTACT.recycleP`) */
+  recycle?: boolean;
 }
 
 /**

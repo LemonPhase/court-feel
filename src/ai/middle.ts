@@ -7,7 +7,7 @@ import { laneFor, SETTER_SPOT } from '../game/plays';
 import type { V3 } from '../physics/ball';
 import { predictJump } from './approach';
 import { decoyFor, dumpHeld, greenFools } from './greenBite';
-import { moveTo, netYaw, stop, type Brain } from './brain';
+import { atNet, moveTo, netYaw, stop, type Brain } from './brain';
 import { BallRead } from './read';
 
 /** what a middle expects before the set: nothing in particular (read it), the quick, or one of their pins */
@@ -150,7 +150,7 @@ export class MiddleBlocker implements Brain {
     const a = this.athlete;
     const now = g.simTime;
     const them = this.theirMiddle();
-    if (this.committedFor === this.guessFor || !them || !a.canJump() || Math.abs(them.pos.z) > 2.5) return;
+    if (this.committedFor === this.guessFor || !them || !a.canJump() || !atNet(a) || Math.abs(them.pos.z) > 2.5) return;
     // it sees the plant a reaction time after it starts, the take-off at once
     if (!(them.state === 'air' || (them.state === 'load' && them.stateT >= AI.middle.react))) return;
     // their hands meet the ball at the top of the jump (a planting hitter is taken to hold a full plant)
@@ -205,7 +205,7 @@ export class MiddleBlocker implements Brain {
     }
     this.targetX = spot;
     this.handsTo = spot;
-    if (this.blockedFor === lt || !a.canJump()) return;
+    if (this.blockedFor === lt || !a.canJump() || !atNet(a)) return;
     // on time it goes up where it is meant to be; late, from wherever it got to, if that is near enough
     if (now >= this.pressFor(this.tc + 0.12) && now <= this.tc && Math.abs(a.pos.x - spot) <= M.lateReach) {
       this.jump(now);

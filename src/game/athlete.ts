@@ -134,6 +134,8 @@ export class Athlete {
   splitT = -10;
   /** a low covering stance, 0..1 (set by the AI while it covers its hitter; the animator eases into it, no effect on movement) */
   low = 0;
+  /** a ball is in play, 0..1 (set by the game; the animator's ready stance: `CHARACTER.loose`, no effect on movement) */
+  alert = 0;
   /** 'ready' body lean */
   readyAmount = 1;
   /** look target for head IK (set by game) */

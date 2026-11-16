@@ -110,7 +110,9 @@ export class SetterBrain implements Brain {
       sz = off.z;
       if (autoSetJump(a, jump, g.simTime)) a.airIntent = 'set';
     }
-    moveTo(a, sx, sz, { face: this.faceYaw, arrive: 0.35, sprintDist: 1.5 });
+    // (far from it they turn and run at it; they square up to set as they get there)
+    const far = Math.hypot(sx - a.pos.x, sz - a.pos.z) > AI.chase.turn;
+    moveTo(a, sx, sz, { face: far ? undefined : this.faceYaw, arrive: 0.35, sprintDist: 1.5 });
     const until = tc - g.simTime;
     const kindNow = this.bump ? 'pass' : 'set';
     if (until < (this.bump ? TIMING.passLead : 0.4) && (!a.action || a.action.kind !== kindNow)) a.startAction(kindNow, g.simTime);
@@ -142,7 +144,8 @@ export class SetterBrain implements Brain {
       t.x += g.rng.gauss() * M.x * miss;
       // (never over the net)
       t.z = a.side * Math.max(0.4, a.side * t.z + g.rng.gauss() * M.z * miss);
-      apex += g.rng.gauss() * M.apex * miss;
+      // (however rough, it is still a high ball: the hitter has time to get to it)
+      apex = Math.max(t.y + AI.backupSet.minApex, apex + g.rng.gauss() * M.apex * miss);
     }
     const out = { x: 0, y: 0, z: 0 };
     const from = { x: bp.x, y: bp.y, z: bp.z };

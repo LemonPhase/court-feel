@@ -42,6 +42,38 @@ describe('attack shot choice (Mini Rally AI)', () => {
     expect(seen.has('roll')).toBe(false);
   });
 
+  it('a hitter under the ball never takes a weak swing at the deep court: it wipes it off the block, tips it or rolls it', () => {
+    const a = new Athlete('OH', 1);
+    a.place(-4.0, 1.0, 0);
+    const brain = new HitterBrain(a, laneFor('OH', 1));
+    // their back row deep, nobody in the middle of the court
+    const deep = [-3, 0, 3].map((x) => {
+      const d = new Athlete('L', -1);
+      d.place(x, -7.5, Math.PI);
+      return d;
+    });
+    brain.defenders = () => deep;
+    const sweep = (blockers: Athlete[]) => {
+      brain.blockers = () => blockers;
+      const seen = new Map<string, { x: number; z: number }>();
+      for (let i = 0; i < 100; i++) {
+        const r = (i + 0.5) / 100;
+        const aim = brain.offSpeedAim({ rng: { next: () => r, gauss: () => 0 } } as any, -4.0);
+        seen.set(brain.lastShot, { x: aim.x, z: aim.z });
+      }
+      return seen;
+    };
+    // a block in front: off its outside hand (out past it, at the net), a tip, or a roll
+    const blocked = sweep([blocker(-4.2)]);
+    expect([...blocked.keys()].sort()).toEqual(['roll', 'tip', 'wipe']);
+    expect(blocked.get('wipe')!.x).toBeLessThan(-4.2);
+    expect(Math.abs(blocked.get('wipe')!.z)).toBeLessThan(0.5);
+    // the roll goes where they aren't: short of the deep back row, never at the end line
+    expect(Math.abs(blocked.get('roll')!.z)).toBeLessThan(6);
+    // nobody up: nothing to wipe it off
+    expect([...sweep([]).keys()].sort()).toEqual(['roll', 'tip']);
+  });
+
   it('on a good pass a pin hitter can run a fast set: already running when the setter touches it, met about 1 s later', () => {
     const a = new Athlete('OH', 1);
     const lane = laneFor('OH', 1);

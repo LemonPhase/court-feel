@@ -124,6 +124,12 @@ export class AthleteView {
   private gaitW = 0;
   /** how far into the low covering stance the body is (eased from Athlete.low) */
   private lowW = 0;
+  /** how far into the ready stance the body is (eased from Athlete.alert), and what loosens it (`CHARACTER.loose`) */
+  private readyW = 0;
+  private prevVel = v3();
+  private accS = v3();
+  private lastYaw = 0;
+  private yawRate = 0;
   private lastPos = v3();
   /** how far the body moved since the last frame */
   private rootMove = v3();
@@ -288,6 +294,14 @@ export class AthleteView {
     this.lastPos.copy(a.rpos);
     const speed = Math.hypot(this.velS.x, this.velS.z);
     const vLocal = this.worldToBody(this.velS, _t2);
+    // how the body is speeding up and turning (smoothed: what the trunk answers to, `CHARACTER.loose`)
+    if (dt > 1e-3) {
+      _t1.subVectors(this.velS, this.prevVel).divideScalar(dt);
+      this.accS.lerp(_t1, damp(8, dt));
+      this.yawRate = lerp(this.yawRate, wrapAngle(a.ryaw - this.lastYaw) / dt, damp(10, dt));
+    }
+    this.prevVel.copy(this.velS);
+    this.lastYaw = a.ryaw;
 
     // ---- state transitions
     const st = a.state;
@@ -370,6 +384,21 @@ export class AthleteView {
       chestX += Math.sin(tr * I.breath * Math.PI * 2 + ph) * I.chest * still;
       drop += Math.sin(tr * I.sway * Math.PI * 2 + ph * 1.3) * I.bob * H * still;
       chestZ += Math.sin(tr * I.sway * Math.PI * 2 + ph * 0.7) * I.lean * still;
+      // an AI player's body isn't rigid (the user's is left alone: their eyes ride on it)
+      if (!a.isUser) {
+        const Lo = CHARACTER.loose;
+        // a ball in play: lower, chest over the knees, bouncing on the balls of the feet
+        this.readyW = lerp(this.readyW, a.alert * still, damp(5, dt));
+        const rw = this.readyW * (1 - this.lowW);
+        const hz = Lo.bounceHz * (1 + Lo.tempo * Math.sin(a.id * 2.3));
+        drop += (Lo.readyDrop + Lo.bounce * (0.5 - 0.5 * Math.cos(tr * hz * Math.PI * 2 + ph))) * H * rw;
+        spineX -= Lo.readyLean * rw;
+        // the trunk leans into the acceleration; the chest follows the hips into a turn a moment late
+        const acc = this.worldToBody(this.accS, _t3);
+        spineX -= clamp(acc.z * Lo.accLean, -Lo.accMax, Lo.accMax);
+        chestZ += clamp(-acc.x * Lo.accLean, -Lo.accMax, Lo.accMax);
+        chestY += clamp(-this.yawRate * Lo.turnLag, -Lo.turnMax, Lo.turnMax);
+      }
     }
     // land absorb
     if (st === 'land' || (st === 'ground' && tSinceLand < 0.45)) {
@@ -1358,7 +1387,7 @@ export class AthleteView {
   /** 0..1 how far into a dive the body is: down onto the floor, held, then back up */
   private diveP(): number {
     const t = this.athlete.stateT;
-    return smooth01(t / PLAYER.diveDown) * (1 - smooth01((t - (PLAYER.diveTime - 0.4)) / 0.4));
+    return smooth01(t / PLAYER.diveDown) * (1 - smooth01((t - (PLAYER.diveTime - PLAYER.diveGetUp)) / PLAYER.diveGetUp));
   }
 
   /** how far the ball is to the body's right (+) or left (-), m (0 without a ball) */

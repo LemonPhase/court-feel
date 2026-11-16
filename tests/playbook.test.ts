@@ -85,7 +85,7 @@ describe('a pin hitter going inside (AI.insideRun)', () => {
     const lane = SETTER_PLAYS[k].find((p) => p.short === short)!.lane;
     const a = new Athlete(k, 1);
     a.place(lane.sx, lane.sz, 0);
-    const p = planToPoint(a, 0, new THREE.Vector3(lane.x, attackHeight(a), lane.z), 2.2, 0, 0, undefined, true)!;
+    const p = planToPoint(a, 0, new THREE.Vector3(lane.x, attackHeight(a), lane.z), 2.2, 0, 0, undefined, 0, true)!;
     const off = simulateApproach(
       a,
       0,

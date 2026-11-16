@@ -235,14 +235,20 @@ export const PLAYER = {
    * A dive (AI defenders, at a ball the platform can't reach on foot): the body goes hands-first
    * along the floor at `diveSpeed` m/s or the run's speed, sliding to a stop at `diveDecel` m/s²; the
    * hands are at full stretch, `diveArm` m past the feet and `CONTACT.diveLow` m off the floor,
-   * `diveDown` s after it starts, and the player is up again after `diveTime` s. With a run-up that
-   * is a ball about 2-2.5 m away dug off the floor (a sprawl or a pancake).
+   * `diveDown` s after it starts, and the player is up again after `diveTime` s, the last
+   * `diveGetUp` s of it pushing up off the floor (then `landRecover` s more to be moving). With a
+   * run-up that is a ball about 2-2.5 m away dug off the floor (a sprawl or a pancake).
+   * From hitting the floor to standing takes a player about a second: the push up from the chest
+   * alone is 0.5-0.7 s. 1.5 s for the whole dive (it was 1.1 s, with 0.4 s to get up: back on the
+   * feet almost as they landed) is an estimate from that, not a measured figure: no study of
+   * get-up times after a volleyball dive was found (MatusGib, 2026-11-15: a bit longer).
    */
   diveSpeed: 3.5,
   diveDecel: 6,
   diveArm: 1.0,
   diveDown: 0.3,
-  diveTime: 1.1,
+  diveTime: 1.5,
+  diveGetUp: 0.6,
   bodyTurnRate: 14,
   /**
    * airborne: max body rotation from the takeoff yaw, and its rate. In the air the arm aims,
@@ -366,6 +372,16 @@ export const CONTACT = {
   /** sphere around the ideal contact point that still lets you hit */
   spikeReach: 0.38,
   spikeReachStretch: 0.62,
+  /**
+   * An AI hitter's mistimed swing still meets the ball: its contact moves at most this long (s)
+   * off the best moment (a set dropping at about 6 m/s is then within 0.25 m of the hand, inside
+   * `spikeReachStretch`). How wrong the timing was decides where the ball goes (early sails long,
+   * late goes into the net), never whether it is hit: a hitter going up for their own setter's
+   * ball does not swing through thin air. Before, a swing about 3 sd off (`AI.attackErr`) was moved
+   * so far off the ball that it missed it altogether: 1 set in 100-200 dropped untouched beside a
+   * hitter in the air (MatusGib, 2026-11-15: misconnections between the AI setter and hitter).
+   */
+  aiSwingShift: 0.04,
   passRadius: 0.55,
   setRadius: 0.48,
   /**
@@ -449,6 +465,8 @@ export const CONTACT = {
   spikeSpinGood: 55,
   spikeSpinOk: 35,
   rollSpin: 45,
+  /** a tip always goes over: however it was timed it is aimed at least this far (m) into the other court */
+  tipOver: 0.6,
   /** swing power at the shortest (just past a tap) wind-up; full charge = 1 */
   chargePowerMin: 0.7,
   serveFloatSpeed: 17,
@@ -485,9 +503,6 @@ export const CONTACT = {
    * a well-formed block (Good or Perfect, not off the outer edge) comes back off the hands to the
    * hitter's side `recycleP` of the time (off a mistimed block `recyclePLate`), slow and up, for their
    * cover to pick up and attack again.
-   * A covered ball (one off the other team's block) is dug up high (`covered.apex` m) to the middle
-   * of the court `covered.off` m off the net (+ up to `covered.depth`), `covered.spread` m either way:
-   * out of system, never Perfect. Keeping it alive is the job; the set off it is a high ball.
    */
   recycleSpeed: 14,
   recycleP: 0.75,
@@ -495,7 +510,49 @@ export const CONTACT = {
   /** an AI hitter playing it off the block pushes it at the hands at `pushSpeed` m/s, `pushDrop` m below the contact */
   pushSpeed: 7,
   pushDrop: 0.4,
-  covered: { off: 3.2, depth: 1.5, spread: 1.6, apex: 5.8 },
+  /**
+   * A covered ball (one off the other team's block, dug by the attacking side) is a reaction touch:
+   * no two come off the same, never Perfect. The share of it the coverer controls (0 to `best`)
+   * falls as the ball comes harder (none left from `easy` to `hard` m/s at the platform: a recycled
+   * ball drops slowly, a stuff is driven down), off a platform not set in time (x `late`), off its
+   * edge (down by `edge` at the rim), with the feet still moving (down by `moving` at a full run),
+   * reaching to the side or diving (x `reach`). That share goes to the setter like any pass; the
+   * rest pops up `pop` m from the coverer, on from the way the ball came (up to `turn` rad either
+   * side), `up` m above the contact, as far as `wide` m outside the sidelines. So a slow ball off
+   * the block is in system about half the time and a stuff that is kept up rarely is (MatusGib,
+   * 2026-11-14). The same for the user and the AI: the user's timing is their platform.
+   *
+   * `stuff`: any ball off their block that was not recycled (it did not come back softly off the
+   * hands: `recycleP`), kept off the floor. That touch is mostly luck. At most `best` of it is
+   * controlled, times a roll between the two `luck` values (where on the arms it landed); the
+   * rest goes anywhere (`turn`: any direction), `pop` m away and `up` m above the contact (its arc
+   * is solved down to `floor` m, not to the setter's hands: a pass's arc can't peak below them,
+   * which is why every cover used to go up at least 2.4 m): from a ball that barely leaves the
+   * floor, fast and flat, to one that goes up high beside the coverer. So no two come off the same in height, speed or direction, and most are a scramble,
+   * not a pass (MatusGib, 2026-11-15: the covers were all too high and too good; measured before:
+   * 5 of 6 were set, every apex 1.7-3.5 m). The recycled ball keeps the numbers above.
+   */
+  covered: {
+    best: 0.9,
+    easy: 7.5,
+    hard: 12,
+    late: 0.5,
+    edge: 0.5,
+    moving: 0.5,
+    reach: 0.6,
+    pop: [0.8, 4.0] as [number, number],
+    turn: 2.4,
+    up: [0.6, 3.6] as [number, number],
+    wide: 1.5,
+    stuff: {
+      best: 0.45,
+      luck: [0.1, 1] as [number, number],
+      pop: [0.5, 5.5] as [number, number],
+      turn: Math.PI,
+      up: [0.3, 3.0] as [number, number],
+      floor: 0.3,
+    },
+  },
   /**
    * The AI never misses a serve (no serve out, none in the net): a mistimed AI serve is a slower,
    * easier serve that still lands `serveSafe` m inside the lines. Only the user can fault a serve.
@@ -1004,6 +1061,29 @@ export const CHARACTER = {
    */
   idle: { breath: 0.4, chest: 0.014, sway: 0.23, bob: 0.004, lean: 0.012 },
   /**
+   * A body that isn't rigid (AI players; cosmetic only, decision record 0008: nothing here is read
+   * back by the play. Your own body is left alone: in first person your eyes ride on it).
+   * - With a ball in play nobody stands flat-footed: a player standing still sits `readyDrop` (body
+   *   heights) lower with the chest `readyLean` rad further over the knees, and bounces on the balls
+   *   of the feet, `bounce` body heights at about `bounceHz` (each player at their own tempo, within
+   *   `tempo` of it). Between rallies they stand up and breathe (`idle`).
+   * - The trunk leans into the acceleration, `accLean` rad per m/s² and at most `accMax` rad: forward
+   *   as they push off, back as they brake, into a sidestep.
+   * - The chest follows the hips into a turn `turnLag` s late (at most `turnMax` rad): the feet turn
+   *   first, the shoulders come round after.
+   */
+  loose: {
+    readyDrop: 0.03,
+    readyLean: 0.1,
+    bounce: 0.014,
+    bounceHz: 1.8,
+    tempo: 0.15,
+    accLean: 0.012,
+    accMax: 0.18,
+    turnLag: 0.08,
+    turnMax: 0.3,
+  },
+  /**
    * The two-arm swing of a jump. On the plant the arms go back behind the hips: `backStanding` (rad from
    * hanging straight down) for a standing jump, up to `backRun` after a run-up of `fullRun` (m/s) or more,
    * within `backTime` (s). From `upStart` (s) after the plant began they swing down past the hips and up in
@@ -1309,10 +1389,14 @@ export const AI = {
   /**
    * Early transition: on an easy first ball (their free ball over, or our block softening their
    * attack to under `softSpeed` m/s) that our passer reaches with `spare` s to spare, the setter
-   * releases to the net and the front row leaves it to approach, `read` s after the touch.
+   * releases to the net and the front row leaves it to approach, `read` s after the touch. Once
+   * they have started they keep going: nobody turns back to the net half way.
    *
-   * On their hard attack (a spike or tip) the back-row setter also releases to the net on its own,
-   * as soon as it has read the hit (`AI.defence.hitReact`) and our dig is assigned to someone else
+   * The back-row setter also releases to the net on its own on every ball coming over that someone
+   * else is playing (their attack, a tip, a free ball or an overpass, a ball off either block), as
+   * soon as it has read the touch (`AI.defence.hitReact`; `AI.cover.react` for a setter covering
+   * our hitter), without waiting to see how good the first ball will be (MatusGib, 2026-11-14: a
+   * setter still standing in defence when the pass is plainly going to be in system).
    * "The setter releases from their defensive position immediately to run the offense"
    * (FreeCoachingDrills, transition attack tempo drill).
    *
@@ -1339,33 +1423,78 @@ export const AI = {
    * ball a team-mate is standing next to. The setter is sent only when nobody else gets there
    * within `setter` s of it: a ball at its feet it digs, and someone else sets. A ball off a block,
    * or a second ball the setter can't get to, is the libero's whenever it gets there with `libero` s
-   * to spare: it calls off whoever was sent (a real libero takes every one of those it can).
+   * to spare: it calls off whoever was sent (a real libero takes every one of those it can). So is
+   * their free ball when an AI libero gets there with `liberoFree` s to spare: the libero takes
+   * most free balls, not the middle or a pin hitter who should be getting ready to attack
+   * (MatusGib, 2026-11-14). And between the user and an AI libero, any first ball the libero gets
+   * to (with `libero` s to spare) is the libero's ("if the libero can take it, it takes it":
+   * MatusGib, 2026-11-14). A ball is called early: once it has been the user's for `call` s the
+   * libero no longer takes it off them. The setter calls HELP only on a ball somebody can still
+   * get to: one that will be down more than `dive` s before the first of them arrives (a shank
+   * into the stands) is the other team's point, and nothing is called. A serve is received in
+   * lanes: a passer's run forward, to a ball coming down in front of them, counts only `lane` of
+   * its length when choosing who takes it, so a serve short of the middle passer is theirs and not
+   * the passer's two metres to the side of it (MatusGib, 2026-11-15: "it is right in front of them").
    */
-  pick: { seam: 0.15, setter: 0.2, shuffle: 1.5, libero: 0.1 },
+  pick: { seam: 0.15, setter: 0.2, shuffle: 1.5, libero: 0.1, liberoFree: 0.3, call: 0.4, dive: 0.5, lane: 0.3 },
   /**
    * An AI free ball over (a third ball nobody can attack) goes where it is hard to play: deep to a
    * back corner (`deep` m off the net, `side` m off the middle) or short, just over the net (`short`
    * m), whichever spot their nearest player is furthest from (plus up to `guess` m of guesswork).
-   * `apex`/`shortApex`: the arcs.
+   * `apex`/`shortApex`: the arcs. From further than `bumpFrom` m off the net it is always bumped,
+   * never played overhand: nobody pushes a ball 12 m with the fingers (MatusGib, 2026-11-15).
    */
-  freeOver: { deep: 7.3, short: 2.0, side: 2.8, apex: 5.0, shortApex: 4.0, guess: 1.0, aimSpeed: 2.0 },
+  freeOver: { deep: 7.3, short: 2.0, side: 2.8, apex: 5.0, shortApex: 4.0, guess: 1.0, aimSpeed: 2.0, bumpFrom: 6.0 },
   /**
-   * The libero's set (a backup set: the setter dug the first ball or can't get to it) is as good as
-   * the ball lets it be. Its difficulty (0-1, never under `base`) grows as the time to spare drops
-   * under `easy` s and as it is played further than `offEasy` m from the setter's spot (1 at
-   * `offEasy` + `offHard` m). Over `noSet` (give or take half of `noSetJitter`) it doesn't try a
-   * set: it bumps the ball up high to the 3 m line. A set it does try misses its target by `miss`
-   * m (along the net, off the net, apex: one sigma) times the difficulty. A set to the user is always
-   * clean (playability: the user's sets stay perfect).
+   * A backup set (the setter dug the first ball or can't get to it: the libero sets, or whoever is
+   * closest when the libero can't get there either) is as good as the ball lets it be: out of
+   * system a team nearly always still puts a high ball up to a pin, just a rougher one (MatusGib,
+   * 2026-11-14). Its difficulty (0-1, never under `base` for the libero, `otherBase` for anyone
+   * else) grows as the time to spare drops under `easy` s, as it is played further than `offEasy`
+   * m from the setter's spot (1 at `offEasy` + `offHard` m), and with the run under it: beyond
+   * `runEasy` m, up to `run` at `runEasy` + `runHard` m, plus up to `away` more the more that run
+   * goes away from the net (the set then goes back over the shoulder). Only over `noSet` (give or
+   * take half of `noSetJitter`: a ball barely reached) is no set tried: it is bumped up high to the
+   * 3 m line. A set that is tried misses its target by `miss` m (along the net, off the net, apex:
+   * one sigma) times the difficulty, but never peaks lower than `minApex` m above the hitter's
+   * contact: however rough, it is a high ball its hitter has time to get to, not a line drive
+   * over the net. A set to the user is always clean (playability: the user's sets stay perfect).
    */
-  backupSet: { base: 0.2, easy: 0.8, offEasy: 3.0, offHard: 6.0, noSet: 0.7, noSetJitter: 0.3, miss: { x: 1.2, z: 0.5, apex: 0.8 } },
+  backupSet: {
+    base: 0.2,
+    otherBase: 0.35,
+    easy: 0.8,
+    offEasy: 3.0,
+    offHard: 6.0,
+    runEasy: 1.5,
+    runHard: 5.0,
+    run: 0.5,
+    away: 0.5,
+    noSet: 0.95,
+    noSetJitter: 0.1,
+    miss: { x: 1.2, z: 0.5, apex: 0.8 },
+    minApex: 1.2,
+  },
   /**
-   * An AI dive (Mini Rally) keeps the ball alive and no more: it goes `apex` m above the hands (plus
-   * the dive's own metre) and `carry` m toward the middle of the court, for a team-mate running with
-   * the diver to play. (A free ball over is aimed, `freeOver`, only by a player moving slower than
-   * `freeOver.aimSpeed` m/s: one still scrambling just gets it over.)
+   * An AI dive (Mini Rally) keeps the ball alive and no more: it goes between the two `apex` values
+   * (m) above the hands (plus the dive's own metre) and between the two `carry` values (m) toward
+   * the middle of the court, up to `turn` rad to either side of that line, for a team-mate running
+   * with the diver to play: no two dives pop it up to the same place. (A free ball over is aimed,
+   * `freeOver`, only by a player moving slower than `freeOver.aimSpeed` m/s: one still scrambling
+   * just gets it over.)
    */
-  diveUp: { carry: 2.0, apex: 1.8 },
+  diveUp: { carry: [0.8, 3.5] as [number, number], apex: [1.0, 2.8] as [number, number], turn: 1.0 },
+  /**
+   * A scramble's second ball: one nobody could set (the setter called HELP, the libero could not
+   * get under it either) is just kept up by an AI player, somewhere a team-mate can get to:
+   * between `near` and `far` m from where it was played, towards the middle of our court give or
+   * take `turn` rad, peaking between the two `apex` values (m), no nearer than `net` m to the net
+   * and at most `out` m outside the lines. It used to go to one spot every time (the middle of
+   * the court on the 3 m line, 5.2 m high), so every scramble ended with the same free ball from
+   * the same place (MatusGib, 2026-11-15: far more randomness in where the ups go). The third
+   * ball is then played from wherever that is. (The sizes are inferred.)
+   */
+  up: { near: 1.0, far: 5.5, turn: 1.3, apex: [3.0, 6.5] as [number, number], net: 1.5, out: 0.5 },
   /**
    * Covering our hitter, `read` s after our setter sets, low and facing the net, so a ball blocked
    * straight down is dug back up. The spots are the real ones (3-2 coverage: CoachingVB, hitter
@@ -1388,6 +1517,22 @@ export const AI = {
    * hit out or into the net.
    */
   attackErr: 0.06,
+  /**
+   * An approach is only run for a ball the hitter gets to: one whose simulated run ends more than
+   * this far (m, the feet) from where the ball must be met is not jumped for. A called run (a
+   * quick, a go) that far off is not started and the hitter waits for a high ball; a set that far
+   * out of reach (too tight, too flat, too far along the net) is left to whoever can keep it in
+   * play. A hitter never goes up beside a ball it can't touch (MatusGib, 2026-11-15:
+   * misconnections between the AI setter and hitter; measured: a flat backup set, the hitter in
+   * the air 2.3 m from it).
+   */
+  approachMiss: 0.6,
+  /**
+   * A block goes up at the net: a blocker further than this (m) off it does not jump. One caught
+   * off the net (it left to approach, and the ball came straight back) runs in and goes up late
+   * from the net, or not at all: nobody blocks from 2 m out in the court.
+   */
+  blockNet: 0.9,
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
   blockerSkill: 0.5,
@@ -1464,14 +1609,108 @@ export const AI = {
    * The dive starts when the hands would land within `fit` m of where the ball comes down low, or
    * up to `stretch` m short of it: a last-ditch dive at a ball just beyond the hands, which the
    * contact system grades by how close it really got (at the edge of the platform: a scrape, up and
-   * not much more).
+   * not much more). A ball further out than that (up to `anywayFar` m beyond the hands), run at
+   * flat out, is dived for anyway `anyway` of the time: they don't get it, but nobody watches a
+   * ball drop (MatusGib, 2026-11-14). Nobody dives backwards at a serve or a spike: a dive that
+   * would go more than `back` (the share of it pointing away from the net: 0.3 is about 17 degrees
+   * behind straight sideways) backwards isn't made, and the ball is played on the feet or not at
+   * all. Forwards and sideways only; a ball going over them is run down like any other
+   * (MatusGib, 2026-11-14). Nor does anyone dive into the net: a ball coming down within `net` m
+   * of it, or beyond it, is not dived for or run at through the net (MatusGib, 2026-11-15: a
+   * setter diving into the net after a pass that went over).
    */
-  dive: { late: 0.9, minDist: 1.0, fit: 0.35, stretch: 0.6 },
+  dive: { late: 0.9, minDist: 1.0, fit: 0.35, stretch: 0.6, anyway: 0.5, anywayFar: 2.5, back: 0.3, net: 0.6 },
+  /** a platform put out for a ball the player is no longer sent to is dropped after this long (s) */
+  passDrop: 0.35,
+  /**
+   * A pass that comes down to the setter's hands within `tightPass` m of the net's plane (or over
+   * it) is out of system whatever its place along the net: a save at the tape, no quick. (The ball
+   * is 0.1 m wide either side of its centre: at 0.3 m its edge is a hand's width off the net.)
+   */
+  tightPass: 0.3,
+  /**
+   * Situations (src/ai/situation.ts; F3 shows the one each team is in). Players with no job of
+   * their own move with the play instead of waiting on a fixed formation spot:
+   * - the ball on their side (`ourServe`, `ourAttack`, `theirFirstBall`): the back row's base
+   *   defence shifts along the net by `ballSide` of the ball's distance from the middle of the
+   *   court, at most `ballSideMax` m; once they have the ball a pin blocker fronts its hitter,
+   *   standing between `frontMin` and `frontMax` m from the middle (USA Volleyball and GMS blocking
+   *   basics: "front your hitter"; the back row's shift and its size are inferred);
+   * - `theirServe`: `serveRead` s after the serve the players it is not going to are on their way:
+   *   the setter to the target and the front row to their approach starts, and the passers beside
+   *   the receiver step `backUp` of the way towards it (at most `backUpMax` m, never nearer than
+   *   `backUpKeep` m) to back it up (not when it is the user's ball: nobody steps at a ball that
+   *   is yours). Before that, their server's toss for a jump serve is read: the three passers
+   *   step `jumpBack` m back for it (a jump serve comes in hard and deep, and it is easier to
+   *   move forward to a ball than back; the size is inferred);
+   * - `ourFirstBall`: the back row follows the pass, `follow` of the way towards where it comes
+   *   down (at most `followMax` m); called out of system, the hitters wait `outDeep` m deeper for
+   *   the high ball (a full approach);
+   * - `scramble` (a ball off a block, a ball the setter calls HELP on): everyone not playing it
+   *   closes `chase` of the way on where it comes down (at most `chaseMax` m), never nearer than
+   *   `chaseKeep` m to it: the next option and the back-up, without crowding.
+   * `personal`: every player stands a little off the book spot, their own habit for the rally (m,
+   * 1 sd, rolled once a rally): no two rallies line up exactly the same. 0 turns a rule off.
+   */
+  sit: {
+    ballSide: 0.25,
+    ballSideMax: 1.2,
+    frontMin: 2.2,
+    frontMax: 3.9,
+    serveRead: 0.35,
+    jumpBack: 1.0,
+    backUp: 0.3,
+    backUpMax: 1.5,
+    backUpKeep: 1.5,
+    follow: 0.3,
+    followMax: 1.5,
+    outDeep: 0.6,
+    chase: 0.35,
+    chaseMax: 3.0,
+    chaseKeep: 2.5,
+    personal: 0.15,
+  },
+  /**
+   * Arriving on the cue. A defender reading their set, and a team-mate covering our hitter, has
+   * to be set by the hitter's contact, not before: it shuffles there at the pace that arrives
+   * `early` s ahead of the contact (stopped and balanced for it), never slower than `min` of a
+   * shuffle's top speed, instead of sprinting there and standing. If a shuffle would be late it
+   * goes as fast as it takes. (Real defenders move with the set and stop for the hit: "be stopped
+   * and balanced at contact", the read sequence in section 9 of the AI movement notes.)
+   */
+  pace: { early: 0.25, min: 0.3 },
+  /**
+   * Running a ball down: further than `turn` m from where they will play it (or from a spot they
+   * were sent to in a hurry: running with a team-mate at a ball, the setter releasing to the net)
+   * a player turns and runs, facing where they are going, flat out and upright; nearer, they
+   * square up to the net (or to their set). Shuffling sideways at the net's angle is for short
+   * moves ("turn and run" beyond a couple of steps: blocking and defence footwork, section 8 of
+   * the AI movement notes).
+   */
+  chase: { turn: 1.5 },
+  /**
+   * The 3 m line. A back-row player may attack above the net only after taking off behind the
+   * attack line, and a libero's overhand set from the front zone can't be attacked above the net;
+   * the line is part of the front zone (FIVB rules 13.2.3, 19.3.1.4, 1.3.4). So an AI back-row
+   * hitter (the pipe, the D) plants with the middle of its body at least `clear` m behind the line
+   * (the feet are ahead of it in the plant, and a shoe is about 0.3 m long), and an AI libero
+   * hand-sets only from that far behind it: nearer, it bump-sets. (MatusGib, 2026-11-15: the pipe
+   * hitter and the libero setting overhand sometimes stepped on the line. Measured before: the
+   * pipe took off 2-15 cm behind the line every time, 13 of 13.)
+   */
+  backRow: { clear: 0.25 },
   /** an AI setter whose ball has dropped this far (m) below their standing hands, not under them, digs it instead (platform or dive) */
   lateSet: 0.15,
   /** a ball the defender sent for would reach with less than this (s) to spare: a team-mate runs at it too */
   scramble: 0.1,
-  pipe: { inSystem: 0.35, outOfSystem: 0.1 },
+  /**
+   * The pipe. How much the setter likes it against `setWeight` (`inSystem` off a good pass,
+   * `outOfSystem` off a bad one). From behind the 3 m line the hitter looks for the open spot only
+   * `open` of the time in system; otherwise it takes one of its usual deep shots (line, cross, the
+   * seam). It used to go to the same corner (MatusGib, 2026-11-15; measured before: 9 of 11
+   * shots at the open spot, 6 of them the same deep corner).
+   */
+  pipe: { inSystem: 0.35, outOfSystem: 0.1, open: 0.4 },
   /**
    * Mini Rally serves (`src/ai/server.ts`). `jump` of the serves are jump serves: the server starts
    * `jumpBack` m behind the end line, walks `jumpStep` m into the toss, tosses the ball `jumpTossHigh` m over their standing reach
@@ -1557,6 +1796,31 @@ export const AI = {
    * off the block for the cover to pick up and attack again (recycling: `CONTACT.recycleSpeed`).
    */
   recycleShot: 0.8,
+  /**
+   * An AI hitter under the ball (its swing would be graded Early) never sends a light ball sailing
+   * out past the end line: a light ball is a choice (MatusGib, 2026-11-14). `adjust` of the time it
+   * feels it and plays the ball off-speed, its timing error cut to x `timing` (a soft touch needs
+   * little timing): pushed at the outer edge (`wipeEdge` of the hand's half-width) of the outside
+   * hand of a block within `blockNear` m in front (weight `wipe`: off it and out), tipped short
+   * over the block (`tip`), or rolled (`roll`) to whichever of the deep corners (`deep` m off the
+   * net), the middle of the court (`middle`) and the short cross-court angle (`short`) their
+   * nearest player is furthest from (plus up to `guess` m of guesswork). The rest of the time it
+   * swings through it, a full swing: hard, and long (the hitting error of a real match: about
+   * 5-8% of attacks hit out or into the net, see `attackErr`).
+   */
+  offSpeed: {
+    adjust: 0.3,
+    timing: 0.3,
+    wipe: 1.0,
+    tip: 0.6,
+    roll: 1.2,
+    wipeEdge: 0.85,
+    blockNear: 1.6,
+    deep: 7.4,
+    middle: 5.2,
+    short: 3.3,
+    guess: 1.0,
+  },
   /** an AI player lets a ball go that will land more than this (m) out; closer to the line it is too close to call and played */
   outJudge: 0.2,
   /** an AI passer's platform timing error grows by this factor at a ball arriving at 22 m/s or more (from 12 m/s up): less time to read it */

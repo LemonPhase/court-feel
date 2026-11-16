@@ -310,7 +310,11 @@ export class ContactSystem {
     const clickT = opts.aiErr !== undefined ? idealT - lead + opts.aiErr : t;
     act.err = clickT + lead - idealT;
     act.contactT = clamp(tStar, t + TIMING.swingMin, t + TIMING.swingMax);
-    if (opts.aiErr !== undefined) act.contactT = clamp(tStar + opts.aiErr * 0.5, t + TIMING.swingMin, t + TIMING.swingMax + 0.1);
+    // (an AI hitter's mistimed swing still meets the ball: see CONTACT.aiSwingShift)
+    if (opts.aiErr !== undefined) {
+      const shift = clamp(opts.aiErr * 0.5, -CONTACT.aiSwingShift, CONTACT.aiSwingShift);
+      act.contactT = clamp(tStar + shift, t + TIMING.swingMin, t + TIMING.swingMax + 0.1);
+    }
     // provisional contact point for the animator (refined every step)
     h.ball.ensurePrediction(h.env, t).posAt(act.contactT, this._b);
     act.contactPoint.set(this._b.x, this._b.y, this._b.z);
@@ -448,6 +452,8 @@ export class ContactSystem {
     // contact under the ball: sails long (a jump serve keeps its line and loses its topspin below)
     if (grade === 'Early' && !serve) target.z += side * 2.2;
     if (grade === 'Late' && !safeServe) target.z -= side * 1.8; // over the top: drives down into the net
+    // (a tip is placed, not driven: mistimed it drops short behind the tape, never back into the tipper's own court)
+    if (tip) target.z = side * Math.max(CONTACT.tipOver, target.z * side);
     if (safeServe) {
       target.x = clamp(target.x, -COURT.halfWidth + CONTACT.serveSafe, COURT.halfWidth - CONTACT.serveSafe);
       target.z = side * clamp(Math.abs(target.z), 2.5, COURT.halfLength - CONTACT.serveSafe);
@@ -499,7 +505,16 @@ export class ContactSystem {
       if (safeServe) speed = this.overTheTape(p0, target, out, w, margin);
       ball.hit(out, { x: 0, y: 0, z: 0 }, BALL.floatWobble * (rank === 3 ? 1.2 : 0.8), h.simTime);
     } else {
-      const base = serve ? CONTACT.serveJumpSpeed : rank === 3 ? CONTACT.spikePerfect : rank === 2 ? CONTACT.spikeGood : CONTACT.spikeOk;
+      // (an AI hitter that swings through a ball it is under still swings hard: it sails long at
+      // pace, never as a light ball; an AI's light ball is a tip, a roll or a wipe: `AI.offSpeed`)
+      const throughIt = !a.isUser && !serve && grade === 'Early';
+      const base = serve
+        ? CONTACT.serveJumpSpeed
+        : rank === 3
+          ? CONTACT.spikePerfect
+          : rank === 2 || throughIt
+            ? CONTACT.spikeGood
+            : CONTACT.spikeOk;
       const gradeK = serve ? (rank === 3 ? 1.1 : rank === 2 ? 1 : 0.8) : 1;
       speed = base * gradeK * pos.power * lerp(0.88, 1.0, hf) * (dc > reach ? 0.86 : 1) * power;
       // hit on the move (an AI pin hitter going inside): the body's speed along the shot is in the hand too
@@ -697,6 +712,9 @@ export class ContactSystem {
     const hands = act.form === 'hands';
     // a ball off the other team's block (our attack came back): our cover is digging it
     const covered = ball.lastTouch?.kind === 'block' && ball.lastTouch.side !== a.side;
+    // (a ball that came back softly off their hands, recycled, is the easy one; anything else off
+    // their block is a stuff kept off the floor)
+    const stuffed = covered && !ball.lastTouch?.recycle;
     const P = hands ? this.handsPoint(a, this._p) : this.platformPoint(a, this._p);
     const assist = h.aimAssist(a);
     // hard-driven balls: a little extra reach (a lunge), the same for everyone
@@ -789,11 +807,28 @@ export class ContactSystem {
     const ang = h.rand() * Math.PI * 2;
     const rad = err * Math.sqrt(h.rand());
     const target = { x: T.x + Math.cos(ang) * rad, y: T.y, z: T.z + Math.sin(ang) * rad * 0.7 };
+    // a ball off their block is a reaction touch: the share of it the coverer controls goes to the
+    // setter like any pass, the rest pops up near them, on from the way the ball came
+    let coverUp = 0;
+    const K = stuffed ? CONTACT.covered.stuff : CONTACT.covered;
+    let control = covered ? this.coverControl(incoming, grade, dBest / r, moving, form, K.best) : 1;
+    // (a stuff kept up is mostly luck: where on the arms it landed)
+    if (stuffed) control *= lerp(CONTACT.covered.stuff.luck[0], CONTACT.covered.stuff.luck[1], h.rand());
     if (covered) {
-      // a covered ball goes up high to the middle of the court, well off the net: out of system
       const C = CONTACT.covered;
-      target.x = clamp(T.x * 0.4 + (h.rand() * 2 - 1) * C.spread, -COURT.halfWidth + 1, COURT.halfWidth - 1);
-      target.z = a.side * (C.off + h.rand() * C.depth);
+      const bv = ball.vel;
+      const hv = Math.hypot(bv.x, bv.z);
+      const hx = hv > 0.5 ? bv.x / hv : 0;
+      const hz = hv > 0.5 ? bv.z / hv : a.side;
+      const turn = (h.rand() * 2 - 1) * K.turn;
+      const pop = lerp(K.pop[0], K.pop[1], h.rand());
+      const wx = bp.x + (hx * Math.cos(turn) - hz * Math.sin(turn)) * pop;
+      const wz = bp.z + (hx * Math.sin(turn) + hz * Math.cos(turn)) * pop;
+      target.x = clamp(lerp(wx, target.x, control), -COURT.halfWidth - C.wide, COURT.halfWidth + C.wide);
+      target.z = lerp(wz, target.z, control);
+      coverUp = bp.y + lerp(K.up[0], K.up[1], h.rand());
+      // (a pass is aimed at the setter's hands; a stuff kept up comes down wherever it comes down)
+      if (stuffed) target.y = lerp(CONTACT.covered.stuff.floor, T.y, control);
     }
     // never pass it over our own end line: keep shanks wild but plausible
     if (grade !== 'Perfect' && grade !== 'Good' && h.rand() < 0.35) {
@@ -802,9 +837,8 @@ export class ContactSystem {
     }
     const out = { x: 0, y: 0, z: 0 };
     // (a dive digs it up high: time to get up, and for someone else to play it)
-    const apex = covered
-      ? CONTACT.covered.apex + h.rand() * 0.8
-      : Math.max(T.apex + (grade === 'Perfect' ? 0 : (h.rand() - 0.3) * 1.2), bp.y + 0.6) + (form === 'dive' ? 1 : 0);
+    const passApex = Math.max(T.apex + (grade === 'Perfect' ? 0 : (h.rand() - 0.3) * 1.2), bp.y + 0.6) + (form === 'dive' ? 1 : 0);
+    const apex = covered ? lerp(coverUp, passApex, control) : passApex;
     solveApex({ x: bp.x, y: bp.y, z: bp.z }, target, apex, { x: 0, y: 0, z: 0 }, out);
     ball.hit(out, { x: (h.rand() - 0.5) * 6, y: 0, z: (h.rand() - 0.5) * 6 }, 0, t);
     ball.lastTouch = { athlete: a, kind: dig ? 'dig' : 'pass', t, side: a.side };
@@ -829,6 +863,20 @@ export class ContactSystem {
       target: new THREE.Vector3(target.x, target.y, target.z),
     });
     return true;
+  }
+
+  /**
+   * How much of a ball off their block the coverer controls (0 to `CONTACT.covered.best`): less the
+   * harder it comes, off a platform not set in time, off its edge (`off`: 0 the middle, 1 the rim),
+   * with the feet still moving (`moving`: 0-1 of a full run), reaching to the side or diving.
+   * `best`: the most there is to control (a stuff kept up: `CONTACT.covered.stuff.best`).
+   */
+  coverControl(incoming: number, grade: Grade, off: number, moving: number, form: PassForm, best = CONTACT.covered.best): number {
+    const C = CONTACT.covered;
+    const hard = clamp01((incoming - C.easy) / (C.hard - C.easy));
+    const timed = grade === 'Perfect' || grade === 'Good' ? 1 : C.late;
+    const reach = form === 'side' || form === 'dive' ? C.reach : 1;
+    return best * (1 - hard) * timed * (1 - C.edge * clamp01(off)) * (1 - C.moving * clamp01(moving)) * reach;
   }
 
   /** a shanked pass or dig: off the arms sideways and up, still going the way it came, and slower */
@@ -1275,7 +1323,7 @@ export class ContactSystem {
     ball.hit(out, { x: 0, y: 0, z: 0 }, 0, t);
     // pop the ball out of the hands volume so it doesn't re-collide
     ball.state.p.z = kind === 'stuff' || kind === 'recycle' ? -a.side * (R + 0.02) : ball.state.p.z;
-    ball.lastTouch = { athlete: a, kind: 'block', t, side: a.side };
+    ball.lastTouch = { athlete: a, kind: 'block', t, side: a.side, recycle: kind === 'recycle' };
     a.lastTouchT = t;
     act.resolved = true;
     act.contactT = t;

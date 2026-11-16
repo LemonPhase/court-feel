@@ -161,7 +161,8 @@ export function riseTime(H: number): number {
  * Shared approach solver: `target(H)` gives the contact point and time for a
  * jump of height H; plant so the jump peaks then, start running so the feet
  * arrive under it (binary search over simulated runs). Iterates because the
- * jump height depends on the run.
+ * jump height depends on the run. `behind` > 0 (a back-row hitter): the feet leave the floor at
+ * least that far (m) from the net, even if the ball is then met a little in front of the body.
  */
 function planTo(
   me: Athlete,
@@ -170,6 +171,7 @@ function planTo(
   airYaw: number,
   hold: number,
   target: (H: number) => { tc: number; contact: THREE.Vector3 } | null,
+  behind = 0,
   curved = false,
 ): ApproachPlan | null {
   const off = new THREE.Vector3();
@@ -179,11 +181,13 @@ function planTo(
   me.yaw = prevYaw;
   let H = me.jumpMax;
   let best: ApproachPlan | null = null;
-  for (let iter = 0; iter < 2; iter++) {
+  // (how far the feet are held back from under the ball, so the take-off stays behind the line)
+  let back = 0;
+  for (let iter = 0; iter < (behind > 0 ? 4 : 2); iter++) {
     const tg = target(H);
     if (!tg) return best;
     const { tc, contact } = tg;
-    const feet = new THREE.Vector3(contact.x - off.x, 0, contact.z - off.z);
+    const feet = new THREE.Vector3(contact.x - off.x, 0, contact.z - off.z + me.side * back);
     const tPress = Math.max(now + 0.02, tc - riseTime(H) - hold);
     // where the run is aimed. A straight run is aimed at the feet. A curved one is flown off its
     // last heading, to one side of the line it started on: it is aimed a little to the other side,
@@ -241,7 +245,15 @@ function planTo(
       feet: r.pos.clone(),
       error: Math.hypot(r.pos.x - feet.x, r.pos.z - feet.z),
     };
-    if (Math.abs(r.jumpH - H) < 0.01) break;
+    // a back-row hitter leaves the floor behind the line: if this run would not, plan it again
+    // with the feet that much further back
+    let short = 0;
+    if (behind > 0) {
+      const tk = simulateApproach(me, now, lo, tPress, hold, dir, runYaw, airYaw, tPress + hold, bend, total, carry);
+      short = behind - tk.pos.z * me.side;
+    }
+    if (short > 0.01) back += short + 0.02;
+    else if (Math.abs(r.jumpH - H) < 0.01) break;
     H = r.jumpH;
   }
   return best;
@@ -260,6 +272,7 @@ export function planApproach(
   runYaw: number,
   airYaw: number,
   hold = PLAYER.loadMax - 0.02,
+  behind = 0,
   curved = false,
 ): ApproachPlan | null {
   const reachY = me.standReach - 0.16;
@@ -275,6 +288,7 @@ export function planApproach(
       pred.posAt(tc, _b);
       return { tc, contact: new THREE.Vector3(_b.x, _b.y, _b.z) };
     },
+    behind,
     curved,
   );
 }
@@ -305,6 +319,7 @@ export function planQuick(
       tc: tTakeoff + riseTime(H),
       contact: new THREE.Vector3(spot.x, reachY + H, spot.z),
     }),
+    0,
     curved,
   );
 }
@@ -318,9 +333,10 @@ export function planToPoint(
   runYaw: number,
   airYaw: number,
   hold = PLAYER.loadMax - 0.02,
+  behind = 0,
   curved = false,
 ): ApproachPlan | null {
-  return planTo(me, now, runYaw, airYaw, hold, () => ({ tc, contact }), curved);
+  return planTo(me, now, runYaw, airYaw, hold, () => ({ tc, contact }), behind, curved);
 }
 
 export interface JumpPrediction {

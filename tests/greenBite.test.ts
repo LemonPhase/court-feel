@@ -314,7 +314,7 @@ describe('a run across the court loops in (AI hitters)', () => {
     const opp = new Athlete('OPP', 1);
     opp.place(lane.sx, lane.sz, 0);
     const contact = new THREE.Vector3(lane.x, attackHeight(opp), lane.z);
-    const curved = planToPoint(opp, 0, contact, 1.9, 0, 0, undefined, true)!;
+    const curved = planToPoint(opp, 0, contact, 1.9, 0, 0, undefined, 0, true)!;
     const straight = planToPoint(opp, 0, contact, 1.9, 0, 0)!;
     expect(straight.bend).toBe(0);
     expect(Math.abs(curved.bend)).toBeGreaterThan(0.2);

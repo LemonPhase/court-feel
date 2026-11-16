@@ -25,6 +25,8 @@ export const isModeId = (v: unknown): v is ModeId => typeof v === 'string' && Ob
 export abstract class Mode {
   abstract readonly id: ModeId;
   protected spawned: Athlete[] = [];
+  /** extra lines for the F3 overlay */
+  debugLines?(): string[];
   protected objects: THREE.Object3D[] = [];
   score = 0;
   streak = 0;

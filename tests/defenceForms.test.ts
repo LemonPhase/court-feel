@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { AI, CONTACT, COURT, PLAYER, SIM, TIMING } from '../src/config';
 import { Athlete, type PassForm } from '../src/game/athlete';
 import { ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
-import { yawFromDir } from '../src/core/mathx';
+import { Rng, yawFromDir } from '../src/core/mathx';
 import { makeBall, stepBall, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { solveFixedTime } from '../src/physics/solve';
@@ -18,7 +18,18 @@ const TARGET = { x: 1, y: 2.35, z: 0.9, apex: 4 };
  * `start` runs once at the start (to dive, say), and the pass goes up (form `form`) `lead` s before
  * the ball arrives. Returns the contact, or undefined if the ball got by.
  */
-function play(opts: { from: V3; to: V3; T: number; lead: number; form?: PassForm; dive?: boolean; offTheirBlock?: boolean }) {
+function play(opts: {
+  from: V3;
+  to: V3;
+  T: number;
+  lead: number;
+  form?: PassForm;
+  dive?: boolean;
+  offTheirBlock?: boolean;
+  /** the block it came off handed it back softly (a recycled ball) */
+  recycle?: boolean;
+  rand?: () => number;
+}) {
   const state = makeBall();
   const predictor = new BallPredictor(DT, SIM.predictHorizon);
   let version = 0;
@@ -26,7 +37,7 @@ function play(opts: { from: V3; to: V3; T: number; lead: number; form?: PassForm
   const ball = {
     state,
     active: true,
-    lastTouch: { athlete: null, kind: opts.offTheirBlock ? 'block' : 'spike', t: -1, side: -1 } as any,
+    lastTouch: { athlete: null, kind: opts.offTheirBlock ? 'block' : 'spike', t: -1, side: -1, recycle: opts.recycle } as any,
     get pos() {
       return state.p;
     },
@@ -55,7 +66,7 @@ function play(opts: { from: V3; to: V3; T: number; lead: number; form?: PassForm
     aimAssist: () => 0,
     aimTargetFor: (_a: Athlete, out: THREE.Vector3) => out.set(1, 0.105, -6),
     emitContact: (e: ContactEvent) => events.push(e),
-    rand: () => 0.5,
+    rand: opts.rand ?? (() => 0.5),
     passTarget: () => TARGET,
     setOptions: () => [],
     canServe: () => true,
@@ -82,7 +93,7 @@ function play(opts: { from: V3; to: V3; T: number; lead: number; form?: PassForm
     stepBall(state, DT, host.env);
   }
   const e = events[0];
-  return { e, off: e ? Math.hypot(e.target.x - TARGET.x, e.target.z - TARGET.z) : NaN, vy: state.v.y };
+  return { e, off: e ? Math.hypot(e.target.x - TARGET.x, e.target.z - TARGET.z) : NaN, vy: state.v.y, v: { ...state.v } };
 }
 
 /** a spike from their outside at 20 m/s, met by our defender's platform `side` m to their right */
@@ -221,17 +232,83 @@ describe('the ball off the block', () => {
     expect(theirs.e.note).not.toBe('Tooled');
   });
 
-  it('a ball off their block, dug by our cover, goes up high and well off the net: out of system, never Perfect', () => {
-    const from = { x: 0.3, y: 2.9, z: -0.2 };
-    const to = { x: 0, y: H * 0.34, z: 6 - 0.45 };
-    const covered = play({ from, to, T: 1.0, lead: TIMING.passLead, offTheirBlock: true });
-    const dug = play({ from, to, T: 1.0, lead: TIMING.passLead });
-    expect(covered.e?.note).toBe('Covered');
-    expect(covered.e.grade).not.toBe('Perfect');
-    // the same ball after their attack (not off their block) goes to the setter as usual
-    expect(dug.e?.note).not.toBe('Covered');
-    expect(Math.abs(covered.e.target.z)).toBeGreaterThanOrEqual(CONTACT.covered.off);
-    expect(covered.off).toBeGreaterThan(AI.outOfSystem + 1);
-    expect(dug.off).toBeLessThan(AI.outOfSystem);
+  /** a ball off their block coming down onto our coverer's platform at (0, 5.55): `T` s from `from` */
+  const cover = (from: V3, T: number, lead: number, rand?: () => number, offTheirBlock = true, recycle = false) =>
+    play({ from, to: { x: 0, y: H * 0.34, z: 6 - 0.45 }, T, lead, offTheirBlock, recycle, rand });
+  /** recycled: it drops slowly; stuffed: it is driven down */
+  const SLOW = { from: { x: 0.3, y: 2.9, z: 4.0 }, T: 0.8, lead: TIMING.passLead };
+  const HARD = { from: { x: 0.3, y: 2.9, z: 4.6 }, T: 0.22, lead: TIMING.digLead };
+
+  it('a slow ball off their block is covered with control, most of the way to the setter; one stuffed down hard pops up by the coverer', () => {
+    const slow = cover(SLOW.from, SLOW.T, SLOW.lead, undefined, true, true);
+    const hard = cover(HARD.from, HARD.T, HARD.lead);
+    expect(slow.e?.note).toBe('Covered');
+    expect(hard.e?.note).toBe('Covered');
+    expect(slow.e.grade).not.toBe('Perfect');
+    // the slow one goes most of the way to the setter (the same ball after their attack goes all the way)
+    const passed = cover(SLOW.from, SLOW.T, SLOW.lead, undefined, false);
+    expect(passed.e?.note).not.toBe('Covered');
+    expect(slow.off).toBeLessThan(hard.off);
+    expect(slow.off).toBeGreaterThan(passed.off);
+    expect(passed.off).toBeLessThan(AI.outOfSystem);
+    // the stuff is out of the coverer's control: up, within a few metres of where it was dug
+    const near = Math.hypot(hard.e.target.x - hard.e.point.x, hard.e.target.z - hard.e.point.z);
+    expect(near).toBeLessThanOrEqual(CONTACT.covered.stuff.pop[1] + 0.01);
+    expect(hard.off).toBeGreaterThan(AI.outOfSystem + 1);
+  });
+
+  it('a stuff kept up is mostly luck: low and flat or high, short or long, any direction; the recycled ball still goes up to the setter', () => {
+    const rng = new Rng(11);
+    // (a stuff that is not driven straight down: slow enough that the platform has some of it)
+    const KEPT = { from: { x: 0.3, y: 2.9, z: 4.4 }, T: 0.45, lead: TIMING.passLead };
+    const stuffs = Array.from({ length: 40 }, () => cover(KEPT.from, KEPT.T, KEPT.lead, () => rng.next()));
+    const recycled = Array.from({ length: 40 }, () => cover(SLOW.from, SLOW.T, SLOW.lead, () => rng.next(), true, true));
+    /** how high above the platform it goes, how fast it leaves, which way */
+    const rise = (c: (typeof stuffs)[number]) => (c.v.y * c.v.y) / (2 * 9.81);
+    const speed = (c: (typeof stuffs)[number]) => Math.hypot(c.v.x, c.v.y, c.v.z);
+    const span = (cs: typeof stuffs, f: (c: (typeof stuffs)[number]) => number) => Math.max(...cs.map(f)) - Math.min(...cs.map(f));
+    const mean = (cs: typeof stuffs, f: (c: (typeof stuffs)[number]) => number) => cs.reduce((t, c) => t + f(c), 0) / cs.length;
+    for (const c of stuffs) expect(c.e?.note).toBe('Covered');
+    // height, speed and direction all vary a lot
+    expect(span(stuffs, rise)).toBeGreaterThan(2);
+    expect(span(stuffs, speed)).toBeGreaterThan(3);
+    expect(stuffs.some((c) => c.v.z > 0.5)).toBe(true);
+    expect(stuffs.some((c) => c.v.z < -0.5)).toBe(true);
+    expect(stuffs.some((c) => c.v.x > 0.5)).toBe(true);
+    expect(stuffs.some((c) => c.v.x < -0.5)).toBe(true);
+    // some barely leave the floor
+    expect(Math.min(...stuffs.map(rise))).toBeLessThan(0.8);
+    // lower than the recycled ball on the whole, and much further from the setter
+    expect(mean(stuffs, rise)).toBeLessThan(mean(recycled, rise) - 0.5);
+    expect(mean(stuffs, (c) => c.off)).toBeGreaterThan(mean(recycled, (c) => c.off) + 1);
+    // few of them are a pass the setter can run an offence off
+    expect(stuffs.filter((c) => c.off < AI.outOfSystem).length).toBeLessThan(8);
+  });
+
+  it('no two covers of a stuff come off the same: the ball goes up somewhere near the coverer', () => {
+    const rng = new Rng(7);
+    const spots = [0, 1, 2, 3, 4, 5].map(() => cover(HARD.from, HARD.T, HARD.lead, () => rng.next()).e.target);
+    const xs = spots.map((p) => p.x);
+    const zs = spots.map((p) => p.z);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(1.5);
+    expect(Math.max(...zs) - Math.min(...zs)).toBeGreaterThan(1.5);
+  });
+
+  it('a coverer has less of the ball the harder it comes, off a late platform, off its edge, on the move, reaching', () => {
+    const cs = new ContactSystem({} as ContactHost);
+    const C = CONTACT.covered;
+    const best = cs.coverControl(C.easy, 'Good', 0, 0, 'platform');
+    expect(best).toBeCloseTo(C.best);
+    expect(cs.coverControl(C.hard, 'Good', 0, 0, 'platform')).toBe(0);
+    for (const worse of [
+      cs.coverControl((C.easy + C.hard) / 2, 'Good', 0, 0, 'platform'),
+      cs.coverControl(C.easy, 'Late', 0, 0, 'platform'),
+      cs.coverControl(C.easy, 'Good', 1, 0, 'platform'),
+      cs.coverControl(C.easy, 'Good', 0, 1, 'platform'),
+      cs.coverControl(C.easy, 'Good', 0, 0, 'side'),
+    ]) {
+      expect(worse).toBeLessThan(best);
+      expect(worse).toBeGreaterThan(0);
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { COURT, PLAYER, type PositionId, type SetTier } from '../config';
+import { AI, COURT, PLAYER, type PositionId, type SetTier } from '../config';
 import { clamp } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import { predictJump } from '../ai/approach';
@@ -33,9 +33,10 @@ export const LANES: Record<PositionId, AttackLane> = {
   // hitter (see QUICK). A quick timed off the set is unhittable at real tempo. (x is a default; see quickSpot)
   MB: { x: 0.2, z: 0.75, apexAbove: 0.5, sx: 0.35, sz: 2.8, label: 'Middle quick (1)', quick: true },
   S: { x: 1.05, z: 0.55, apexAbove: 0.75, sx: 1.2, sz: 1.3, label: 'Setter attack on two' },
-  // in system the pipe is met 2 m off the net: the hitter takes off just behind the 3 m line and
-  // broad-jumps in (the approach starts close enough to make it at the set's tempo)
-  L: { x: -0.4, z: 2.0, apexAbove: 1.45, sx: -0.4, sz: 5.5, label: 'Back-row pipe' },
+  // in system the pipe is met a little over 2 m off the net: the hitter takes off behind the 3 m
+  // line, their feet clear of it (AI.backRow), and broad-jumps in (the approach starts close enough
+  // to make it at the set's tempo)
+  L: { x: -0.4, z: 2.25, apexAbove: 1.45, sx: -0.4, sz: 5.5, label: 'Back-row pipe' },
 };
 
 /** out of system a back-row set stays well behind the 3 m line, this far (m) off the net */
@@ -46,19 +47,20 @@ export const SETTER_SPOT = { x: 1.1, z: 0.65 };
 /** target for passes / free balls: where the setter wants the ball */
 export const SETTER_TARGET = { x: 1.0, z: 0.9, height: 3.6 };
 /**
- * Target for a dig by the setter himself: high to the middle of the court, just behind the
- * 3 m line, so the backup (the libero) has time to get there and may hand-set it. A second ball
- * nobody could set goes there too, for a free ball over from there.
+ * Target for a dig by the setter himself: high to the middle of the court, behind the 3 m line
+ * with room to spare, so the backup (the libero) has time to get there and may hand-set it with
+ * its feet clear of the line. (The user's second ball nobody could set goes there too.)
  */
-export const BACKUP_TARGET = { x: 0.5, y: 2.35, z: 3.4, apex: 5.2 };
+export const BACKUP_TARGET = { x: 0.5, y: 2.35, z: 3.8, apex: 5.2 };
 
 /**
  * May `a` hand-set a ball while standing at z? A libero's overhand set from the front zone (the
  * line included) can't be attacked above the net, so a libero hand-sets only from behind the
- * 3 m line and bump-sets in front of it.
+ * 3 m line, its feet clear of it (`AI.backRow.clear`: a foot on the line is in the front zone),
+ * and bump-sets from anywhere nearer the net.
  */
 export function handSetAllowed(a: Athlete, z: number): boolean {
-  return a.role !== 'L' || Math.abs(z) > COURT.attackLine;
+  return a.role !== 'L' || Math.abs(z) > COURT.attackLine + AI.backRow.clear;
 }
 
 export function laneFor(pos: PositionId, side: 1 | -1): AttackLane {

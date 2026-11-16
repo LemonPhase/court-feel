@@ -289,3 +289,66 @@ describe('the touch, as the arms show it', () => {
     expect(moved).toBeLessThan(0.07);
   });
 });
+
+describe('a body that is not rigid (AI players)', () => {
+  /** an AI player standing still for `seconds`: the lowest and highest the hips got */
+  const hips = (s: ReturnType<typeof standing>, seconds: number) => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < seconds * SIM.hz; i++) {
+      s.step();
+      const y = world(s.v.rig.bones.hips).y;
+      lo = Math.min(lo, y);
+      hi = Math.max(hi, y);
+    }
+    return { lo, hi };
+  };
+
+  it('with a ball in play nobody stands flat-footed: lower than between rallies, and bouncing; your own body is left alone', () => {
+    const L = CHARACTER.loose;
+    const s = standing(6);
+    const H = s.a.height;
+    hips(s, 2);
+    const rest = hips(s, 3);
+    s.a.alert = 1;
+    for (let i = 0; i < SIM.hz; i++) s.step();
+    const ready = hips(s, 3);
+    // sitting lower, and moving up and down far more than the breathing does
+    expect(rest.hi - ready.hi).toBeGreaterThan(L.readyDrop * H * 0.6);
+    expect(ready.hi - ready.lo).toBeGreaterThan(L.bounce * H * 0.4);
+    expect(ready.hi - ready.lo).toBeGreaterThan(2 * (rest.hi - rest.lo));
+
+    const you = standing(6);
+    you.a.isUser = true;
+    hips(you, 2);
+    const before = hips(you, 3);
+    you.a.alert = 1;
+    const after = hips(you, 3);
+    expect(after.lo).toBeCloseTo(before.lo, 2);
+    expect(after.hi).toBeCloseTo(before.hi, 2);
+  });
+
+  it('the trunk leans into the push-off: further forward starting a run than at the same pace a moment later', () => {
+    const lean = (s: ReturnType<typeof standing>) => {
+      const q = new THREE.Quaternion();
+      s.v.rig.bones.chest.getWorldQuaternion(q);
+      // how far the chest's up axis tips towards the net (the way they run)
+      return -new THREE.Vector3(0, 1, 0).applyQuaternion(q).z;
+    };
+    /** peak forward lean over the first 0.4 s of a run at the net */
+    const peak = (acc: number) => {
+      const keep = CHARACTER.loose.accLean;
+      CHARACTER.loose.accLean = acc;
+      const s = standing(6);
+      let most = -Infinity;
+      for (let i = 0; i < 0.4 * SIM.hz; i++) {
+        s.a.cmd.moveZ = -1;
+        s.step();
+        most = Math.max(most, lean(s));
+      }
+      CHARACTER.loose.accLean = keep;
+      return most;
+    };
+    expect(peak(CHARACTER.loose.accLean)).toBeGreaterThan(peak(0) + 0.02);
+  });
+});
