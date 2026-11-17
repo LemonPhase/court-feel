@@ -596,7 +596,8 @@ set, or steps towards a pin on a set in the middle. The pin blockers block as on
 any set, so your hitter has one block to beat, and bounces it: a full swing as
 steep as the net allows, past the block's hands, down inside or just behind
 their 3 m line. A perfect set lets them hide the shot until the hand, so the
-diggers start late, and no block stuffs it. (Out of system a high ball to a pin
+diggers start late, and no block stuffs it; a late block (hands still coming up)
+only sends it off the fingers and wide. (Out of system a high ball to a pin
 is the exception: see "Calls, plays and the dump".) A **good** set (the white band) is a little off
 its spot (up to about 0.4 m): your hitter still looks for an open spot, but the
 defence reads it as usual and often there is none. **Early** and **late** pushes
@@ -705,7 +706,8 @@ it: there is one place that ball can go, so their middle reads it and closes the
 block next to the pin blocker. A green one is still a perfect ball to swing at:
 your hitter takes a full, well-timed swing against two blockers, most of them
 score, some are dug, and none is stuffed (the block can touch an attack off a
-green set, it comes off the hands soft or wide, never straight back down).
+green set, it comes off the hands soft or wide, never straight back down, and off
+a late or early block always wide).
 
 **The dump** (Setter Drill, front row: G, then 5). A back-row setter may not
 attack a ball above the net, and with three hitters at the net you are back
@@ -942,7 +944,7 @@ and **e2e** (below). Both should be required checks for merging into `main`.
   X crosses; the wheel's slices), your own plays (one set for each hitter; a saved
   play is called like any other; two front-row hitters never on one spot;
   stored plays are checked), out of system a green high ball to a pin does not
-  fool their middle, a block touches a green attack but never stuffs it, a pin hitter going inside (which runs are, the faster take-off
+  fool their middle, a block touches a green attack but never stuffs it (a late one only sends it wide), a pin hitter going inside (which runs are, the faster take-off
   and the longer flight, the start near the pin start), the dump and the front row, their middle
   going up with a hitter you did not set, the bounce (steep, in, clear of the
   block's hands), runs across the court looping in, a hitter who can't make

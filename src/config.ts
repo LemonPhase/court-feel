@@ -1861,7 +1861,7 @@ export const AI = {
    * as up where it is going). Off a pass out of system a high ball to a pin fools nobody: their
    * middle closes the block and your hitter has two blockers to beat: not every one of those is
    * a kill, but it is always a full swing, and no block stuffs an attack off a green set (it
-   * comes off the hands soft or wide: ContactSystem.tryBlock). Their diggers start `greenSetDigDelay` s late (the hitter hid
+   * comes off the hands soft or wide, and off a late or early block always wide: ContactSystem.tryBlock). Their diggers start `greenSetDigDelay` s late (the hitter hid
    * the shot until the hand).
    */
   /**

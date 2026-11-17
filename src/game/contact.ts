@@ -1360,8 +1360,10 @@ export class ContactSystem {
       out.x = bv.x * 0.2 + Math.sin(lat) * sp * 0.4;
       out.y = Math.sin(ang) * sp;
       out.z = -a.side * Math.cos(ang) * sp;
-    } else if (!edge && (rank >= 2 || roll < 0.55)) {
-      // soft block: ball pops up, slowed, usually stays playable on our side
+    } else if (!edge && (rank >= 2 || (roll < 0.55 && !lt.green))) {
+      // soft block: ball pops up, slowed, usually stays playable on our side. (Off the user's
+      // green set a late or early block never is: hands still coming up, or already going down,
+      // are no wall, and the hitter who saw them swings high off them: off the fingers and wide)
       kind = 'soft';
       out.x = bv.x * 0.3 + (h.rand() * 2 - 1) * 1.2;
       out.y = 3.2 + h.rand() * 2.5;

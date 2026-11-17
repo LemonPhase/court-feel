@@ -385,13 +385,17 @@ describe('out of system: a high ball to a pin fools nobody', () => {
     expect(greenFools(g as unknown as Game, set)).toBe(true);
   });
 
-  /** their middle, at the top of a block jump with the arms up, meets a hard spike in the middle of its hands */
-  function block(green: boolean) {
+  /**
+   * their middle, at the top of a block jump with the arms up (or `late`: just off the floor, still
+   * going up), meets a hard spike in the middle of its hands
+   */
+  function block(green: boolean, late = false) {
     const b = new Athlete('MB', -1);
     b.place(0, -0.4, Math.PI);
     b.jumpPress();
     let t = 0;
-    for (let i = 0; i < SIM.hz && !(b.state === 'air' && b.vel.y <= 0.4); i++) b.step(DT, (t += DT));
+    const there = () => b.state === 'air' && (late ? b.pos.y > 0.05 : b.vel.y <= 0.4);
+    for (let i = 0; i < SIM.hz && !there(); i++) b.step(DT, (t += DT));
     const hands = blockHands(b);
     const state = makeBall();
     Object.assign(state.p, { x: hands.x, y: hands.top - 0.12, z: -0.05 });
@@ -423,6 +427,14 @@ describe('out of system: a high ball to a pin fools nobody', () => {
     expect(green.touched).toBe(true);
     expect(green.note).not.toBe('Stuff!');
     expect(green.vz).toBeLessThan(0);
+  });
+
+  it('a late block, hands still coming up, does not soften an attack off your green set: it goes off the fingers and wide', () => {
+    // (on any other set the same late hands, with the same dice, take the pace off it for their diggers)
+    expect(block(false, true).note).toBe('Soft block');
+    const green = block(true, true);
+    expect(green.touched).toBe(true);
+    expect(green.note).toBe('Tooled');
   });
 });
 
