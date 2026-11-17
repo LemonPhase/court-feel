@@ -3,7 +3,7 @@ import { clamp } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
 import type { Game } from '../game/game';
-import { laneFor, SETTER_SPOT } from '../game/plays';
+import { laneFor, quickSpot, SETTER_SPOT } from '../game/plays';
 import type { V3 } from '../physics/ball';
 import { predictJump } from './approach';
 import { decoyFor, dumpHeld, greenFools } from './greenBite';
@@ -12,6 +12,24 @@ import { BallRead } from './read';
 
 /** what a middle expects before the set: nothing in particular (read it), the quick, or one of their pins */
 export type Guess = 'read' | 'quick' | 'outside' | 'opposite';
+
+/** how your green set fools a middle (`MiddleBlocker.foolFor`) */
+interface Fooled {
+  /** where its block belongs */
+  spot: number;
+  /** its wrong guess: where it goes up, or puts its hands (where `with` is going, when it watches them) */
+  wrong: number;
+  /** the hitter whose jump it goes up with (null: none) */
+  with: Athlete | null;
+  /** a guess of its own (it goes up on the set's timing too), not a hitter it is watching or a hold */
+  own: boolean;
+  /** when it has seen where the attack is going: it drops a guess not yet made, and its hands go for the attack */
+  seeT: number;
+  /** it has been up on its guess */
+  spent: boolean;
+  /** it has gone up again, for the attack */
+  again: boolean;
+}
 
 /** how high a middle jumps to block (as `BlockerBrain`): a little over its standing jump */
 const blockJump = (a: Athlete): number => a.jumpMax * a.stats.standingJumpFrac * 1.1;
@@ -45,8 +63,8 @@ export class MiddleBlocker implements Brain {
   private attackX = 0;
   /** where the hands go in the air: the spot it was running for (null: straight up) */
   private handsTo: number | null = null;
-  /** the user's green set: it bit on another hitter (`who`; null: nobody else was going, it guessed a side) */
-  private bite: { who: Athlete | null } | null = null;
+  /** the user's green set fooled it (null: it reads the set) */
+  private fooled: Fooled | null = null;
   private readonly b: V3 = { x: 0, y: 0, z: 0 };
 
   constructor(
@@ -67,7 +85,7 @@ export class MiddleBlocker implements Brain {
     this.targetX = this.homeX;
     this.tc = -1;
     this.handsTo = null;
-    this.bite = null;
+    this.fooled = null;
   }
 
   step(dt: number, g: Game): void {
@@ -168,16 +186,30 @@ export class MiddleBlocker implements Brain {
     const now = g.simTime;
     if (this.setRead.look(lt, now, g.rng, dumpHeld(g, lt) ? AI.middle.dumpHold : 0)) {
       this.tc = -1;
-      // your green set: it has gone with a hitter you did not set, at once (there was nothing to read);
-      // not off a pass out of system to a pin, which it reads and closes on like any set
-      this.bite = greenFools(g, lt) ? { who: decoyFor(g, a, lt) } : null;
+      // your green set: it goes on what it sees, at once (there was nothing to read); not off a
+      // pass out of system to a pin, which it reads and closes on like any set
+      this.fooled = greenFools(g, lt) && this.attack(g) ? this.foolFor(g, lt) : null;
     }
-    if (this.bite) {
-      this.goWith(g, lt, this.bite.who);
+    if (this.fooled) {
+      this.playFooled(g, this.fooled);
       return;
     }
     // until it reacts, it carries on with the pass read (lined up, leaning, or in the air with their middle)
-    if (!this.setRead.seen(now)) return;
+    if (!this.setRead.seen(now) || !this.attack(g)) return;
+    const spot = this.blockSpot(this.setRead.x(this.attackX, now, this.tc));
+    this.targetX = spot;
+    this.handsTo = spot;
+    if (this.blockedFor === lt || !a.canJump() || !atNet(a)) return;
+    // on time it goes up where it is meant to be; late, from wherever it got to, if that is near enough
+    if (now >= this.pressFor(this.tc + 0.12) && now <= this.tc && Math.abs(a.pos.x - spot) <= AI.middle.lateReach) {
+      this.jump(now);
+      this.blockedFor = lt;
+    }
+  }
+
+  /** when and where their hitter meets the set (`tc`, `attackX`), re-read as it flies: false while it can't tell */
+  private attack(g: Game): boolean {
+    const now = g.simTime;
     const pred = g.ball.ensurePrediction(g.env, now);
     // the hitter meets a set around 3.2 m on its way down; a quick never gets that high on the
     // way down, it is hit at the top of its arc
@@ -191,62 +223,110 @@ export class MiddleBlocker implements Brain {
       this.tc = tc;
       this.attackX = this.b.x;
     }
-    if (this.tc < 0) return;
+    return this.tc >= 0;
+  }
+
+  /** where its block goes for an attack at `bx`: in front of it, or on a pin set closed on our pin blocker */
+  private blockSpot(bx: number): number {
     const M = AI.middle;
-    const bx = this.setRead.x(this.attackX, now, this.tc);
-    // a pin set: close the block next to the pin blocker; an inside attack: block it in front
-    let spot = bx;
-    if (Math.abs(bx) > M.pinX) {
-      // close on our pin blocker, hands to hands: on the wing itself when it is at the net on that
-      // side (wherever it read the set to), else where a pin blocker shading the line would be
-      const r = Math.sign(bx);
-      const wing = this.ourWings().find((w) => Math.sign(w.pos.x) === r && Math.abs(w.pos.z) < 1.5);
-      spot = (wing ? wing.pos.x : bx + r * AI.defence.shade) - r * M.closeGap;
-    }
-    this.targetX = spot;
-    this.handsTo = spot;
-    if (this.blockedFor === lt || !a.canJump() || !atNet(a)) return;
-    // on time it goes up where it is meant to be; late, from wherever it got to, if that is near enough
-    if (now >= this.pressFor(this.tc + 0.12) && now <= this.tc && Math.abs(a.pos.x - spot) <= M.lateReach) {
-      this.jump(now);
-      this.blockedFor = lt;
-    }
+    if (Math.abs(bx) <= M.pinX) return bx;
+    // close on our pin blocker, hands to hands: on the wing itself when it is at the net on that
+    // side (wherever it read the set to), else where a pin blocker shading the line would be
+    const r = Math.sign(bx);
+    const wing = this.ourWings().find((w) => Math.sign(w.pos.x) === r && Math.abs(w.pos.z) < 1.5);
+    return (wing ? wing.pos.x : bx + r * AI.defence.shade) - r * M.closeGap;
   }
 
   /**
-   * Fooled by your green set: it goes with `who`, a hitter you did not set, and jumps with them
-   * (up with a quick, as a commit block). With nobody else going it guesses a side: on a pin set
-   * it stays home for the quick, on a set in the middle it steps `AI.greenBlockGuess` m towards
-   * the far pin. Either way it never gets to the ball: the pin blocker is on their own.
+   * How your green set `lt` fools it, from where it is as the ball leaves your hands
+   * (AI.greenFooled). It guesses wrong, without ever running away from where its block belongs:
+   * - in the right place already, it guesses there: up with a hitter you did not set beside it;
+   *   or up for the next route (on a push or a shoot, the quick in front of the setter; on that
+   *   quick, the push); or on a pin set with its hands inside, off the line. It sees the attack
+   *   only when it is hit;
+   * - away from it, it goes up with a quick beside it (what a combination is for), or holds, until
+   *   it sees where the set is going.
+   * Then it does all it can, a beat behind (`goAfter`).
    */
-  private goWith(g: Game, lt: Touch, who: Athlete | null): void {
+  private foolFor(g: Game, lt: Touch): Fooled {
     const a = this.athlete;
     const now = g.simTime;
-    const M = AI.middle;
-    if (who) {
-      const x = who.pos.x + who.vel.x * AI.greenBite.lead;
-      this.targetX = x;
-      this.handsTo = x;
-      if (this.blockedFor === lt || !a.canJump() || Math.abs(a.pos.x - x) > M.lateReach) return;
-      if (!(who.state === 'air' || who.state === 'load')) return;
-      const release = who.state === 'load' ? now + Math.max(0, PLAYER.loadMax - 0.02 - who.loadT) : now;
-      const top = predictJump(who, now, release);
-      if (!top || now < this.pressFor(top.t + 0.05)) return;
-      this.jump(now);
-      this.blockedFor = lt;
-      return;
+    const F = AI.greenFooled;
+    // where the set is really going (it guessed: this only decides how it got it wrong)
+    const at = g.contact.lastSet?.target.x ?? this.attackX;
+    const spot = this.blockSpot(at);
+    // a hitter you did not set, going beside it (it never runs across the court after one)
+    const decoy = decoyFor(g, a, lt);
+    const beside = decoy && Math.abs(decoy.pos.x - a.pos.x) <= F.near ? decoy : null;
+    const f: Fooled = {
+      spot,
+      wrong: a.pos.x,
+      with: beside,
+      own: false,
+      seeT: now + F.realise * Math.max(0, this.tc - now),
+      // already up (its own commit on their middle, off the pass): that was its guess
+      spent: a.state === 'air' || a.state === 'load',
+      again: false,
+    };
+    if (beside || Math.abs(a.pos.x - spot) > F.near) return f;
+    // in the right place: a guess of its own, on their hitter's jump or the set's timing
+    f.own = true;
+    f.with = g.contact.lastSet?.hitter ?? null;
+    f.seeT = this.tc + AI.middle.react;
+    if (Math.abs(at) > AI.middle.pinX) {
+      f.wrong = spot - Math.sign(spot) * F.shift;
+      return f;
     }
-    if (this.tc < 0) {
-      const pred = g.ball.ensurePrediction(g.env, now);
-      let tc = pred.descendThrough(3.25, now);
-      if (tc < 0) tc = pred.apex().t;
-      pred.posAt(tc, this.b);
-      this.tc = tc;
-      this.attackX = this.b.x;
-    }
-    const pin = Math.abs(this.attackX) > M.pinX;
-    this.targetX = pin ? this.homeX : this.homeX + (this.attackX >= this.homeX ? -1 : 1) * AI.greenBlockGuess;
-    this.handsTo = null;
+    const setX = g.ball.pos.x;
+    const one = quickSpot(setX, a.side === 1 ? -1 : 1).x;
+    f.wrong = Math.abs(at - one) > F.shift / 2 ? one : one + (Math.sign(one - setX) || 1) * F.shift;
+    return f;
+  }
+
+  /** fooled by your green set (`foolFor`): it never gets to the ball, the pin blocker is on their own */
+  private playFooled(g: Game, f: Fooled): void {
+    const a = this.athlete;
+    const now = g.simTime;
+    if (f.spent || now >= f.seeT) this.goAfter(now, f);
+    else this.guessWrong(now, f);
+    // in the air, once it has seen the attack, its hands go for it
+    if (a.state === 'air' && now >= f.seeT) this.handsTo = f.spot;
+  }
+
+  /** its wrong guess: up with the hitter it is watching (its own guess: on the set's timing too), or holding */
+  private guessWrong(now: number, f: Fooled): void {
+    const a = this.athlete;
+    if (!f.own && f.with) f.wrong = f.with.pos.x + f.with.vel.x * AI.greenBite.lead;
+    this.targetX = f.wrong;
+    this.handsTo = f.wrong;
+    if (!a.canJump() || !atNet(a) || now > this.tc || Math.abs(a.pos.x - f.wrong) > AI.middle.lateReach) return;
+    const press = Math.min(this.pressWith(f.with, now), f.own ? this.pressFor(this.tc + 0.12) : Infinity);
+    if (now < press) return;
+    this.jump(now);
+    f.spent = true;
+  }
+
+  /**
+   * Its guess spent (it went up on it) or seen through: it goes after the attack and, while the
+   * ball is still to be hit and it is near enough, up again, `AI.greenFooled.late` s after the
+   * jump that would have blocked it: hands coming up as the ball goes by.
+   */
+  private goAfter(now: number, f: Fooled): void {
+    const a = this.athlete;
+    this.targetX = f.spot;
+    if (f.again || !a.canJump() || !atNet(a) || now > this.tc || Math.abs(a.pos.x - f.spot) > AI.middle.lateReach) return;
+    if (now < this.pressFor(this.tc + 0.12) + AI.greenFooled.late) return;
+    this.handsTo = f.spot;
+    this.jump(now);
+    f.again = true;
+  }
+
+  /** when to press to go up with `who` (hands at the top as theirs are), once they plant or are in the air (else never) */
+  private pressWith(who: Athlete | null, now: number): number {
+    if (!who || !(who.state === 'air' || who.state === 'load')) return Infinity;
+    const release = who.state === 'load' ? now + Math.max(0, PLAYER.loadMax - 0.02 - who.loadT) : now;
+    const top = predictJump(who, now, release);
+    return top ? this.pressFor(top.t + 0.05) : Infinity;
   }
 
   /** when to press so the block's hands are at the top at `tHands` */

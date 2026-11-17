@@ -489,6 +489,11 @@ export class MiniRally extends Mode {
       g.ballLive = true;
     }
     if (ev.athlete === g.me && ev.grade !== 'Miss') this.userTouches++;
+    // a set held too long: the referee calls a lift, the point is theirs
+    if (this.phase === 'live' && ev.fault === 'lift') {
+      this.reason = 'LIFT';
+      this.endPoint(-ev.athlete.side as 1 | -1);
+    }
   }
 
   onOutcome(o: Outcome): void {

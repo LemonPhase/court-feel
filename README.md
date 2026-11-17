@@ -553,7 +553,9 @@ Setting works like a jump shot in NBA 2K, with one press per ball:
 3. **The push.** The ball sits in your hands while the bar fills and a soft
    tone rises with it, reaching its top note at the green line (so you can
    time the push by ear); the game slows down while it does. Release in the
-   green band at the top of the bar. Held too long, it goes anyway, late.
+   green band at the top of the bar. Held on past it (0.13 s of game time), the
+   ball has come to rest in your hands: the whistle goes for a lift, the ball
+   drops and the point is theirs (LIFT in the Setter Drill, no points).
    The bar stays a moment where it was, with your release marked and any pip
    you missed in orange, and the arc fades as the ball flies: a set that
    missed is seen leaving it. A green set has a small clear note; an early

@@ -601,9 +601,9 @@ function setRep(o: {
     if (set && crossY < 0 && zBefore > 0 && ball.state.p.z <= 0) crossY = ball.state.p.y;
     if (set) {
       apex = Math.max(apex, ball.state.p.y);
-      const target = cs.lastSet!.target;
-      // down to the hitter's contact height (a dump: down to their floor)
-      if ((ball.state.v.y < 0 && ball.state.p.y <= target.y) || ball.state.p.y <= BALL.radius + 0.03) {
+      // down to the hitter's contact height (a dump: down to their floor; a lift: no set went, to the floor)
+      const downTo = cs.lastSet?.target.y ?? 0;
+      if ((ball.state.v.y < 0 && ball.state.p.y <= downTo) || ball.state.p.y <= BALL.radius + 0.03) {
         landed = new THREE.Vector3(ball.state.p.x, ball.state.p.y, ball.state.p.z);
         break;
       }
@@ -668,8 +668,21 @@ describe('the timed set (real contact system)', () => {
     expect(late.result!.window).toBeLessThan(setRep({ key: 'OH', level: 'elite' }).result!.window);
     expect(setRep({ key: 'OH', presses: [0.15] }).set).toBeNull();
   });
-  it('held past the top of the bar it goes anyway, late', () => {
-    expect(setRep({ releaseAt: null, key: 'OH' }).set.grade).toBe('Late');
+  it('held on past the top of the bar it is a lift: no set goes, the ball drops at the setter', () => {
+    const r = setRep({ releaseAt: null, key: 'OH' });
+    expect(r.set.fault).toBe('lift');
+    expect(r.set.grade).toBe('Miss');
+    expect(r.picked).toBeNull();
+    // the whole bar and then some in the hands
+    expect(r.setT - r.T).toBeGreaterThan(TIMING.setLoad + TIMING.setHoldMax - 2 * DT);
+    // nothing went anywhere: down at the setter's hands, never higher than where it was held
+    expect(Math.hypot(r.landed.x - r.P.x, r.landed.z - r.P.z)).toBeLessThan(0.3);
+    expect(r.apex).toBeLessThan(r.P.y + 0.1);
+  });
+  it('a push just before the lift is still a set, a late one', () => {
+    const r = setRep({ releaseAt: TIMING.setHoldMax - 0.01, key: 'OH' });
+    expect(r.set.fault).toBeUndefined();
+    expect(r.set.grade).toBe('Late');
   });
   it('a late push goes flat and long; an early one comes up short', () => {
     const good = setRep({ key: 'OH' });

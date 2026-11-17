@@ -317,6 +317,8 @@ export class Effects {
         break;
       }
       case 'set':
+        // held too long: the referee's whistle, at once
+        if (e.fault === 'lift') this.audio.whistle();
         this.audio.set(1, user ? e.grade : null);
         if (e.perfect && user) this.glowAt(p, 0.14, new THREE.Color(1.0, 0.95, 0.7));
         break;

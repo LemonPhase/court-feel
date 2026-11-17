@@ -38,6 +38,8 @@ export interface ContactEvent {
   power?: number;
   /** a pass or dig: how it was played (the platform in front, out to the side, overhand, diving) */
   form?: PassForm;
+  /** the referee's call on this touch: a set held too long is a lift (the point goes to the other team) */
+  fault?: 'lift';
 }
 
 export interface IdealInfo {
@@ -965,7 +967,7 @@ export class ContactSystem {
    * fills, and the release is the push, graded against the top of the bar (setLoad after the
    * catch) in a window sized by the touch (feet, catch, centring, the set's difficulty) and the
    * level. Released before the ball came, the push meets it as it arrives (far too early);
-   * never released, it goes anyway, late.
+   * held on past the bar, it is a lift.
    */
   trySet(a: Athlete, act: Action): boolean {
     const h = this.host;
@@ -973,7 +975,7 @@ export class ContactSystem {
     const t = h.simTime;
     if (act.absorbing) {
       if (!act.held) return this.pushSet(a, act, act.releaseT);
-      if (t - act.arriveT - TIMING.setLoad >= TIMING.setHoldMax) return this.pushSet(a, act, t);
+      if (t - act.arriveT - TIMING.setLoad >= TIMING.setHoldMax) return this.liftSet(a, act, t);
       // the ball loads in the hands
       this.loadInHands(a, t);
       return false;
@@ -1014,6 +1016,58 @@ export class ContactSystem {
     if (!act.held) return this.pushSet(a, act, act.releaseT);
     this.loadInHands(a, t);
     return false;
+  }
+
+  /**
+   * Held past the push (TIMING.setHoldMax): the ball has come to rest in the hands, and the
+   * referee calls a lift (a held ball). It drops out of the hands, no set goes, and the point is
+   * the other team's: the touch carries `fault: 'lift'` for the mode to end the rally.
+   */
+  private liftSet(a: Athlete, act: Action, t: number): boolean {
+    const h = this.host;
+    const bp = h.ball.pos;
+    const err = t - (act.arriveT + TIMING.setLoad);
+    const note = 'LIFT · held too long';
+    h.ball.lastTouch = { athlete: a, kind: 'set', t, side: a.side };
+    a.lastTouchT = t;
+    act.resolved = true;
+    act.absorbing = false;
+    act.held = false;
+    act.contactT = t;
+    act.err = err;
+    act.grade = 'Miss';
+    act.note = note;
+    act.contactPoint.set(bp.x, bp.y, bp.z);
+    this.lastSet = null;
+    // (the bar shows the release past its top)
+    this.lastSetResult = act.touch
+      ? {
+          athlete: a,
+          t,
+          grade: 'Miss',
+          green: false,
+          quality: 0,
+          err,
+          window: act.green,
+          good: act.good,
+          pips: setPips(act.touch, true),
+          held: false,
+        }
+      : null;
+    h.emitContact({
+      athlete: a,
+      kind: 'set',
+      grade: 'Miss',
+      note,
+      speed: 0,
+      point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      quality: 0,
+      perfect: false,
+      tip: false,
+      target: new THREE.Vector3(bp.x, 0, bp.z),
+      fault: 'lift',
+    });
+    return true;
   }
 
   /** the ball loads in the hands: it gives with them, and travels with a setter in the air */

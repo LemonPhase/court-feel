@@ -306,7 +306,7 @@ export const TIMING = {
    * fills in setLoad / ASSIST.setSlowmoLoad real seconds on every level). Levels: SET_LEVELS.
    */
   setLoad: 0.15,
-  /** held this long (game s) past the top of the bar: the push goes anyway, late (longer than Easy's late good band) */
+  /** held this long (game s) past the top of the bar: the ball has come to rest in the hands, a lift (the point is theirs). Longer than Easy's late good band */
   setHoldMax: 0.13,
   /** a catch this early or more (game s, beyond the level's clean catch) costs the touch the most */
   setCatchEarly: 0.3,
@@ -348,7 +348,7 @@ export const SET_LEVEL_IDS: readonly SetLevel[] = ['easy', 'normal', 'hard', 'el
  * These are a high ball's windows: a harder set gets a share of them (CONTACT.setTouch.window).
  * - `green`: the green half-window around the top of the bar, with your best and your worst touch
  * - `goodMul`: a good (white) set reaches this many green half-windows either side. It stays under
- *   TIMING.setHoldMax, so holding until the push goes by itself is never a good set
+ *   TIMING.setHoldMax, so a set held on until it is a lift was never a good one
  * - `catch`: a catch this close to the ball reaching your hands is clean (at the catch slow-mo)
  * - `handsEarly`: hands up before the ball comes cost nothing (Easy). It is what coaches teach,
  *   and it leaves a beginner one thing to time, the release; from Normal up the catch is timed too
@@ -1846,13 +1846,13 @@ export const AI = {
   outOfSystemApex: 0.4,
   /**
    * Your green set is a point. An exact set at the called tempo gives the block nothing early,
-   * so their middle goes on what it sees: a hitter you did not set (`greenBite`, src/ai/greenBite.ts).
-   * It goes up with them (with the quick, when one is running: what a combination is for) and is
-   * coming down as your hitter swings. A hitter counts when within `maxOff` m of the net and up, or
-   * running in faster than `runSpeed` m/s; one who is up comes first (a runner counts as
-   * `runPenalty` m further away), and the middle leads a runner by `lead` s. With nobody else
-   * going it guesses a side: on a pin set it stays home for the quick, on the quick or the pipe
-   * it steps `greenBlockGuess` m towards a pin. The pin blockers block as on any set, so your
+   * so their middle goes on what it sees: a hitter you did not set (`greenBite`, src/ai/greenBite.ts),
+   * or the next route, and never gets to the ball (`greenFooled`, below, for how it looks). A hitter
+   * counts when within `maxOff` m of the net and up, or running in faster than `runSpeed` m/s; one
+   * who is up comes first (a runner counts as `runPenalty` m further away), and the middle leads a
+   * runner by `lead` s. (The drills' `BlockerBrain` middle, with nobody else going, guesses a side:
+   * on a pin set it stays home for the quick, on the quick or the pipe it steps `greenBlockGuess` m
+   * towards a pin.) The pin blockers block as on any set, so your
    * hitter has one block to beat, and bounces it past them (`greenBounce`): a full swing, as
    * steep as the net allows (the nearest spot, at one of `depths` m from the net, that a
    * full-speed spike brings down and that clears the tape by `clear` m), crossing the net at
@@ -1887,6 +1887,24 @@ export const AI = {
   insideRun: { angle: 0.7, minRun: 2.5, carry: 0.62, swing: 1, ground: 0.45 },
   greenBlockGuess: 2.2,
   greenBite: { maxOff: 4.5, runSpeed: 2, runPenalty: 3, lead: 0.2 },
+  /**
+   * How your green set fools their Mini Rally middle (src/ai/middle.ts) without it ever moving
+   * away from where its block belongs, bar a route's width (playtest, 2026-11-17: a middle in the
+   * right place that ran off the other way looked like a coin flip). Already within `near` m of
+   * that spot, it stays and guesses wrong there: up with a hitter you did not set beside it; or up
+   * for the next route, `shift` m along the net (a route's width: the push is 0.7 m from the quick),
+   * on their hitter's jump: on a push or a shoot it goes for the quick in front of the setter, on
+   * that quick for the push; or, on a pin set, with its hands `shift` m inside the block, off the
+   * line; it sees the attack only when it is hit. Further away it goes up with a quick within
+   * `near` m of it (a combination), or holds, until it sees where the set is going, once `realise`
+   * of its flight is gone. Then it does all it can to block it anyway (playtest, same day): its
+   * hands in the air go for the attack, it runs at it, and while the ball is still to be hit and
+   * it is near enough (AI.middle.lateReach) it goes up again: after a quick it bit on, for the
+   * pipe or an inside ball; after a hold, for the pin. That jump is `late` s after the one that
+   * would have blocked it, a beat behind what it never expected: its hands are coming up as the
+   * ball goes by, and the hitter puts it past them.
+   */
+  greenFooled: { near: 1.5, shift: 0.7, realise: 0.45, late: 0.25 },
   greenBounce: { depths: [2.4, 2.9, 3.4, 4.0, 4.8, 5.8], clear: 0.05, hands: 0.35, reach: 0.2, closing: 1 },
   greenSetDigDelay: 0.5,
   /**

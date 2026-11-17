@@ -41,7 +41,7 @@ export function greenFools(g: Game, lt: Touch | null | undefined): boolean {
  * The hitter their middle bites on: one the setter did not set, near the net and either up
  * (planting or in the air: a quick) or running in. The one up comes first (a middle's eyes go
  * to the first tempo), then the nearest along the net. Null when nobody else is going: the
- * middle then just guesses a side.
+ * middle then guesses for itself (MiddleBlocker.foolFor).
  */
 export function decoyFor(g: Game, blocker: Athlete, set: Touch): Athlete | null {
   const B = AI.greenBite;

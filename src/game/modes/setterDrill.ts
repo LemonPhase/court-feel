@@ -55,6 +55,8 @@ export class SetterDrill extends Mode {
   private phase: Phase = 'intro';
   private t = 0;
   private set: ContactEvent | null = null;
+  /** your set this rep was a lift (held too long) */
+  private lifted = false;
   private setFor: Athlete | null = null;
   private attacked = false;
   private markers = new Map<SetterKey, THREE.Mesh>();
@@ -263,6 +265,7 @@ export class SetterDrill extends Mode {
           // a pass you never touch is over when it lands, not when it stops rolling
           g.judge.arm(g.ball);
           this.set = null;
+          this.lifted = false;
           this.setFor = null;
           this.attacked = false;
           // the pass is played: the tempos lock and the fast calls start running
@@ -284,6 +287,12 @@ export class SetterDrill extends Mode {
 
   onContact(ev: ContactEvent): void {
     const g = this.g;
+    // held too long: a lift, the rep is over
+    if (ev.athlete === g.me && ev.fault === 'lift') {
+      this.lifted = true;
+      if (this.phase === 'live') this.finish(null);
+      return;
+    }
     // your set, or your dump (a tip over the net on the second ball)
     if (ev.athlete === g.me && (ev.kind === 'set' || ev.kind === 'tip')) {
       this.set = ev;
@@ -311,7 +320,7 @@ export class SetterDrill extends Mode {
     // the next ball is yours to call from now: the keys and the wheel open while the result is up
     this.calls.nextBall(g.settings.keepSetPick);
     let pts = 0;
-    let label = 'NO SET';
+    let label = this.lifted ? 'LIFT' : 'NO SET';
     let good = false;
     if (this.set) {
       pts += this.set.grade === 'Perfect' ? 100 : this.set.grade === 'Good' ? 60 : 25;
