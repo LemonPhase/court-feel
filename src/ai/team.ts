@@ -172,7 +172,7 @@ export class TeamPlayer implements Brain {
             () => team.opponents?.players.get('MB') ?? null,
             () => team.frontRow().filter((w) => w !== athlete),
           )
-        : new BlockerBrain(athlete, FORM.defense[slot].x * s, 1.3);
+        : Object.assign(new BlockerBrain(athlete, FORM.defense[slot].x * s), { wing: true, mate: () => team.players.get('MB') ?? null });
     this.server = new ServerBrain(athlete);
   }
 

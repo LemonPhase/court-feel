@@ -1381,7 +1381,7 @@ export const AI = {
     handHalf: 0.325,
     /** against the quick: the middle back cheats up a little, to this depth */
     quickMiddleBack: 7.5,
-    /** against a pipe: the corners step in and forward to here (x from the middle, depth), the middle back to this depth */
+    /** against a pipe (all three at the net block it, `AI.wing`): the corners step in and forward to here (x from the middle, depth), the middle back to this depth */
     pipeCornerX: 2.2,
     pipeCornerZ: 5.3,
     pipeMiddleBack: 8.0,
@@ -1575,6 +1575,34 @@ export const AI = {
     reach: 0.4,
     reachTime: 0.12,
   },
+  /**
+   * The Mini Rally pin blockers (`BlockerBrain.wing`, `wingSpot`). Each blocks every attack on its
+   * half of the net, wherever its hitter goes: a pin set, inside or out, on the hitter's hitting
+   * shoulder taking the line (out to `outMax` at most); an inside ball (a 3, a shoot) beside the
+   * middle, a double, if it can get there in time (a quick in front of the setter is the middle's).
+   * A back-row attack (the pipe) is blocked by all three at the net, both wings closing on the
+   * middle's shoulders (MatusGib, 2026-11-17: "Pipe block should be attempted by all players at the
+   * net"). Beside the middle a wing closes on the middle it sees, not on its read of the ball; on its
+   * own hitter it lines up on its read (`AI.blockerSkill`).
+   *
+   * A block goes up together: beside our middle a wing jumps with it, when the middle presses for
+   * this ball (no more than `together` s before the wing's own time, or later), and waits up to
+   * `wait` s for it (never past the hit) before going on its own. A middle late on the ball (it went
+   * up with another hitter, then went again for this one) takes the whole block up late with it. On
+   * its own hitter, and beside you, a wing goes on its own time.
+   *
+   * Late, a wing still goes up on time from up to `lateReach` m short of its spot, never once the
+   * ball is hit, and in the air its hands keep going for the spot, up to `AI.middle.reach` m to the
+   * side (a side block: "last second adjust to the set"). On time they are over it already, so a pin
+   * blocker's block on a set it reads is what it was.
+   *
+   * Out at the pin its body goes no further than `outMax` m from the middle of the net (0.2 m inside
+   * the antenna), as the pin blockers always have: on a set wide of the antenna it lines up there,
+   * since the ball has to come back inside it. Sealing the antenna exactly (the outside hand on it,
+   * 4.175 m) moved the pin 0.1-0.25 m inside on the usual set (met 3.9-4.2 m out) and cut the AI's
+   * pin kills from 38-44% to 30-35% (all-AI Mini Rally, 2 seeds): a balance call for the players.
+   */
+  wing: { lateReach: 1.2, outMax: 4.3, together: 0.15, wait: 0.4 },
   defenderSkill: 0.7,
   setterAccuracy: 0.15,
   /**

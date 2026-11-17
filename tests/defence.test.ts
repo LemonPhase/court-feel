@@ -64,14 +64,14 @@ describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
     expect(s.OH2!.z).toBeLessThan(D.middleBack);
   });
 
-  it('against a pipe the back row steps in and forward, and both wings pull off the net', () => {
+  it('against a pipe the back row steps in and forward, and both wings stay at the net to block it', () => {
     const pin = readSpots({ x: 4.05, off: 0.9, kind: 'pin' });
     const s = readSpots({ x: -0.4, off: 2.0, kind: 'back' });
     expect(Math.abs(s.S!.x)).toBeLessThan(Math.abs(pin.S!.x));
     expect(s.S!.z).toBeLessThan(pin.S!.z);
     expect(Math.abs(s.L!.x)).toBeLessThan(W - D.lineIn);
-    expect(s.OH1!.z).toBeCloseTo(D.offOff, 6);
-    expect(s.OPP!.z).toBeCloseTo(D.offOff, 6);
+    expect(s.OH1).toBeNull();
+    expect(s.OPP).toBeNull();
   });
 
   it('a set is read as a pin attack outside the middle third, a back-row attack well off the net, else a middle attack', () => {

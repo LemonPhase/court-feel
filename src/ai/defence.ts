@@ -35,13 +35,14 @@ export function readSpots(a: Attack): ReadSpots {
     return { S: null, L: null, OH2: { x: 0, z: D.quickMiddleBack }, OH1: null, OPP: null };
   }
   if (a.kind === 'back') {
-    // a pipe: the middle blocks, both wings pull off, the back row steps into the court and forward
+    // a pipe: all three at the net block it (the wings close beside the middle, `AI.wing`), the
+    // back row steps into the court and forward
     return {
       S: { x: D.pipeCornerX, z: D.pipeCornerZ },
       L: { x: -D.pipeCornerX, z: D.pipeCornerZ },
       OH2: { x: 0, z: D.pipeMiddleBack },
-      OH1: { x: -(W - D.offIn), z: D.offOff },
-      OPP: { x: W - D.offIn, z: D.offOff },
+      OH1: null,
+      OPP: null,
     };
   }
   // a pin attack on our right (r = 1) or left (r = -1): the pin blocker shades the line, the middle closes inside
