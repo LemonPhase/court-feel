@@ -68,6 +68,8 @@ export abstract class Mode {
   setOptions?(a: Athlete): import('../contact').SetOption[];
   /** what the user setter picked with a key: a hitter, or the dump (null: no key) */
   setPick?(a: Athlete): import('../setterCalls').SetPick | null;
+  /** the user sets in this drill: who they can pick now (the touch chips; the dump only from the front row). Null: they don't set */
+  setterPicks?(): readonly import('../setterCalls').SetPick[] | null;
   /** the user setter's calls while a play can still be called (before the pass): the play wheel opens on them */
   playCalls?(): import('../setterCalls').SetterCalls | null;
   /** the ball in flight is the user's to set (shows where to stand for it) */

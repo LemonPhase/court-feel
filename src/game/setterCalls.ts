@@ -1,5 +1,6 @@
+import { PLAYBOOK } from '../config';
 import { COMBOS, type Combo } from './combos';
-import { D_PLAY, isQuick, LANES, needsGoodPass, SETTER_PLAYS, type AttackLane, type SetPlay } from './plays';
+import { D_PLAY, isQuick, LANES, needsGoodPass, SETTER_PLAYS, SETTER_TARGET, type AttackLane, type SetPlay } from './plays';
 
 /** the hitters a setter can pick, in key order: 1 outside, 2 middle, 3 opposite, 4 pipe */
 export type SetterKey = 'OH' | 'MB' | 'OPP' | 'PIPE';
@@ -12,12 +13,41 @@ export const SET_PICKS: readonly SetPick[] = [...SETTER_KEYS, 'DUMP'];
 /** with no key pressed the set goes to the outside: the ball every setter gives when nothing else is on */
 export const DEFAULT_PICK: SetterKey = 'OH';
 
+/** the hitters who meet the ball at the net (the pipe is hit 2 m off it, behind them) */
+const FRONT: readonly SetterKey[] = ['OH', 'MB', 'OPP'];
+
+/** where along the net a set is hit (a quick: `inFront` of where the setter takes the pass) */
+export function hitX(play: SetPlay): number {
+  return play.inFront !== undefined ? SETTER_TARGET.x - play.inFront : play.lane.x;
+}
+
+/**
+ * Would `k` hitting `short` end up on the same spot as another front-row hitter in `calls`
+ * (within PLAYBOOK.minGap m along the net)? Returns that hitter, or null when there is room.
+ */
+export function clashWith(calls: Record<SetterKey, string>, k: SetterKey, short: string): SetterKey | null {
+  const mine = SETTER_PLAYS[k].find((p) => p.short === short);
+  if (!mine || !FRONT.includes(k)) return null;
+  for (const o of FRONT) {
+    const theirs = o === k ? undefined : SETTER_PLAYS[o].find((p) => p.short === calls[o]);
+    if (theirs && Math.abs(hitX(mine) - hitX(theirs)) < PLAYBOOK.minGap) return o;
+  }
+  return null;
+}
+
+/** do two hitters in these calls hit from the same spot? */
+export function clashes(calls: Record<SetterKey, string>): boolean {
+  return FRONT.some((k) => clashWith(calls, k, calls[k]) !== null);
+}
+
 /**
  * The user setter's picks and calls (keys, through Input like every other control).
  * - 1-4 pick the hitter you set; no key, it is the outside (never where you look: a setter
  *   watches the ball).
  * - Pressing the picked hitter again steps to their next set. Before the pass that is their next
  *   call (SETTER_PLAYS): tempo is agreed before the pass because the hitter's run depends on it.
+ *   A call that would put two front-row hitters on one spot at the net is skipped (`clashWith`,
+ *   as in the play designer): they would run into each other.
  *   A whole combination is called at once on the play wheel (`setCombo`).
  * - Once the pass is played the calls are locked. In system, the only late change a hitter can
  *   still take is a higher ball: the key again asks for a high ball (again: back to the call).
@@ -81,7 +111,16 @@ export class SetterCalls {
     if (!again) return;
     const n = this.plays(k).length;
     if (!this.locked && this.canCall && n > 1) {
-      this.call[k] = (this.call[k] + 1) % n;
+      // their next call that leaves every front-row hitter their own spot
+      const now = {} as Record<SetterKey, string>;
+      for (const o of SETTER_KEYS) now[o] = this.play(o).short;
+      const plays = this.plays(k);
+      for (let i = 1; i < n; i++) {
+        const j = (this.call[k] + i) % n;
+        if (clashWith(now, k, plays[j].short)) continue;
+        this.call[k] = j;
+        return;
+      }
       return;
     }
     // a high ball instead of their call (again: back to the call)
@@ -132,6 +171,21 @@ export class SetterCalls {
     this.high.clear();
     this.fast.clear();
     this.late = null;
+  }
+
+  /**
+   * A touch in a rally (Mini Rally). Your set ends your ball: a fresh one. Our first touch is the
+   * pass: the calls lock (returns true, and the mode starts the hitters' runs). Once they play the
+   * ball the next pass is a new ball, also when a team-mate set this one (the libero, your help
+   * key), so last ball's asks don't carry over and the wheel opens again.
+   */
+  touched(t: { mine: boolean; kind: string; ours: boolean }, ourTouches: number, keepPick = false): boolean {
+    if (t.mine && t.kind === 'set') this.nextBall(keepPick);
+    else if (t.ours && ourTouches === 1) {
+      this.lock();
+      return true;
+    } else if (!t.ours && this.locked) this.nextBall(keepPick);
+    return false;
   }
 
   /** the hitter (or the dump) the set goes to: your pick, else the outside */

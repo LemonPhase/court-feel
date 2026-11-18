@@ -53,7 +53,7 @@ export function decoyFor(g: AiHost, blocker: Athlete, set: Touch): Athlete | nul
     if (Math.abs(h.pos.z) > B.maxOff) continue;
     const up = h.state === 'air' || h.state === 'load';
     // running at the net (z shrinking), not jogging back to base
-    const running = h.state === 'ground' && h.speed > B.runSpeed && h.vel.z * h.side < -1;
+    const running = h.state === 'ground' && h.speed > B.runSpeed && h.vel.z * h.side < -B.toNet;
     if (!up && !running) continue;
     const score = Math.abs(h.pos.x - blocker.pos.x) + (up ? 0 : B.runPenalty);
     if (score < bestScore) {

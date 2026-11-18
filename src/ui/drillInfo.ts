@@ -7,6 +7,8 @@ export interface KeyHint {
   a: string;
   /** only a hitter has it (the set calls): not shown to a setter or a libero */
   hitters?: true;
+  /** only these positions have it (the setter's keys) */
+  who?: readonly PositionId[];
 }
 
 /** the positions that call their own set (the ones SET_PLAYS has plays for) */
@@ -152,17 +154,24 @@ export const DRILL_INFO: Record<ModeId, DrillInfo> = {
     scored: 'when you stop. The score runs; there is no set to win yet.',
     keys: [
       { k: 'E', a: 'Pass or dig when it is your ball' },
-      { k: 'Shift + W', a: 'Approach when the set is yours' },
+      { k: 'Shift + W  Left mouse', a: 'Approach when the set is yours, hold to wind up, release to swing' },
       { k: 'Space', a: 'Jump: to hit, or to block at the net' },
-      { k: 'Left mouse', a: 'Hold to wind up, release to swing' },
       { k: 'Right mouse', a: 'Block at the net, set off it (press as it reaches your hands, release in the green)' },
       { k: '1  2  3', a: 'Call your set', hitters: true },
+      {
+        k: '1 to 4  C  H',
+        a: "You set: pick the hitter (again before the pass: their next set), the play wheel before the serve, help when you can't get to it",
+        who: ['S'],
+      },
     ],
     touch: [
       STICK_RUN,
       { k: 'PASS', a: 'Hold when it is your ball' },
       { k: 'JUMP  HIT', a: 'As in the Spike Drill' },
       { k: 'BLOCK', a: 'Hold: hands up and jump, or set' },
+      { k: 'SET TO', a: 'Top left: tap the hitter you set. Again before the pass: their next set', who: ['S', 'L'] },
+      { k: 'PLAY', a: 'Top left, before the serve: the play wheel', who: ['S'] },
+      { k: 'HELP', a: "Top left: a team-mate takes the second ball when you can't get to it", who: ['S', 'L'] },
     ],
   },
 };

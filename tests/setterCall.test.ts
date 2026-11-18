@@ -115,6 +115,26 @@ describe("the setter's call on the pass (Mini Rally)", () => {
     expect(team.read?.off).toBeLessThan(0.5);
   });
 
+  it('the middle runs a quick on every pass the setter calls in system, and on none they call high', () => {
+    let both = 0;
+    for (let off = 1.2; off < 2; off += 0.05) {
+      const { g, team, ball, pass } = homeTeam('OH');
+      pass(SETTER_SPOT.x, SETTER_SPOT.z + off);
+      let quick = false;
+      for (let i = 0; i < 40; i++) {
+        g.simTime += DT;
+        stepBall(ball.state, DT, g.env, []);
+        team.step();
+        if (i === 30) quick = team.passToSetter(g as unknown as AiHost) !== null;
+      }
+      expect(quick, `a pass ${off.toFixed(2)} m off`).toBe(team.read?.call === 'in');
+      if (quick) both++;
+    }
+    // (the sweep crosses the line: some in, some out)
+    expect(both).toBeGreaterThan(3);
+    expect(both).toBeLessThan(16);
+  });
+
   it('a pass well off the net is called out of system ("high")', () => {
     const { team, reads, pass, flight } = homeTeam('OH');
     pass(SETTER_SPOT.x + 0.4, SETTER_SPOT.z + 2.6);

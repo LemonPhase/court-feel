@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { COURT, FX } from '../src/config';
 import { AttemptTracker, drillBall, type AttemptAction } from '../src/game/attempt';
-import { TOUCH_KEY_LABELS } from '../src/ui/touchControls';
+import { SETTER_KEY_LABELS, TOUCH_KEY_LABELS } from '../src/ui/touchControls';
 import { translateKeyMarkup } from '../src/ui/hud';
 
 const DT = 1 / 120;
@@ -275,5 +275,18 @@ describe('the replay hint', () => {
   it('names the key on a keyboard and reads "REPLAY last attempt" on touch (the button names itself)', () => {
     const hint = ' · <kbd>R</kbd> replay last attempt';
     expect(translateKeyMarkup(hint, TOUCH_KEY_LABELS)).toBe(' · <kbd>REPLAY</kbd> last attempt');
+  });
+});
+
+describe("the setter's hints on touch", () => {
+  it('name the SET TO chips, not number keys that have no button', () => {
+    const hint = '<kbd>1</kbd>-<kbd>4</kbd> who · again: high · <kbd>5</kbd> dump';
+    expect(translateKeyMarkup(hint, SETTER_KEY_LABELS)).toBe('<kbd>SET TO</kbd> who · again: high · <kbd>DUMP</kbd>');
+    // the libero backing up sets a pin
+    expect(translateKeyMarkup('<kbd>1</kbd> OH <kbd>3</kbd> OPP', SETTER_KEY_LABELS)).toBe('<kbd>OH</kbd> <kbd>OPP</kbd>');
+  });
+  it("leave Free Play's numbered feed chips as numbers", () => {
+    const hint = '<kbd>1</kbd>-<kbd>4</kbd> feed type';
+    expect(translateKeyMarkup(hint, TOUCH_KEY_LABELS)).toBe(hint);
   });
 });

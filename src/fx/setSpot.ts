@@ -4,7 +4,7 @@ import { damp } from '../core/mathx';
 import { makeRingTexture } from '../world/textures';
 
 const OFF = new THREE.Color(0xffffff);
-const ON = new THREE.Color(0x3ddc84);
+const ON = new THREE.Color(FX.setSpot.on);
 
 /**
  * Where to stand for your set: a floor spot under where the ball comes down through your hands
@@ -22,8 +22,9 @@ export class SetSpot {
   private hopFade = 0;
 
   constructor(scene: THREE.Scene) {
-    const r = FX.setSpot.radius;
-    const tex = makeRingTexture(0.2);
+    const S = FX.setSpot;
+    const r = S.radius;
+    const tex = makeRingTexture(S.ringLine);
     const flat = (geo: THREE.BufferGeometry, mat: THREE.MeshBasicMaterial, order: number) => {
       const m = new THREE.Mesh(geo, mat);
       m.rotation.x = -Math.PI / 2;
@@ -44,17 +45,19 @@ export class SetSpot {
         polygonOffsetFactor: -4,
         polygonOffsetUnits: -4,
       });
-    this.back = flat(new THREE.PlaneGeometry(r * 2.6, r * 2.6), mat(0x05070c, tex), 3);
-    this.ring = flat(new THREE.PlaneGeometry(r * 2.4, r * 2.4), mat(OFF, tex), 4);
+    this.back = flat(new THREE.PlaneGeometry(r * S.outline, r * S.outline), mat(S.dark, tex), 3);
+    this.ring = flat(new THREE.PlaneGeometry(r * S.ring, r * S.ring), mat(OFF, tex), 4);
+    // (the disc is the ring's inside: the clean-centring distance and the ring's line)
     this.disc = flat(new THREE.CircleGeometry(CONTACT.setCentreOk + 0.05, 32), mat(OFF, null), 4);
-    const j = r * 2.4 * FX.setSpot.jumpRing;
+    const j = r * S.ring * S.jumpRing;
     this.hop = flat(new THREE.PlaneGeometry(j, j), mat(OFF, tex), 4);
   }
 
   /** `spot` your feet's spot (null: hide), `feet` where they are now, `jump` your body will jump for it */
   update(spot: { x: number; z: number } | null, feet: THREE.Vector3, dt: number, jump = false): void {
-    this.fade += ((spot ? 1 : 0) - this.fade) * damp(10, dt);
-    this.hopFade += ((spot && jump ? 1 : 0) - this.hopFade) * damp(10, dt);
+    const S = FX.setSpot;
+    this.fade += ((spot ? 1 : 0) - this.fade) * damp(S.fade, dt);
+    this.hopFade += ((spot && jump ? 1 : 0) - this.hopFade) * damp(S.fade, dt);
     const show = this.fade > 0.02;
     for (const m of [this.back, this.ring, this.disc]) m.visible = show;
     this.hop.visible = show && this.hopFade > 0.02;
@@ -71,11 +74,11 @@ export class SetSpot {
     ringMat.color.copy(on ? ON : OFF);
     discMat.color.copy(on ? ON : OFF);
     ringMat.opacity = this.fade;
-    (this.back.material as THREE.MeshBasicMaterial).opacity = 0.55 * this.fade;
-    discMat.opacity = (on ? 0.55 : 0.2) * this.fade;
+    (this.back.material as THREE.MeshBasicMaterial).opacity = S.darkOpacity * this.fade;
+    discMat.opacity = S.disc[on ? 1 : 0] * this.fade;
     const hopMat = this.hop.material as THREE.MeshBasicMaterial;
     hopMat.color.copy(on ? ON : OFF);
-    hopMat.opacity = FX.setSpot.jumpOpacity * this.fade * this.hopFade;
+    hopMat.opacity = S.jumpOpacity * this.fade * this.hopFade;
   }
 
   hide(): void {

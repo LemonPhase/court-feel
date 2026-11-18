@@ -12,7 +12,6 @@
 export const KNOWN_IMPORTS: readonly string[] = [
   'src/game/athlete.ts -> src/character/rig.ts',
   'src/game/body.ts -> src/character/rig.ts',
-  'src/game/callRuns.ts -> src/ai/hitter.ts',
   'src/game/game.ts -> src/camera/cameraRig.ts',
   'src/game/game.ts -> src/character/athleteView.ts',
   'src/game/game.ts -> src/character/bodyMaterial.ts',
@@ -43,7 +42,7 @@ export const KNOWN_IMPORTS: readonly string[] = [
 ];
 
 /** simulation files that touch the DOM (window, document, storage) */
-export const KNOWN_DOM: readonly string[] = ['src/game/game.ts', 'src/game/playbook.ts', 'src/game/setTiming.ts', 'src/game/tutorial.ts'];
+export const KNOWN_DOM: readonly string[] = ['src/game/game.ts', 'src/game/tutorial.ts'];
 
 /** simulation files that build scene objects: three.js classes that are not maths */
 export const KNOWN_SCENE: readonly string[] = [

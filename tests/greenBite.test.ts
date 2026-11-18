@@ -7,7 +7,7 @@ import { HitterBrain } from '../src/ai/hitter';
 import { MiddleBlocker } from '../src/ai/middle';
 import { Athlete } from '../src/game/athlete';
 import type { Touch } from '../src/game/ballEntity';
-import { syncRuns, type CallHitters } from '../src/game/callRuns';
+import { applyCalls, syncRuns, type CallHitters } from '../src/game/callRuns';
 import { blockHands, ContactSystem, type ContactHost, type SetResult } from '../src/game/contact';
 import type { Game } from '../src/game/game';
 import { attackHeight, laneFor, LANES, QUICK, quickSpot, SETTER_PLAYS, SETTER_TARGET } from '../src/game/plays';
@@ -78,7 +78,7 @@ function laneSet(green: boolean, others: Athlete[], lane: { x: number; z: number
   const out = { x: 0, y: 0, z: 0 };
   solveApex(from, target, 3.2 + lane.apexAbove, { x: 0, y: 0, z: 0 }, out);
   ball.touch(from, out);
-  return { g, ball, theirs, set };
+  return { g, ball, theirs, set, hitter };
 }
 
 /** our setter's high ball to the outside is in the air (their middle at `theirX`) */
@@ -128,7 +128,12 @@ describe('your green set: their middle goes with a hitter you did not set', () =
   });
   it('it bites on the hitter who is up (the quick), never on the one you set', () => {
     const quick = quickHitter();
-    const { g, theirs, set } = pinSet(true, [quick]);
+    const { g, theirs, set, hitter } = pinSet(true, [quick]);
+    expect(decoyFor(g as unknown as Game, theirs, set)).toBe(quick);
+    // the one you set up too, right in front of their middle (nearer than the quick): still the quick
+    hitter.place(theirs.pos.x, 1.0, 0);
+    hitter.jumpPress();
+    expect(Math.abs(hitter.pos.x - theirs.pos.x)).toBeLessThan(Math.abs(quick.pos.x - theirs.pos.x));
     expect(decoyFor(g as unknown as Game, theirs, set)).toBe(quick);
   });
   it('a hitter up for a quick comes before one still running in, even a nearer one', () => {
@@ -525,6 +530,22 @@ describe('a hitter who cannot make their called run waits for a high ball', () =
     expect(calls.isHigh('OH')).toBe(true);
     expect(calls.label('OH')).toBe('High');
     expect(brain.lane).toBe(calls.highLane('OH'));
+  });
+  it('a run missed earlier in the rally is forgotten by the next pass: a quick called then stays a quick', () => {
+    const calls = new SetterCalls();
+    const a = new Athlete('OPP', 1);
+    const brain = new HitterBrain(a, calls.play('OPP').lane);
+    const hitters: CallHitters = new Map([['OPP', { a, brain }]]);
+    // last ball the opposite was still at the net after a block and missed their run
+    brain.missedRun = true;
+    // this ball you call their back 1 before the pass
+    calls.nextBall();
+    for (let i = 0; i < 10 && calls.play('OPP').short !== 'Back 1'; i++) calls.press('OPP');
+    applyCalls(hitters, calls, false);
+    calls.lock();
+    syncRuns(hitters, calls);
+    expect(calls.isHigh('OPP')).toBe(false);
+    expect(calls.label('OPP')).toBe('Back 1');
   });
   it('before the pass nothing is forced: the calls are still yours to change', () => {
     const calls = new SetterCalls();

@@ -366,7 +366,11 @@ export const TIMING = {
    * fills in setLoad / ASSIST.setSlowmoLoad real seconds on every level). Levels: SET_LEVELS.
    */
   setLoad: 0.15,
-  /** held this long (game s) past the top of the bar: the ball has come to rest in the hands, a lift (the point is theirs). Longer than Easy's late good band */
+  /**
+   * Held this long (game s) past the top of the bar: the ball has come to rest in the hands, a
+   * lift (the point is theirs). Longer than Easy's late good band; setting by feel
+   * (ASSIST.setByFeel) it is that much longer too, like the band
+   */
   setHoldMax: 0.13,
   /** a catch this early or more (game s, beyond the level's clean catch) costs the touch the most */
   setCatchEarly: 0.3,
@@ -444,6 +448,8 @@ export const CONTACT = {
   aiSwingShift: 0.04,
   passRadius: 0.55,
   setRadius: 0.48,
+  /** how far ahead (s) a setter looks for the ball coming down onto the hands: a pass is in the air about 1-1.5 s */
+  setLook: 1.6,
   /**
    * Your touch scales the set's green window: each part multiplies it, down to these floors.
    * Feet still moving, an early or late catch, the ball off-centre on the hands (beyond
@@ -624,6 +630,8 @@ export const CONTACT = {
    * tape, whichever is higher: slower, but over.
    */
   serveSafe: 0.6,
+  /** an AI attack pushed deeper to clear the tape stays this far (m) inside the end line (an AI serve: `serveSafe`) */
+  deepIn: 0.3,
   serveSafeApex: 1.0,
   /**
    * How much a float serve floats (`BallState.knuckle`, see `BALL.float`), by the grade of the
@@ -1391,9 +1399,25 @@ export const FX = {
    * The set's timing ring (Settings: Set timing ring): it closes onto the ball and is `atContact`
    * ball radii across as the ball reaches your hands (just outside the ball, so nothing covers it).
    * Its radius is that times e^(perSecond x time to go), shown from `showFor` s before; the green
-   * band is your window, the faint band your good one; no band is drawn over the ball itself.
+   * band is your window, the faint band your good one; no band is drawn over the ball itself:
+   * the ring and the bands stay `clear` ball radii out, a band at least `minBand` wide. The ring
+   * is a line `line` of its radius thick at `lineOpacity`: `waiting` until you press, `pressed`
+   * once you have; the green band is `green`.
    */
-  setRing: { perSecond: 4, atContact: 1.6, showFor: 0.9, greenOpacity: 0.32, goodOpacity: 0.12 },
+  setRing: {
+    perSecond: 4,
+    atContact: 1.6,
+    showFor: 0.9,
+    greenOpacity: 0.32,
+    goodOpacity: 0.12,
+    clear: 1.05,
+    minBand: 0.05,
+    line: 0.07,
+    lineOpacity: 0.95,
+    waiting: 0xffb54a,
+    pressed: 0xffffff,
+    green: 0x3ddc84,
+  },
   /**
    * The set bar beside the ball (2K's meter): px tall and wide, the gap (px) from the ball's edge,
    * where the top of the bar (the ideal push) sits as a fraction of its height, and how long
@@ -1426,9 +1450,24 @@ export const FX = {
   /**
    * Where to stand for the set: a floor spot this wide (m), green once your feet are within
    * `CONTACT.setCentreOk`. When your body is going to jump for it (the jump set) a second ring
-   * stands round it, `jumpRing` times as wide, at `jumpOpacity`.
+   * stands round it, `jumpRing` times as wide, at `jumpOpacity`. The ring is `ring` times its
+   * radius across, its line `ringLine` of the texture; a dark outline (`outline` across, `dark` at
+   * `darkOpacity`) keeps it readable on bright wood; the disc inside shows at `disc` (off, on the
+   * spot) opacity. It is white, `on` once your feet are on it, and fades in and out at `fade`/s.
    */
-  setSpot: { radius: 0.32, jumpRing: 1.5, jumpOpacity: 0.6 },
+  setSpot: {
+    radius: 0.32,
+    jumpRing: 1.5,
+    jumpOpacity: 0.6,
+    ring: 2.4,
+    ringLine: 0.2,
+    outline: 2.6,
+    dark: 0x05070c,
+    darkOpacity: 0.55,
+    disc: [0.2, 0.55] as [number, number],
+    on: 0x3ddc84,
+    fade: 10,
+  },
   /**
    * A float breaking (`BALL.float`): a ring pops round the ball where it turns, as wide (m) and
    * as bright as this for the hardest break of a Perfect float, less for a weaker one. From
@@ -2107,34 +2146,15 @@ export const AI = {
   /** an out-of-system set (and a backup's set, when the setter played the first ball) goes this much (m) higher */
   outOfSystemApex: 0.4,
   /**
-   * Your green set is a point. An exact set at the called tempo gives the block nothing early,
-   * so their middle goes on what it sees: a hitter you did not set (`greenBite`, src/ai/greenBite.ts),
-   * or the next route, and never gets to the ball (`greenFooled`, below, for how it looks). A hitter
-   * counts when within `maxOff` m of the net and up, or running in faster than `runSpeed` m/s; one
-   * who is up comes first (a runner counts as `runPenalty` m further away), and the middle leads a
-   * runner by `lead` s. (The drills' `BlockerBrain` middle, with nobody else going, guesses a side:
-   * on a pin set it stays home for the quick, on the quick or the pipe it steps `greenBlockGuess` m
-   * towards a pin.) The pin blockers block as on any set, so your
-   * hitter has one block to beat, and bounces it past them (`greenBounce`): a full swing, as
-   * steep as the net allows (the nearest spot, at one of `depths` m from the net, that a
-   * full-speed spike brings down and that clears the tape by `clear` m), crossing the net at
-   * least `hands` m clear of a blocker's hands (`reach` m clear of them where they reach over the
-   * net or hang behind it; a blocker still running along the net faster than `closing` m/s counts
-   * as up where it is going). Off a pass out of system a high ball to a pin fools nobody: their
-   * middle closes the block and your hitter has two blockers to beat: not every one of those is
-   * a kill, but it is always a full swing, and no block stuffs an attack off a green set (it
-   * comes off the hands soft or wide, and off a late or early block always wide: ContactSystem.tryBlock). Their diggers start `greenSetDigDelay` s late (the hitter hid
-   * the shot until the hand).
-   */
-  /**
    * An AI hitter's run across the court curves (src/ai/approach.ts, bendFor): a run more than
    * `straight` rad off square to the net bends by `share` of the excess, at most `maxBend` rad,
    * leaving that much flatter along the net and arriving that much squarer to it. Runs shorter
    * than `minRun` m stay straight. The turn is done over the first `ground` of the way (the run
    * on the floor); the rest is the jump, flown straight off the last step. A real hitter loops
-   * in on an X or a 2; a straight diagonal line at the spot is what nobody does.
+   * in on an X or a 2; a straight diagonal line at the spot is what nobody does. The bent run
+   * still starts at least `towardNet` rad (about 5°) off along the net: never heading away from it.
    */
-  approach: { straight: 0.35, share: 0.8, maxBend: 0.42, minRun: 1.5, ground: 0.6 },
+  approach: { straight: 0.35, share: 0.8, maxBend: 0.42, minRun: 1.5, ground: 0.6, towardNet: 0.08 },
   /**
    * A pin hitter going inside (the 3, the 2, the X, the back 2): a run more than `angle` rad off
    * square to the net, at least `minRun` m long. They wait where their pin sets start and break
@@ -2147,8 +2167,30 @@ export const AI = {
    * `ground` of the way.
    */
   insideRun: { angle: 0.7, minRun: 2.5, carry: 0.62, swing: 1, ground: 0.45 },
+  /**
+   * Your green set is a point (the user's call, playtest 2026-11-08: a green set always scores,
+   * a bad one very rarely). An exact set at the called tempo gives the block nothing early, so
+   * their middle goes on what it sees and never gets to the ball (`greenBite`, `greenFooled`);
+   * the pin blockers block as on any set, so your hitter has one block to beat and bounces it
+   * past them (`greenBounce`); their diggers start late (`greenSetDigDelay`). Off a pass out of
+   * system a high ball to a pin fools nobody: their middle closes the block, and it is a full
+   * swing at two blockers, not always a kill. No block stuffs an attack off a green set: it comes
+   * off the hands soft or wide, and off a late or early block always wide (ContactSystem.tryBlock).
+   * The numbers are the browser probes' (the set bot, 96 green sets in system, 96 points).
+   *
+   * The drills' `BlockerBrain` middle, with nobody else going, guesses a side: on a pin set it
+   * stays home for the quick, on the quick or the pipe it steps this far (m) towards a pin
+   * (about half the way from the middle of the net to a pin hitter's spot).
+   */
   greenBlockGuess: 2.2,
-  greenBite: { maxOff: 4.5, runSpeed: 2, runPenalty: 3, lead: 0.2 },
+  /**
+   * The Mini Rally middle goes up with a hitter you did not set (src/ai/greenBite.ts): one within
+   * `maxOff` m of the net (an approach start is about 4 m off it) and up, or running in faster
+   * than `runSpeed` m/s (a walk is slower); one who is up comes first (a runner counts as
+   * `runPenalty` m further away), and it leads a runner by `lead` s. A runner is one coming in
+   * at the net at more than `toNet` m/s, not jogging back to base.
+   */
+  greenBite: { maxOff: 4.5, runSpeed: 2, runPenalty: 3, lead: 0.2, toNet: 1 },
   /**
    * How your green set fools their Mini Rally middle (src/ai/middle.ts) without it ever moving
    * away from where its block belongs, bar a route's width (playtest, 2026-11-17: a middle in the
@@ -2167,8 +2209,39 @@ export const AI = {
    * ball goes by, and the hitter puts it past them.
    */
   greenFooled: { near: 1.5, shift: 0.7, realise: 0.45, late: 0.25 },
-  greenBounce: { depths: [2.4, 2.9, 3.4, 4.0, 4.8, 5.8], clear: 0.05, hands: 0.35, reach: 0.2, closing: 1 },
+  /**
+   * Off your green set the hitter bounces it (HitterBrain.bounce): a full swing, as steep as the
+   * net allows: the nearest spot, at one of `depths` m from the net, that a full-speed spike brings
+   * down within `fit` m of it and `lineIn` m inside the lines, and that clears the tape by `clear`
+   * m. The spots across the court are `edgeIn` m inside the sidelines. It crosses the net at
+   * least `hands` m clear of a blocker's hands (`reach` m clear of them where they reach over the
+   * net or hang behind it). A blocker still running along the net faster than `closing` m/s
+   * counts as up where it is going: where its hands will be as the ball crosses, `lead.react` s
+   * plus the spike's flight to the net at `lead.speed` m/s (a spike travels about 20 m/s, so a
+   * pipe from the 3 m line gives the block longer). Any other shot off a green set (the hitter's
+   * usual choice, when there is no bounce) passes `wide` m clear of the hands, against 0.3 m on
+   * an ordinary set, and lands `lineIn` m inside the lines.
+   */
+  greenBounce: {
+    depths: [2.4, 2.9, 3.4, 4.0, 4.8, 5.8],
+    clear: 0.05,
+    hands: 0.35,
+    reach: 0.2,
+    closing: 1,
+    fit: 0.5,
+    lineIn: 0.3,
+    edgeIn: 0.9,
+    lead: { react: 0.05, speed: 20 },
+    wide: 0.45,
+  },
+  /** off your green set their diggers start this late (s): the hitter hid the shot until the hand (the user's call, playtest 2026-11-08) */
   greenSetDigDelay: 0.5,
+  /**
+   * From behind the 3 m line (a pipe: within `line` m of it or deeper) an AI hitter aims at least
+   * `deep` m from the net: the short angles cannot come down that soon (the spike would carry
+   * deep, over a different part of the net than the one planned)
+   */
+  backRowAim: { line: 0.5, deep: 5 },
   /**
    * A bad set (your early / late push) is harder to hit: your hitter's timing error grows by up
    * to this factor and they tip or roll it this many times more often.

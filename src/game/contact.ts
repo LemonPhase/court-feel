@@ -146,9 +146,6 @@ export interface SetCatch {
   jump: SetJumpPlan | null;
 }
 
-/** how far ahead (s) a setter looks for the ball coming down onto the hands */
-const SET_LOOK = 1.6;
-
 /** the user's last set, read by the hitter it went to and by the block */
 export interface SetResult {
   athlete: Athlete;
@@ -584,7 +581,7 @@ export class ContactSystem {
           if (!c || c.y > h.env.netTop + R + tape) break;
           // deeper, but never past the end line (an AI serve kept CONTACT.serveSafe inside it)
           if (Math.abs(target.z) < COURT.halfLength - 0.8)
-            target.z = side * Math.min(Math.abs(target.z) + 1.0, COURT.halfLength - (safeServe ? CONTACT.serveSafe : 0.3));
+            target.z = side * Math.min(Math.abs(target.z) + 1.0, COURT.halfLength - (safeServe ? CONTACT.serveSafe : CONTACT.deepIn));
           else speed *= 0.85;
           solveSpeedToFloor(p0, target.x, target.z, speed, spin * 0.8, out, w, land);
         }
@@ -737,7 +734,7 @@ export class ContactSystem {
     const H = a.hopH ?? a.computeJumpHeight();
     let ballY = h.ball.pos.y;
     let gap = ballY - (y + hands);
-    for (let t = now + dt; t < now + SET_LOOK; t += dt) {
+    for (let t = now + dt; t < now + CONTACT.setLook; t += dt) {
       if (wait >= 0) {
         wait -= dt;
         if (wait <= 1e-9) {
@@ -994,12 +991,13 @@ export class ContactSystem {
     const lt = ball.lastTouch;
     const friendly = !lt || lt.side === a.side || lt.kind === 'feed';
     if (!c) {
-      // it has just come down through the hands: still a (late) catch while it is within reach
+      // it has just come down through the hands: still a (late) catch while it is within reach,
+      // and on our side (a pass gone over the tape is theirs: block)
       const P = this.handsPoint(a, this._p);
       const bp = ball.pos;
-      return friendly && ball.vel.y < 0 && Math.hypot(bp.x - P.x, bp.y - P.y, bp.z - P.z) < this.setReach(a);
+      return friendly && ball.vel.y < 0 && bp.z * a.side > 0 && Math.hypot(bp.x - P.x, bp.y - P.y, bp.z - P.z) < this.setReach(a);
     }
-    if (c.t - h.simTime > SET_LOOK) return false;
+    if (c.t - h.simTime > CONTACT.setLook) return false;
     // it reaches the hands over their side (our pass went over): block. Short of that it is ours,
     // even tight to the net or dropping back down it after hitting the net
     if (c.at.z * a.side <= 0) return false;
@@ -1055,7 +1053,8 @@ export class ContactSystem {
     const t = h.simTime;
     if (act.absorbing) {
       if (!act.held) return this.pushSet(a, act, act.releaseT);
-      if (t - act.arriveT - TIMING.setLoad >= TIMING.setHoldMax) return this.liftSet(a, act, t);
+      // setting by feel every window is wider, the hold too: a late good set is never a lift
+      if (t - act.arriveT - TIMING.setLoad >= TIMING.setHoldMax * this.setWider()) return this.liftSet(a, act, t);
       // the ball loads in the hands
       this.loadInHands(a, t);
       return false;

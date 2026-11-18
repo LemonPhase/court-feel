@@ -4,6 +4,7 @@ import { TouchPad, type PadButton } from '../core/touchPad';
 import { ContactSystem } from '../game/contact';
 import type { Game } from '../game/game';
 import { SET_PLAYS } from '../game/plays';
+import { SET_PICKS, type SetPick } from '../game/setterCalls';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, html = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -37,6 +38,17 @@ export const TOUCH_KEY_LABELS: Record<string, string> = {
   WASD: 'stick',
   Shift: 'stick out',
   'Shift+W': 'stick out',
+};
+
+/** while you set, the number keys are the SET TO chips (a hint's 1-4 is the chip row) */
+export const SETTER_KEY_LABELS: Record<string, string> = {
+  ...TOUCH_KEY_LABELS,
+  '1-4': 'SET TO',
+  '1': 'OH',
+  '2': 'MB',
+  '3': 'OPP',
+  '4': 'PIPE',
+  '5': 'DUMP',
 };
 
 const HOLD_BUTTONS: { id: PadButton; cls: string; label: string }[] = [
@@ -78,6 +90,8 @@ export class TouchControls {
   private jumpRing: HTMLDivElement;
   private chips: HTMLDivElement;
   private chipsFor = '';
+  /** the setter's chips are up: hints name them for the number keys */
+  private setterLabels = false;
   private pauseBtn: HTMLDivElement;
   private skipBtn: HTMLDivElement;
   private replayBtn: HTMLElement;
@@ -158,7 +172,7 @@ export class TouchControls {
     this.enabled = on;
     this.g.input.touch = on;
     document.body.classList.toggle('touchmode', on);
-    this.g.hud.keyLabels = on ? TOUCH_KEY_LABELS : null;
+    this.g.hud.keyLabels = on ? (this.setterLabels ? SETTER_KEY_LABELS : TOUCH_KEY_LABELS) : null;
     if (!on) {
       this.pad.releaseAll();
       this.show(false);
@@ -300,10 +314,12 @@ export class TouchControls {
     const rd = replay ? '' : 'none';
     if (this.replayBtn.style.display !== rd) this.replayBtn.style.display = rd;
     // drill context: set calls / feed types / toss
-    const key = `${g.modeId}:${g.position}:${g.tutorial.active ? 'tut' : ''}`;
+    // (the setter's chips follow who they can pick: the front row's dump comes and goes with ROW)
+    const picks = g.tutorial.active ? null : (g.mode?.setterPicks?.() ?? null);
+    const key = `${g.modeId}:${g.position}:${g.tutorial.active ? 'tut' : ''}:${picks?.join(',') ?? ''}`;
     if (key !== this.chipsFor) {
       this.chipsFor = key;
-      this.buildChips();
+      this.buildChips(picks);
     }
   }
 
@@ -320,7 +336,7 @@ export class TouchControls {
     ring.classList.toggle('full', frac >= 0.99);
   }
 
-  private buildChips(): void {
+  private buildChips(picks: readonly SetPick[] | null): void {
     const g = this.g;
     for (const id of ['feed', 'auto', 'vsblock', 'play', 'row', 'help', 'd1', 'd2', 'd3', 'd4', 'd5'] as PadButton[])
       this.buttons.delete(id);
@@ -335,14 +351,13 @@ export class TouchControls {
     // you set: tap a hitter to pick them, again for their next set (once the pass is played: a high ball);
     // PLAY opens the play wheel (then tap a play). Setter Drill: ROW puts you in the front row, where DUMP is on.
     // tutorial reps: no set-call chips and no block toggle (one Outside story, block off)
-    const setter = !g.tutorial.active && (g.modeId === 'setter' || (g.modeId === 'rally' && (g.position === 'S' || g.position === 'L')));
+    const setter = picks !== null;
+    this.setterLabels = setter;
+    if (this.enabled) this.g.hud.keyLabels = setter ? SETTER_KEY_LABELS : TOUCH_KEY_LABELS;
     if (setter) {
       el('span', 't-chip-l', this.chips, 'SET TO');
-      chip('d1', 'OH');
-      chip('d2', 'MB');
-      chip('d3', 'OPP');
-      chip('d4', 'PIPE');
-      if (g.modeId === 'setter') chip('d5', 'DUMP');
+      // a chip per hitter you can set now (Digit1 outside ... Digit5 the dump)
+      for (const k of picks) chip(`d${SET_PICKS.indexOf(k) + 1}` as PadButton, k);
       if (g.modeId === 'setter' || g.position === 'S') chip('play', 'PLAY');
       if (g.modeId === 'setter') chip('row', 'ROW');
       // Mini Rally: you can't get to the second ball, a team-mate takes it

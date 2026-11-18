@@ -1,7 +1,10 @@
 import { PLAYBOOK } from '../config';
 import { comboPlay, COMBOS, type Combo } from './combos';
-import { SETTER_PLAYS, SETTER_TARGET, type SetPlay } from './plays';
-import { SETTER_KEYS, type SetterKey } from './setterCalls';
+import { SETTER_PLAYS } from './plays';
+import { clashes, SETTER_KEYS, type SetterKey } from './setterCalls';
+
+// (the clash rule lives with the calls: the keys on court keep it too)
+export { clashes, clashWith, hitX } from './setterCalls';
 
 /**
  * Your own plays (start screen, Plays). A play gives every hitter one of their sets (the same
@@ -18,33 +21,6 @@ export interface SavedPlay {
 
 /** one entry per place on the wheel: your play there, or null for the built-in one */
 export type Playbook = (SavedPlay | null)[];
-
-/** the hitters who meet the ball at the net (the pipe is hit 2 m off it, behind them) */
-const FRONT: readonly SetterKey[] = ['OH', 'MB', 'OPP'];
-
-/** where along the net a set is hit (a quick: `inFront` of where the setter takes the pass) */
-export function hitX(play: SetPlay): number {
-  return play.inFront !== undefined ? SETTER_TARGET.x - play.inFront : play.lane.x;
-}
-
-/**
- * Would `k` hitting `short` end up on the same spot as another front-row hitter in `calls`
- * (within PLAYBOOK.minGap m along the net)? Returns that hitter, or null when there is room.
- */
-export function clashWith(calls: Record<SetterKey, string>, k: SetterKey, short: string): SetterKey | null {
-  const mine = SETTER_PLAYS[k].find((p) => p.short === short);
-  if (!mine || !FRONT.includes(k)) return null;
-  for (const o of FRONT) {
-    const theirs = o === k ? undefined : SETTER_PLAYS[o].find((p) => p.short === calls[o]);
-    if (theirs && Math.abs(hitX(mine) - hitX(theirs)) < PLAYBOOK.minGap) return o;
-  }
-  return null;
-}
-
-/** do two hitters in these calls hit from the same spot? */
-export function clashes(calls: Record<SetterKey, string>): boolean {
-  return FRONT.some((k) => clashWith(calls, k, calls[k]) !== null);
-}
 
 /** every hitter's set in a play on the wheel (to start a new play from it) */
 export function callsOf(c: Combo): Record<SetterKey, string> {
@@ -84,16 +60,32 @@ export function sanitizePlaybook(raw: unknown): Playbook {
   return COMBOS.map((_, i) => sanitizePlay(src[i]));
 }
 
-const KEY = 'courtfeel.plays.v1';
+/**
+ * Where your plays are kept between visits. The app gives it (src/app/playbook.ts: the browser's
+ * storage); the simulation never touches the page. Without one they last for this visit.
+ */
+export interface PlaybookStore {
+  /** what was saved (untrusted: it is sanitized), null for nothing */
+  load(): unknown;
+  save(book: Playbook): void;
+}
+
+let store: PlaybookStore | null = null;
 let book: Playbook | null = null;
 let wheel: readonly Combo[] | null = null;
+
+/** keep your plays in `s` from now (the app, at boot): they are read from it again */
+export function usePlaybookStore(s: PlaybookStore | null): void {
+  store = s;
+  book = null;
+  wheel = null;
+}
 
 /** your saved plays, by place on the wheel */
 export function playbook(): Playbook {
   if (book) return book;
   try {
-    const raw = localStorage.getItem(KEY);
-    book = sanitizePlaybook(raw ? JSON.parse(raw) : null);
+    book = sanitizePlaybook(store?.load() ?? null);
   } catch {
     /* private mode / blocked storage / unparseable JSON: no saved plays */
     book = sanitizePlaybook(null);
@@ -101,15 +93,15 @@ export function playbook(): Playbook {
   return book;
 }
 
-/** save `play` to a place on the wheel (null: the built-in play is back). False: it is not a play that can be saved. */
+/** save `play` to a place on the wheel (null: the built-in play is back). False: not a place on the wheel, or not a play that can be saved. */
 export function savePlay(slot: number, play: SavedPlay | null): boolean {
   const b = playbook();
   const clean = play && sanitizePlay(play);
-  if (slot < 0 || slot >= b.length || (play && !clean)) return false;
+  if (!Number.isInteger(slot) || slot < 0 || slot >= b.length || (play && !clean)) return false;
   b[slot] = clean;
   wheel = null;
   try {
-    localStorage.setItem(KEY, JSON.stringify(b));
+    store?.save(b);
   } catch {
     /* ignore: the play stays for this visit */
   }

@@ -3,6 +3,8 @@ import { BUILD_ID } from './core/build';
 import { ErrorReporter, type ErrorReport } from './core/errors';
 import { parseLaunchParams, parseVenueParam } from './app/launch';
 import { defaultSettings, loadSettings, saveSettings, systemPrefersReducedMotion } from './app/settings';
+import { playbookStorage } from './app/playbook';
+import { usePlaybookStore } from './game/playbook';
 import { Game } from './game/game';
 import { Menu } from './ui/menu';
 import type { ModeId } from './game/modes/mode';
@@ -38,6 +40,8 @@ window.addEventListener('unhandledrejection', (e) => {
   reporter.report('rejection', e.reason, 'promise');
 });
 
+// your plays (start screen, Plays) are kept in this browser
+usePlaybookStore(playbookStorage);
 const settings = loadSettings();
 const game = new Game(app, settings, parseVenueParam(location.search), saveSettings);
 window.__court = game;

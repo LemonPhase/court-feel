@@ -5,7 +5,20 @@ import { AI, PLAYBOOK, PLAYER } from '../src/config';
 import { Athlete } from '../src/game/athlete';
 import { callSheet } from '../src/game/callRuns';
 import { COMBOS } from '../src/game/combos';
-import { callsOf, clashes, clashWith, hitX, sanitizePlaybook, toCombo, type SavedPlay } from '../src/game/playbook';
+import {
+  callsOf,
+  clashes,
+  clashWith,
+  hitX,
+  playbook,
+  sanitizePlaybook,
+  savePlay,
+  toCombo,
+  usePlaybookStore,
+  wheelPlays,
+  type Playbook,
+  type SavedPlay,
+} from '../src/game/playbook';
 import { attackHeight, SETTER_PLAYS, SETTER_SPOT } from '../src/game/plays';
 import { SETTER_KEYS, SetterCalls } from '../src/game/setterCalls';
 
@@ -41,9 +54,16 @@ describe('your own plays (start screen, Plays)', () => {
     expect(clashes({ ...base, MB: 'Back 1', OPP: 'Back 1' })).toBe(true);
     // with room between them it is a play: the opposite's back set behind the middle's back quick
     expect(clashWith({ ...base, MB: 'Back 1' }, 'OPP', 'Back')).toBeNull();
-    // the pipe is hit 2 m off the net, behind them: the pipe behind the quick is a play
-    expect(clashWith({ ...base, MB: '1' }, 'PIPE', 'Pipe')).toBeNull();
-    expect(clashes({ ...base, MB: 'Back 1', PIPE: 'Behind' })).toBe(false);
+    // the pipe is hit 2 m off the net, behind them: a pipe behind the quick, along the net from
+    // where the middle hits it, is a play
+    const pipeBehind = (mb: string, pipe: string) => {
+      const gap = Math.abs(hitX(SETTER_PLAYS.PIPE.find((p) => p.short === pipe)!) - hitX(SETTER_PLAYS.MB.find((p) => p.short === mb)!));
+      expect(gap, `${pipe} behind the ${mb}`).toBeLessThan(PLAYBOOK.minGap);
+      expect(clashWith({ ...base, MB: mb }, 'PIPE', pipe)).toBeNull();
+      expect(clashes({ ...base, MB: mb, PIPE: pipe })).toBe(false);
+    };
+    pipeBehind('1', 'Bic');
+    pipeBehind('Back 1', 'Behind');
   });
   it('every built-in play leaves each front-row hitter their own spot (the tandem and the X hit beside the quick, not on it)', () => {
     for (const c of COMBOS) expect(clashes(c.calls), c.name).toBe(false);
@@ -53,6 +73,27 @@ describe('your own plays (start screen, Plays)', () => {
       ['OPP', 'X'],
     ] as const)
       expect(Math.abs(hitX(SETTER_PLAYS[k].find((p) => p.short === short)!) - quick)).toBeGreaterThanOrEqual(PLAYBOOK.minGap);
+  });
+  it('a play is saved to a place on the wheel, kept where the app keeps it, and nowhere that is not a place', () => {
+    let kept: Playbook | null = null;
+    usePlaybookStore({ load: () => null, save: (b) => (kept = b.slice()) });
+    const play: SavedPlay = { name: 'Mine', calls: callsOf(COMBOS[2]) };
+    for (const slot of [NaN, 1.5, -1, COMBOS.length]) expect(savePlay(slot, play), String(slot)).toBe(false);
+    expect(kept).toBeNull();
+    expect(savePlay(1, play)).toBe(true);
+    expect(kept![1]?.name).toBe('Mine');
+    expect(wheelPlays()[1].name).toBe('Mine');
+    // what the app gave back is read again, and a store that throws leaves no saved plays
+    usePlaybookStore({ load: () => kept, save: () => {} });
+    expect(playbook()[1]?.name).toBe('Mine');
+    usePlaybookStore({
+      load: () => {
+        throw new Error('blocked');
+      },
+      save: () => {},
+    });
+    expect(playbook().every((p) => p === null)).toBe(true);
+    usePlaybookStore(null);
   });
   it('stored plays are untrusted: one per place on the wheel; no name, or two hitters on one spot, and it is dropped', () => {
     const book = sanitizePlaybook([

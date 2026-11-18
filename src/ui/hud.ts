@@ -15,7 +15,11 @@ const GRADE_CLASS: Record<Grade, string> = {
 /** hint `<kbd>` names → touch button names. Combined approach keys first. */
 export function translateKeyMarkup(t: string, m: Record<string, string>): string {
   t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
+  // (a key range named as one button: the setter's 1-4 is the SET TO chips)
+  t = t.replace(/<kbd>1<\/kbd>-<kbd>4<\/kbd>/g, (all) => (m['1-4'] ? `<kbd>${m['1-4']}</kbd>` : all));
   t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
+  // a setter's chip names itself: "DUMP dump", "OH OH" read once
+  t = t.replace(/(<kbd>(OH|MB|OPP|PIPE|DUMP)<\/kbd>) \2\b/gi, '$1');
   // the REPLAY button names itself: "REPLAY last attempt", not "REPLAY replay last attempt"
   t = t.replace(/(<kbd>REPLAY<\/kbd>) replay /g, '$1 ');
   return t.replace(/with the mouse/g, 'by dragging');
@@ -324,7 +328,7 @@ export class Hud {
         })
         .join('');
       // the combination the calls make, named above the strip
-      if (v.play) html = `<div class="cs-play">${v.play}</div>${html}`;
+      if (v.play) html = `<div class="cs-play">${escapeHtml(v.play)}</div>${html}`;
       this.sheet.classList.toggle('locked', v.locked);
       this.sheet.classList.toggle('pins', !v.items.some((i) => i.id === 'MB'));
     }
@@ -565,4 +569,9 @@ export class Hud {
       else this.placeCall();
     }
   }
+}
+
+/** text for innerHTML: a play's name is typed by the player (the designer), so it must not be markup */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }

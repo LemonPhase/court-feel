@@ -27,6 +27,9 @@ import { kbd, makeFloorRing, Mode } from './mode';
 
 type Phase = 'prepare' | 'serve' | 'live' | 'dead';
 
+/** a backup's set (the libero's) is a high ball to a pin */
+const PIN_PICKS: readonly SetterKey[] = ['OH', 'OPP'];
+
 /**
  * Mini rally: 6 v 6 with the user in their chosen position. AI team-mates and
  * opponents receive, set, attack, block and dig; points are won or lost.
@@ -257,7 +260,7 @@ export class MiniRally extends Mode {
       if (c.takeLate()) g.hud.message('Too late to change it · they are committed', 1.2);
       const yours = this.userSetsNext();
       const oos = this.outOfSystem || !this.userSetter;
-      const keys = this.userSetter ? SETTER_KEYS : SETTER_KEYS.filter((k) => k === 'OH' || k === 'OPP');
+      const keys = this.userSetter ? SETTER_KEYS : PIN_PICKS;
       // the hitter your set goes to: your pick, else the outside (the outside too when the pick is off)
       const to = c.target();
       // (off a bad pass the middle is on only once you asked them for the quick, in time)
@@ -317,9 +320,18 @@ export class MiniRally extends Mode {
     return a === this.g.me ? this.setterCalls.pick : null;
   }
 
-  /** the user setter can call a play until our first ball is played */
+  /** the setter picks any hitter; the libero, backing up, only the pins (a high ball) */
+  setterPicks(): readonly SetPick[] | null {
+    if (!this.userSetsKeys) return null;
+    return this.userSetter ? SETTER_KEYS : PIN_PICKS;
+  }
+
+  /**
+   * The user setter calls a play on the wheel while the ball is dead, before the serve: the
+   * wheel slows the game, so never in a live rally (keys 1-4 still change the calls until the pass)
+   */
   playCalls(): SetterCalls | null {
-    return this.userSetter && !this.setterCalls.locked ? this.setterCalls : null;
+    return this.userSetter && this.phase === 'prepare' && !this.setterCalls.locked ? this.setterCalls : null;
   }
 
   /** the key hint for the user's set (the call strip above it shows the hitters and calls) */
@@ -362,7 +374,7 @@ export class MiniRally extends Mode {
     const calls = this.plays
       ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call`
       : this.userSetter
-        ? ` · ${kbd('1')}-${kbd('4')} pick a hitter, again: their next set · ${kbd('C')} plays`
+        ? ` · ${kbd('1')}-${kbd('4')} pick a hitter, again: their next set${this.phase === 'prepare' ? ` · ${kbd('C')} plays` : ''}`
         : '';
     if (Math.abs(me.pos.z) < 1.4) return `${kbd('RMB')} hands + ${kbd('Space')} block · ${kbd('V')} camera${calls}`;
     return `${kbd('WASD')} move · ${kbd('E')} pass · ${kbd('LMB')} attack · ${kbd('RMB')} block/set · ${kbd('V')} camera${calls}`;
@@ -394,16 +406,15 @@ export class MiniRally extends Mode {
     // "your ball" cue (once per ball), also for the second ball when the user backs up the setter
     const backup = this.yourBackupSet;
     const yours = this.home.receiver === g.me || backup || this.yourFreeBall;
-    // your pick: locked in once our first ball is played, a fresh one after your set
+    // your pick: locked in once our first ball is played, a fresh one after your set or once the ball is theirs
     const lt = g.ball.lastTouch;
     if (lt !== this.callsFor) {
       this.callsFor = lt;
-      if (lt?.athlete === g.me && lt.kind === 'set') this.setterCalls.nextBall(g.settings.keepSetPick);
-      else if (lt && lt.side === 1 && this.home.touches === 1) {
-        this.setterCalls.lock();
+      const mine = lt?.athlete === g.me;
+      if (lt && this.setterCalls.touched({ mine, kind: lt.kind, ours: lt.side === 1 }, this.home.touches, g.settings.keepSetPick)) {
         // a pass for you to set: your hitters run your calls (the fast ones before your touch)
         this.outOfSystem = false;
-        if (this.userSetter && lt.athlete !== g.me) this.outOfSystem = startCallRuns(g, g.me, this.hitters, this.setterCalls);
+        if (this.userSetter && !mine) this.outOfSystem = startCallRuns(g, g.me, this.hitters, this.setterCalls);
       }
     }
     // until the pass, your hitters line up for your calls

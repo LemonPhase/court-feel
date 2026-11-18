@@ -19,9 +19,11 @@ export class SetRing {
   constructor(scene: THREE.Scene) {
     const mat = (color: number, opacity: number) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
-    this.good = new THREE.Mesh(new THREE.RingGeometry(0.5, 2, 48), mat(0xffffff, FX.setRing.goodOpacity));
-    this.green = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.25, 48), mat(0x3ddc84, FX.setRing.greenOpacity));
-    this.closing = new THREE.Mesh(new THREE.RingGeometry(0.93, 1, 64), mat(0xffffff, 0.95));
+    const F = FX.setRing;
+    // (the bands' size is set by the first update)
+    this.good = new THREE.Mesh(new THREE.RingGeometry(0.5, 1, 48), mat(0xffffff, F.goodOpacity));
+    this.green = new THREE.Mesh(new THREE.RingGeometry(0.5, 1, 48), mat(F.green, F.greenOpacity));
+    this.closing = new THREE.Mesh(new THREE.RingGeometry(1 - F.line, 1, 64), mat(F.pressed, F.lineOpacity));
     this.good.renderOrder = 10;
     this.green.renderOrder = 11;
     this.closing.renderOrder = 12;
@@ -37,8 +39,8 @@ export class SetRing {
 
   /** a band from `dt` early to `dt` late, kept off the ball itself */
   private static band(dt: number, R: number): THREE.RingGeometry {
-    const inner = Math.max(1.05, SetRing.radius(-dt));
-    return new THREE.RingGeometry(inner * R, Math.max(inner + 0.05, SetRing.radius(dt)) * R, 48);
+    const inner = Math.max(FX.setRing.clear, SetRing.radius(-dt));
+    return new THREE.RingGeometry(inner * R, Math.max(inner + FX.setRing.minBand, SetRing.radius(dt)) * R, 48);
   }
 
   update(p: SetPreview | null, ballPos: THREE.Vector3, simTime: number, camera: THREE.Camera, show: boolean): void {
@@ -57,8 +59,8 @@ export class SetRing {
       this.good.geometry = SetRing.band(p.catchEdge, R);
     }
     // past the moment it keeps closing onto the ball, never inside it
-    this.closing.scale.setScalar(Math.max(1.05, SetRing.radius(until)) * R);
-    (this.closing.material as THREE.MeshBasicMaterial).color.setHex(p.pressed ? 0xffffff : 0xffb54a);
+    this.closing.scale.setScalar(Math.max(FX.setRing.clear, SetRing.radius(until)) * R);
+    (this.closing.material as THREE.MeshBasicMaterial).color.setHex(p.pressed ? FX.setRing.pressed : FX.setRing.waiting);
   }
 
   hide(): void {

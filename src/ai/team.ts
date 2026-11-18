@@ -686,7 +686,8 @@ export class TeamAI {
     const t = yours && yours.feetY > 0 ? yours.t : jump ? jump.catchT : pred.descendThrough(setterTouchY(setter), g.simTime);
     if (t < 0) return null;
     pred.posAt(t, this.qp);
-    if (Math.hypot(this.qp.x - SETTER_SPOT.x * s, this.qp.z - SETTER_SPOT.z * s) > 1.5) return null;
+    // (the setter's own read of the pass uses the same line: a quick they may set is one the middle runs)
+    if (Math.hypot(this.qp.x - SETTER_SPOT.x * s, this.qp.z - SETTER_SPOT.z * s) > AI.outOfSystem) return null;
     // the user setter's ball loads in the hands before the push (the set bar)
     return { t: t + (setter.isUser ? TIMING.setLoad : 0), x: this.qp.x };
   }

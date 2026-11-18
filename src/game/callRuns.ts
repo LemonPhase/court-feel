@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { AI, BALL, CONTACT, TIMING } from '../config';
-import type { HitterBrain } from '../ai/hitter';
 import { solveApex } from '../physics/solve';
 import type { Athlete } from './athlete';
 import type { SetOption } from './contact';
@@ -25,20 +24,40 @@ import { SET_PICKS, SETTER_KEYS, type SetPick, type SetterCalls, type SetterKey 
  * Setter Drill and the Mini Rally, so a call works the same in both.
  */
 
+/**
+ * What your calls need of a hitter's brain: where they run and hit, their read of the pass for a
+ * quick, a called run to make or hold. HitterBrain (src/ai/hitter.ts) is one; the simulation
+ * does not import the AI, so it names only this.
+ */
+export interface CallBrain {
+  lane: AttackLane;
+  inFront: number | undefined;
+  passToSetter: ((g: AiHost) => { t: number; x: number } | null) | null;
+  missedRun: boolean;
+  readonly releaseAt: number | undefined;
+  runTo(contact: THREE.Vector3, tc: number): void;
+  holdRun(): boolean;
+}
+
 /** a hitter you can set: the athlete and the brain that runs their approach */
-export interface CallHitter {
+export interface CallHitter<B extends CallBrain = CallBrain> {
   a: Athlete;
-  brain: HitterBrain;
+  brain: B;
   /**
    * The pass on its way to you, for a hitter whose call is a quick: when the ball leaves your
    * hands and where (null: no quick off this pass). The mode's read; a quick runs on it.
    */
   read?: (g: AiHost) => { t: number; x: number } | null;
 }
-export type CallHitters = Map<SetterKey, CallHitter>;
+export type CallHitters<B extends CallBrain = CallBrain> = Map<SetterKey, CallHitter<B>>;
 
 /** each hitter's colour on the floor and the call strip (the dump: white) */
 export const CALL_COLOR: Record<SetPick, number> = { OH: 0xffc23a, MB: 0x6fe3ff, OPP: 0xff6fb0, PIPE: 0x6fd69a, DUMP: 0xffffff };
+
+/** a hitter's colour for CSS ('#ffc23a'); no hitter: white */
+export function callCss(k: SetPick | null | undefined): string {
+  return `#${(k ? CALL_COLOR[k] : 0xffffff).toString(16).padStart(6, '0')}`;
+}
 
 /** a hitter's high ball (above their contact): what a call becomes off a bad pass, or when you ask for it */
 const HIGH_APEX: Record<SetterKey, number> = {
@@ -65,9 +84,14 @@ export function callSpot(calls: SetterCalls, k: SetterKey, oos: boolean): { x: n
   return isQuick(p) && !goesHigh(calls, k, oos) ? quickSpot(SETTER_TARGET.x, 1, p.inFront) : callLane(calls, k, oos);
 }
 
-/** the hitters line up for their calls: the start of each run, and a quick's spot and read of the pass */
+/**
+ * The hitters line up for their calls: the start of each run, and a quick's spot and read of the
+ * pass. Before the pass a run missed on an earlier ball of the rally is forgotten: this ball's
+ * call is a new one (a quick never goes through HitterBrain.runTo, which clears it too).
+ */
 export function applyCalls(hitters: CallHitters, calls: SetterCalls, oos: boolean): void {
   for (const [k, h] of hitters) {
+    if (!calls.locked) h.brain.missedRun = false;
     const p = calls.play(k);
     const quick = isQuick(p) && !goesHigh(calls, k, oos);
     h.brain.lane = callLane(calls, k, oos);
@@ -242,7 +266,7 @@ export function callSheet(calls: SetterCalls, keys: readonly SetPick[], shown: S
         picked: calls.pick === k,
         lit: shown === k,
         off: off.includes(k),
-        color: `#${CALL_COLOR[k].toString(16).padStart(6, '0')}`,
+        color: callCss(k),
       };
       if (k === 'DUMP') return { ...base, who: 'Dump', call: calls.dumpDeep ? 'Deep' : 'Short', step: calls.dumpDeep ? 1 : 0, steps: 2 };
       const s = calls.step(k);

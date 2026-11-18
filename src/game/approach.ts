@@ -56,7 +56,7 @@ export function bendFor(dir: THREE.Vector3, side: 1 | -1, total: number): number
   const alpha = Math.atan2(side * dir.x, -side * dir.z);
   const over = Math.abs(alpha) - A.straight;
   // never start the run heading away from the net
-  const bend = Math.min(A.maxBend, over * A.share, Math.PI / 2 - 0.08 - Math.abs(alpha));
+  const bend = Math.min(A.maxBend, over * A.share, Math.PI / 2 - A.towardNet - Math.abs(alpha));
   return bend > 0 ? -Math.sign(alpha) * bend : 0;
 }
 

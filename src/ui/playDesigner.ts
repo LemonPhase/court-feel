@@ -1,5 +1,5 @@
 import { COURT, PLAYBOOK } from '../config';
-import { CALL_COLOR } from '../game/callRuns';
+import { callCss } from '../game/callRuns';
 import { COMBOS } from '../game/combos';
 import { callsOf, clashWith, cleanName, hitX, playbook, savePlay, wheelPlays } from '../game/playbook';
 import { SETTER_PLAYS, SETTER_SPOT } from '../game/plays';
@@ -15,7 +15,6 @@ const px = (x: number) => (x + COURT.halfWidth + SIDE) * S;
 const py = (z: number) => (z + TOP) * S;
 
 const WHO: Record<SetterKey, string> = { OH: 'Outside', MB: 'Middle', OPP: 'Opposite', PIPE: 'Back row' };
-const hex = (k: SetterKey) => `#${CALL_COLOR[k].toString(16).padStart(6, '0')}`;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -87,9 +86,9 @@ export function buildPlayDesigner(): HTMLElement {
   court.append(you);
   const parts = new Map<SetterKey, { run: SVGPathElement; start: SVGCircleElement; hit: SVGCircleElement; key: SVGTextElement }>();
   SETTER_KEYS.forEach((k, i) => {
-    const run = svgEl('path', { class: 'pd-run', stroke: hex(k) });
-    const start = svgEl('circle', { r: 6, class: 'pd-start', stroke: hex(k) });
-    const hit = svgEl('circle', { r: 12, fill: hex(k) });
+    const run = svgEl('path', { class: 'pd-run', stroke: callCss(k) });
+    const start = svgEl('circle', { r: 6, class: 'pd-start', stroke: callCss(k) });
+    const hit = svgEl('circle', { r: 12, fill: callCss(k) });
     const key = svgEl('text', { class: 'pd-key' });
     key.textContent = String(i + 1);
     court.append(run, start, hit, key);
@@ -116,7 +115,7 @@ export function buildPlayDesigner(): HTMLElement {
   const cards = new Map<SetterKey, { set: HTMLElement; chips: HTMLButtonElement[]; note: HTMLElement }>();
   SETTER_KEYS.forEach((k, i) => {
     const card = el('section', 'pd-hitter');
-    card.style.setProperty('--c', hex(k));
+    card.style.setProperty('--c', callCss(k));
     const head = el('div', 'pd-who');
     const set = el('span', 'pd-set');
     head.append(el('span', 'pd-dot'), el('span', '', `${i + 1} · ${WHO[k]}`), set);
@@ -204,8 +203,16 @@ export function buildPlayDesigner(): HTMLElement {
     const n = cleanName(name.value) || `My play ${slot + 1}`;
     if (!savePlay(slot, { name: n, calls })) return;
     load(slot);
-    status.textContent = `Saved. ${n} is play ${slot + 1} on the wheel: hold C when you set.`;
+    // (on a touch screen the wheel is the PLAY chip)
+    const wheel = document.body.classList.contains('touchmode') ? 'tap PLAY' : 'hold C';
+    status.textContent = `Saved. ${n} is play ${slot + 1} on the wheel: ${wheel} when you set.`;
   };
+  // Enter in the name saves it
+  name.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    saveBtn.click();
+  });
   reset.onclick = () => {
     savePlay(slot, null);
     load(slot);

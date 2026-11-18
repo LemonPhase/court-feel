@@ -45,7 +45,7 @@ type Phase = 'intro' | 'feed' | 'live' | 'result';
 export class SetterDrill extends Mode {
   readonly id = 'setter' as const;
   private passer!: Athlete;
-  private hitters: CallHitters = new Map();
+  private hitters: CallHitters<HitterBrain> = new Map();
   /**
    * Their six, as in the Mini Rally: a front row that blocks (the middle reads your set and
    * closes on the pin blocker; off your green set it goes with a hitter you did not set) and a
@@ -141,6 +141,10 @@ export class SetterDrill extends Mode {
     const dump = dumpOption(this.calls, a, this.g.env.netTop);
     if (dump) opts.push(dump);
     return opts;
+  }
+
+  setterPicks(): readonly SetPick[] {
+    return stripKeys(this.calls);
   }
 
   /** until the pass you can call a play (from the moment the last rep ended): the wheel opens on your calls */
@@ -298,7 +302,8 @@ export class SetterDrill extends Mode {
       this.set = ev;
       this.setFor = g.contact.lastSet?.hitter ?? null;
     }
-    if (ev.kind === 'spike' || ev.kind === 'tip') this.attacked = true;
+    // (our attack: their spike off a ball you overset is not)
+    if ((ev.kind === 'spike' || ev.kind === 'tip') && ev.athlete.side === g.me.side) this.attacked = true;
     // their back row got a platform under your attack: no kill
     if (this.phase === 'live' && this.attacked && ev.athlete.side === -1 && (ev.kind === 'pass' || ev.kind === 'dig'))
       this.finish(null, true);

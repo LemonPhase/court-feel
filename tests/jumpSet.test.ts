@@ -343,6 +343,21 @@ describe("a pass into the net that drops back on our side is still the setter's"
     expect(r.set.point.z).toBeGreaterThan(0);
     expect(r.set.grade).not.toBe('Miss');
   });
+  it('pressed late, a pass just gone over the tape is theirs too: the right button blocks, it does not set', () => {
+    const { ball, cs, a } = stage();
+    a.place(SETTER_SPOT.x, 0.2, Math.PI / 2);
+    const P = cs.handsPoint(a, new THREE.Vector3());
+    // just below the hands, falling, 5 cm over their side of the net: within reach of the hands
+    Object.assign(ball.state.p, { x: P.x, y: P.y - 0.1, z: -0.05 });
+    Object.assign(ball.state.v, { x: 0, y: -2, z: -1 });
+    ball.version++;
+    expect(Math.hypot(P.y - ball.state.p.y, P.z - ball.state.p.z)).toBeLessThan(cs.setReach(a));
+    expect(cs.wantsSet(a)).toBe(false);
+    // the same ball still on our side is a late catch
+    ball.state.p.z = 0.05;
+    ball.version++;
+    expect(cs.wantsSet(a)).toBe(true);
+  });
   it('a pass that goes over the net is theirs: no spot, and the right button blocks', () => {
     const { ball, cs, a } = stage({ aim: { x: 1.0, y: 2.45, z: -0.4 } });
     expect(ball.ensurePrediction(ENV, 0).land.z).toBeLessThan(0);

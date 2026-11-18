@@ -52,10 +52,10 @@ export interface SetWindow {
   good: number;
 }
 
-/** the set's shape for a setter standing at `feet` on `side`: the kind of set (`window`, its share of a high ball's green) and where they took the pass */
-export function setShape(feet: { x: number; z: number }, side: 1 | -1, fast: boolean, window = 1): SetShape {
+/** the set's shape for a setter standing at `feet` on `side`: the kind of set (`share`, of a high ball's green) and where they took the pass */
+export function setShape(feet: { x: number; z: number }, side: 1 | -1, fast: boolean, share = 1): SetShape {
   return {
-    window,
+    window: share,
     fast,
     outOfSystem: Math.hypot(feet.x - SETTER_SPOT.x * side, feet.z - SETTER_SPOT.z * side) > AI.outOfSystem,
   };

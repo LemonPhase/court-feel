@@ -111,7 +111,7 @@ function keyList(keys: readonly KeyHint[], cls = ''): HTMLElement {
 /** a mode's keys for the keyboard and for touch: CSS shows the one for the controls in use */
 function drillKeys(mode: ModeId, pos: PositionId): HTMLElement[] {
   // set calls are a hitter's: a setter or a libero has none
-  const mine = (keys: readonly KeyHint[]) => keys.filter((k) => !k.hitters || HITTERS.includes(pos));
+  const mine = (keys: readonly KeyHint[]) => keys.filter((k) => (!k.hitters || HITTERS.includes(pos)) && (!k.who || k.who.includes(pos)));
   return [keyList(mine(DRILL_INFO[mode].keys), 'only-kb'), keyList(mine(DRILL_INFO[mode].touch), 'only-tc')];
 }
 
@@ -671,10 +671,10 @@ export class Menu {
       scored.replaceChildren(txt('b', '', 'Scored on'), ` · ${d.scored}`);
       keyBox.replaceChildren(...drillKeys(this.trainSel, this.pos));
       plays.hidden = this.trainSel !== 'setter';
-      summary.replaceChildren(
-        `${netLabel(this.settings.womenNet)} · Aim assist ${percent(this.settings.aimAssist).toLowerCase()} · `,
-        txt('b', '', 'Change'),
-      );
+      // (the Setter Drill's assist is the set's own)
+      const [name, v] =
+        this.trainSel === 'setter' ? ['Set aim assist', this.settings.setAimAssist] : ['Aim assist', this.settings.aimAssist];
+      summary.replaceChildren(`${netLabel(this.settings.womenNet)} · ${name} ${percent(v).toLowerCase()} · `, txt('b', '', 'Change'));
     });
     view.append(list, panel);
     return view;

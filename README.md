@@ -237,7 +237,7 @@ Settings → **Spike timing collar** turns it off (on by default).
 | 1 / 2 / 3 | Spike Drill and Mini Rally: set call for the next ball (outside, middle, opposite — see below). Serve Drill: your serve (standing float, jump float, jump serve) |
 | 1 / 2 / 3 / 4 | When you set (Setter Drill, Mini Rally as the setter or libero): pick the hitter (outside, middle, opposite, pipe). No key: the outside. Press the picked one again for their next set: before the pass it steps through their calls (the pass locks them); once the pass is played it asks for a high ball (again: back to their call), unless they are already on a fast run. Off a pass far off the net everyone gets a high ball, and the key again asks that hitter for their fast set instead (picking the middle is the ask); they must hear it in time. |
 | 5 | Setter Drill, front row: your dump (again: short behind the block, or the deep corner). |
-| C | When you set: the play wheel. Hold C, move the mouse towards a play and let go (or press C, then the play's number or click). It calls a combination for all your hitters at once; before the pass only. |
+| C | When you set: the play wheel. Hold C, move the mouse towards a play and let go (or press C, then the play's number or click). It calls a combination for all your hitters at once; before the pass only (Mini Rally: before the serve). |
 | Plays (start screen, top bar) | Make your own play (one set for each hitter), name it, and put it on the play wheel in place of one of the built-in ones. |
 | G | Setter Drill: front row or back row. Front row, the opposite hits the D from the back row and you may dump. |
 | H | Mini Rally, when the second ball is yours and you can't get to it: HELP. The libero sets it if it can, else a team-mate bumps it up. |
@@ -612,8 +612,11 @@ screen show them. Only your player uses them; AI players keep the defaults.
    press a picked hitter's key again to change their call between points or
    while the other team has the ball, like calling plays in NBA 2K, and your
    AI hitters run what you call (a go, a shoot, a back 2...); leave it alone
-   and they keep their calls. **C** opens the play wheel before the serve or
-   while the other team has the ball (the serve waits for you). After
+   and they keep their calls. **C** opens the play wheel before the serve
+   (the serve waits for you); it slows the game, so in a live rally it stays
+   shut and the keys change your calls. If a team-mate sets for you (the
+   libero, or **H** for help), your calls open again once the other team plays
+   the ball. After
    blocking, they back off the net to the start of their run before they go;
    a hitter who can't make their fast run from there waits for a high ball,
    and the call strip says so. With **Hitter spots on the floor** on in
@@ -658,7 +661,8 @@ Setting works like a jump shot in NBA 2K, with one press per ball:
 3. **The push.** The ball sits in your hands while the bar fills and a soft
    tone rises with it, reaching its top note at the green line (so you can
    time the push by ear); the game slows down while it does. Release in the
-   green band at the top of the bar. Held on past it (0.13 s of game time), the
+   green band at the top of the bar. Held on past it (0.13 s of game time; set
+   by feel, 20% longer, like every window), the
    ball has come to rest in your hands: the whistle goes for a lift, the ball
    drops and the point is theirs (LIFT in the Setter Drill, no points).
    The bar stays a moment where it was, with your release marked and any pip
@@ -770,7 +774,7 @@ hands to the hitter (1.20 s off a jump set). The bic is the back-row quick, the
 hitter already on the last steps as you touch it: 0.70 s (0.58 s), quicker
 than a go (0.78 s). The two used to be only a quarter of a second apart.
 
-The **play wheel** (C) calls one for every hitter at once, before the pass, like
+The **play wheel** (C) calls one for every hitter at once, before the pass (in the Mini Rally, before the serve), like
 a hand signal behind the back:
 
 | Play | Outside · middle · opposite · pipe | What it does |
@@ -806,7 +810,7 @@ all in one: "Go" is the fast one to the pin, "3" the inside one). The little
 court shows every hitter's run for the play as it stands. A set that would send
 two front-row hitters to the same spot at the net is greyed out (a back quick
 for both the middle and the opposite, a 2 and an X: they would run into each
-other; `PLAYBOOK.minGap`). Name it and save: it replaces the play in that place
+other; `PLAYBOOK.minGap`); on court a hitter's key skips such a set too. Name it and save: it replaces the play in that place
 on the wheel (and shows as "Yours") until you put the built-in one back, and it
 is kept in this browser.
 

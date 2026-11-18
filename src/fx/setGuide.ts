@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FX } from '../config';
 import type { Athlete } from '../game/athlete';
-import { CALL_COLOR } from '../game/callRuns';
+import { CALL_COLOR, callCss } from '../game/callRuns';
 import type { SetPreview } from '../game/contact';
 import { flyFor, solveApex, solveFixedTime } from '../physics/solve';
 import { makeBlobTexture } from '../world/textures';
@@ -80,13 +80,12 @@ export class SetGuide {
     if (o && p) {
       this.arc(p);
       this.hitter = o.hitter;
-      const color = o.key ? CALL_COLOR[o.key] : 0xffffff;
-      this.mat.color.setHex(color);
+      this.mat.color.setHex(o.key ? CALL_COLOR[o.key] : 0xffffff);
       if (o.label !== this.text) {
         this.text = o.label;
         this.label.textContent = o.label;
       }
-      this.label.style.setProperty('--c', `#${color.toString(16).padStart(6, '0')}`);
+      this.label.style.setProperty('--c', callCss(o.key));
       this.fade = Math.min(1, this.fade + realDt / G.fadeIn);
     } else this.fade = show ? Math.max(0, this.fade - realDt / G.fadeOut) : 0;
     const on = this.fade > 0.01;

@@ -350,11 +350,12 @@ export class HitterBrain implements Brain {
     const full = CONTACT.spikePerfect * a.stats.power;
     // the hands that will be there: blockers up or going up now, and one still closing along the
     // net (it will be up where it is running to); one standing still can't get up in time
-    const lead = Math.max(0, tHit - g.simTime) + 0.05 + Math.abs(a.pos.z) / 20;
+    const flight = B.lead.react + Math.abs(a.pos.z) / B.lead.speed;
+    const lead = Math.max(0, tHit - g.simTime) + flight;
     const hands = this.blockers()
       .filter((b) => Math.abs(b.pos.z) < 1.4)
       .filter((b) => b.state === 'air' || b.state === 'load' || b.action?.kind === 'block' || Math.abs(b.vel.x) > B.closing)
-      .map((b) => b.pos.x + b.reachX + b.vel.x * (b.state === 'ground' ? lead : 0.05 + Math.abs(a.pos.z) / 20));
+      .map((b) => b.pos.x + b.reachX + b.vel.x * (b.state === 'ground' ? lead : flight));
     const out = { x: 0, y: 0, z: 0 };
     const w = { x: 0, y: 0, z: 0 };
     const land = { x: 0, y: 0, z: 0 };
@@ -366,7 +367,7 @@ export class HitterBrain implements Brain {
       const speed = full + a.swingCarry * Math.max(0, (a.vel.x * dx + a.vel.z * dz) / (Math.hypot(dx, dz) || 1));
       solveSpeedToFloor(from, x, z, speed, CONTACT.spikeSpinPerfect, out, w, land);
       // a full swing can't bring it down there, or it would not clear the tape
-      if (Math.hypot(land.x - x, land.z - z) > 0.5 || Math.abs(land.x) > hw - 0.3) return false;
+      if (Math.hypot(land.x - x, land.z - z) > B.fit || Math.abs(land.x) > hw - B.lineIn) return false;
       const c = netClearance(from, out, w);
       if (!c || c.y < g.env.netTop + BALL.radius + B.clear) return false;
       // past the block: not over a blocker's hands at the tape, nor through them where they reach,
@@ -383,11 +384,12 @@ export class HitterBrain implements Brain {
     if (run !== null)
       for (const depth of B.depths) {
         const z = opp * depth;
-        const x = clamp(from.x + run * Math.abs(z - from.z), -hw + 0.9, hw - 0.9);
+        const x = clamp(from.x + run * Math.abs(z - from.z), -hw + B.edgeIn, hw - B.edgeIn);
         if (ok(x, z)) return new THREE.Vector3(x, 0, z);
       }
     // straight ahead, and across the court either way
-    const xs = [clamp(hitX, -hw + 0.9, hw - 0.9), -hw + 0.9, -hw * 0.5, 0, hw * 0.5, hw - 0.9];
+    const e = hw - B.edgeIn;
+    const xs = [clamp(hitX, -e, e), -e, -hw * 0.5, 0, hw * 0.5, e];
     let best: THREE.Vector3 | null = null;
     let bestD = Infinity;
     for (const depth of B.depths) {
@@ -570,8 +572,8 @@ export class HitterBrain implements Brain {
       options.push({ x: clamp(from.x + run * (Math.abs(from.z) + 6), -hw + 0.8, hw - 0.8), z: opp * 6, w: 2, name: 'with the run' });
     // from behind the 3 m line (a pipe) the ball is hit deep: the short angles cannot come down
     // that soon (the spike would carry deep, over a different part of the net)
-    if (Math.abs(a.pos.z) > COURT.attackLine - 0.5)
-      for (let i = options.length - 1; i >= 0; i--) if (Math.abs(options[i].z) < 5) options.splice(i, 1);
+    if (Math.abs(a.pos.z) > COURT.attackLine - AI.backRowAim.line)
+      for (let i = options.length - 1; i >= 0; i--) if (Math.abs(options[i].z) < AI.backRowAim.deep) options.splice(i, 1);
     // off a green set, a controlled swing: only shots a full-speed spike from here can bring down in the court
     if (green && from) {
       const out = { x: 0, y: 0, z: 0 };
@@ -581,7 +583,8 @@ export class HitterBrain implements Brain {
       for (let i = options.length - 1; i >= 0 && options.length > 1; i--) {
         const o = options[i];
         solveSpeedToFloor(from, o.x, o.z, speed, CONTACT.spikeSpinPerfect, out, w, land);
-        if (Math.abs(land.x) > hw - 0.3 || Math.abs(land.z) > COURT.halfLength - 0.3) options.splice(i, 1);
+        const inn = AI.greenBounce.lineIn;
+        if (Math.abs(land.x) > hw - inn || Math.abs(land.z) > COURT.halfLength - inn) options.splice(i, 1);
       }
     }
     // avoid the block: penalise shots whose direction passes over a blocker's hands
@@ -595,8 +598,9 @@ export class HitterBrain implements Brain {
         const cx = hitX + (o.x - hitX) * f;
         // off a green set: where the blocker's hands will be as the ball crosses (they may still be
         // moving; a spike travels ~20 m/s, so a pipe from the 3 m line gives the block longer)
-        const bx = b.pos.x + b.reachX + (green ? b.vel.x * (0.05 + Math.abs(a.pos.z) / 20) : 0);
-        if (Math.abs(cx - bx) < CONTACT.blockHalfWidth + BALL.radius + (green ? 0.45 : 0.3)) o.w *= green ? 0 : 0.15;
+        const L = AI.greenBounce.lead;
+        const bx = b.pos.x + b.reachX + (green ? b.vel.x * (L.react + Math.abs(a.pos.z) / L.speed) : 0);
+        if (Math.abs(cx - bx) < CONTACT.blockHalfWidth + BALL.radius + (green ? AI.greenBounce.wide : 0.3)) o.w *= green ? 0 : 0.15;
       }
     }
     // a green set with every shot covered: take the one furthest from a blocker's hands
@@ -658,7 +662,8 @@ export class HitterBrain implements Brain {
         const x = o.x + g.rng.gauss() * n;
         const z = o.z + g.rng.gauss() * n * (o.name === 'recycle' ? 0 : 1);
         // off a green set the hitter takes a controlled swing: the shot stays inside the lines
-        if (green) return new THREE.Vector3(clamp(x, -hw + 0.3, hw - 0.3), 0, opp * clamp(Math.abs(z), 1.5, COURT.halfLength - 0.5));
+        const inn = AI.greenBounce.lineIn;
+        if (green) return new THREE.Vector3(clamp(x, -hw + inn, hw - inn), 0, opp * clamp(Math.abs(z), 1.5, COURT.halfLength - 0.5));
         return new THREE.Vector3(x, 0, z);
       }
     }

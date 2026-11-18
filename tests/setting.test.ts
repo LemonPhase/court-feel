@@ -7,7 +7,7 @@ import { ContactSystem, type ContactEvent, type ContactHost, type SetOption, typ
 import { D_PLAY, isQuick, needsGoodPass, SETTER_PLAYS, SETTER_SPOT } from '../src/game/plays';
 import { callSheet, dumpOption } from '../src/game/callRuns';
 import { COMBOS } from '../src/game/combos';
-import { SETTER_KEYS, SetterCalls, type SetPick, type SetterKey } from '../src/game/setterCalls';
+import { clashes, SETTER_KEYS, SetterCalls, type SetPick, type SetterKey } from '../src/game/setterCalls';
 import { wheelSlice } from '../src/ui/playWheel';
 import { catchQuality, gradeRelease, setMiss, setShape, setTouch, setWindow, type SetShape } from '../src/game/setTiming';
 import { makeBall, stepBall, type BallState } from '../src/physics/ball';
@@ -38,8 +38,13 @@ describe('the set window: your touch and the level set its size', () => {
     expect(gradeRelease(0.059, w).grade).toBe('Perfect');
     expect(gradeRelease(-0.09, w).grade).toBe('Good');
   });
-  it('holding the ball until the push goes by itself is never a good set, on any level', () => {
-    for (const id of SET_LEVEL_IDS) expect(SET_LEVELS[id].green[0] * SET_LEVELS[id].goodMul).toBeLessThan(TIMING.setHoldMax);
+  it('holding the ball until it is a lift is never a good set, on any level, with the set cues on or off', () => {
+    for (const id of SET_LEVEL_IDS) {
+      expect(SET_LEVELS[id].green[0] * SET_LEVELS[id].goodMul).toBeLessThan(TIMING.setHoldMax);
+      // by feel the good band and the hold are both ASSIST.setByFeel wider
+      const w = setWindow(setTouch(1, 0, 0, 0.48, easy, id, undefined, ASSIST.setByFeel), id, ASSIST.setByFeel);
+      expect(w.good).toBeLessThan(TIMING.setHoldMax * ASSIST.setByFeel);
+    }
   });
   it('on every level the bar takes about 0.6 s on screen (the ball is in the hands 0.15 s of game time, at quarter speed)', () => {
     expect(TIMING.setLoad / ASSIST.setSlowmoLoad).toBeCloseTo(0.6, 5);
@@ -314,6 +319,57 @@ describe('picking the hitter (1-4) and their set (the same key again)', () => {
     expect(row('PIPE')).toMatchObject({ call: 'High', steps: 4 });
     c.press('OPP');
     expect(callSheet(c, SETTER_KEYS, c.target()).items.find((i) => i.id === 'OPP')).toMatchObject({ lit: true, picked: true });
+  });
+  it('stepping a call never sends two front-row hitters to one spot: with the middle on a back 1 the opposite skips the back 1 and the back 2', () => {
+    const c = new SetterCalls();
+    for (let i = 0; i < 10 && c.play('MB').short !== 'Back 1'; i++) c.press('MB');
+    expect(c.play('MB').short).toBe('Back 1');
+    const seen = new Set<string>();
+    c.press('OPP');
+    for (let i = 0; i < 12; i++) {
+      c.press('OPP');
+      seen.add(c.play('OPP').short);
+    }
+    expect([...seen].sort()).toEqual(
+      SETTER_PLAYS.OPP.map((p) => p.short)
+        .filter((s) => s !== 'Back 1' && s !== 'Back 2')
+        .sort(),
+    );
+  });
+  it('whatever keys you press before the pass, every front-row hitter keeps their own spot', () => {
+    const c = new SetterCalls();
+    const rng = new Rng(11);
+    const shorts = () => Object.fromEntries(SETTER_KEYS.map((k) => [k, c.play(k).short])) as Record<SetterKey, string>;
+    for (let i = 0; i < 400; i++) {
+      c.press(SETTER_KEYS[Math.floor(rng.next() * SETTER_KEYS.length)]);
+      expect(clashes(shorts()), JSON.stringify(shorts())).toBe(false);
+    }
+  });
+  it('a team-mate sets the ball (your help key, the libero): once they play it, the next pass is a new ball', () => {
+    const c = new SetterCalls();
+    c.press('OPP');
+    expect(c.touched({ mine: false, kind: 'pass', ours: true }, 1)).toBe(true);
+    c.press('OPP'); // a high ball for the opposite, this ball
+    expect(c.isHigh('OPP')).toBe(true);
+    // the libero sets, our hitter attacks: still locked
+    expect(c.touched({ mine: false, kind: 'set', ours: true }, 2)).toBe(false);
+    expect(c.touched({ mine: false, kind: 'spike', ours: true }, 3)).toBe(false);
+    expect(c.locked).toBe(true);
+    // they dig it: open again, nothing asked, the pick back to the outside
+    c.touched({ mine: false, kind: 'dig', ours: false }, 0);
+    expect(c.locked).toBe(false);
+    expect(c.isHigh('OPP')).toBe(false);
+    expect(c.pick).toBe(null);
+    // a pick you make during their attack stays for your next pass
+    c.press('MB');
+    c.touched({ mine: false, kind: 'spike', ours: false }, 0);
+    expect(c.pick).toBe<SetPick>('MB');
+  });
+  it('your own set is the end of your ball: the calls open for the next one', () => {
+    const c = new SetterCalls();
+    c.touched({ mine: false, kind: 'pass', ours: true }, 1);
+    c.touched({ mine: true, kind: 'set', ours: true }, 2);
+    expect(c.locked).toBe(false);
   });
   it('the keys go through the input: Digit1 outside ... Digit4 pipe', () => {
     const c = new SetterCalls();
@@ -743,6 +799,13 @@ describe('the timed set (real contact system)', () => {
     const r = setRep({ releaseAt: TIMING.setHoldMax - 0.01, key: 'OH' });
     expect(r.set.fault).toBeUndefined();
     expect(r.set.grade).toBe('Late');
+  });
+  it('setting by feel on Easy, a late good release is a good set, not a lift: the hold is wider too', () => {
+    const r = setRep({ releaseAt: TIMING.setHoldMax + 0.005, key: 'OH', byFeel: true });
+    expect(r.set.fault).toBeUndefined();
+    expect(r.set.grade).toBe('Good');
+    // the same release with the cues on is held too long
+    expect(setRep({ releaseAt: TIMING.setHoldMax + 0.005, key: 'OH' }).set.fault).toBe('lift');
   });
   it('a late push goes flat and long; an early one comes up short', () => {
     const good = setRep({ key: 'OH' });
