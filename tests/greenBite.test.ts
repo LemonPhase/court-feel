@@ -511,6 +511,7 @@ describe('a hitter who cannot make their called run waits for a high ball', () =
     const calls = new SetterCalls();
     calls.press('OH');
     calls.press('OH');
+    calls.press('OH');
     expect(calls.play('OH').short).toBe('Go');
     calls.lock();
     const a = new Athlete('OH', 1);

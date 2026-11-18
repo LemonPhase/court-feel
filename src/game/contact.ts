@@ -62,6 +62,10 @@ export interface ContactHost {
   simTime: number;
   env: { netTop: number };
   aimAssist(a: Athlete): number;
+  /** how much this athlete's set is helped (0..1: the steps onto the spot, the reach, a jump set's drift); their aim assist when not given */
+  setAssist?(a: Athlete): number;
+  /** the user sets by feel (Settings: Set ring and bar off): the windows are wider (ASSIST.setByFeel) */
+  setByFeel?(): boolean;
   /** user aim target on the floor for this athlete (or null for AI-provided) */
   aimTargetFor(a: Athlete, out: THREE.Vector3): THREE.Vector3;
   emitContact(ev: ContactEvent): void;
@@ -370,12 +374,13 @@ export class ContactSystem {
   /** air magnet: nudge an airborne hitter towards the ball's path (assist strength) */
   magnet(a: Athlete): void {
     const h = this.host;
-    const assist = h.aimAssist(a);
+    const set = a.airIntent === 'set';
+    const assist = set ? this.setAssist(a) : h.aimAssist(a);
     a.airNudge.set(0, 0, 0);
     if (assist <= 0 || a.state !== 'air' || !h.ball.active) return;
     if (a.action && a.action.resolved) return;
     const max = ASSIST.airMagnet * assist;
-    if (a.airIntent === 'set') {
+    if (set) {
       // a jump set: what the drift leaves the hands short of the ball by, made up over the time left
       const c = this.setCatch(a);
       if (!c) return;
@@ -1004,7 +1009,7 @@ export class ContactSystem {
 
   /** how far from the hands point a set can still be played */
   setReach(a: Athlete): number {
-    return CONTACT.setRadius + this.host.aimAssist(a) * 0.2;
+    return CONTACT.setRadius + this.setAssist(a) * 0.2;
   }
 
   /** the ball each athlete's set press was for (one press per ball) */
@@ -1024,6 +1029,16 @@ export class ContactSystem {
   /** the set difficulty in play */
   setLevel(): SetLevel {
     return this.host.setLevel?.() ?? 'easy';
+  }
+
+  /** how much wider the set's windows are: a set by feel (no timing cues) is graded more kindly */
+  setWider(): number {
+    return this.host.setByFeel?.() ? ASSIST.setByFeel : 1;
+  }
+
+  /** how much `a`'s set is helped (Settings: Set aim assist) */
+  setAssist(a: Athlete): number {
+    return this.host.setAssist?.(a) ?? this.host.aimAssist(a);
   }
 
   /**
@@ -1072,8 +1087,9 @@ export class ContactSystem {
     if (opts.length) {
       const best = this.chooseSetOption(a, opts, bp);
       const shape = setShape(a.pos, a.side, best.fast ?? false, best.window);
-      act.touch = setTouch(a.stillT, act.catchErr, act.minD, r, shape, level, this.airBalance(a));
-      const w = setWindow(act.touch, level);
+      const wider = this.setWider();
+      act.touch = setTouch(a.stillT, act.catchErr, act.minD, r, shape, level, this.airBalance(a), wider);
+      const w = setWindow(act.touch, level, wider);
       act.green = w.green;
       act.good = w.good;
     }
@@ -1182,6 +1198,7 @@ export class ContactSystem {
     const best = this.chooseSetOption(a, opts, from);
     const err = releaseT - (act.arriveT + TIMING.setLoad);
     const level = this.setLevel();
+    const wider = this.setWider();
     const touch =
       act.touch ??
       setTouch(
@@ -1192,8 +1209,9 @@ export class ContactSystem {
         setShape(a.pos, a.side, !!best.fast, best.window),
         level,
         this.airBalance(a),
+        wider,
       );
-    const win: SetWindow = act.touch ? { green: act.green, good: act.good } : setWindow(touch, level);
+    const win: SetWindow = act.touch ? { green: act.green, good: act.good } : setWindow(touch, level, wider);
     const g = gradeRelease(err, win);
     const miss = setMiss(g);
     // along the set: early comes up short, late goes flat and long; then the spread
@@ -1281,8 +1299,14 @@ export class ContactSystem {
     const act = a.action?.kind === 'set' ? a.action : null;
     if (act?.resolved) return null;
     const L = SET_LEVELS[this.setLevel()];
+    const wider = this.setWider();
     const t = h.simTime;
-    const base = { catchClean: L.catch, catchEdge: L.catch + TIMING.setCatchLate, pressed: !!act, held: act?.held ?? false };
+    const base = {
+      catchClean: L.catch * wider,
+      catchEdge: (L.catch + TIMING.setCatchLate) * wider,
+      pressed: !!act,
+      held: act?.held ?? false,
+    };
     const opts = h.setOptions(a);
     if (act?.absorbing) {
       const bp = h.ball.pos;
@@ -1321,8 +1345,9 @@ export class ContactSystem {
       option ? setShape(a.pos, a.side, !!option.fast, option.window) : { window: 1, fast: false, outOfSystem: false },
       level,
       air,
+      wider,
     );
-    const w = setWindow(touch, level);
+    const w = setWindow(touch, level, wider);
     return { ...base, tIdeal, absorbing: false, centreD, at, option, green: w.green, good: w.good, pips: setPips(touch, false), bar: null };
   }
 

@@ -222,24 +222,33 @@ export const D_PLAY: SetPlay = {
   lane: { x: 3.1, z: 2.0, apexAbove: 1.45, sx: 3.1, sz: 5.5, label: 'Back-row D' },
 };
 
+/** a hitter's own call (SET_PLAYS) by its short name */
+const own = (pos: 'OH' | 'MB' | 'OPP', short: string): SetPlay => SET_PLAYS[pos]!.find((p) => p.short === short)!;
+
 /**
- * What a setter can call for each hitter (keys 1 outside, 2 middle, 3 opposite, 4 pipe): the
- * calls hitters make for themselves (SET_PLAYS), then the ones only a setter's plays use. They
- * come from coaching glossaries; names differ between teams, these are the common ones:
+ * What a setter can call for each hitter (keys 1 outside, 2 middle, 3 opposite, 4 pipe), in the
+ * order the same key steps through them (the user's order, 2026-11-18): from the slowest ball to the
+ * pin to the faster ones, then the inside and the behind ones. The calls hitters make for themselves
+ * (SET_PLAYS) are among them, with the ones only a setter's plays use. They come from coaching
+ * glossaries; names differ between teams, these are the common ones:
  * - Outside: the hut (lower and quicker than the high ball, still hit off the set), and the 2
  *   inside, right behind the middle's quick (the tandem's ball).
  * - Middle: the push 1, a quick pushed a little further along the net than the 1.
- * - Opposite: the X (crossing in front of the setter to hit a 2 behind the middle's quick) and
- *   the back 1 (a quick behind the setter: with the middle's 1 it is the double quick).
- * - Pipe: the bic, the fast pipe, and the pipe behind the setter (the "C": a back set to the back row).
+ * - Opposite: the 1 behind the setter (the back 1: with the middle's 1 it is the double quick),
+ *   and the X (crossing in front of the setter to hit a 2 behind the middle's quick).
+ * - Pipe: called High, a high ball to the back row, as slow as the outside's high ball; the bic,
+ *   the back-row quick, flatter than a go (the hitter is in the last steps as the setter touches
+ *   it); the back bic, the same behind the setter's back; and the pipe behind the setter (the "C").
  * A pin hitter's inside calls (the 3, the 2, the X, the back 2) start where their pin sets start,
  * or as near as the run allows: nothing gives the play away before they break inside (AI.insideRun).
  * A slide is not here: it needs a one-foot take-off off a curved run, which hitters can't do yet.
  */
 export const SETTER_PLAYS: Record<'OH' | 'MB' | 'OPP' | 'PIPE', SetPlay[]> = {
   OH: [
-    ...SET_PLAYS.OH!,
+    own('OH', 'High'),
     { name: 'Hut (lower outside)', short: 'Hut', lane: { ...LANES.OH, apexAbove: 1.15, label: 'Outside hut' }, tier: 'hut' },
+    own('OH', 'Go'),
+    own('OH', '3'),
     {
       name: '2 (inside, behind the quick)',
       short: '2',
@@ -248,7 +257,7 @@ export const SETTER_PLAYS: Record<'OH' | 'MB' | 'OPP' | 'PIPE', SetPlay[]> = {
     },
   ],
   MB: [
-    ...SET_PLAYS.MB!,
+    own('MB', '1'),
     {
       name: 'Push 1',
       short: 'Push',
@@ -256,16 +265,13 @@ export const SETTER_PLAYS: Record<'OH' | 'MB' | 'OPP' | 'PIPE', SetPlay[]> = {
       inFront: 1.55,
       tier: 'push',
     },
+    own('MB', 'Shoot'),
+    own('MB', 'Back 1'),
   ],
   OPP: [
-    ...SET_PLAYS.OPP!,
-    {
-      name: 'X (crossing for a 2)',
-      short: 'X',
-      // from a step behind the pin approach's start, so the loop in ends squarer to the net (AI.approach)
-      lane: { ...LANES.OPP, x: -0.6, z: 0.8, apexAbove: 0.8, sx: 3.8, sz: 4.6, label: 'Opposite X' },
-      tier: 'inside',
-    },
+    own('OPP', 'Back'),
+    own('OPP', 'Fast'),
+    own('OPP', 'Back 2'),
     {
       name: 'Back 1 (quick behind)',
       short: 'Back 1',
@@ -273,10 +279,26 @@ export const SETTER_PLAYS: Record<'OH' | 'MB' | 'OPP' | 'PIPE', SetPlay[]> = {
       inFront: -1.2,
       tier: 'backQuickOpp',
     },
+    {
+      name: 'X (crossing for a 2)',
+      short: 'X',
+      // from a step behind the pin approach's start, so the loop in ends squarer to the net (AI.approach)
+      lane: { ...LANES.OPP, x: -0.6, z: 0.8, apexAbove: 0.8, sx: 3.8, sz: 4.6, label: 'Opposite X' },
+      tier: 'inside',
+    },
   ],
   PIPE: [
-    { name: 'Pipe', short: 'Pipe', lane: LANES.L },
-    { name: 'Bic (fast pipe)', short: 'Bic', lane: { ...LANES.L, apexAbove: 0.8, label: 'Back-row bic' }, tier: 'tempo' },
+    { name: 'High pipe', short: 'High', lane: { ...LANES.L, apexAbove: LANES.OH.apexAbove, label: 'Back-row high pipe' } },
+    // the back-row quick, met where the pipe is: 0.70 s from the setter's hands (0.58 s off a jump
+    // set), quicker than a go (0.78 s); the high pipe takes 1.27 s
+    { name: 'Bic (back-row quick)', short: 'Bic', lane: { ...LANES.L, apexAbove: 0.3, label: 'Back-row bic' }, tier: 'tempo' },
+    // the bic right behind the setter's back
+    {
+      name: 'Back bic (behind you)',
+      short: 'Back bic',
+      lane: { ...LANES.L, x: 1.7, sx: 1.7, apexAbove: 0.3, label: 'Back-row back bic' },
+      tier: 'inside',
+    },
     // right behind the setter's back: a short back set, met 2 m off the net like the pipe
     {
       name: 'Pipe behind you (C)',

@@ -193,6 +193,8 @@ export class Game implements AiHost {
     // first: the venue, the settings and the display below all read the simulation's ball and net
     this.sim = new Simulation({
       aimAssist: (a) => (a.isUser ? this.settings.aimAssist : 0.3),
+      setAssist: (a) => (a.isUser ? this.settings.setAimAssist : 0.3),
+      setByFeel: () => !this.settings.setRing,
       aimTargetFor: (a, out) => this.aimTargetFor(a, out),
       userAimYaw: () => this.rig.yaw,
       contact: (ev) => this.onContact(ev),
@@ -825,18 +827,18 @@ export class Game implements AiHost {
 
   /** frame-level input: look, toggles, immediate action starts (same frame as the input) */
   /**
-   * Aim assist for your set's footwork: the ball is yours to set and you are on the floor near
+   * Set aim assist for your footwork: the ball is yours to set and you are on the floor near
    * the spot, so your body takes the last steps onto it (setStepAssist; off at assist 0, and
    * once the ball is in your hands).
    */
   private assistSetStep(): void {
     const me = this.me;
-    if (this.settings.aimAssist <= 0 || me.state !== 'ground' || !this.mode?.userSetsNext?.()) return;
+    if (this.settings.setAimAssist <= 0 || me.state !== 'ground' || !this.mode?.userSetsNext?.()) return;
     if (me.action?.kind === 'set' && me.action.absorbing) return;
     // going up for it: the steps go to where the hop takes off from (the spot, less what your run carries)
     const jump = this.contact.setCatch(me)?.jump;
     const spot = jump ? takeoffSpot(me, jump, this.stepP) : this.contact.setSpot(me, this.stepP);
-    if (spot) setStepAssist(me.cmd, me.pos, spot, this.settings.aimAssist);
+    if (spot) setStepAssist(me.cmd, me.pos, spot, this.settings.setAimAssist);
   }
   private stepP = { x: 0, y: 0, z: 0 };
 
@@ -935,10 +937,12 @@ export class Game implements AiHost {
   advance(realDt: number): void {
     if (this.paused) return;
     const step = 1 / SIM.hz;
-    // slow-mo assist while lining up a contact
+    // slow-mo assist while lining up a contact: a spike's, so not in a jump set (it has its own)
+    // unless you swing at the ball
     // choosing a play: the game waits for you (it runs, slowly)
     let slowTarget = this.wheel.open ? ASSIST.playWheelSlow : 1;
-    const dip = (this.settings.slowmoAssist || this.tutorial.wantsContactDip()) && this.me.state === 'air' && this.idealValid;
+    const swinging = this.me.airIntent !== 'set' || this.me.action?.kind === 'windup';
+    const dip = (this.settings.slowmoAssist || this.tutorial.wantsContactDip()) && this.me.state === 'air' && swinging && this.idealValid;
     if (dip) {
       const until = this.idealCache.t - this.simTime;
       if (until > 0 && until < ASSIST.slowmoWindow && this.idealCache.d < this.contact.reach(this.me) + 0.4)
@@ -1113,15 +1117,18 @@ export class Game implements AiHost {
     const barFor = this.setPrev ?? (yours ? this.setComing : null);
     const fp = this.settings.firstPerson;
     this.setBar.update(barFor, last?.athlete === me ? last : null, this.ball.rpos, this.rig.camera, tr, realDt, cues, fp);
-    this.setGuide.update(barFor, this.rig.camera, realDt, cues);
+    // who the set goes to is not timing: it has its own switch (Settings: Set arc and hitter marker)
+    this.setGuide.update(barFor, this.rig.camera, realDt, this.settings.setArc && this.ball.active && this.ball.visible && !this.inMenu);
     // where to stand for your set, instead of where the ball would land
     const spot = yours && !this.setPrev?.absorbing ? this.contact.setSpot(me, this.spotP) : null;
     // (a second ring: your body is going up for this one, or already has)
     const jumping = !!spot && (me.state === 'air' || me.state === 'load' || !!this.contact.setCatch(me)?.jump);
     this.setSpot.update(spot, me.rpos, realDt, jumping);
     // looking up at the ball in first person the floor is out of view: the same spot on a dial
-    this.setRadar.update(fp && cues ? spot : null, me.rpos, this.rig.yaw);
-    this.ball.showMarker = this.settings.landingMarker && !spot && !this.setPrev?.absorbing;
+    this.setRadar.update(fp && !this.inMenu ? spot : null, me.rpos, this.rig.yaw);
+    // the ball's landing ring, unless one of those rings says where to stand instead; the lesson
+    // shows where your feet go, so the ring beside it would be a second ring to read
+    this.ball.showMarker = this.settings.landingMarker && !spot && !this.setPrev?.absorbing && !this.tutorial.teaching;
     // fade our own body when the TP camera is very close, and anyone standing in the camera's way
     const camPos = this.rig.camera.position;
     for (const [a, v] of this.views) {
@@ -1141,8 +1148,6 @@ export class Game implements AiHost {
       v.setOpacity(inBody ? clamp01((d - 0.35) / 0.5) * 0.8 + 0.2 : 1);
     }
     this.arena.update(realDt);
-    // the lesson shows where your feet go: the ball's landing ring beside it would be a second ring to read
-    this.ball.showMarker = this.settings.landingMarker && !this.tutorial.teaching;
     this.updateAimReticle(realDt);
     this.hud.update(realDt);
     this.onFrame?.();
@@ -1161,11 +1166,12 @@ export class Game implements AiHost {
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;
     // (the same ring shows how high a toss being held will go, with a mark at the serve's own height)
     this.hud.setCharge(this.inMenu ? null : wind ? charge : this.actions.tossHold(), wind ? null : tossGroove() / SERVE.hold.full);
+    // the spike's timing collar (Settings: Spike timing collar): a swing's, so not in a jump set unless you wind up
     const collarErr =
-      this.idealValid && me.state === 'air' && !this.inMenu
+      this.idealValid && me.state === 'air' && (me.airIntent !== 'set' || !!wind) && !this.inMenu
         ? this.simTime + ContactSystem.swingLead(wind ? charge : 0) - this.idealCache.t
         : null;
-    this.hud.setTiming(collarErr !== null && (this.tutorial.active || this.settings.showHints) ? collarErr : null);
+    this.hud.setTiming(collarErr !== null && (this.tutorial.active || this.settings.spikeCollar) ? collarErr : null);
     if (charge >= 1 && this.lastCharge < 1) this.fx?.audio.chargeFull();
     if (!wind && me.action?.kind === 'swing' && me.action !== this.swished) {
       this.swished = me.action;

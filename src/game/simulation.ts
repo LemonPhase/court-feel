@@ -18,6 +18,10 @@ import type { SetPick } from './setterCalls';
 export interface SimulationHooks {
   /** how much this athlete's aim is helped (0..1) */
   aimAssist(a: Athlete): number;
+  /** how much this athlete's set is helped (0..1); their aim assist when not given */
+  setAssist?(a: Athlete): number;
+  /** the player sets by feel, with no timing cues (a setting): their set's windows are wider */
+  setByFeel?(): boolean;
   /** where this athlete is aiming on the floor */
   aimTargetFor(a: Athlete, out: THREE.Vector3): THREE.Vector3;
   /** which way the player is looking (rad) */
@@ -81,6 +85,8 @@ export class Simulation implements AiHost {
       },
       env: this.env,
       aimAssist: (a) => hooks.aimAssist(a),
+      setAssist: (a) => (hooks.setAssist ?? hooks.aimAssist)(a),
+      setByFeel: () => hooks.setByFeel?.() ?? false,
       aimTargetFor: (a, out) => hooks.aimTargetFor(a, out),
       emitContact: (ev) => hooks.contact(ev),
       rand: () => this.rng.next(),

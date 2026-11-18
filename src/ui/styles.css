@@ -392,9 +392,12 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .set-main > * { flex: none; }
 .set-group[hidden] { display: none; }
 .set-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
-.set-group { display: flex; flex-direction: column; padding: 16px 20px 8px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+.set-group, .set-part { display: flex; flex-direction: column; padding: 16px 20px 8px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
 .set-group .eyebrow { margin-bottom: 4px; }
 .set-group .set-row + .set-row { border-top: 1px solid rgba(255,255,255,0.08); }
+/* a group in parts (Assists: hitting, then setting): one card per part, each under its own heading */
+.set-group.parted { gap: 16px; padding: 0; background: none; border: 0; }
+.set-part { container-type: inline-size; }
 
 /* athlete */
 /* ---- Plays: the play designer (src/ui/playDesigner.ts) ---- */

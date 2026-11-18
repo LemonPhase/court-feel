@@ -45,7 +45,8 @@ const HIGH_APEX: Record<SetterKey, number> = {
   OH: LANES.OH.apexAbove,
   MB: LANES.OH.apexAbove,
   OPP: LANES.OPP.apexAbove,
-  PIPE: LANES.L.apexAbove,
+  // the pipe's high ball is its High call: as high as the outside's
+  PIPE: LANES.OH.apexAbove,
 };
 
 /** off a bad pass (`oos`) this hitter gets their high ball, unless you asked them for their fast set */
@@ -180,7 +181,7 @@ export function callOptions(g: AiHost, hitters: CallHitters, calls: SetterCalls,
     const high = asked ? false : oos || calls.isHigh(k);
     const p = calls.play(k);
     const who = k === 'PIPE' ? 'Pipe' : k;
-    const label = high ? `${who} High` : k === 'PIPE' && p.short === 'Pipe' ? 'Pipe' : `${who} ${p.short}`;
+    const label = `${who} ${high ? 'High' : p.short}`;
     if (isQuick(p) && !high) {
       // a quick is met at the top of the hitter's jump when they are up with your touch
       const q = quickSetFor(h.a, g.simTime, g.ball.pos, h.brain.releaseAt, p.inFront);
@@ -249,7 +250,7 @@ export function callSheet(calls: SetterCalls, keys: readonly SetPick[], shown: S
       return {
         ...base,
         who: k === 'PIPE' ? 'Pipe' : k,
-        call: k === 'PIPE' && label === 'Pipe' ? '' : label,
+        call: label,
         step: s.i,
         // once the pass is played (or for a backup) the calls can't be stepped: no dots
         steps: calls.canCall ? s.n : 1,

@@ -241,7 +241,7 @@ export class ServeDrill extends Mode {
     const toss = this.phase === 'toss' && !!this.spot;
     this.guide.update(
       {
-        spot: (g.settings.landingMarker || teach) && toss ? this.spot : null,
+        spot: (g.settings.runUpGuide || teach) && toss ? this.spot : null,
         from: teach && toss && g.tutorial.showPath() ? this.line.start : null,
         plant: teach && toss ? this.line.plant : null,
         feet: g.me.rpos,
@@ -270,7 +270,7 @@ export class ServeDrill extends Mode {
         // GO: when a full run-up under this toss would start
         if (this.goAt > 0 && g.simTime >= this.goAt) {
           this.goAt = -1;
-          if (g.settings.landingMarker || g.tutorial.serving) {
+          if (g.settings.runUpGuide || g.tutorial.serving) {
             g.hud.go();
             this.pulse = 1;
           }

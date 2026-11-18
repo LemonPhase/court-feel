@@ -508,7 +508,7 @@ export class SpikeDrill extends Mode {
         l.plant = { x: at.pos.x, z: at.pos.z };
       }
     }
-    const showRing = g.settings.landingMarker || g.tutorial.active;
+    const showRing = g.settings.runUpGuide || g.tutorial.active;
     if (this.goAt > 0 && g.simTime >= this.goAt) {
       this.goAt = -1;
       if (showRing) {
@@ -536,7 +536,7 @@ export class SpikeDrill extends Mode {
     const teach = g.tutorial.active;
     this.guide.update(
       {
-        spot: g.settings.landingMarker || teach ? this.line.spot : null,
+        spot: g.settings.runUpGuide || teach ? this.line.spot : null,
         from: teach && g.tutorial.showPath() ? this.line.start : null,
         plant: this.line.plant,
         feet: g.me.rpos,

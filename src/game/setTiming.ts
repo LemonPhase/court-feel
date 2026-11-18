@@ -64,12 +64,13 @@ export function setShape(feet: { x: number; z: number }, side: 1 | -1, fast: boo
 /**
  * 0..1 the catch: 1 within the level's clean catch of the ball reaching the hands (`err` s, + = late), down to
  * catchMin. On a level with `handsEarly` (Easy) hands up early are clean however early: only a late catch costs.
+ * `wider` stretches the clean catch and the fall-off alike (a set by feel: ASSIST.setByFeel).
  */
-export function catchQuality(err: number, level: SetLevel): number {
+export function catchQuality(err: number, level: SetLevel, wider = 1): number {
   const L = SET_LEVELS[level];
-  const over = Math.abs(err) - L.catch;
+  const over = Math.abs(err) - L.catch * wider;
   if (over <= 0 || (err < 0 && L.handsEarly)) return 1;
-  return lerp(1, CONTACT.setTouch.catchMin, clamp01(over / (err < 0 ? TIMING.setCatchEarly : TIMING.setCatchLate)));
+  return lerp(1, CONTACT.setTouch.catchMin, clamp01(over / ((err < 0 ? TIMING.setCatchEarly : TIMING.setCatchLate) * wider)));
 }
 
 /**
@@ -77,6 +78,7 @@ export function catchQuality(err: number, level: SetLevel): number {
  * reaching the hands (s, + = late), `centreD` how far the ball passed from the hands point,
  * `reach` the hands' reach. A jump set (`air`) has its balance in place of still feet: how fast
  * the body drifts (`drift`, m/s) and how fast it is rising or falling (`vy`, m/s) at the catch.
+ * `wider`: the catch is graded that much more kindly (a set by feel: ASSIST.setByFeel).
  */
 export function setTouch(
   stillT: number,
@@ -86,6 +88,7 @@ export function setTouch(
   shape: SetShape,
   level: SetLevel,
   air?: { drift: number; vy: number },
+  wider = 1,
 ): SetTouch {
   const T = CONTACT.setTouch;
   const reasons: string[] = [];
@@ -99,7 +102,7 @@ export function setTouch(
     feet = lerp(T.feetMin, 1, clamp01(stillT / TIMING.setFeetReady));
     if (feet < CLEAN) reasons.push('on the move');
   }
-  const caught = catchQuality(catchErr, level);
+  const caught = catchQuality(catchErr, level, wider);
   if (caught < CLEAN) reasons.push(catchErr < 0 ? 'caught early' : 'caught late');
   const off = clamp01((centreD - CONTACT.setCentreOk) / Math.max(0.01, reach - CONTACT.setCentreOk));
   const centre = 1 - (1 - T.centreMin) * off;
@@ -115,11 +118,14 @@ export function setTouch(
   return { feet, catch: caught, centre, difficulty, reasons };
 }
 
-/** the green and good windows for a touch at a level: every part scales the level's best window, down to its worst */
-export function setWindow(t: SetTouch, level: SetLevel): SetWindow {
+/**
+ * The green and good windows for a touch at a level: every part scales the level's best window, down
+ * to its worst. `wider` widens both (a set by feel: ASSIST.setByFeel).
+ */
+export function setWindow(t: SetTouch, level: SetLevel, wider = 1): SetWindow {
   const L = SET_LEVELS[level];
   const k = t.feet * t.catch * t.centre * t.difficulty;
-  const green = Math.max(L.green[1], L.green[0] * k);
+  const green = Math.max(L.green[1], L.green[0] * k) * wider;
   return { green, good: green * L.goodMul };
 }
 

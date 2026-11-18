@@ -51,6 +51,23 @@ describe('stored settings are validated', () => {
     expect(defaultSettings(true).bodies).not.toBe(DEFAULT_SETTINGS.bodies);
   });
 
+  it('each switch does one thing: a setting split off another keeps what the player had chosen for that one', () => {
+    // saved before the split: aim assist moved the set's footwork, the set ring and bar showed the
+    // set's arc, the landing marker the run-up spot, the hints the spike's timing collar
+    const old = sanitizeSettings({ aimAssist: 0.2, setRing: false, landingMarker: false, showHints: false });
+    expect(old.setAimAssist).toBe(0.2);
+    expect(old.setArc).toBe(false);
+    expect(old.runUpGuide).toBe(false);
+    expect(old.spikeCollar).toBe(false);
+    // once saved, each one is its own
+    const now = sanitizeSettings({ aimAssist: 0.2, setAimAssist: 0.9, showHints: false, spikeCollar: true, setRing: false, setArc: true });
+    expect(now.setAimAssist).toBe(0.9);
+    expect(now.spikeCollar).toBe(true);
+    expect(now.setArc).toBe(true);
+    // nothing saved: the defaults
+    expect(sanitizeSettings({})).toEqual(DEFAULT_SETTINGS);
+  });
+
   it('survives garbage: null, arrays, primitives', () => {
     for (const raw of [null, undefined, 42, 'x', [1, 2]]) expect(sanitizeSettings(raw)).toEqual(DEFAULT_SETTINGS);
   });

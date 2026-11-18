@@ -785,6 +785,12 @@ export const ASSIST = {
   setSlowmoWindow: 0.35,
   setSlowmoCatch: 0.5,
   setSlowmoLoad: 0.25,
+  /**
+   * Set by feel (Settings: Set ring and bar off): with no timing cue on screen or in your ears,
+   * the green, the good band and the clean catch are this much wider, so playing without the
+   * cues pays (the user's call, 2026-11-18)
+   */
+  setByFeel: 1.2,
   /** the play wheel is open (before the pass): the game runs at this speed while you choose */
   playWheelSlow: 0.2,
   /**
@@ -2180,25 +2186,40 @@ export interface Settings {
   fov: number;
   invertY: boolean;
   womenNet: boolean;
+  /** spike slow-mo: time slows as the ball reaches you in the air (never in a jump set) */
   slowmoAssist: boolean;
   /** time slows for your set's catch and release (on by default; the same on every level) */
   setSlowmo: boolean;
   /** your body jumps by itself to set a pass in system (the jump set; on by default). Off: the jump is yours (Space) */
   autoJumpSet: boolean;
-  /** the timing ring that closes on the ball as it reaches your hands when you set */
+  /**
+   * your set's timing cues: the ring that closes on the ball as it reaches your hands, the bar
+   * beside it and its pips, and the load tone. Off, you set by feel and the windows are wider (ASSIST.setByFeel)
+   */
   setRing: boolean;
+  /** when you set: who it goes to, their call over the hitter and the set as a dotted arc */
+  setArc: boolean;
+  /** your set's aim assist (0..1): the last steps onto the spot, the drift in a jump set, a little more reach */
+  setAimAssist: number;
   /** set difficulty: how wide the green, the good band and the clean catch are (SET_LEVELS) */
   setLevel: SetLevel;
   /** when you set: the hitter you picked stays picked for the next ball (off: back to the outside) */
   keepSetPick: boolean;
   /** when you set: rings on the floor where your hitters hit from (off by default: the marker over the hitter and the arc say it) */
   hitterSpots: boolean;
+  /** aim assist (0..1) for every touch but your set: a little more reach, a drift towards the ball in the air */
   aimAssist: number;
+  /** the ring where the ball will land */
   landingMarker: boolean;
+  /** the Spike and Serve Drills: the spot your run-up takes off from, and GO when to start it */
+  runUpGuide: boolean;
+  /** in the air, the collar around the crosshair: where a swing now would land in the timing window */
+  spikeCollar: boolean;
   replays: boolean;
   shake: number;
   volume: number;
   firstPerson: boolean;
+  /** the key hint line at the bottom of the screen */
   showHints: boolean;
   /** touch controls: auto (on touch screens), always on, or off */
   touchControls: 'auto' | 'on' | 'off';
@@ -2221,11 +2242,15 @@ export const DEFAULT_SETTINGS: Settings = {
   setSlowmo: true,
   autoJumpSet: true,
   setRing: true,
+  setArc: true,
+  setAimAssist: ASSIST.aim,
   setLevel: 'easy',
   keepSetPick: false,
   hitterSpots: false,
   aimAssist: ASSIST.aim,
   landingMarker: true,
+  runUpGuide: true,
+  spikeCollar: true,
   replays: true,
   shake: 1.0,
   volume: AUDIO.master,
@@ -2250,6 +2275,7 @@ export const SETTING_RANGES: Record<NumericSettingKey, { min: number; max: numbe
   touchSensitivity: { min: 0.3, max: 3, step: 0.05 },
   fov: { min: 55, max: 100, step: 1 },
   aimAssist: { min: 0, max: 1, step: 0.05 },
+  setAimAssist: { min: 0, max: 1, step: 0.05 },
   shake: { min: 0, max: 1.5, step: 0.05 },
   volume: { min: 0, max: 1, step: 0.05 },
 };
