@@ -455,7 +455,7 @@ export class HitterBrain implements Brain {
    * it and out), tipped short over the block, or rolled to the spot their nearest player is
    * furthest from.
    */
-  offSpeedAim(g: Game, hitX: number): THREE.Vector3 {
+  offSpeedAim(g: AiHost, hitX: number): THREE.Vector3 {
     const a = this.athlete;
     const opp = -a.side;
     const hw = COURT.halfWidth;

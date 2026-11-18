@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { AI, BALL, COURT, PLAYER, SIM } from '../src/config';
-import { Rng } from '../src/core/mathx';
+import { wrapAngle } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
-import type { Touch } from '../src/game/ballEntity';
-import type { Game } from '../src/game/game';
 import { LANES, SETTER_TARGET } from '../src/game/plays';
-import { makeBall, stepBall, type BallEnv, type V3 } from '../src/physics/ball';
-import { BallPredictor } from '../src/physics/predict';
+import { Simulation } from '../src/game/simulation';
+import type { V3 } from '../src/physics/ball';
 import { solveApex, solveFixedTime } from '../src/physics/solve';
 import { BlockerBrain, wingSpot } from '../src/ai/blocker';
+import { NO_HOOKS } from './simHooks';
 
 const DT = 1 / SIM.hz;
 /** the other team: we (the home side, +z) block their attack */
@@ -18,48 +17,38 @@ const NO_SPIN: V3 = { x: 0, y: 0, z: 0 };
 const MEET = 3.25;
 
 /**
- * Our Mini Rally pin blockers (`BlockerBrain.wing`, as TeamAI makes them) against their set, on a
- * stand-in for the Game: the ball (state and prediction), the clock, the rng and a block that never
- * touches. Each wing starts at its base spot at the net (x = ±3); with `midX`, our middle stands at
- * the net there (it does not move along it, and jumps when a set's `midPresses` say).
+ * Our Mini Rally pin blockers (`BlockerBrain.wing`, as TeamAI makes them) against their set, in a
+ * real simulation built with no browser: they read its ball, its clock and its random stream. Each
+ * wing starts at its base spot at the net (x = ±3); with `midX`, our middle stands at the net there
+ * (it does not move along it, and jumps when a set's `midPresses` say). `pin(x)` is one of their pin
+ * hitters, waiting at their pin; a set `by` them is theirs (the wings see who it is for).
  */
 function net(seed = 1, midX: number | null = null) {
-  const state = makeBall();
-  const predictor = new BallPredictor(DT, SIM.predictHorizon);
-  let version = 0;
-  let predicted = -1;
-  const env: BallEnv = { netTop: COURT.netHeightMen };
-  const ball = {
-    state,
-    active: true,
-    lastTouch: null as Touch | null,
-    get pos() {
-      return state.p;
-    },
-    get vel() {
-      return state.v;
-    },
-    ensurePrediction(e: BallEnv, t: number) {
-      if (predicted !== version) {
-        predictor.compute(state, e, t);
-        predicted = version;
-      }
-      return predictor;
-    },
-  };
-  const g = { simTime: 0, env, rng: new Rng(seed), ball, contact: { tryBlock: () => false } };
-  const game = g as unknown as Game;
+  const sim = new Simulation(NO_HOOKS);
+  sim.rng.reseed(seed);
   const mid = new Athlete('MB', 1);
   mid.place(midX ?? 0, midX === null ? 3 : 0.45, 0);
+  const reads = new Map<Athlete, number>();
+  let by: Athlete | null = null;
   const wing = (x: number) => {
     const a = new Athlete(x > 0 ? 'OPP' : 'OH', 1);
     a.place(x, 0.45, 0);
-    const brain = Object.assign(new BlockerBrain(a, x), { wing: true, mate: () => mid });
+    const brain = Object.assign(new BlockerBrain(a, x), { wing: true, mate: () => mid, setTo: () => by, reads });
     const presses: number[] = [];
-    return { a, brain, presses };
+    /**
+     * how far it turned from facing the net while moving along it, its speed along the net as it
+     * planted, and the moments in the air its hands went further away from the ball
+     */
+    const run = { turn: 0, pressVx: 0, away: 0 };
+    return { a, brain, presses, run };
   };
   const wings = [wing(3), wing(-3)];
   const setter = new Athlete('S', THEM);
+  const pin = (x: number) => {
+    const h = new Athlete(x > 0 ? 'OPP' : 'OH', THEM);
+    h.place(x, -3.5, Math.PI);
+    return h;
+  };
 
   /**
    * their set from their setter's hands to `to` (x along the net, z off it on their side), met on
@@ -67,22 +56,25 @@ function net(seed = 1, midX: number | null = null) {
    * each of `midPresses(onTime)`, given when it would press to block on time
    */
   const set = (
-    to: { x: number; off: number },
+    to: { x: number; off: number; by?: Athlete },
     shape: { apexAbove?: number; flight?: number },
     midPresses: (onTime: number, setT: number) => number[] = () => [],
   ) => {
+    by = to.by ?? null;
+    for (const w of wings) {
+      w.presses.length = 0;
+      w.run.turn = 0;
+      w.run.away = 0;
+    }
     const from = { x: SETTER_TARGET.x * THEM, y: 2.5, z: SETTER_TARGET.z * THEM };
     const target = { x: to.x, y: MEET, z: to.off * THEM };
     const v = { x: 0, y: 0, z: 0 };
     if (shape.flight) solveFixedTime(from, target, shape.flight, NO_SPIN, v);
     else solveApex(from, target, MEET + (shape.apexAbove ?? 1.45), NO_SPIN, v);
-    Object.assign(state.p, from);
-    Object.assign(state.v, v);
-    state.rest = false;
-    version++;
-    ball.lastTouch = { athlete: setter, kind: 'set', t: g.simTime, side: THEM };
-    const pred = ball.ensurePrediction(env, g.simTime);
-    let tc = pred.descendThrough(MEET, g.simTime);
+    sim.ball.launch(from, v, NO_SPIN, 0, sim.simTime);
+    sim.ball.lastTouch = { athlete: setter, kind: 'set', t: sim.simTime, side: THEM };
+    const pred = sim.ball.ensurePrediction(sim.env, sim.simTime);
+    let tc = pred.descendThrough(MEET, sim.simTime);
     if (tc < 0) tc = pred.apex().t;
     const at = new Map<Athlete, { state: string; x: number; reach: number; hands: number }>();
     const was = new Map<Athlete, string>();
@@ -90,28 +82,55 @@ function net(seed = 1, midX: number | null = null) {
     // (as BlockerBrain times a block: the hands at the top 0.12 s after the hit)
     const vy = Math.sqrt(2 * BALL.gravity * mid.jumpMax * mid.stats.standingJumpFrac * 1.1);
     const onTime = tc + 0.12 - (vy / BALL.gravity + 0.05) - PLAYER.loadMin;
-    const presses = midPresses(onTime, g.simTime);
-    while (g.simTime < tc + 0.3) {
-      g.simTime += DT;
-      stepBall(state, DT, env, []);
-      if (presses.length && g.simTime >= presses[0] && mid.canJump()) {
+    const presses = midPresses(onTime, sim.simTime);
+    while (sim.simTime < tc + 0.3) {
+      sim.simTime += DT;
+      sim.ball.step(DT, sim.env);
+      if (presses.length && sim.simTime >= presses[0] && mid.canJump()) {
         presses.shift();
         mid.jumpPress();
         mid.jumpRelease();
       }
-      mid.step(DT, g.simTime);
+      mid.step(DT, sim.simTime);
       for (const w of wings) {
-        w.brain.step(DT, game);
-        w.a.step(DT, g.simTime);
-        if (w.a.state === 'load' && was.get(w.a) !== 'load') w.presses.push(g.simTime);
+        const reach = w.a.reachX;
+        w.brain.step(DT, sim);
+        w.a.step(DT, sim.simTime);
+        const toBall = to.x - w.a.pos.x;
+        // (clearly past the ball's line: its read of it is good to a few cm)
+        if (
+          w.a.state === 'air' &&
+          sim.simTime <= tc &&
+          Math.abs(toBall) > 0.05 &&
+          w.a.reachX * toBall < 0 &&
+          (w.a.reachX - reach) * toBall < 0
+        )
+          w.run.away++;
+        if (w.a.state === 'load' && was.get(w.a) !== 'load') {
+          w.presses.push(sim.simTime);
+          w.run.pressVx = w.a.vel.x;
+        }
+        if (w.a.state === 'ground' && Math.abs(w.a.vel.x) > 0.3) w.run.turn = Math.max(w.run.turn, Math.abs(wrapAngle(w.a.yaw)));
         was.set(w.a, w.a.state);
-        if (g.simTime >= tc && g.simTime < tc + DT)
+        if (sim.simTime >= tc && sim.simTime < tc + DT)
           at.set(w.a, { state: w.a.state, x: w.a.pos.x, reach: w.a.reachX, hands: w.a.pos.x + w.a.reachX });
       }
     }
     return { tc, at, startX, onTime };
   };
-  return { g, wings, set, right: wings[0], left: wings[1] };
+  /** the rally goes on (the ball passed on their side): our blockers come down and go back to their spots */
+  const rest = () => {
+    sim.ball.lastTouch = { athlete: setter, kind: 'pass', t: sim.simTime, side: THEM };
+    for (let t = 0; t < 3; t += DT) {
+      sim.simTime += DT;
+      mid.step(DT, sim.simTime);
+      for (const w of wings) {
+        w.brain.step(DT, sim);
+        w.a.step(DT, sim.simTime);
+      }
+    }
+  };
+  return { sim, wings, set, rest, pin, reads, right: wings[0], left: wings[1] };
 }
 
 describe('where a pin blocker goes up (Mini Rally, AI.wing)', () => {
@@ -271,6 +290,110 @@ describe('our pin blockers against their set (Mini Rally)', () => {
       for (const w of s.wings) {
         expect(w.presses.length).toBe(0);
         expect(Math.abs(r.at.get(w.a)!.x - r.startX.get(w.a)!)).toBeLessThan(0.15);
+      }
+    }
+  });
+});
+
+describe('our pin blockers on their pin hitter going inside, and closing in (Mini Rally, AI.wing)', () => {
+  /** their outside's 2: in from our right pin, met 0.75 m from the middle of the net, 1.75 m past their setter */
+  const TWO = { x: 0.75, off: 0.8 };
+  const TWO_SHAPE = { apexAbove: 0.8 };
+
+  it('its own hitter going inside where it did not expect it: the pin follows them in and goes up, moving in, its hands reaching for the ball', () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const s = net(seed);
+      const r = s.set({ ...TWO, by: s.pin(4.3) }, TWO_SHAPE);
+      const at = r.at.get(s.right.a)!;
+      // never left standing at its base: in after them (late: it reacts late), and up before the hit
+      expect(r.startX.get(s.right.a)! - at.x).toBeGreaterThan(0.3);
+      expect(s.right.presses.length).toBe(1);
+      expect(s.right.presses[0]).toBeLessThan(r.tc);
+      expect(s.right.run.pressVx).toBeLessThan(-1);
+      expect(at.reach).toBeLessThanOrEqual(0);
+      // the other pin has its own hitter to watch
+      expect(s.left.presses.length).toBe(0);
+    }
+  });
+
+  it('a pin blocker learns their hitter: the first inside ball after a run of pin sets beats it; after a few more it is there with them', () => {
+    let first = 0;
+    let learned = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const s = net(seed);
+      const h = s.pin(4.3);
+      for (let i = 0; i < 3; i++) {
+        s.set({ x: 4.0, off: 0.9, by: h }, { apexAbove: 1.65 });
+        s.rest();
+      }
+      expect(s.reads.get(h)).toBe(0);
+      first += Math.abs(s.set({ ...TWO, by: h }, TWO_SHAPE).at.get(s.right.a)!.hands - TWO.x) / 6;
+      s.rest();
+      expect(s.reads.get(h)).toBeCloseTo(AI.wing.learn, 9);
+      for (let i = 0; i < 3; i++) {
+        s.set({ ...TWO, by: h }, TWO_SHAPE);
+        s.rest();
+      }
+      expect(s.reads.get(h)!).toBeGreaterThan(0.8);
+      learned += Math.abs(s.set({ ...TWO, by: h }, TWO_SHAPE).at.get(s.right.a)!.hands - TWO.x) / 6;
+      // back at the pin, the read goes back the other way
+      s.rest();
+      const before = s.reads.get(h)!;
+      s.set({ x: 4.0, off: 0.9, by: h }, { apexAbove: 1.65 });
+      expect(s.reads.get(h)!).toBeCloseTo(before * (1 - AI.wing.learn), 9);
+    }
+    // its hands at the hit: well short of the ball the first time, on it (within a hand) once it knows
+    expect(first).toBeGreaterThan(AI.defence.handHalf);
+    expect(learned).toBeLessThan(first - 0.25);
+  });
+
+  it('their opposite crossing in front of the setter (an X): the pin blocker in front of them follows them across', () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const s = net(seed);
+      // from our left pin to 0.6 m right of the middle of the net, past their setter
+      const x = 0.6;
+      const r = s.set({ x, off: 0.8, by: s.pin(-4.3) }, TWO_SHAPE);
+      const at = r.at.get(s.left.a)!;
+      expect(at.x - r.startX.get(s.left.a)!).toBeGreaterThan(0.8);
+      expect(s.left.run.turn).toBeLessThanOrEqual(AI.wing.hips + 0.05);
+      expect(at.reach).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('in the air a pin blocker never reaches away from the ball (drifted past it, its hands come back to it)', () => {
+    const sets = [
+      { to: { x: 4.0, off: 0.9 }, shape: { apexAbove: 1.65 } },
+      { to: { x: 2.1, off: 0.8 }, shape: { apexAbove: 0.75 } },
+      { to: { x: 1.3, off: 0.8 }, shape: { flight: 0.75 } },
+      { to: { x: 0.75, off: 0.8 }, shape: TWO_SHAPE },
+      { to: { x: LANES.L.x, off: LANES.L.z }, shape: { apexAbove: LANES.L.apexAbove } },
+    ];
+    let up = 0;
+    for (let seed = 1; seed <= 8; seed++)
+      for (const own of [false, true])
+        for (const { to, shape } of sets) {
+          const s = net(seed, seed % 2 ? LANES.L.x : null);
+          const r = s.set({ ...to, by: own ? s.pin(4.3) : undefined }, shape, (onTime) => [onTime]);
+          for (const w of s.wings) {
+            const at = r.at.get(w.a)!;
+            if (at.state !== 'air') continue;
+            up++;
+            expect(w.run.away).toBe(0);
+            expect(at.reach * (to.x - at.x)).toBeGreaterThan(-0.05);
+          }
+        }
+    expect(up).toBeGreaterThan(80);
+  });
+
+  it('on a pipe the pin blockers face the net all the way in (never a turn and a run) and jump still moving in, their hands into the middle', () => {
+    for (let seed = 1; seed <= 6; seed++) {
+      const s = net(seed, LANES.L.x);
+      const r = s.set({ x: LANES.L.x, off: LANES.L.z }, { apexAbove: LANES.L.apexAbove }, (onTime) => [onTime]);
+      for (const w of s.wings) {
+        const inward = -Math.sign(r.startX.get(w.a)!);
+        expect(w.run.turn).toBeLessThanOrEqual(AI.wing.hips + 0.05);
+        expect(w.run.pressVx * inward).toBeGreaterThan(1);
+        expect(r.at.get(w.a)!.reach * inward).toBeGreaterThan(0);
       }
     }
   });

@@ -1799,8 +1799,37 @@ export const AI = {
    * since the ball has to come back inside it. Sealing the antenna exactly (the outside hand on it,
    * 4.175 m) moved the pin 0.1-0.25 m inside on the usual set (met 3.9-4.2 m out) and cut the AI's
    * pin kills from 38-44% to 30-35% (all-AI Mini Rally, 2 seeds): a balance call for the players.
+   *
+   * Its own pin hitter going inside (met nearer than `insideX` m to the middle of the net: a 3, a 2,
+   * an X, a back 2) it follows in, always (MatusGib, 2026-11-17: "they should follow the pin more
+   * than they do currently, a lot of the time they just stand still"): beside the middle if the
+   * middle is on the ball (within `onBall` m of it), else to the hitter, and goes up from up to
+   * `chase` m short, its hands reaching for the ball. One it does not expect is late: `surprise` s
+   * on top of its reaction, less the more that hitter has gone inside before. Every set to a pin
+   * hitter moves our wings' read of them `learn` of the way to inside (1) or out at the pin (0),
+   * so the first inside ball after a run of pin sets is the one that beats them.
+   *
+   * Along the net a wing faces the net: side steps, or a crossover (hips turned `hips` rad into the
+   * run) with more than `crossover` m to cover on the floor; never a turn and a sprint. Closing in
+   * (beside the middle, the pipe, its own hitter inside) it holds its read until its last steps run
+   * into the jump, and the jump carries it the rest of the way, its hands reaching into the middle
+   * (a drift block: "one side step and then jump with their hands into the middle"). Late, it still
+   * steps into it: it plants once the jump's drift carries it the rest of the way, or at the last
+   * moment that has its hands out at the hit. Out at the line it gets there and goes straight up.
    */
-  wing: { lateReach: 1.2, outMax: 4.3, together: 0.15, wait: 0.4 },
+  wing: {
+    lateReach: 1.2,
+    outMax: 4.3,
+    together: 0.15,
+    wait: 0.4,
+    insideX: 3.0,
+    onBall: 1.0,
+    chase: 2.0,
+    surprise: 0.25,
+    learn: 0.4,
+    crossover: 1.5,
+    hips: 0.6,
+  },
   defenderSkill: 0.7,
   setterAccuracy: 0.15,
   /**

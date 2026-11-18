@@ -518,9 +518,15 @@ screen show them. Only your player uses them; AI players keep the defaults.
    **Their pin blockers follow the hitter.** A pin blocker blocks every attack on its
    half of the net: out at the antenna it takes the line, and when you come inside it
    (a set short of the pin, an inside ball) it goes in with you, along the whole net.
-   Late, it still goes up from where it got to and reaches sideways for the ball, too
-   late to close it. A quick in front of the setter is left to the middle: a pin that
-   can't get there stays on its own hitter. On the pipe all three at the net go up,
+   It moves facing the net, in side steps or a crossover, never turning to run; closing
+   in, it steps into its jump and drifts the rest of the way, hands reaching into the
+   middle. Its own hitter going inside (a 3, a 2, an X) it always follows, but one it
+   does not expect catches it late: it goes up short of them, reaching for the ball. It
+   learns: after a few inside balls from the same hitter it is there with them, and
+   after a run of pin sets the next inside ball beats it again. Late, it still goes up
+   from where it got to and reaches sideways for the ball, never away from it. A quick
+   in front of the setter is left to the middle: a pin that can't get there stays on
+   its own hitter. On the pipe all three at the net go up,
    both wings closing on the middle's shoulders; the far one is often a beat late.
    The block goes up together: beside the middle a wing jumps with it, so a middle late
    on the ball takes the whole block up late.

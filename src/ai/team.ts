@@ -172,7 +172,12 @@ export class TeamPlayer implements Brain {
             () => team.opponents?.players.get('MB') ?? null,
             () => team.frontRow().filter((w) => w !== athlete),
           )
-        : Object.assign(new BlockerBrain(athlete, FORM.defense[slot].x * s), { wing: true, mate: () => team.players.get('MB') ?? null });
+        : Object.assign(new BlockerBrain(athlete, FORM.defense[slot].x * s), {
+            wing: true,
+            mate: () => team.players.get('MB') ?? null,
+            setTo: () => team.theirSetFor(),
+            reads: team.pinReads,
+          });
     this.server = new ServerBrain(athlete);
   }
 
@@ -480,6 +485,8 @@ export class TeamAI {
   touches = 0;
   setFor: Athlete | null = null;
   opponents: TeamAI | null = null;
+  /** how often each of their pin hitters has gone inside, as our wings read it (`AI.wing.learn`) */
+  readonly pinReads = new Map<Athlete, number>();
   /** who should take the incoming first ball (sticky per incoming ball) */
   receiver: Athlete | null = null;
   private receiverFor: unknown = null;
@@ -802,6 +809,13 @@ export class TeamAI {
     // a back-row set off a bad pass stays well behind the 3 m line (in front of where its hitter waits)
     const z = outOfSystem && pick.lane === 'L' ? PIPE_HIGH_Z * s : lane.z;
     return { target: { x: lane.x, y, z }, apex: y + apexAbove + apexBoost, hitter: pick.a };
+  }
+
+  /** who their set is for (our wings see the hitter go for it): your pick, or their setter's call */
+  theirSetFor(): Athlete | null {
+    const lt = this.g.ball.lastTouch;
+    if (!lt || lt.kind !== 'set' || lt.side === this.side) return null;
+    return lt.athlete?.isUser ? (this.g.contact.lastSet?.hitter ?? null) : (this.opponents?.setFor ?? null);
   }
 
   onSet(hitter: Athlete | null): void {
@@ -1414,7 +1428,7 @@ export class TeamAI {
   }
 
   /** the setter has called our first ball out of system (or HELP): the set will be a high ball */
-  outOfSystem(g: Game): boolean {
+  outOfSystem(g: AiHost): boolean {
     const r = this.read;
     return !!r && r.touch === g.ball.lastTouch && r.call !== 'in';
   }
