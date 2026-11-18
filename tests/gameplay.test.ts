@@ -482,20 +482,23 @@ describe('spike drill set calls', () => {
   it('every outside / opposite call is met inside the antennae', () => {
     for (const pos of ['OH', 'OPP'] as const) {
       const plays = SET_PLAYS[pos]!;
-      expect(plays.length).toBe(3);
+      // every route a setter can give them is theirs to call (keys 1-5)
+      expect(plays.length).toBe(5);
       for (const p of plays) {
-        expect(Math.abs(p.lane.x) + R).toBeLessThan(COURT.antennaX - 0.3);
+        const x = p.inFront !== undefined ? quickSpot(SETTER_TARGET.x, 1, p.inFront).x : p.lane.x;
+        expect(Math.abs(x) + R).toBeLessThan(COURT.antennaX - 0.3);
         expect(p.lane.z).toBeGreaterThan(0.5);
-        expect(p.inFront).toBeUndefined();
       }
     }
+    const call = (pos: 'OH' | 'OPP', short: string) => SET_PLAYS[pos]!.find((p) => p.short === short)!;
     // fast sets are flatter than the high ball
-    expect(SET_PLAYS.OH![1].lane.apexAbove).toBeLessThan(SET_PLAYS.OH![0].lane.apexAbove);
-    expect(SET_PLAYS.OPP![1].lane.apexAbove).toBeLessThan(SET_PLAYS.OPP![0].lane.apexAbove);
+    expect(call('OH', 'Go').lane.apexAbove).toBeLessThan(call('OH', 'High').lane.apexAbove);
+    expect(call('OPP', 'Fast').lane.apexAbove).toBeLessThan(call('OPP', 'Back').lane.apexAbove);
   });
 
   it('middle calls: 1 in front of the setter, shoot further out, back quick behind', () => {
-    const [one, shoot, back] = SET_PLAYS.MB!;
+    const mb = (short: string) => SET_PLAYS.MB!.find((p) => p.short === short)!;
+    const [one, shoot, back] = [mb('1'), mb('Shoot'), mb('Back 1')];
     const sx = SETTER_TARGET.x;
     // home setter faces -x (towards the outside): in front = smaller x
     expect(quickSpot(sx, 1, one.inFront).x).toBeLessThan(sx);
@@ -515,7 +518,7 @@ describe('spike drill set calls', () => {
     a.jumpRelease();
     while (a.state !== 'air') a.step(DT, (t += DT));
     const from = { x: 1.05, y: 2.5, z: 0.85 };
-    const q = quickSetFor(a, t, from, undefined, SET_PLAYS.MB![2].inFront);
+    const q = quickSetFor(a, t, from, undefined, SET_PLAYS.MB!.find((p) => p.short === 'Back 1')!.inFront);
     expect(q.onTime).toBe(true);
     expect(q.target.x).toBeGreaterThan(from.x + 0.8);
     const t1 = t + q.time;

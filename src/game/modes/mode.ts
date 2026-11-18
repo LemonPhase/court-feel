@@ -70,6 +70,8 @@ export abstract class Mode {
   setPick?(a: Athlete): import('../setterCalls').SetPick | null;
   /** the user sets in this drill: who they can pick now (the touch chips; the dump only from the front row). Null: they don't set */
   setterPicks?(): readonly import('../setterCalls').SetPick[] | null;
+  /** the user is a hitter calling their own route (keys 1-5): the route strip and panel (C) show them. Null: no routes */
+  routes?(): import('../routes').RouteView | null;
   /** the user setter's calls while a play can still be called (before the pass): the play wheel opens on them */
   playCalls?(): import('../setterCalls').SetterCalls | null;
   /** the ball in flight is the user's to set (shows where to stand for it) */

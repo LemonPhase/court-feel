@@ -127,7 +127,7 @@ export function quickSetFor(hitter: Athlete, now: number, from: V3, releaseAt?: 
 }
 
 /**
- * Set calls a hitter can ask for in the spike drill (keys 1-3). Each is a
+ * A set call: a route for one hitter (SETTER_PLAYS). Each is a
  * lane: where the ball is met, how high the set goes above the contact (the
  * tempo) and where the approach starts. Quicks give `inFront` instead: the
  * hitter is up with the setter's touch and the set meets them that far along
@@ -151,7 +151,8 @@ export function needsGoodPass(play: SetPlay): boolean {
   return play.inFront !== undefined || play.lane.apexAbove < 1.0;
 }
 
-export const SET_PLAYS: Partial<Record<PositionId, SetPlay[]>> = {
+/** the calls hitters made for themselves before every route was theirs too (SETTER_PLAYS builds on them) */
+const BASE_CALLS: Record<'OH' | 'MB' | 'OPP', SetPlay[]> = {
   OH: [
     { name: 'High ball', short: 'High', lane: LANES.OH },
     // second tempo: a flat fast set to the pin, you are already running when it leaves the hands
@@ -222,14 +223,14 @@ export const D_PLAY: SetPlay = {
   lane: { x: 3.1, z: 2.0, apexAbove: 1.45, sx: 3.1, sz: 5.5, label: 'Back-row D' },
 };
 
-/** a hitter's own call (SET_PLAYS) by its short name */
-const own = (pos: 'OH' | 'MB' | 'OPP', short: string): SetPlay => SET_PLAYS[pos]!.find((p) => p.short === short)!;
+/** one of the first calls (BASE_CALLS) by its short name */
+const own = (pos: 'OH' | 'MB' | 'OPP', short: string): SetPlay => BASE_CALLS[pos].find((p) => p.short === short)!;
 
 /**
  * What a setter can call for each hitter (keys 1 outside, 2 middle, 3 opposite, 4 pipe), in the
  * order the same key steps through them (the user's order, 2026-11-18): from the slowest ball to the
- * pin to the faster ones, then the inside and the behind ones. The calls hitters make for themselves
- * (SET_PLAYS) are among them, with the ones only a setter's plays use. They come from coaching
+ * pin to the faster ones, then the inside and the behind ones. A front-row hitter calls their own
+ * from the same list (SET_PLAYS: keys 1-5, in this order). They come from coaching
  * glossaries; names differ between teams, these are the common ones:
  * - Outside: the hut (lower and quicker than the high ball, still hit off the set), and the 2
  *   inside, right behind the middle's quick (the tandem's ball).
@@ -307,6 +308,16 @@ export const SETTER_PLAYS: Record<'OH' | 'MB' | 'OPP' | 'PIPE', SetPlay[]> = {
       tier: 'inside',
     },
   ],
+};
+
+/**
+ * The routes a front-row hitter calls for themselves (keys 1-5, in this order): every set a setter
+ * can give them. An AI setter's play is built around your call (TeamAI.planPlay).
+ */
+export const SET_PLAYS: Partial<Record<PositionId, readonly SetPlay[]>> = {
+  OH: SETTER_PLAYS.OH,
+  MB: SETTER_PLAYS.MB,
+  OPP: SETTER_PLAYS.OPP,
 };
 
 /** height of the ball centre at the top of a good approach jump */

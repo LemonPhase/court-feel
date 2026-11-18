@@ -20,9 +20,16 @@ import { wheelPlays } from './playbook';
 import { SET_PICKS, SETTER_KEYS, type SetPick, type SetterCalls, type SetterKey } from './setterCalls';
 
 /**
- * Your calls on the court: the hitters you set (home side) run what you called. Shared by the
- * Setter Drill and the Mini Rally, so a call works the same in both.
+ * Calls on the court: the hitters a setter sets run what was called. Shared by the Setter Drill and
+ * the Mini Rally (your calls) and by an AI setter's play (TeamAI, either side of the net), so a
+ * call works the same whoever makes it. Calls are written for the home side (+z) and mirrored for
+ * a hitter on the far side (`sideLane`).
  */
+
+/** a lane written for the home side, on `side`'s court */
+export function sideLane(lane: AttackLane, side: 1 | -1): AttackLane {
+  return side === 1 ? lane : { ...lane, x: -lane.x, z: -lane.z, sx: -lane.sx, sz: -lane.sz };
+}
 
 /**
  * What your calls need of a hitter's brain: where they run and hit, their read of the pass for a
@@ -94,7 +101,7 @@ export function applyCalls(hitters: CallHitters, calls: SetterCalls, oos: boolea
     if (!calls.locked) h.brain.missedRun = false;
     const p = calls.play(k);
     const quick = isQuick(p) && !goesHigh(calls, k, oos);
-    h.brain.lane = callLane(calls, k, oos);
+    h.brain.lane = sideLane(callLane(calls, k, oos), h.a.side);
     h.brain.inFront = quick ? p.inFront : undefined;
     // only a quick runs on the pass by itself: your pins run when you call it (runFast)
     h.brain.passToSetter = quick ? (h.read ?? null) : null;
@@ -111,7 +118,7 @@ export function syncRuns(hitters: CallHitters, calls: SetterCalls): void {
   for (const [k, h] of hitters) {
     if (!h.brain.missedRun || calls.isHigh(k)) continue;
     calls.forceHigh(k);
-    h.brain.lane = calls.highLane(k);
+    h.brain.lane = sideLane(calls.highLane(k), h.a.side);
   }
 }
 
@@ -148,15 +155,24 @@ function runFast(h: CallHitter, at: { x: number; y: number; z: number }, tSet: n
  */
 export function startCallRuns(g: AiHost, setter: Athlete, hitters: CallHitters, calls: SetterCalls): boolean {
   const touch = touchOf(g, setter);
-  const oos = !touch || Math.hypot(touch.at.x - SETTER_SPOT.x, touch.at.z - SETTER_SPOT.z) > AI.outOfSystem;
+  const s = setter.side;
+  const oos = !touch || Math.hypot(touch.at.x - SETTER_SPOT.x * s, touch.at.z - SETTER_SPOT.z * s) > AI.outOfSystem;
   calls.lock(oos);
   applyCalls(hitters, calls, oos);
   if (oos || !touch) return true;
+  runCalls(hitters, calls, touch.at, touch.t + TIMING.setLoad);
+  return false;
+}
+
+/**
+ * Start the second-tempo runs of the calls (in system: the calls are locked), for a set leaving the
+ * setter's hands from `at` at `tSet`. A quick is not started here: it goes off the hitter's read.
+ */
+export function runCalls(hitters: CallHitters, calls: SetterCalls, at: { x: number; y: number; z: number }, tSet: number): void {
   for (const [k, h] of hitters) {
     const p = calls.play(k);
-    if (!isQuick(p) && needsGoodPass(p)) runFast(h, touch.at, touch.t + TIMING.setLoad);
+    if (!isQuick(p) && needsGoodPass(p)) runFast(h, at, tSet);
   }
-  return false;
 }
 
 /**
@@ -212,7 +228,7 @@ export function callOptions(g: AiHost, hitters: CallHitters, calls: SetterCalls,
       out.push({ ...q, label, key: k, fast: true, window: W[p.tier ?? 'quick'] });
       continue;
     }
-    const lane = callLane(calls, k, oos);
+    const lane = sideLane(callLane(calls, k, oos), h.a.side);
     const y = attackHeight(h.a);
     // a high ball: no faster than the position's high ball, a little higher off a bad pass
     const apexAbove = high ? Math.max(lane.apexAbove, HIGH_APEX[k]) + (oos ? AI.outOfSystemApex : 0) : lane.apexAbove;

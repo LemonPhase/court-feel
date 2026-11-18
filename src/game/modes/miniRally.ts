@@ -21,7 +21,9 @@ import {
 import type { ContactEvent } from '../contact';
 import type { AiHost } from '../brains';
 import type { Outcome } from '../judge';
-import { BACKUP_TARGET, needsGoodPass, SET_PLAYS, SETTER_SPOT, type SetPlay } from '../plays';
+import { BACKUP_TARGET, isQuick, needsGoodPass, SET_PLAYS, SETTER_SPOT, type SetPlay } from '../plays';
+import { wheelPlays } from '../playbook';
+import type { RouteView } from '../routes';
 import { DEFAULT_PICK, SETTER_KEYS, SetterCalls, type SetPick, type SetterKey } from '../setterCalls';
 import { kbd, makeFloorRing, Mode } from './mode';
 
@@ -50,8 +52,8 @@ export class MiniRally extends Mode {
   private jumpCalled = false;
   private reason = '';
   private userTouches = 0;
-  /** set calls for the user's position (keys 1-3), if it has any */
-  private plays: SetPlay[] | null = null;
+  /** the routes the user's position calls for themselves (keys 1-5), if it has any */
+  private plays: readonly SetPlay[] | null = null;
   private callIdx = 0;
   /** the user setter's pick (keys 1-4: outside, middle, opposite, pipe) and calls (the picked key again) */
   private setterCalls = new SetterCalls();
@@ -70,6 +72,11 @@ export class MiniRally extends Mode {
     this.home.opponents = this.away;
     this.away.opponents = this.home;
     this.home.onRead = (r) => this.setterCall(r);
+    // both AI setters run plays (AI.plays): ours from your play wheel (your saved plays too), theirs
+    // the built-in ones. Not ours when you are our setter: then the calls are yours
+    this.home.playsOn = !this.userSetter;
+    this.home.playPool = wheelPlays;
+    this.away.playsOn = true;
     for (const team of [this.home, this.away]) team.onUserSet = () => g.hud.message('Set to you · attack!', 1.2);
     const userSlot = USER_SLOT[this.position];
     let seed = 50;
@@ -118,7 +125,12 @@ export class MiniRally extends Mode {
     this.callIdx = 0;
     this.servingSide = -1;
     this.prepare(true);
-    g.hud.message(this.plays ? 'Play your position · win the point · 1-3 call your set' : 'Play your position · win the point', 2.5);
+    g.hud.message(
+      this.plays
+        ? `Play your position · win the point · 1-${this.plays.length} call your route · C see them`
+        : 'Play your position · win the point',
+      2.5,
+    );
   }
 
   /** the set call for the next ball the setter gives you (0-based; 0 = your position's default) */
@@ -282,6 +294,19 @@ export class MiniRally extends Mode {
     for (let i = 0; i < this.plays.length; i++) if (this.g.input.consumePress('Digit' + (i + 1))) this.selectCall(i);
   }
 
+  /** your routes as a hitter, and the play our setter has called (the route strip and panel) */
+  routes(): RouteView | null {
+    if (!this.plays || this.g.autoUser) return null;
+    const read = this.home.touches === 1 ? this.read : null;
+    return {
+      position: this.position as RouteView['position'],
+      plays: this.plays,
+      on: this.callIdx,
+      play: this.home.playView(),
+      high: read?.call === 'out',
+    };
+  }
+
   /** F3: what each team is in the middle of (the AI's situation: `AI.sit`) */
   debugLines(): string[] {
     return [`situation: you ${this.home.situation} · them ${this.away.situation}`];
@@ -364,14 +389,14 @@ export class MiniRally extends Mode {
     const who = read ? this.setterName(read.setter) : 'SETTER';
     if (read?.call === 'out') return `${who}: HIGH · out of system · ${me.role === 'MB' ? 'no quick this time' : 'wait for the high ball'}`;
     if (read?.call === 'help') return `${who}: HELP · they can't get to it · no set this time`;
-    if (me.role === 'MB' && this.home.passToSetter(g))
+    if ((me.role === 'MB' || (this.play && isQuick(this.play))) && this.home.passToSetter(g))
       return `QUICK · ${read ? 'in system · ' : ''}run in now · ${kbd('Space')} as the setter touches it · hold/release ${kbd('LMB')}`;
     const play = this.play;
     const fast = play && play.inFront === undefined && needsGoodPass(play);
     if (fast && this.home.touches === 1 && g.ball.lastTouch?.side === 1)
       return `${play.name.toUpperCase()} · ${read ? 'in system · ' : ''}start your approach as the setter touches it`;
     const calls = this.plays
-      ? ` · ${kbd('1')}${kbd('2')}${kbd('3')} set call`
+      ? ` · ${kbd('1')}-${kbd(String(this.plays.length))} route · ${kbd('C')} routes`
       : this.userSetter
         ? ` · ${kbd('1')}-${kbd('4')} pick a hitter, again: their next set${this.phase === 'prepare' ? ` · ${kbd('C')} plays` : ''}`
         : '';

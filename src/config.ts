@@ -2100,6 +2100,15 @@ export const AI = {
    */
   tempo: { share: 0.5, flight: 0.95, minT: 0.6, maxT: 1.2 },
   /**
+   * Combination plays (COMBOS, the play wheel) run by an AI setter. On their free ball ("FREE!")
+   * the setter calls one `free` of the time, and it runs off any pass in system. Before their serve
+   * the setter signals one `receive` of the time, and it runs only off a perfect pass (within
+   * `quickWeight.perfectOff` m of the setter's spot): off anything less the play is off and the
+   * setter runs the base sets (the user's call, 2026-11-18: a team drilled on a free ball, careful
+   * in serve receive). Out of system every set goes up high, play or not.
+   */
+  plays: { free: 0.6, receive: 0.25 },
+  /**
    * Against a closed block (every usual shot into the hands), and off a bad pass whenever a block
    * is up, an AI pin hitter wipes it off the outside hand (weight `toolShot`) or rolls it over
    * (`rollShot`). Out of system the high ball goes into a full block, and coaches teach hitters to

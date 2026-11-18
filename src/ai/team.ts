@@ -1,17 +1,23 @@
 import * as THREE from 'three';
 import { AI, BALL, CONTACT, COURT, PLAYER, TIMING, type PositionId } from '../config';
-import { clamp, lerp, smooth01, yawFromDir } from '../core/mathx';
+import { clamp, lerp, Rng, smooth01, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
 import type { AiHost, Brain } from '../game/brains';
+import { applyCalls, callOptions, runCalls, sideLane, syncRuns, type CallHitters } from '../game/callRuns';
+import { COMBOS, type Combo } from '../game/combos';
+import type { TeamPlayView } from '../game/routes';
+import { clashes, SetterCalls, type SetterKey } from '../game/setterCalls';
 import { AI_TOUCH, planSetJump } from '../game/setJump';
 import {
   attackHeight,
   BACKUP_TARGET,
+  isQuick,
   laneFor,
   PIPE_HIGH_Z,
   quickSetFor,
+  SET_PLAYS,
   SETTER_SPOT,
   SETTER_TARGET,
   setterTouchY,
@@ -33,6 +39,24 @@ export type Slot = 'S' | 'OH1' | 'MB' | 'OPP' | 'OH2' | 'L';
 export const SLOTS: Slot[] = ['S', 'OH1', 'MB', 'OPP', 'OH2', 'L'];
 export const SLOT_ROLE: Record<Slot, PositionId> = { S: 'S', OH1: 'OH', MB: 'MB', OPP: 'OPP', OH2: 'OH', L: 'L' };
 export const USER_SLOT: Record<PositionId, Slot> = { OH: 'OH1', OPP: 'OPP', MB: 'MB', S: 'S', L: 'L' };
+/** which hitter of a play (SETTER_KEYS) each slot is: the back-row outside hits the pipe */
+export const SLOT_KEY: Partial<Record<Slot, SetterKey>> = { OH1: 'OH', MB: 'MB', OPP: 'OPP', OH2: 'PIPE' };
+/** the lane each hitting slot attacks from when no play is on */
+const SLOT_LANE: Partial<Record<Slot, PositionId>> = { OH1: 'OH', MB: 'MB', OPP: 'OPP', OH2: 'L' };
+
+/**
+ * A combination play the AI setter runs (`AI.plays`), called on their free ball (`free`) or signalled
+ * before their serve (`receive`). `signalled`: the hitters know it and line up for it; `running`:
+ * the pass was good enough and the runs are on; `off`: it wasn't, the setter runs the base sets.
+ */
+export interface TeamPlay {
+  combo: Combo;
+  on: 'free' | 'receive';
+  state: 'signalled' | 'running' | 'off';
+  /** each hitter's route in it (yours, when you are a hitter of ours, is your own call) */
+  calls: SetterCalls;
+}
+
 /** the three who pass the serve (the two outsides and the libero) */
 export const PASSERS: ReadonlySet<Slot> = new Set<Slot>(['OH1', 'OH2', 'L']);
 
@@ -156,7 +180,7 @@ export class TeamPlayer implements Brain {
     this.setter.jumps = slot === 'S';
     this.setter.call = (g) => team.callSet(g, this.athlete);
     this.setter.onSet = (c) => team.onSet(c.hitter);
-    const laneRole: PositionId | null = slot === 'OH1' ? 'OH' : slot === 'MB' ? 'MB' : slot === 'OPP' ? 'OPP' : slot === 'OH2' ? 'L' : null;
+    const laneRole = SLOT_LANE[slot];
     this.hitter = laneRole ? new HitterBrain(athlete, laneFor(laneRole, s)) : null;
     if (this.hitter) {
       this.hitter.isMySet = (g) => team.setFor === athlete && g.ball.lastTouch?.kind === 'set' && g.ball.lastTouch.side === s;
@@ -164,7 +188,7 @@ export class TeamPlayer implements Brain {
       this.hitter.defenders = () => (team.opponents ? [...team.opponents.players.values()] : []);
       this.hitter.inSystem = () => team.setInSystem;
       this.hitter.backRow = slot === 'OH2';
-      if (slot === 'MB' || slot === 'OH1' || slot === 'OPP') this.hitter.passToSetter = (g) => team.passToSetter(g);
+      this.baseRun();
     }
     this.blocker =
       slot === 'MB'
@@ -181,6 +205,17 @@ export class TeamPlayer implements Brain {
             reads: team.pinReads,
           });
     this.server = new ServerBrain(athlete);
+  }
+
+  /** no play on: the hitter's own lane, and (the front row) its own read of the pass for a quick or a fast set */
+  baseRun(): void {
+    const h = this.hitter;
+    const role = SLOT_LANE[this.slot];
+    if (!h || !role) return;
+    h.lane = laneFor(role, this.athlete.side);
+    h.inFront = undefined;
+    h.missedRun = false;
+    h.passToSetter = this.slot === 'OH2' ? null : (g) => this.team.passToSetter(g);
   }
 
   reset(): void {
@@ -554,8 +589,20 @@ export class TeamAI {
   private lastTouchRef: unknown = null;
   /** set selection bias towards the user (when the user is a front-row hitter) */
   userSetBias = 0.6;
-  /** the set the user has called for themselves (keys 1-3); null = the default for their position */
+  /** the set the user has called for themselves (keys 1-5); null = the first of their position's */
   userPlay: SetPlay | null = null;
+  /** our AI setter runs combination plays (`AI.plays`; the Mini Rally turns it on) */
+  playsOn = false;
+  /** the plays our setter picks from (the Mini Rally gives the user's team the play wheel, saved plays included) */
+  playPool: () => readonly Combo[] = () => COMBOS;
+  /** the play our setter has called for this ball, if any */
+  play: TeamPlay | null = null;
+  /** the setter's own dice for plays: picking one never shifts the game's other random draws */
+  private playRng: Rng;
+  /** a play was considered for their free ball / before this serve (once each) */
+  private freeRolled = false;
+  private receiveRolled = false;
+  private playPassFor: unknown = null;
   serving = false;
   /** the setter's read of the current pass (see SetterRead) */
   read: SetterRead | null = null;
@@ -588,7 +635,9 @@ export class TeamAI {
   constructor(
     public side: 1 | -1,
     private g: AiHost,
-  ) {}
+  ) {
+    this.playRng = new Rng(side === 1 ? 4101 : 4102);
+  }
 
   add(slot: Slot, a: Athlete, isUser: boolean): void {
     this.players.set(slot, a);
@@ -637,11 +686,181 @@ export class TeamAI {
     this.read = null;
     this.ourServe = false;
     this.serveFault = false;
+    this.endPlay();
+    this.freeRolled = false;
+    this.receiveRolled = false;
     this.secondBy = null;
   }
 
   get user(): Athlete | null {
     return this.userSlot ? (this.players.get(this.userSlot) ?? null) : null;
+  }
+
+  /** the user's own route when they are one of our hitters (their call, else their position's first) */
+  private userRoute(): { key: SetterKey; play: SetPlay } | null {
+    const key = this.userSlot ? SLOT_KEY[this.userSlot] : undefined;
+    const user = this.user;
+    const play = this.userPlay ?? (user ? SET_PLAYS[user.role]?.[0] : undefined);
+    return key && play ? { key, play } : null;
+  }
+
+  /** our AI hitters, as the calls drive them (the user is not among them: they run their own route) */
+  private playHitters(): CallHitters<HitterBrain> {
+    const out: CallHitters<HitterBrain> = new Map();
+    for (const [slot, key] of Object.entries(SLOT_KEY) as [Slot, SetterKey][]) {
+      const a = this.players.get(slot);
+      const hitter = a ? this.brains.get(a)?.hitter : null;
+      if (a && hitter) out.set(key, { a, brain: hitter, read: (g) => this.passToSetter(g) });
+    }
+    return out;
+  }
+
+  /**
+   * Our AI setter may call a play (`AI.plays[on]` of the time): one from our pool that leaves every
+   * front-row hitter their own spot with the user's call in it (your call wins: the play fits round
+   * it). None fits: no play. The hitters line up for theirs at once.
+   */
+  private decidePlay(on: 'free' | 'receive'): void {
+    const S = this.players.get('S');
+    if (!this.playsOn || !S || S.isUser || this.play) return;
+    if (this.playRng.next() >= AI.plays[on]) return;
+    const you = this.userRoute();
+    const fits = this.playPool()
+      .map((c) => (you ? { ...c, calls: { ...c.calls, [you.key]: you.play.short } } : c))
+      .filter((c) => !clashes(c.calls));
+    if (!fits.length) return;
+    const combo = fits[Math.min(fits.length - 1, Math.floor(this.playRng.next() * fits.length))];
+    const calls = new SetterCalls();
+    calls.setCombo(combo);
+    this.play = { combo, on, state: 'signalled', calls };
+    applyCalls(this.playHitters(), calls, false);
+  }
+
+  /** the play is over (their touch, a dead ball): every hitter back to their own lane */
+  private endPlay(): void {
+    if (!this.play) return;
+    this.play = null;
+    for (const b of this.brains.values()) b.baseRun();
+  }
+
+  /** the play is off for this ball (a pass not good enough): the base sets, and the HUD says so */
+  private playOff(): void {
+    const p = this.play;
+    if (!p) return;
+    for (const b of this.brains.values()) b.baseRun();
+    p.state = 'off';
+  }
+
+  /**
+   * Plays through a rally: signalled before their serve; called on their free ball (`freePlay`);
+   * on our pass it runs (serve receive: a perfect pass; a free ball: in system) or is off; it is
+   * over at their touch.
+   */
+  private stepPlay(live: boolean): void {
+    const g = this.g;
+    const lt = g.ball.lastTouch;
+    if (!live) {
+      // before their serve: the setter signals the play (once a rally)
+      if (!this.serving && !this.receiveRolled) {
+        this.receiveRolled = true;
+        this.decidePlay('receive');
+      }
+      return;
+    }
+    if (!lt) return;
+    if (lt.side !== this.side || lt.kind === 'block') {
+      // their touch: our attack is over (a signalled serve-receive play waits for our pass)
+      if (this.play && this.play.state !== 'signalled') this.endPlay();
+      return;
+    }
+    this.freeRolled = false;
+    const p = this.play;
+    if (!p || p.state !== 'signalled' || this.touches !== 1 || this.playPassFor === lt) return;
+    if (lt.kind !== 'pass' && lt.kind !== 'dig' && lt.kind !== 'free') return;
+    this.playPassFor = lt;
+    const touch = this.setterTouch(g);
+    const good = !!touch && (p.on === 'receive' ? touch.off <= AI.quickWeight.perfectOff : touch.off <= AI.outOfSystem);
+    if (!touch || !good) {
+      this.playOff();
+      return;
+    }
+    p.calls.lock(false);
+    const hitters = this.playHitters();
+    applyCalls(hitters, p.calls, false);
+    runCalls(hitters, p.calls, touch.at, touch.t);
+    p.state = 'running';
+  }
+
+  /** "FREE!": their ball can only come over as a free ball, and our setter may call a play on it (once) */
+  private freePlay(): void {
+    if (this.freeRolled) return;
+    this.freeRolled = true;
+    this.decidePlay('free');
+  }
+
+  /**
+   * The set in a running play: each AI hitter at their route (a quick only to a hitter up with the
+   * touch, a fast set only to one on their run), the user at theirs, picked by the usual weights.
+   */
+  private playSet(
+    g: AiHost,
+    setter: Athlete,
+    perfect: boolean,
+  ): { target: V3; apex: number; hitter: Athlete | null; time?: number } | null {
+    const p = this.play!;
+    const hitters = this.playHitters();
+    syncRuns(hitters, p.calls);
+    const W: Record<SetterKey, number> = {
+      OH: AI.setWeight.outside,
+      OPP: AI.setWeight.opposite,
+      PIPE: AI.pipe.inSystem,
+      MB: perfect ? AI.quickWeight.perfect : AI.quickWeight.good,
+    };
+    type Set = { target: V3; apex: number; hitter: Athlete | null; time?: number };
+    const opts: { set: Set; w: number; user: boolean }[] = [];
+    for (const o of callOptions(g, hitters, p.calls, false)) {
+      const k = o.key as SetterKey;
+      const h = hitters.get(k);
+      if (!h || h.a === setter || h.a.state === 'dive') continue;
+      const quick = 'onTime' in o;
+      if (quick && !o.onTime) continue;
+      const running = h.brain.phase === 'approach' || h.brain.phase === 'load' || h.brain.phase === 'air';
+      if (o.fast && !quick && !running) continue;
+      opts.push({ set: o, w: W[k], user: false });
+    }
+    const you = this.user;
+    const route = this.userRoute();
+    if (you && route && you !== setter && you.state !== 'dive') {
+      let set: Set;
+      if (isQuick(route.play)) set = this.quickFor(you);
+      else {
+        const lane = sideLane(route.play.lane, this.side);
+        const y = attackHeight(you);
+        set = { target: { x: lane.x, y, z: lane.z }, apex: y + lane.apexAbove, hitter: you };
+      }
+      opts.push({ set, w: W[route.key], user: true });
+    }
+    if (!opts.length) return null;
+    this.setInSystem = true;
+    const yours = opts.find((o) => o.user);
+    if (yours && g.rng.next() < this.userSetBias) return yours.set;
+    const total = opts.reduce((t, o) => t + o.w, 0);
+    let r = g.rng.next() * total;
+    for (const o of opts) {
+      r -= o.w;
+      if (r <= 0) return o.set;
+    }
+    return opts[opts.length - 1].set;
+  }
+
+  /** the play our setter has called, for the HUD (never the other team's: you read theirs at the net) */
+  playView(): TeamPlayView | null {
+    const p = this.play;
+    if (!p) return null;
+    const you = this.userRoute();
+    const calls = { ...p.combo.calls };
+    if (you) calls[you.key] = you.play.short;
+    return { name: p.combo.name, idea: p.combo.idea, calls, state: p.state };
   }
 
   /** where a first ball (pass, dig) by `a` goes: the setter target, or high to the 3 m line when the setter plays it */
@@ -665,7 +884,8 @@ export class TeamAI {
     const g = this.g;
     const releaseAt = h.isUser ? undefined : this.brains.get(h)?.hitter?.releaseAt;
     // the user's call picks where along the net the quick goes (1, shoot, back quick)
-    const inFront = h.isUser ? this.userPlay?.inFront : undefined;
+    // (an AI middle's: the play's route, when one is on)
+    const inFront = h.isUser ? this.userPlay?.inFront : this.brains.get(h)?.hitter?.inFront;
     return quickSetFor(h, g.simTime, g.ball.pos, releaseAt, inFront);
   }
 
@@ -675,6 +895,16 @@ export class TeamAI {
    * net to run a quick.
    */
   passToSetter(g: AiHost): { t: number; x: number } | null {
+    const st = this.setterTouch(g);
+    // the user setter's ball loads in the hands before the push (the set bar)
+    return st ? { t: st.t + (this.players.get('S')?.isUser ? TIMING.setLoad : 0), x: st.at.x } : null;
+  }
+
+  /**
+   * The pass on its way to our setter (see `passToSetter`): when and where the setter's hands meet
+   * it (the ball's centre), and how far that is (m) from the setter's spot. Null as for passToSetter.
+   */
+  setterTouch(g: AiHost): { t: number; at: V3; off: number } | null {
     const lt = g.ball.lastTouch;
     const s = this.side;
     if (!g.ball.active || !lt || lt.side !== s || (lt.kind !== 'pass' && lt.kind !== 'dig' && lt.kind !== 'free')) return null;
@@ -692,9 +922,9 @@ export class TeamAI {
     if (t < 0) return null;
     pred.posAt(t, this.qp);
     // (the setter's own read of the pass uses the same line: a quick they may set is one the middle runs)
-    if (Math.hypot(this.qp.x - SETTER_SPOT.x * s, this.qp.z - SETTER_SPOT.z * s) > AI.outOfSystem) return null;
-    // the user setter's ball loads in the hands before the push (the set bar)
-    return { t: t + (setter.isUser ? TIMING.setLoad : 0), x: this.qp.x };
+    const off = Math.hypot(this.qp.x - SETTER_SPOT.x * s, this.qp.z - SETTER_SPOT.z * s);
+    if (off > AI.outOfSystem) return null;
+    return { t, at: { x: this.qp.x, y: this.qp.y, z: this.qp.z }, off };
   }
   private qp: V3 = { x: 0, y: 0, z: 0 };
 
@@ -786,6 +1016,14 @@ export class TeamAI {
         if (!options.length && h && h !== setter && !(up && down(h))) options.push({ slot, a: h, lane, w: 1 });
       }
     this.setInSystem = !outOfSystem;
+    // a play: the routes it called (off a pass that went off after all, the base sets: it is off)
+    if (this.play?.state === 'running') {
+      if (outOfSystem) this.playOff();
+      else {
+        const set = this.playSet(g, setter, perfect);
+        if (set) return set;
+      }
+    }
     const user = this.user;
     let pick = options[0];
     const userOpt = options.find((o) => o.a === user);
@@ -805,6 +1043,8 @@ export class TeamAI {
     // the fast set goes where the running hitter's hand will be, arriving then (a fixed flight)
     const f = fast(pick.a);
     if (f) return { target: { x: f.contact.x, y: f.contact.y, z: f.contact.z }, apex: f.contact.y, hitter: pick.a, time: f.t - g.simTime };
+    // the user's quick behind the setter (the opposite's back 1) meets them at the top of the jump, as the middle's does
+    if (pick.a === user && this.userPlay && isQuick(this.userPlay) && !outOfSystem && pick.lane !== 'MB') return this.quickFor(pick.a);
     // the user's call (a go, a 3 ball, a fast back...) instead of the lane's default tempo
     const call = pick.a === user && this.userPlay && this.userPlay.inFront === undefined ? this.userPlay.lane : null;
     const lane = call ?? laneFor(pick.lane, s);
@@ -1054,6 +1294,7 @@ export class TeamAI {
     // team-mates at the net meet shoulder to shoulder, never through each other
     shoulderToShoulder([...this.players.values()]);
     const live = ball.active && !ball.state.rest && g.ballLive;
+    this.stepPlay(live);
     const lt = ball.lastTouch;
     const jobs = new Map<Athlete, { job: Job; spot: Spot; run: boolean; due: number }>();
     const setJob: SetJob = (a, job, spot, run = false, due = 0) => {
@@ -1175,6 +1416,8 @@ export class TeamAI {
         if (free && comingToUs && tDown > 0) this.earlyTransition(lt, tDown, p, setJob);
         // their second ball was no set: their third can only be a free ball, and we get ready for it
         else if (free && this.theirTouches === 2 && lt.kind !== 'set' && !onOurSide) this.freeBallDefence(lt, setJob);
+        // a free ball coming (or called): our setter may call a play on it
+        if (free && ((comingToUs && tDown > 0) || this.freeCall)) this.freePlay();
         // the setter releases to the net once it reads that the ball coming over isn't its own to play
         if (lt && lt.kind !== 'serve') this.setterRelease(lt, jobs, setJob);
         // blockers read their set

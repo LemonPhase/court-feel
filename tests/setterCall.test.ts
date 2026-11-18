@@ -145,7 +145,7 @@ describe("the setter's call on the pass (Mini Rally)", () => {
   });
 
   it('the set follows the call: a called go is fast in system and a high ball out of system', () => {
-    const go = SET_PLAYS.OH![1];
+    const go = SET_PLAYS.OH!.find((p) => p.short === 'Go')!;
     expect(needsGoodPass(go)).toBe(true);
     for (const [z, out] of [
       [SETTER_TARGET.z, false],
@@ -170,7 +170,7 @@ describe("the setter's call on the pass (Mini Rally)", () => {
 
   it('the setter running down a bad pass does not change the call that was made', () => {
     const { g, team, pass, flight } = homeTeam('OPP');
-    team.userPlay = SET_PLAYS.OPP![1];
+    team.userPlay = SET_PLAYS.OPP!.find((p) => p.short === 'Fast')!;
     team.userSetBias = 1;
     pass(SETTER_SPOT.x - 1.2, SETTER_SPOT.z + 2.4);
     flight();
@@ -210,7 +210,7 @@ describe('when our setter plays the first ball (Mini Rally)', () => {
 
   it('the second ball is out of system: the libero calls HIGH! and a called go goes up high', () => {
     const { g, team, me, reads, setterDigs, flight } = homeTeam('OH');
-    team.userPlay = SET_PLAYS.OH![1];
+    team.userPlay = SET_PLAYS.OH!.find((p) => p.short === 'Go')!;
     team.userSetBias = 1;
     setterDigs();
     flight();
