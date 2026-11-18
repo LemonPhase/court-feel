@@ -19,6 +19,8 @@ canvas { display: block; outline: none; }
 .hud-grade { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; opacity: 0;
   transition: opacity 0.25s; }
 .hud-grade.show { opacity: 1; }
+.hud-grade.aside { left: 22%; top: 40%; }
+.hud-grade.aside .hud-grade-text { font-size: 44px; }
 .hud-grade-text { font-weight: 900; font-style: italic; font-size: 60px; letter-spacing: 0.04em; line-height: 1;
   -webkit-text-stroke: 1px rgba(0,0,0,0.35); }
 .hud-grade-sub { font-weight: 700; font-size: 18px; margin-top: 6px; letter-spacing: 0.06em; }
@@ -274,8 +276,8 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .view-split { overflow: hidden; }
 .list-col { flex: 0 0 min(480px, 36%); min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; margin: -4px; padding: 4px;
   -webkit-overflow-scrolling: touch; }
-.rows { display: flex; flex-direction: column; gap: 10px; }
-.row { display: flex; align-items: center; gap: 14px; min-height: 86px; padding: 14px 18px; border-radius: 12px; background: rgba(14,17,26,0.9);
+.rows { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; align-items: center; gap: 14px; min-height: 76px; padding: 10px 18px; border-radius: 12px; background: rgba(14,17,26,0.9);
   border: 2px solid var(--line); text-align: left; }
 .row:hover { border-color: rgba(255,255,255,0.4); }
 .row.on { background: rgba(255,210,63,0.12); border-color: var(--gold); }
@@ -317,6 +319,8 @@ body.touchmode .set-row.only-tc { display: grid !important; }
 .lesson .play-btn { max-width: 100%; white-space: normal; }
 .lesson-t { font-weight: 900; font-style: italic; font-size: 24px; line-height: 1.1; }
 .lesson-b { font-size: 13px; line-height: 1.5; color: #d5d9e2; }
+.lesson-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.lesson-picks .done { border-color: rgba(255,210,63,0.6); }
 .key-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 24px 36px; flex: 1; align-content: start; }
 
 /* pause */
@@ -597,6 +601,10 @@ body.replaying .hud { opacity: 0.25; }
   transition: opacity 0.1s; --p: 0%;
   background: conic-gradient(from 180deg, #ffd23f, #ff8a3d var(--p), rgba(255,255,255,0.1) 0);
   -webkit-mask: radial-gradient(circle, transparent 21px, #000 22px, #000 25px, transparent 26px); mask: radial-gradient(circle, transparent 21px, #000 22px, #000 25px, transparent 26px); }
+/* a tick on the ring: where to let go of a held toss for the serve's own height */
+.charge-mark { display: none; position: absolute; left: 50%; top: 50%; width: 4px; height: 13px; margin: -6.5px 0 0 -2px; border-radius: 2px; pointer-events: none;
+  background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.55), 0 0 6px rgba(255,255,255,0.8); transform: rotate(var(--m, 180deg)) translateY(-23.5px); }
+.charge-mark.on { display: block; }
 .charge-ring.full { background: conic-gradient(#ff6a2a 100%, transparent 0); filter: drop-shadow(0 0 8px rgba(255,120,40,0.95)); animation: chargeFull 0.5s ease-in-out infinite alternate; }
 @keyframes chargeFull { from { transform: scale(1); } to { transform: scale(1.08); } }
 @keyframes sweetPulse { from { transform: scale(1); } to { transform: scale(1.08); } }

@@ -27,7 +27,7 @@ import { outcomeLabel, type Outcome } from '../judge';
 import { SETTER_SPOT, SETTER_TARGET } from '../plays';
 import { DEFAULT_PICK, SETTER_KEYS, SetterCalls, type SetPick, type SetterKey } from '../setterCalls';
 import { kbd, makeFloorRing, Mode } from './mode';
-import type { Game } from '../game';
+import type { AiHost } from '../brains';
 
 type Phase = 'intro' | 'feed' | 'live' | 'result';
 
@@ -128,11 +128,11 @@ export class SetterDrill extends Mode {
    * While the pass is coming: when the ball leaves your hands (the catch plus the load) and
    * where. None off a bad pass (no quick), unless you asked `k` for it.
    */
-  private passToMe(g: Game, k: SetterKey): { t: number; x: number } | null {
+  private passToMe(g: AiHost, k: SetterKey): { t: number; x: number } | null {
     const lt = g.ball.lastTouch;
     if (!g.ball.active || lt?.athlete !== this.passer || lt.kind !== 'pass') return null;
     if (this.outOfSystem && !this.calls.asksFast(k)) return null;
-    return passToUser(g, g.me);
+    return passToUser(g, this.g.me);
   }
 
   setOptions(a: Athlete): SetOption[] {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { AI, BALL, PLAYER, SIM } from '../config';
-import { Athlete } from '../game/athlete';
+import { Athlete } from './athlete';
 import type { BallPredictor } from '../physics/predict';
 import type { V3 } from '../physics/ball';
 

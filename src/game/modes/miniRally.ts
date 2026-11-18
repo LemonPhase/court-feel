@@ -19,7 +19,7 @@ import {
   type CallHitters,
 } from '../callRuns';
 import type { ContactEvent } from '../contact';
-import type { Game } from '../game';
+import type { AiHost } from '../brains';
 import type { Outcome } from '../judge';
 import { BACKUP_TARGET, needsGoodPass, SET_PLAYS, SETTER_SPOT, type SetPlay } from '../plays';
 import { DEFAULT_PICK, SETTER_KEYS, SetterCalls, type SetPick, type SetterKey } from '../setterCalls';
@@ -67,6 +67,7 @@ export class MiniRally extends Mode {
     this.home.opponents = this.away;
     this.away.opponents = this.home;
     this.home.onRead = (r) => this.setterCall(r);
+    for (const team of [this.home, this.away]) team.onUserSet = () => g.hud.message('Set to you · attack!', 1.2);
     const userSlot = USER_SLOT[this.position];
     let seed = 50;
     for (const slot of SLOTS) {
@@ -96,7 +97,7 @@ export class MiniRally extends Mode {
       const a = this.home.players.get(slot);
       const brain = a && !a.isUser ? this.home.brains.get(a)?.hitter : null;
       // a hitter whose call is a quick goes on the pass: in system the team's read of it, off a bad pass only when you ask them
-      const read = (gm: Game) => this.home.passToSetter(gm) ?? (this.setterCalls.asksFast(k) ? passToUser(gm, gm.me) : null);
+      const read = (gm: AiHost) => this.home.passToSetter(gm) ?? (this.setterCalls.asksFast(k) ? passToUser(gm, this.g.me) : null);
       if (a && brain) this.hitters.set(k, { a, brain, read });
     }
     // your hitters run your calls (applyCalls, startCallRuns), never a fast set of their own off your pass

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { AI, BALL, CONTACT, COURT, SIM } from '../src/config';
-import { bendFor, planToPoint, runDir, simulateApproach } from '../src/ai/approach';
+import { bendFor, planToPoint, runDir, simulateApproach } from '../src/game/approach';
 import { decoyFor, greenFools, userGreen } from '../src/ai/greenBite';
 import { HitterBrain } from '../src/ai/hitter';
 import { MiddleBlocker } from '../src/ai/middle';

@@ -21,7 +21,7 @@ import {
 import type { ApproachLine } from '../tutorial';
 import { ApproachGuide } from '../../fx/approachGuide';
 import { kbd, Mode, ZoneMarker } from './mode';
-import { planApproach, planQuick, planToPoint, simulateApproach, type ApproachPlan } from '../../ai/approach';
+import { planApproach, planQuick, planToPoint, simulateApproach, type ApproachPlan } from '../approach';
 import { BlockerBrain } from '../../ai/blocker';
 import { blockShadowOnCourt, HANDS_WIDTH, type HandSpan } from '../blockShadow';
 

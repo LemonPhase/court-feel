@@ -1,7 +1,7 @@
 import { yawFromDir } from '../../core/mathx';
 import { solveApex } from '../../physics/solve';
 import { HitterBrain } from '../../ai/hitter';
-import type { Game } from '../game';
+import type { AiHost } from '../brains';
 import { SetterBrain } from '../../ai/setter';
 import type { PositionId } from '../../config';
 import { Athlete } from '../athlete';
@@ -150,7 +150,7 @@ export class BlockDrill extends Mode {
     }
   }
 
-  private feedToSetter(g: Game): { t: number; x: number } | null {
+  private feedToSetter(g: AiHost): { t: number; x: number } | null {
     const lt = g.ball.lastTouch;
     if (!g.ball.active || lt?.kind !== 'feed' || lt.side !== -1) return null;
     const pred = g.ball.ensurePrediction(g.env, g.simTime);

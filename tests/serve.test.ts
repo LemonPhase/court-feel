@@ -3,7 +3,7 @@ import { AI, COURT, SIM } from '../src/config';
 import { Rng } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import type { Touch, TouchKind } from '../src/game/ballEntity';
-import type { Game } from '../src/game/game';
+import type { AiHost } from '../src/game/brains';
 import { makeBall, stepBall, type BallEnv, type CollisionEvent, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { SLOT_ROLE, SLOTS, TeamAI, type Slot } from '../src/ai/team';
@@ -54,10 +54,9 @@ function servingTeam(side: 1 | -1) {
     ballLive: true,
     ball,
     setBrain() {},
-    hud: { message() {} },
     contact: { lastSet: null },
   };
-  const team = new TeamAI(side, g as unknown as Game);
+  const team = new TeamAI(side, g as unknown as AiHost);
   for (const slot of SLOTS) team.add(slot, new Athlete(SLOT_ROLE[slot], side), false);
   team.serving = true;
   team.place('defense');

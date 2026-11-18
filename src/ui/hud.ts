@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Grade } from '../game/athlete';
 import { TIMING } from '../config';
-import { COLLAR_DEG_PER_S, collarDegrees, collarZone, CUE_NAMES, CUE_ORDER, type Cue } from '../game/tutorial';
+import { COLLAR_DEG_PER_S, collarDegrees, collarZone, CUE_NAMES, CUE_ORDER, type Cue, type CueId } from '../game/tutorial';
 import type { CallSheetView } from '../game/callRuns';
 
 const GRADE_CLASS: Record<Grade, string> = {
@@ -64,6 +64,8 @@ export class Hud {
   private camTag: HTMLDivElement;
   private loadRing: HTMLDivElement;
   private chargeRing: HTMLDivElement;
+  /** a tick on the ring, outside its mask so it reads over the court: where to let go of a held toss */
+  private chargeMark: HTMLDivElement;
   private goCue: HTMLDivElement;
   private callout: HTMLDivElement;
   private callWho: HTMLDivElement;
@@ -133,13 +135,11 @@ export class Hud {
     this.camTag = el('div', 'hud-cam', this.root, 'TP');
     this.loadRing = el('div', 'load-ring', this.root);
     this.chargeRing = el('div', 'charge-ring', this.root);
+    this.chargeMark = el('div', 'charge-mark', this.root);
     this.collar = this.buildCollar();
     this.freezeVeil = el('div', 't-freeze', this.root);
     this.coachStrip = el('div', 'coach-strip', this.root);
-    CUE_ORDER.forEach((id, i) => {
-      if (i) el('span', 'coach-sep', this.coachStrip, '›');
-      this.coachSteps.push(el('span', 'coach-step', this.coachStrip, CUE_NAMES[id]));
-    });
+    this.buildCoachSteps(CUE_ORDER);
     this.coachCue = el('div', 'coach-cue', this.root);
     this.coachKeys = el('span', 'coach-keys', this.coachCue);
     this.coachText = el('span', 'coach-text', this.coachCue);
@@ -187,17 +187,31 @@ export class Hud {
     this.freezeVeil.setAttribute('aria-hidden', on ? 'false' : 'true');
   }
 
+  /** the strip of what a rep is made of (RUN › JUMP › DRAW › HIT, a serve has TOSS first) */
+  private coachOrder = '';
+  private buildCoachSteps(order: readonly CueId[]): void {
+    this.coachOrder = order.join();
+    this.coachStrip.replaceChildren();
+    this.coachSteps = [];
+    order.forEach((id, i) => {
+      if (i) el('span', 'coach-sep', this.coachStrip, '›');
+      this.coachSteps.push(el('span', 'coach-step', this.coachStrip, CUE_NAMES[id]));
+    });
+  }
+
   /**
-   * The lesson's cues. The strip names the four parts of a spike (the ones behind you ticked,
-   * the current one lit); the cue under the crosshair is the one thing to do now, with its key.
+   * The lesson's cues. The strip names the parts of the rep, a spike's four or a serve's with the
+   * toss first (the ones behind you ticked, the current one lit); the cue under the crosshair is the one thing to do now, with its key.
    * It pulses while the ball waits for it. Null hides both.
    */
-  setCoach(c: { stage: number; cue: Cue | null } | null): void {
+  setCoach(c: { stage: number; cue: Cue | null; order?: readonly CueId[] } | null): void {
     this.coachStrip.classList.toggle('show', !!c);
     const cue = c?.cue ?? null;
     this.coachCue.classList.toggle('show', !!cue);
     this.coachCue.classList.toggle('waiting', !!cue?.waiting);
     if (!c) return;
+    const order = c.order ?? CUE_ORDER;
+    if (order.join() !== this.coachOrder) this.buildCoachSteps(order);
     this.coachSteps.forEach((e, i) => {
       e.classList.toggle('done', i < c.stage);
       e.classList.toggle('now', i === c.stage);
@@ -355,10 +369,13 @@ export class Hud {
     this.banner.classList.remove('show');
   }
 
+  /** show the grade to one side, off the line a served ball flies down (the Serve Drill) */
+  gradeAside = false;
+
   /** `green`: a perfectly timed set reads GREEN, in green */
   showGrade(g: Grade, sub: string, green = false): void {
     this.gradeText.textContent = green ? 'GREEN' : g === 'Miss' ? 'MISS' : g.toUpperCase();
-    this.grade.className = 'hud-grade show ' + (green ? 'g-green' : GRADE_CLASS[g]);
+    this.grade.className = 'hud-grade show ' + (green ? 'g-green' : GRADE_CLASS[g]) + (this.gradeAside ? ' aside' : '');
     this.gradeSub.textContent = sub;
     // restart animation
     void this.grade.offsetWidth;
@@ -417,16 +434,22 @@ export class Hud {
     this.loadRing.classList.toggle('full', frac >= 0.99);
   }
 
-  /** spike wind-up power around the crosshair (null hides it) */
-  setCharge(frac: number | null): void {
+  /**
+   * The ring around the crosshair: the wind-up's charge, or how high a toss being held will go.
+   * `mark`: a tick on the ring at that fraction (the serve's own toss height).
+   */
+  setCharge(frac: number | null, mark: number | null = null): void {
     if (frac === null) {
       this.chargeRing.style.opacity = '0';
       this.chargeRing.classList.remove('full');
+      this.chargeMark.classList.remove('on');
       return;
     }
     this.chargeRing.style.opacity = '1';
     this.chargeRing.style.setProperty('--p', `${Math.round(frac * 100)}%`);
     this.chargeRing.classList.toggle('full', frac >= 0.999);
+    this.chargeMark.classList.toggle('on', mark !== null);
+    if (mark !== null) this.chargeMark.style.setProperty('--m', `${180 + mark * 360}deg`);
   }
 
   /** approach timing cue */

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS, isPositionId, SETTING_RANGES, VENUE_IDS, VENUES } from '../src/config';
-import { parseLaunchParams, parseVenueParam } from '../src/core/launch';
-import { defaultSettings, loadSettings, sanitizeSettings, VALIDATED_KEYS } from '../src/core/settings';
+import { parseLaunchParams, parseVenueParam } from '../src/app/launch';
+import { defaultSettings, loadSettings, sanitizeSettings, VALIDATED_KEYS } from '../src/app/settings';
 import { isModeId } from '../src/game/modes/mode';
 
 describe('stored settings are validated', () => {

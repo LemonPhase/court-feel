@@ -1,5 +1,6 @@
 # Continuous integration on every pull request and on main. Deployments are handled by
-# Vercel's Git integration: every PR gets a preview deployment, merges to main go to production.
+# Vercel's Git integration: every PR gets a preview deployment and merges to main go to the dev
+# site. Production ships on a version tag (release.yml).
 #
 # Two jobs run in parallel:
 #   check - typecheck, lint, formatting, unit tests, production build (about a minute)
@@ -7,12 +8,17 @@
 #           controls, robustness probes and a resource soak (scripts/e2e.mjs). Screenshots
 #           and report.json are uploaded as the "e2e-report" artifact.
 # Make both required checks on main (Settings > Branches > branch protection rule).
+#
+# A third job runs for a refactor only (a pull request whose title starts with "refactor",
+# anything into or out of the refactor branch, and pushes to that branch):
+#   trace - the change plays exactly like the commit it left main at (scripts/trace.mjs).
+#           It cannot be a required check on main: it is skipped for every other pull request.
 name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, refactor/simulation-on-its-own]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -66,5 +72,40 @@ jobs:
         with:
           name: e2e-report
           path: scripts/out/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  trace:
+    name: Same play as main (refactors)
+    if: >-
+      github.ref == 'refs/heads/refactor/simulation-on-its-own' ||
+      (github.event_name == 'pull_request' && (
+        startsWith(github.event.pull_request.title, 'refactor') ||
+        github.base_ref == 'refactor/simulation-on-its-own' ||
+        github.head_ref == 'refactor/simulation-on-its-own'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # the comparison needs the commit this change left main at
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps --only-shell chromium
+      - name: Play every drill here and on main, and compare every frame
+        run: npm run trace:compare
+      - name: Upload the two traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trace
+          path: |
+            scripts/out/trace/base.json
+            scripts/out/trace/head.json
           retention-days: 14
           if-no-files-found: ignore

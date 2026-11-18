@@ -169,6 +169,14 @@ export class Effects {
       if (e.kind === 'set') this.audio.set();
       if (e.kind === 'pass' || e.kind === 'dig') this.audio.pass(0.5);
     });
+    ev.on('floatBreak', (e) => {
+      // a float breaking is hard to see from behind the server: a ring pops round the ball where it turns
+      const b = g.ball.pos;
+      const v = g.ball.vel;
+      const data = { x: b.x, y: b.y, z: b.z, vx: v.x, vy: v.y, vz: v.z, s: e.strength };
+      this.playEvent({ t: g.simTime, kind: 'float', data }, false);
+      this.replay.addEvent(g.simTime, 'float', data);
+    });
     ev.on('ballEvent', (e) => {
       if (e.kind === 'floor') {
         this.noteBallDown(e.x, e.z);
@@ -371,6 +379,9 @@ export class Effects {
         const far = clamp01((dist - 1.0) / 2.5);
         this.airRing(at, dir, Math.min(0.95, dist * 0.6) * (0.6 + 0.4 * pw), lerp(0.3, 0.6, far) * (0.5 + 0.5 * pw));
       }
+    } else if (e.kind === 'float') {
+      const at = new THREE.Vector3(d.x, d.y, d.z);
+      this.airRing(at, new THREE.Vector3(d.vx, d.vy, d.vz), FX.floatBreak.size * d.s, FX.floatBreak.strength * d.s * FX.intensity);
     } else if (e.kind === 'impact') {
       const q = d.q;
       const perfect = d.perfect > 0.5;
@@ -476,7 +487,7 @@ export class Effects {
 
   private applySquash(dt: number): void {
     const sq = this.sq;
-    const mesh = this.g.ball.mesh;
+    const mesh = this.g.ballView.mesh;
     if (sq.amount <= 0) return;
     sq.t += dt;
     // a damped wobble: compressed, overshoots long, settles (~0.2 s)
@@ -592,7 +603,7 @@ export class Effects {
     const h = g.renderer.domElement.clientHeight || 720;
     this.dust.setScale(h, cam.fov);
     this.glow.setScale(h, cam.fov);
-    const ballPos = this.replaying ? g.ball.mesh.position : g.ball.rpos;
+    const ballPos = this.replaying ? g.ballView.mesh.position : g.ball.rpos;
     this.trail.update(dt, ballPos, this.replaying ? 20 : g.ball.speed(), cam);
     if (!g.ball.active && !this.replaying) this.trail.fade();
     for (const r of this.rings) {
@@ -806,7 +817,7 @@ export class Effects {
   replayStep(dt: number): boolean {
     const g = this.g;
     const r = this.replay;
-    const live = r.advance(dt, g.ball.mesh);
+    const live = r.advance(dt, g.ballView.mesh);
     const rig = g.rig;
     const u = smooth01((r.cursor - r.contactT + 0.05) / Math.max(0.2, r.impactT - r.contactT + 0.1));
     rig.mode = 'cine';
@@ -835,7 +846,7 @@ export class Effects {
     this.replaying = false;
     document.body.classList.remove('replaying');
     g.rig.setMode(g.settings.firstPerson ? 'fp' : 'tp');
-    g.ball.mesh.visible = g.ball.active;
+    g.ballView.mesh.visible = g.ball.active;
   }
 
   onModeStart(): void {

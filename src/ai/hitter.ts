@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { AI, BALL, CONTACT, COURT, PLAYER, TIMING } from '../config';
 import { clamp, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
-import type { Game } from '../game/game';
+import type { AiHost, Brain } from '../game/brains';
 import { attackHeight, quickSpot, type AttackLane } from '../game/plays';
-import { bendFor, isInsideRun, planApproach, planQuick, planToPoint, riseTime, runDir, type ApproachPlan } from './approach';
-import { moveTo, netYaw, stop, type Brain } from './brain';
+import { bendFor, isInsideRun, planApproach, planQuick, planToPoint, riseTime, runDir, type ApproachPlan } from '../game/approach';
+import { moveTo, netYaw, stop } from './brain';
 import { blockHands, ContactSystem, type SetResult } from '../game/contact';
 import { netClearance, solveSpeedToFloor } from '../physics/solve';
 import type { V3 } from '../physics/ball';
@@ -24,7 +24,7 @@ export class HitterBrain implements Brain {
   plan: ApproachPlan | null = null;
   skill = AI.hitterSkill;
   /** is the ball in the air a set for me? */
-  isMySet: (g: Game) => boolean = () => false;
+  isMySet: (g: AiHost) => boolean = () => false;
   /** opposing blockers to read */
   blockers: () => Athlete[] = () => [];
   /** everyone on the other side who could dig it (the hitter looks for the open spot) */
@@ -42,7 +42,7 @@ export class HitterBrain implements Brain {
    * leaves the floor with the setter's touch; a pin hitter on a fast set is mid-run then.
    * If the set goes elsewhere the run was a decoy.
    */
-  passToSetter: ((g: Game) => { t: number; x: number } | null) | null = null;
+  passToSetter: ((g: AiHost) => { t: number; x: number } | null) | null = null;
   /** a middle's call: how far along the net in front of the setter the quick is hit (shoot, back quick) */
   inFront: number | undefined = undefined;
   private quickFor: unknown = null;
@@ -124,7 +124,7 @@ export class HitterBrain implements Brain {
   }
 
   /** run an approach planned before the set: a second-tempo call (on the last steps as the setter touches it) */
-  runPlan(plan: ApproachPlan, g: Game): void {
+  runPlan(plan: ApproachPlan, g: AiHost): void {
     this.take(plan);
     this.phase = 'approach';
     this.swung = false;
@@ -163,13 +163,13 @@ export class HitterBrain implements Brain {
   }
 
   /** the user's set this ball came from, if it is one (ContactSystem.lastSetResult) */
-  private userSet(g: Game): SetResult | null {
+  private userSet(g: AiHost): SetResult | null {
     const r = g.contact.lastSetResult;
     const lt = g.ball.lastTouch;
     return r && lt?.kind === 'set' && lt.athlete === r.athlete && lt.t === r.t ? r : null;
   }
 
-  step(_dt: number, g: Game): void {
+  step(_dt: number, g: AiHost): void {
     const a = this.athlete;
     const now = g.simTime;
     if (!this.enabled) return;
@@ -342,7 +342,7 @@ export class HitterBrain implements Brain {
    * is going, if that is clear: the swing is along the run, with the body's speed in it. Null
    * when no such shot exists (a ball hit from too deep, a block across everything).
    */
-  private bounce(g: Game, from: V3, hitX: number, tHit: number): THREE.Vector3 | null {
+  private bounce(g: AiHost, from: V3, hitX: number, tHit: number): THREE.Vector3 | null {
     const a = this.athlete;
     const B = AI.greenBounce;
     const opp = -a.side;
@@ -418,7 +418,7 @@ export class HitterBrain implements Brain {
    * The open spot for a full-speed spike from `from` (see openShot), against the defence as it
    * stands: they can move `read` s after the hit (a blocker in the air comes down first).
    */
-  private openSpot(g: Game, from: V3, tHit: number, read: number, misread: boolean) {
+  private openSpot(g: AiHost, from: V3, tHit: number, read: number, misread: boolean) {
     const a = this.athlete;
     const diggers: Digger[] = this.defenders().map((d) => {
       // a blocker in the air comes down first
@@ -509,7 +509,7 @@ export class HitterBrain implements Brain {
    * the hitter finds is open and it never swings through the block's hands or uses the block; off
    * an early or late one it doesn't look for the open spot.
    */
-  chooseAim(g: Game, hitX: number, from?: V3, tHit = g.simTime, us: SetResult | null = null): THREE.Vector3 {
+  chooseAim(g: AiHost, hitX: number, from?: V3, tHit = g.simTime, us: SetResult | null = null): THREE.Vector3 {
     const a = this.athlete;
     const opp = -a.side; // the other court
     const hw = COURT.halfWidth;

@@ -69,8 +69,68 @@ export const BALL = {
   antennaRestitution: 0.55,
   postRestitution: 0.5,
   wallRestitution: 0.4,
-  /** if knuckle > 0, low-spin serves get a slight wobble */
-  floatWobble: 0.9,
+  /**
+   * The float. A ball hit with no spin, flying near its critical speed (where the air's hold on it
+   * changes), flies true and then breaks: its seams push it hard to one side, or straight down,
+   * for a fraction of a second, and it carries on in the new direction. Once it slows below its
+   * critical speed its drag jumps and it dies. Which way and when depends on how the panels face
+   * the air, so each serve draws its own (`BallState.seed`): the server cannot choose it and
+   * nobody can read it ahead.
+   *
+   * - A break is a side force 0.5 rho A `cs` v^2 at full strength (`BallState.knuckle` 1: a clean
+   *   no-spin contact; a mishit leaves some spin on the ball and it floats less), about as hard as
+   *   gravity pulls at 20 m/s. It fades out below `speedLo` m/s and is full from `speedFull`: a
+   *   jump float (20 m/s off the hand) breaks harder than a standing float (17), a free ball not
+   *   at all.
+   * - The ball flies true for `quietMin`-`quietMax` s, then breaks for `breakMin`-`breakMax` s at
+   *   `strengthMin`-1 of that strength (coming on and letting go over `edge` s), and so on: one to
+   *   three breaks in a serve. `down` of the breaks go straight down, the rest left or right as
+   *   often as each other.
+   * - The critical speed of this serve is drawn between `crisisLo` and `crisisHi` m/s. Over the
+   *   `crisisWidth` m/s below it the drag grows by `dieDrag` (x 1.6: from this model's 0.26 to
+   *   0.42; a ball under the crisis sits at 0.4-0.5), so the ball drops short of where it looked
+   *   to be going. Only floats get this: a spinning ball passes through the crisis too, but nobody
+   *   sees it, and giving every ball it would retune every pass and set.
+   * - `read`: what anyone watching knows of a floating ball's path is where it was heading this
+   *   long ago (s, a reaction time), with no break to come. The landing marker and every AI player
+   *   use that read (docs/adr/0005), looked at again every `readSteps` simulation steps. Nothing
+   *   else makes a float hard to pass: a passer who was sent to the wrong spot is late, reaches,
+   *   or has the platform up too early for a ball that died.
+   *
+   * Critical Reynolds numbers of match volleyballs are 2.0-3.3 x 10^5 depending on the ball and on
+   * which way its panels face (Hong, Asai et al., wind tunnel, 2017-2020, read as abstracts): 14 to
+   * 24 m/s, which is where float serves fly, at a drag coefficient of 0.15-0.2 just above it. The
+   * critical speeds here sit at the low end of that, so that a float dies late in its flight, not
+   * from the hand.
+   *
+   * Bent, and why: no source read gives a side force coefficient. A first version held a weak
+   * push (`cs` 0.08) for the whole flight: the ball curved 0.2 m, smoothly, and nobody playing it
+   * saw a float. `cs` 0.45 in short breaks is at or past the top of what a ball's seams can do, and
+   * is set by what a float looks like from the court: it goes straight, then it is somewhere else.
+   * A Perfect jump float comes down 0.56 m to one side of where it was heading (0.9 m one time
+   * in ten, 1.2 m at most), a Perfect standing float 0.46 m to one side and 0.6 m short; a Good
+   * contact half of that (tests/float.test.ts, 200 serves each). The Mini Rally's receivers pass
+   * 37% of Perfect jump floats to target, where they passed 72% of the same serve without the
+   * float, and are aced by one in eight (70 serves, Outside Hitter).
+   */
+  float: {
+    cs: 0.45,
+    speedLo: 10,
+    speedFull: 14,
+    quietMin: 0.22,
+    quietMax: 0.5,
+    breakMin: 0.14,
+    breakMax: 0.22,
+    strengthMin: 0.6,
+    down: 0.25,
+    edge: 0.03,
+    crisisLo: 13,
+    crisisHi: 16.5,
+    crisisWidth: 1.2,
+    dieDrag: 0.6,
+    read: 0.2,
+    readSteps: 4,
+  },
 } as const;
 
 export const SIM = {
@@ -469,6 +529,10 @@ export const CONTACT = {
   tipOver: 0.6,
   /** swing power at the shortest (just past a tap) wind-up; full charge = 1 */
   chargePowerMin: 0.7,
+  /**
+   * Serve speeds (m/s) for a Good contact at full power, before the athlete's power: a float hit
+   * with the feet on the floor, and a topspin jump serve. The jump float's is `SERVE.jumpFloatSpeed`.
+   */
   serveFloatSpeed: 17,
   serveJumpSpeed: 24,
   serveJumpSpin: 50,
@@ -561,6 +625,22 @@ export const CONTACT = {
    */
   serveSafe: 0.6,
   serveSafeApex: 1.0,
+  /**
+   * How much a float serve floats (`BallState.knuckle`, see `BALL.float`), by the grade of the
+   * contact: a mishit (Early or Late), Good, Perfect. A float needs a clean hit through the middle
+   * of the ball with no spin; any spin kills it.
+   */
+  floatClean: [0, 0.2, 0.55, 1],
+  /**
+   * The AI's float still never misses (`serveSafe`): the way it breaks is drawn again, up to
+   * `floatSafeTries` times and then with `floatSafeCut` of the float each time (none once it is
+   * under `floatSafeMin`), until its real flight clears the tape by `floatSafe` m and lands that
+   * far inside the lines.
+   */
+  floatSafe: 0.15,
+  floatSafeTries: 6,
+  floatSafeCut: 0.5,
+  floatSafeMin: 0.1,
   sideReach: 0.6,
   sideErr: 1.4,
   diveLow: 0.25,
@@ -583,6 +663,108 @@ export const CONTACT = {
   shankTurn: 1.7,
   userSpikeShank: 0.6,
 };
+
+/** the three serves, in the order of the keys that pick them (1-3) */
+export type ServeKind = 'float' | 'jumpFloat' | 'jump';
+export const SERVE_KINDS: readonly ServeKind[] = ['float', 'jumpFloat', 'jump'];
+
+/**
+ * Serving. The serve is picked before the toss (keys 1-3), as on a court: it decides where you
+ * stand and how you toss, and everything after the toss is the body's work, with the spike's
+ * controls and the spike's timing windows.
+ *
+ * Each serve has its own toss: `toss` m forward (where the ball would be back at the height it
+ * left the hand) and `tossHigh` m over the standing reach at its top. `back` is where the Serve
+ * drill stands you, m behind the end line; you may toss from anywhere behind it.
+ *
+ * The player sets the height of each toss: Q is held and let go. A tap tosses `hold.low` of the
+ * serve's `tossHigh`, a hold of `hold.full` s or longer `hold.high` of it, evenly in between, so
+ * the serve's own height is a hold of 0.36 s. A higher toss is in the air longer, and a jump
+ * server tosses it further ahead to fill that time with run-up: how far ahead it comes down is
+ * scaled by the height's share of the serve's own to the power `ahead`, 0.5 for the jump float
+ * and the jump serve (the toss's time in the air grows as the square root of its height, and the
+ * run covers ground at the same pace), 0 for the standing float, whose toss comes down in front
+ * of the hitting shoulder however high it goes. The highest jump serve toss comes down 5.1 m
+ * ahead instead of 4.0: from the drill's start that is 3.2 m of run-up, with the take-off
+ * 0.2 m behind the end line; a tap's comes down 2.8 m ahead, 1.2 m of run-up. The first
+ * version had one toss per serve and no meter (a server grooves a toss; a different height each
+ * rep is an error, not a choice, and a meter puts a fourth timing in front of the run, the jump
+ * and the swing). The two were played against each other on the preview and the held toss was
+ * kept: timing your own toss is part of serving, and a held button is how the swing and the
+ * jump are already played. The AI's tosses are not held: they are the serve's own.
+ *
+ * - `float`: a low toss in front of the hitting shoulder (0.8 m over the contact, in the air
+ *   0.95 s), hit with the feet on the floor. Both floats move in the air as cleanly as they were
+ *   hit (`BALL.float`, `CONTACT.floatClean`).
+ * - `jumpFloat`: a low toss two steps ahead (0.85 m over the contact, 1.1 s), met at the top of
+ *   a short run-up that starts 0.15 s after the ball leaves the hand: little time to fix anything.
+ * - `jump`: the high toss far ahead that a full spike approach runs under (1.75 m over the
+ *   contact, 1.4 s; the run-up starts a quarter of a second after the toss). From `back` a clean
+ *   one takes off a metre behind the end line and lands in the court. The AI's own toss is lower
+ *   and longer (`AI.serve.jumpToss`): it starts its run-up on the step the ball leaves the hand,
+ *   and a person needs a beat to see the toss first.
+ *
+ * (Measured with tests/serveRun.ts, an Outside Hitter, a full run-up and jump.)
+ *
+ * The ball's spin comes from the serve picked (`spin`), its height and pace from the body: a
+ * float hit off a jump is a jump float, a jump serve hit off the floor is a slow topspin serve.
+ * Speeds are for a Good contact at full power. The top speeds measured in men's international
+ * play are 63 km/h for the float, 73 km/h for the jump float and 125 km/h for the jump serve
+ * (Häyrinen et al. 2007, read in a secondary source); a Perfect contact here gives about 62, 73
+ * and 95 km/h for an Outside Hitter.
+ */
+export const SERVE = {
+  float: { name: 'Standing float', short: 'Float', back: 1.1, toss: 0.25, tossHigh: 0.8, ahead: 0, spin: false },
+  jumpFloat: { name: 'Jump float', short: 'Jump float', back: 2.3, toss: 2.0, tossHigh: 1.7, ahead: 0.5, spin: false },
+  jump: { name: 'Jump serve', short: 'Jump', back: 3.4, toss: 4.0, tossHigh: 2.8, ahead: 0.5, spin: true },
+  hold: { full: 0.8, low: 0.5, high: 1.6 },
+  /** a float hit in the air off a full run-up (m/s); `CONTACT.serveFloatSpeed` with no run-up at all */
+  jumpFloatSpeed: 20,
+  /** the run-up that gives a jump float its full pace: this share of the athlete's approach speed at the plant */
+  floatRun: 0.5,
+  /** a jump serve hit with the feet on the floor keeps this share of its pace (and so of its spin) */
+  standingSpin: 0.7,
+  /**
+   * Foot fault (FIVB rule 12.4.3): at the hit, or at the take-off of a jump serve, the server
+   * touches neither the court (the end line is part of it) nor the floor outside the service
+   * zone, which is as wide as the court. The athlete is a point at the middle of the feet, so the
+   * toes are taken to be `foot` m ahead of it. Landing in the court after the hit is allowed.
+   * Only the player is called for it: the AI never misses a serve (`CONTACT.serveSafe`).
+   */
+  foot: 0.15,
+  /**
+   * A toss is hit at its top or on its way down: while it still rises faster than this (m/s) the
+   * hand does not meet it (a swing then is a swing too early). Without it the ball passed through
+   * the contact point on its way up, 0.1 s after it left the hand, and a swing there was a serve.
+   */
+  tossRising: 0.5,
+} as const;
+
+/**
+ * The Serve drill (src/game/modes/serveDrill.ts). The server starts `x` m right of the middle of
+ * the end line (servers come from right back) and is walked back there between reps when more
+ * than `startSlack` m off. A serve nobody has played or called `flightMax` s after the hit is
+ * out. The rep ends when the serve is rated (their pass, an ace or a fault): the ball is dead and
+ * the next rep starts `result` s later, long enough to see the pass leave the passer's arms and
+ * read the rating (the Spike Drill's next set comes 1.9 s after a rep). It used to wait for the
+ * receiving team to play the pass out to their attack; that made a rep twice as long, for what the
+ * rating already says. Owner's call, after playing it.
+ * A third-person camera starts the drill looking `lookDepth` m into their court, where a serve
+ * goes: a full-power jump serve aimed shorter than about 7 m is in the net (the start screen
+ * leaves the camera on mid-court, a spike's aim). In first person you look up at your toss, which
+ * aims deep by itself.
+ * The grade of a serve is shown to one side of the flight, not over it: from behind the server the
+ * ball is 15 m away and a few pixels wide, and the grade text sat exactly on its path. (Tried
+ * and taken out for now: narrowing the third-person view to half its field of view while the serve
+ * is in the air, so a float's break could be seen from the end line.)
+ */
+export const SERVE_DRILL = {
+  x: 2,
+  lookDepth: 7.8,
+  startSlack: 0.5,
+  flightMax: 6,
+  result: 1.5,
+} as const;
 
 export const ASSIST = {
   /** 0..1 default aim assist strength */
@@ -693,6 +875,15 @@ export const TUTORIAL = {
   sweetErr: 0.015,
   /** together: the coach aims your swing this deep (m) into their court, straight down your line */
   aimDepth: 6.5,
+  /**
+   * The serve lessons (one per serve, on the Serve Drill: toss, then the spike's run, jump, draw
+   * and hit). Together, the coach aims the serve `serveAimDepth` m deep (a full-power jump serve
+   * aimed shorter than about 7 m is in the net), and a standing float's draw cue comes
+   * `floatDraw` s before its best contact: time to draw the arm all the way (`TIMING.chargeFull`)
+   * and a reaction time more.
+   */
+  serveAimDepth: 7.8,
+  floatDraw: 0.55,
   /** slow motion rep: the speed from the set to your landing */
   slowScale: 0.6,
   /** tries at the together rep, the slow rep and the full-speed rep before the lesson moves on anyway */
@@ -1232,6 +1423,13 @@ export const FX = {
    * stands round it, `jumpRing` times as wide, at `jumpOpacity`.
    */
   setSpot: { radius: 0.32, jumpRing: 1.5, jumpOpacity: 0.6 },
+  /**
+   * A float breaking (`BALL.float`): a ring pops round the ball where it turns, as wide (m) and
+   * as bright as this for the hardest break of a Perfect float, less for a weaker one. From
+   * behind the server the ball is 15 m away and a break moves it a ball or two on the screen:
+   * the ring says when.
+   */
+  floatBreak: { size: 0.9, strength: 0.6 },
   /** where your feet go (the plant spot of an approach): ring radius (m), and the lesson's arrows towards it */
   floorSpot: {
     radius: 0.36,
@@ -1744,7 +1942,8 @@ export const AI = {
    * `jumpBack` m behind the end line, walks `jumpStep` m into the toss, tosses the ball `jumpTossHigh` m over their standing reach
    * (about 1.3 m over the contact: the toss drops into a three-step run-up, not out of the sky) and
    * `jumpToss` m forward (where it would come back down to toss height), runs in, takes off behind
-   * the line and lands in the court (FIVB rule 12.4.3); the rest are standing floats. The target is the seam between two passers,
+   * the line and lands in the court (FIVB rule 12.4.3); the rest are standing floats (`SERVE.float`'s toss). The player's own
+   * jump serve toss is higher (`SERVE.jump`). The target is the seam between two passers,
    * deep in zone 1 or 5 (`deepIn` m inside the corner), short (`shortZ` m off the net, floats only)
    * or at a passer, weighted `seam` / `deep` / `short` / `body`, `spread` m (1 sd) around it before
    * the server's own error: their swing timing is off by `floatErr` / `jumpErr` s (1 sd), never more

@@ -2,6 +2,8 @@ import {
   BODY,
   isPositionId,
   POSITIONS,
+  SERVE,
+  SERVE_KINDS,
   SET_LEVEL_IDS,
   SET_LEVELS,
   SETTING_RANGES,
@@ -11,13 +13,14 @@ import {
   type BooleanSettingKey,
   type NumericSettingKey,
   type PositionId,
+  type ServeKind,
   type Settings,
   type VenueId,
 } from '../config';
 import { BUILD_LABEL } from '../core/build';
-import { defaultSettings, systemPrefersReducedMotion } from '../core/settings';
 import { isCustomBody, resolveBody, setBodyValue, spikeReach, topSpikeKmh } from '../game/body';
 import { isModeId, MODE_INFO, type ModeId } from '../game/modes/mode';
+import type { Lesson } from '../game/tutorial';
 import { athleteStats } from './athleteStats';
 import { ALL_CONTROLS, COMING_FORMATS, DRILL_INFO, HITTERS, PLAY_MODES, SETTER_CALLS, TRAIN_MODES, type KeyHint } from './drillInfo';
 import { ICONS, type IconName } from './icons';
@@ -121,6 +124,8 @@ function courtGlyph(id: PositionId, on: boolean): string {
 }
 
 export interface MenuCallbacks {
+  /** the settings a first visit starts with on this device (Settings, Reset) */
+  defaultSettings(): Settings;
   play(mode: ModeId, pos: PositionId): void;
   /** the welcome's main button: start the lesson, or carry on from where it was left */
   playTutorial(): void;
@@ -132,6 +137,10 @@ export interface MenuCallbacks {
   /** the visitor chose the drills over the lesson: don't offer it again */
   declineTutorial(): void;
   tutorialActive(): boolean;
+  /** Learn's serve lessons: take the one for this serve */
+  playServeLesson(kind: ServeKind): void;
+  /** the serve lessons finished in this browser */
+  serveLessonsDone(): ServeKind[];
   /** the mode and position being played (for the pause menu), or null on the start screen */
   playing(): { mode: ModeId; pos: PositionId } | null;
   resume(): void;
@@ -182,6 +191,8 @@ export class Menu {
   private homeBack!: HTMLElement;
   private continueBtn!: HTMLButtonElement;
   private lessonGo!: HTMLButtonElement;
+  /** Learn's three serve lesson buttons */
+  private serveGo = new Map<ServeKind, HTMLButtonElement>();
 
   private settingsOpen = false;
   /** the Settings group in view: it is kept while the menu lives, so Settings reopens where it was left */
@@ -201,6 +212,8 @@ export class Menu {
   private pauseOnly: HTMLElement[] = [];
   /** the pause dialog is showing the end of the lesson (null: it is the pause menu) */
   private finished: 'clean' | 'done' | null = null;
+  /** which lesson the end-of-lesson dialog is about */
+  private finishedLesson: Lesson = 'spike';
 
   constructor(
     parent: HTMLElement,
@@ -747,7 +760,7 @@ export class Menu {
   private buildLearn(): HTMLElement {
     const view = h('section', 'view view-split view-learn');
     const list = h('div', 'list-col');
-    list.append(txt('h1', 'view-t', 'Learn'), txt('p', 'view-s', 'A lesson that waits for you, and every control.'));
+    list.append(txt('h1', 'view-t', 'Learn'), txt('p', 'view-s', 'Lessons that wait for you, and every control.'));
     const lesson = h('div', 'lesson');
     const steps = h('ol', 'steps');
     for (const s of ['Run', 'Jump', 'Draw', 'Hit']) steps.append(txt('li', 'step', s));
@@ -764,7 +777,29 @@ export class Menu {
       steps,
       this.lessonGo,
     );
-    list.append(lesson, txt('p', 'view-s', 'More lessons will be added here.'));
+    // the serve: one lesson for each serve, the same three balls on the Serve Drill
+    const serve = h('div', 'lesson');
+    const serveSteps = h('ol', 'steps');
+    for (const s of ['Toss', 'Run', 'Jump', 'Draw', 'Hit']) serveSteps.append(txt('li', 'step', s));
+    const picks = h('div', 'lesson-picks');
+    for (const k of SERVE_KINDS) {
+      const b = btn('ghost-btn', SERVE[k].name);
+      b.onclick = () => this.cb.playServeLesson(k);
+      this.serveGo.set(k, b);
+      picks.append(b);
+    }
+    serve.append(
+      txt('div', 'eyebrow', 'Tutorial'),
+      txt('div', 'lesson-t', 'The serve, in three balls'),
+      txt(
+        'div',
+        'lesson-b',
+        'One lesson for each serve, from the easiest: the standing float (toss, draw, hit), then the jump float and the jump serve, which add the run and the jump. The same three balls: together, slow motion, full speed.',
+      ),
+      serveSteps,
+      picks,
+    );
+    list.append(lesson, serve);
 
     const panel = h('div', 'panel');
     const head = h('div', 'block-head');
@@ -809,7 +844,7 @@ export class Menu {
     this.pauseTitle = txt('div', 'pause-t', 'Paused');
     this.pauseSub = h('div', 'pause-s');
     this.pauseBody = h('div', 'pause-b');
-    this.pauseNote = h('div', 'pause-n', 'The <b>Spike Drill</b> is under Train, and the <b>tutorial</b> under Learn.');
+    this.pauseNote = h('div', 'pause-n');
     this.resumeBtn = h('button', 'play-btn');
     this.resumeBtn.type = 'button';
     this.resumeBtn.onclick = () => this.cb.resume();
@@ -936,8 +971,9 @@ export class Menu {
    * the Spike Drill you are standing in, or go and choose another drill. `clean`: the last
    * ball was a Perfect or a Good.
    */
-  showFinished(clean: boolean): void {
+  showFinished(clean: boolean, lesson: Lesson = 'spike'): void {
     this.finished = clean ? 'clean' : 'done';
+    this.finishedLesson = lesson;
     // "Choose another drill" lands on the drills
     this.setView('train');
     this.showPause(true);
@@ -950,14 +986,22 @@ export class Menu {
     this.pauseTitle.textContent = f ? "You're on the court." : 'Paused';
     this.pauseSub.textContent = playing ? `${MODE_INFO[playing.mode].title} · ${POSITIONS[playing.pos].name}` : '';
     this.pauseSub.style.display = playing && !f ? '' : 'none';
+    const lesson = this.finishedLesson;
+    const serve = lesson !== 'spike';
+    const what = serve
+      ? `the ${SERVE[lesson].name.toLowerCase()}: ${lesson === 'float' ? 'toss, draw, hit' : 'toss, run, jump, draw, hit'}`
+      : 'the spike: run, jump, draw, hit';
     this.pauseBody.textContent = !f
       ? ''
       : f === 'clean'
-        ? 'That is the spike: run, jump, draw, hit. The tutorial is done.'
+        ? `That is ${what}. The tutorial is done.`
         : 'That is the tutorial. The timing comes with reps.';
     this.pauseBody.style.display = f ? '' : 'none';
+    this.pauseNote.innerHTML = serve
+      ? 'The <b>Serve Drill</b> is under Train, with all three serves, and the other serve lessons under Learn.'
+      : 'The <b>Spike Drill</b> is under Train, and the <b>tutorial</b> under Learn.';
     this.pauseNote.style.display = f ? '' : 'none';
-    this.resumeBtn.innerHTML = f ? 'KEEP HITTING' : 'RESUME<kbd class="only-kb">ESC</kbd>';
+    this.resumeBtn.innerHTML = f ? (serve ? 'KEEP SERVING' : 'KEEP HITTING') : 'RESUME<kbd class="only-kb">ESC</kbd>';
     this.quitBtn.textContent = f ? 'Choose another drill' : 'Quit to menu';
     for (const b of this.pauseOnly) b.style.display = f ? 'none' : '';
   }
@@ -974,6 +1018,11 @@ export class Menu {
     // Enter on Home takes the lesson while it is offered
     this.mainBtns.set('home', offer ? this.welcomeGo : this.continueBtn);
     this.lessonGo.textContent = offer === 'resume' ? 'CONTINUE' : offer ? 'START' : 'TAKE IT AGAIN';
+    const done = this.cb.serveLessonsDone();
+    for (const [k, b] of this.serveGo) {
+      b.textContent = (done.includes(k) ? '✓ ' : '') + SERVE[k].name;
+      b.classList.toggle('done', done.includes(k));
+    }
     this.skipTutorialBtn.style.display = this.cb.tutorialActive() ? '' : 'none';
   }
 
@@ -1229,7 +1278,7 @@ export class Menu {
         reset.textContent = 'Reset every group?';
         return;
       }
-      const d = defaultSettings(systemPrefersReducedMotion());
+      const d = this.cb.defaultSettings();
       Object.assign(s, { ...d, bodies: s.bodies, hand: s.hand });
       changed();
       this.openSheet('settings');

@@ -1,6 +1,6 @@
 # Start screen
 
-The start screen has four sections, switched from the top bar: Home, Train, Play and Learn. Home is one press back into the last drill, or the tutorial offer on a first visit. Train lists the five drills, Play the Mini Rally, and Learn the tutorial and every control. In Train and Play a player picks a position and a view, then starts with the gold `PLAY` button. The game remembers the last drill, position and view for the next visit.
+The start screen has four sections, switched from the top bar: Home, Train, Play and Learn. Home is one press back into the last drill, or the tutorial offer on a first visit. Train lists the five drills, Play the Mini Rally, and Learn the tutorial, a lesson for each serve and every control. In Train and Play a player picks a position and a view, then starts with the gold `PLAY` button. The game remembers the last drill, position and view for the next visit.
 
 ## Sub-features
 
@@ -48,7 +48,7 @@ Preconditions:
 - `role=button[name="PLAY"]` finds nothing on a desktop session. The gold buttons carry an `ENTER` key cap, so their accessible names are `PLAY ENTER` and `CONTINUE ENTER`, and on a touch session, where the cap is hidden, `PLAY` and `CONTINUE`. `.view.on .panel-foot .play-btn` (Train and Play) and `.continue .play-btn` (Home) work on both.
 - Train and Play each have their own `Play as` chips and view chips, and the section that is not showing stays in the page. `role=` selectors skip the hidden copy. A CSS selector such as `.pos-chip[aria-label="Middle Blocker"]` matches both and fails: start it with `.view.on`.
 - `screen` is `welcome` only while the welcome itself is showing, which is on Home. A first-time visitor on Train, Play or Learn reads `"screen":"start"`, and the offer is still open until `saved.tutorial` is set.
-- On the welcome, Enter starts the tutorial, not a drill. In Learn, Enter does nothing: the lesson's button (`START`, `CONTINUE` or `TAKE IT AGAIN`, `.lesson .play-btn`) has no key and starts the tutorial only by a click. The map does not cover the lesson yet (see the index).
+- On the welcome, Enter starts the tutorial, not a drill. In Learn, Enter does nothing: the lesson's button (`START`, `CONTINUE` or `TAKE IT AGAIN`, `.lesson .play-btn`) has no key and starts the tutorial only by a click. The map does not cover the spike lesson yet (see the index); the serve lessons' buttons are in [Serve lessons](./serve-lessons.md).
 - The number keys do nothing on the start screen. Select a drill by its row.
 - A spike drill plays behind the start screen. While `screen` is `start`, `game.mode` is `spike` and `game.autopilot` is `true` whatever is selected. Read `start.*`.
 - `start.drill` and `start.camera` are what the section in view would start: the Continue card's drill on Home, the selected row in Train, Mini Rally in Play. In Learn both are `null`.

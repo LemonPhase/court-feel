@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { isInsideRun, planToPoint, simulateApproach } from '../src/ai/approach';
+import { isInsideRun, planToPoint, simulateApproach } from '../src/game/approach';
 import { AI, PLAYBOOK, PLAYER } from '../src/config';
 import { Athlete } from '../src/game/athlete';
 import { callSheet } from '../src/game/callRuns';

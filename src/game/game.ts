@@ -1,8 +1,21 @@
 import * as THREE from 'three';
-import { ASSIST, CAMERA, CHARACTER, COURT, PLAYER, SIM, TIMING, TUTORIAL, type PositionId, type Settings, type VenueId } from '../config';
+import {
+  ASSIST,
+  CAMERA,
+  CHARACTER,
+  COURT,
+  PLAYER,
+  SERVE,
+  SIM,
+  TIMING,
+  TUTORIAL,
+  type PositionId,
+  type ServeKind,
+  type Settings,
+  type VenueId,
+} from '../config';
 import { Emitter } from '../core/events';
 import { Input } from '../core/input';
-import { saveSettings } from '../core/settings';
 import { clamp01, damp, lerp, Rng } from '../core/mathx';
 import { CameraRig, type FollowTarget } from '../camera/cameraRig';
 import { BODY_LIGHT } from '../character/bodyMaterial';
@@ -15,6 +28,8 @@ import { bodyStats } from './body';
 import { UserController } from './userController';
 import { DebugOverlay, type DebugInfo } from '../ui/debug';
 import { BallEntity, type TouchKind } from './ballEntity';
+import { BallView } from '../world/ballView';
+import { Simulation } from './simulation';
 import { DebugGizmos } from './debugGizmos';
 import type { BallEnv } from '../physics/ball';
 import { AthleteView } from '../character/athleteView';
@@ -23,7 +38,7 @@ import type { Kit } from '../character/rig';
 import { wheelPlays } from './playbook';
 import { setStepAssist } from './setAssist';
 import { autoSetJump, takeoffSpot } from './setJump';
-import { aimTargetFromLook, ContactSystem, type ContactEvent, type IdealInfo, type SetPreview } from './contact';
+import { aimTargetFromLook, ContactSystem, tossGroove, type ContactEvent, type IdealInfo, type SetPreview } from './contact';
 import { SetGuide } from '../fx/setGuide';
 import { SetRing } from '../fx/setRing';
 import { SetSpot } from '../fx/setSpot';
@@ -32,15 +47,14 @@ import { PlayWheel } from '../ui/playWheel';
 import { SetRadar } from '../ui/setRadar';
 import { Judge, type Outcome } from './judge';
 import { Hud } from '../ui/hud';
-import type { Brain } from '../ai/brain';
+import type { AiHost, Brain } from './brains';
 import { kbd, type Mode, type ModeId } from './modes/mode';
 import { createMode } from './modes/registry';
 import { makeRingTexture } from '../world/textures';
 import { UserActions } from './userActions';
-import { defaultPassTarget, defaultSetOptions } from './plays';
-import { BlockBot, isBotQuality, SpikeBot, TouchBot, type BotQuality } from './bot';
+import { BlockBot, isBotQuality, ServeBot, SpikeBot, TouchBot, type BotQuality } from './bot';
 import { Effects } from '../fx/effects';
-import { reached, Tutorial, type TutorialBegin } from './tutorial';
+import { reached, Tutorial, type Lesson, type TutorialBegin } from './tutorial';
 
 /** consecutive frames that throw before the game stops and shows the crash screen */
 const MAX_FAILED_FRAMES = 10;
@@ -51,6 +65,8 @@ export type GameEvents = {
   aiContact: { athlete: Athlete; kind: TouchKind; speed: number };
   outcome: Outcome;
   ballEvent: { kind: string; x: number; y: number; z: number; impact: number };
+  /** a float serve has just broken (`BALL.float`): how hard, 0..1 */
+  floatBreak: { strength: number };
   crowd: { amount: number; cheer: boolean };
   step: { athlete: Athlete; speed: number };
   land: { athlete: Athlete; impact: number };
@@ -63,7 +79,7 @@ export type GameEvents = {
  * Owns the renderer, the fixed-timestep simulation, the current drill and
  * the render loop.
  */
-export class Game {
+export class Game implements AiHost {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly rig: CameraRig;
@@ -75,25 +91,20 @@ export class Game {
   readonly events = new Emitter<GameEvents>((err, type) => this.reportError(err, `'${String(type)}' event handler`, false));
   readonly debug: DebugOverlay;
   readonly hud: Hud;
-  athletes: Athlete[] = [];
-  me!: Athlete;
-  readonly ball: BallEntity;
-  readonly env: BallEnv = { netTop: COURT.netHeightMen };
-  readonly rng = new Rng(2024);
+  /** the simulation: the athletes, the ball, the clock, the brains and the step. Everything else here draws it or drives it */
+  readonly sim: Simulation;
+  /** the ball as it is drawn */
+  readonly ballView: BallView;
   readonly gizmos: DebugGizmos;
   readonly views = new Map<Athlete, AthleteView>();
-  readonly brains = new Map<Athlete, Brain>();
-  readonly contact: ContactSystem;
-  readonly judge = new Judge();
   readonly actions: UserActions;
   readonly fx: Effects;
-  mode: Mode | null = null;
+  private currentMode: Mode | null = null;
   modeId: ModeId = 'spike';
   position: PositionId = 'OH';
   /** autopilot driving the user's inputs (tests / attract mode) */
   bot: { step(dt: number): void; after(): void } | null = null;
 
-  simTime = 0;
   private lastRenderSimT = 0;
   private accum = 0;
   timeScale = 1;
@@ -142,7 +153,7 @@ export class Game {
   /** called once per render frame after the HUD (the touch overlay draws itself here) */
   onFrame: (() => void) | null = null;
   /** the lesson's three balls are done (`clean`: the last one was a Perfect or a Good): offer what to do next */
-  onTutorialDone: ((clean: boolean) => void) | null = null;
+  onTutorialDone: ((clean: boolean, lesson: Lesson) => void) | null = null;
   /** Skip tutorial: 'menu' from the welcome, 'drill' once a rep is underway */
   onTutorialSkipped: ((where: 'menu' | 'drill') => void) | null = null;
   tutorial!: Tutorial;
@@ -150,10 +161,10 @@ export class Game {
   holdRender = false;
   /** in the menu: attract camera, no user control */
   inMenu = true;
-  /** rally modes: is the ball in play (AI teams read this) */
-  ballLive = false;
   /** test hook: the user's athlete is driven by the team AI */
   autoUser = false;
+  /** the serve the player has picked (keys 1-3 in the Serve drill): their next toss is that serve's toss */
+  serveKind: ServeKind = 'float';
   /**
    * Errors caught by the game: a frame or an event handler that threw. `fatal` means the
    * game has stopped (frames kept throwing). Without a handler they go to the console.
@@ -176,7 +187,22 @@ export class Game {
     public settings: Settings,
     /** a venue asked for by the link: it wins over the saved one until the player picks a venue in Settings */
     private venueOverride: VenueId | null = null,
+    /** keeps the settings after a change. The app decides where (the browser's storage): the game does not know */
+    private persist: (s: Settings) => void = () => {},
   ) {
+    // first: the venue, the settings and the display below all read the simulation's ball and net
+    this.sim = new Simulation({
+      aimAssist: (a) => (a.isUser ? this.settings.aimAssist : 0.3),
+      aimTargetFor: (a, out) => this.aimTargetFor(a, out),
+      userAimYaw: () => this.rig.yaw,
+      contact: (ev) => this.onContact(ev),
+      aiContact: (athlete, kind, speed) => this.events.emit('aiContact', { athlete, kind, speed }),
+      ballEvent: (e) => this.events.emit('ballEvent', e),
+      floatBreak: (strength) => this.events.emit('floatBreak', { strength }),
+      outcome: (o) => this.events.emit('outcome', o),
+      setLevel: () => this.settings.setLevel,
+      userSetJump: () => this.userSetJump(),
+    });
     this.venueSetting = settings.venue;
     setVenue(venueOverride ?? settings.venue);
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
@@ -205,7 +231,8 @@ export class Game {
     this.debug = new DebugOverlay(container);
     this.hud = new Hud(container);
     this.hud.camera = this.rig.camera;
-    this.ball = new BallEntity(this.scene);
+    this.ballView = new BallView(this.scene, this.ball);
+    this.ballView.mesh.layers.enable(REFLECT_LAYER);
     this.setRing = new SetRing(this.scene);
     this.setSpot = new SetSpot(this.scene);
     this.setBar = new SetBar(this.hud.root);
@@ -216,7 +243,6 @@ export class Game {
       this.input.down('Digit' + (i + 1));
       this.input.up('Digit' + (i + 1));
     });
-    this.ball.mesh.layers.enable(REFLECT_LAYER);
     this.ball.hide();
     this.gizmos = new DebugGizmos(this.scene);
 
@@ -235,32 +261,13 @@ export class Game {
     this.aimReticle.renderOrder = 4;
     this.scene.add(this.aimReticle);
 
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
-    const game = this;
-    this.contact = new ContactSystem({
-      ball: this.ball,
-      get simTime() {
-        return game.simTime;
-      },
-      env: this.env,
-      aimAssist: (a) => (a.isUser ? this.settings.aimAssist : 0.3),
-      aimTargetFor: (a, out) => this.aimTargetFor(a, out),
-      emitContact: (ev) => this.onContact(ev),
-      rand: () => this.rng.next(),
-      passTarget: (a) => this.mode?.passTarget?.(a) ?? defaultPassTarget(a),
-      setOptions: (a) => this.mode?.setOptions?.(a) ?? defaultSetOptions(a),
-      setPick: (a) => this.mode?.setPick?.(a) ?? null,
-      setLevel: () => this.settings.setLevel,
-      canServe: (a) => (this.mode?.canServe ? this.mode.canServe(a) : !this.ball.active || this.ball.state.rest),
-    });
-    this.contact.userAimYaw = () => this.rig.yaw;
-
     this.me = new Athlete('OH', 1, { body: settings.bodies.OH, hand: settings.hand });
     this.me.isUser = true;
     this.me.place(-3.2, 4.5, 0);
     this.addAthlete(this.me);
     this.user.athlete = this.me;
     this.actions = new UserActions(this);
+    this.sim.actions = this.actions;
     this.fx = new Effects(this, container);
     // the venue was applied above, before there was a ball or any sound: a saved or linked venue starts with its own
     this.applyVenueToBallAndSound();
@@ -269,6 +276,61 @@ export class Game {
     window.addEventListener('resize', () => this.resize());
     this.resize();
     this.tutorial = new Tutorial(this);
+  }
+
+  // ------------------------------------------------------------ the simulation's own, as the game's
+  // Drills, effects, the menus and the test hooks read these from the game, as they did when the
+  // game held them itself.
+  get athletes(): Athlete[] {
+    return this.sim.athletes;
+  }
+  set athletes(list: Athlete[]) {
+    this.sim.athletes = list;
+  }
+  get me(): Athlete {
+    return this.sim.me;
+  }
+  set me(a: Athlete) {
+    this.sim.me = a;
+  }
+  get ball(): BallEntity {
+    return this.sim.ball;
+  }
+  get env(): BallEnv {
+    return this.sim.env;
+  }
+  get rng(): Rng {
+    return this.sim.rng;
+  }
+  get brains(): Map<Athlete, Brain> {
+    return this.sim.brains;
+  }
+  get contact(): ContactSystem {
+    return this.sim.contact;
+  }
+  get judge(): Judge {
+    return this.sim.judge;
+  }
+  get simTime(): number {
+    return this.sim.simTime;
+  }
+  set simTime(t: number) {
+    this.sim.simTime = t;
+  }
+  /** rally modes: is the ball in play (AI teams read this) */
+  get ballLive(): boolean {
+    return this.sim.ballLive;
+  }
+  set ballLive(live: boolean) {
+    this.sim.ballLive = live;
+  }
+  /** the drill being played: the simulation steps it */
+  get mode(): Mode | null {
+    return this.currentMode;
+  }
+  set mode(m: Mode | null) {
+    this.currentMode = m;
+    this.sim.drill = m;
   }
 
   // ------------------------------------------------------------ athletes
@@ -302,11 +364,11 @@ export class Game {
   }
 
   setBrain(a: Athlete, b: Brain): void {
-    this.brains.set(a, b);
+    this.sim.setBrain(a, b);
   }
 
   clearBrains(): void {
-    this.brains.clear();
+    this.sim.clearBrains();
   }
 
   /** set the user's body + camera facing (teleport) */
@@ -413,6 +475,8 @@ export class Game {
     this.mode?.teardown();
     this.bot = null;
     this.ballLive = false;
+    this.serveKind = 'float';
+    this.contact.serving = null;
     this.me.isUser = true;
     this.input.releaseAll();
     this.judge.disarm();
@@ -434,12 +498,13 @@ export class Game {
   /**
    * Guided first session: Spike Drill, Outside, block off. Camera stays whatever
    * the player picked (FP and TP both stay available). `replay` starts at the welcome.
+   * A serve lesson (`lesson`: the serve) runs on the Serve Drill, as an Outside Hitter.
    */
   beginTutorial(opts: TutorialBegin = {}): void {
     this.hud.setVisible(true);
     this.paused = false;
     this.tutorial.begin(opts);
-    this.startMode('spike', 'OH');
+    this.startMode(this.tutorial.lesson === 'spike' ? 'spike' : 'serve', 'OH');
     this.tutorial.present();
   }
 
@@ -524,13 +589,13 @@ export class Game {
     this.hud.showHints = s.showHints;
     this.fx?.audio.setVolume(s.volume);
     this.applyUserBody();
-    saveSettings(s);
+    this.persist(s);
   }
 
   toggleCamera(): void {
     this.settings.firstPerson = !this.settings.firstPerson;
     this.rig.setMode(this.settings.firstPerson ? 'fp' : 'tp');
-    saveSettings(this.settings);
+    this.persist(this.settings);
     this.hud.setCam(this.settings.firstPerson);
     this.events.emit('toggleCam', { fp: this.settings.firstPerson });
   }
@@ -549,7 +614,8 @@ export class Game {
   aimTargetFor(a: Athlete, out: THREE.Vector3): THREE.Vector3 {
     if (a.isUser) {
       // the lesson's together rep: the coach aims it too (deep, down the hitter's line). Aiming comes later.
-      if (this.tutorial.ownsButtons()) return out.set(a.pos.x, 0, -a.side * TUTORIAL.aimDepth);
+      if (this.tutorial.ownsButtons())
+        return out.set(a.pos.x, 0, -a.side * (this.tutorial.serving ? TUTORIAL.serveAimDepth : TUTORIAL.aimDepth));
       const from = a.action && a.action.kind === 'swing' ? a.action.contactPoint : a.pos;
       return aimTargetFromLook(from.x, from.z, this.rig.yaw, this.rig.pitch, this.rig.mode === 'fp', a.side, out);
     }
@@ -578,7 +644,7 @@ export class Game {
 
   /** AI touches (sets, digs, blocks) for audio/FX */
   onAiContact(a: Athlete, kind: TouchKind, speed: number): void {
-    this.events.emit('aiContact', { athlete: a, kind, speed });
+    this.sim.onAiContact(a, kind, speed);
   }
 
   crowd(amount: number, cheer = true): void {
@@ -746,7 +812,7 @@ export class Game {
     this.wheel.hide();
     this.setSpot.hide();
     this.mode?.replayFrame();
-    this.arena.netPress(this.ball.mesh.visible ? this.ball.mesh.position : null);
+    this.arena.netPress(this.ballView.mesh.visible ? this.ballView.mesh.position : null);
     this.rig.update(dt, null);
     this.fx.update(dt * this.fx.replay.speed);
     this.arena.update(dt);
@@ -851,7 +917,9 @@ export class Game {
           ? new TouchBot(this, 'pass', quality)
           : this.modeId === 'setter' || (this.modeId === 'rally' && role === 'S')
             ? new TouchBot(this, 'set', quality)
-            : new SpikeBot(this, quality);
+            : this.modeId === 'serve'
+              ? new ServeBot(this, quality)
+              : new SpikeBot(this, quality);
   }
 
   /** start-screen background: the bot runs the spike drill under an orbiting camera */
@@ -953,34 +1021,7 @@ export class Game {
   }
 
   fixedStep(dt: number): void {
-    this.simTime += dt;
-    for (const [, b] of this.brains) b.step(dt, this);
-    this.userSetJump();
-    // assist magnet for the user's mid-air drift
-    this.contact.magnet(this.me);
-    for (const a of this.athletes) a.step(dt, this.simTime);
-    this.actions.step(dt);
-    this.contact.step(this.athletes);
-    // cleanup finished actions
-    for (const a of this.athletes) {
-      const act = a.action;
-      if (!act) continue;
-      if (act.kind === 'swing' && act.resolved && this.simTime > act.contactT + 0.35) a.endAction();
-      // a wind-up never released before landing is dropped
-      else if (act.kind === 'windup' && a.state === 'land' && a.stateT >= 0 && act.t0 < this.simTime - a.stateT) a.endAction();
-      else if (act.kind === 'block' && !act.held && this.simTime > act.releaseT + 0.25) a.endAction();
-      else if (act.kind === 'toss' && this.simTime > act.t0 + 1.6) a.endAction();
-      else if (act.kind === 'set' && act.resolved && this.simTime > act.contactT + 0.45) a.endAction();
-      else if (act.kind === 'pass' && act.resolved && this.simTime > act.contactT + 0.4) a.endAction();
-    }
-    this.ball.step(dt, this.env);
-    for (const e of this.ball.events) this.events.emit('ballEvent', e);
-    const out = this.judge.step(this.ball, this.ball.events, this.env.netTop);
-    if (out) {
-      this.events.emit('outcome', out);
-      this.mode?.onOutcome(out);
-    }
-    this.mode?.step(dt);
+    this.sim.step(dt);
     this.fx.trackAttempt();
     this.fx.checkReplay();
     this.fx.cueReplay();
@@ -1028,6 +1069,7 @@ export class Game {
     const alpha = this.accum / (1 / SIM.hz);
     for (const a of this.athletes) a.interpolate(alpha);
     this.ball.interpolate(alpha, this.hitStop > 0);
+    this.ballView.sync();
     // the net's mesh goes with a ball that is in it
     this.arena.netPress(this.ball.active ? this.ball.rpos : null);
     const step = 1 / SIM.hz;
@@ -1045,12 +1087,12 @@ export class Game {
       v.netTop = this.env.netTop;
       v.update(animDt, tr);
     }
-    this.ball.updateVisuals(realDt, this.simTime, this.env);
+    this.ballView.update(realDt, this.simTime, this.env);
     // the buffer holds live play (plus a short tail for the ball settling) only: a dead ball
     // does not push the last highlight out of it. A ball in the air always counts (the toss
     // and wind-up of a serve come before the rally goes live)
     if (!this.fx.ballDead() || this.ball.active) this.recordUntil = tr + 1.0;
-    if (tr <= this.recordUntil) this.fx.replay.record(tr, this.ball.mesh, this.ball.mesh.visible);
+    if (tr <= this.recordUntil) this.fx.replay.record(tr, this.ballView.mesh, this.ballView.mesh.visible);
     this.fx.update(animDt);
     this.rig.ballPos = this.ball.active ? this.ball.rpos : null;
     if (this.ball.active && this.debug.visible) this.gizmos.updatePath(this.ball.ensurePrediction(this.env, this.simTime), this.simTime);
@@ -1117,7 +1159,8 @@ export class Game {
     // spike wind-up: power ring, a tick at full charge, a swish on release
     const wind = me.action?.kind === 'windup' ? me.action : null;
     const charge = wind ? ContactSystem.chargeFor(this.simTime - wind.t0) : -1;
-    this.hud.setCharge(wind && !this.inMenu ? charge : null);
+    // (the same ring shows how high a toss being held will go, with a mark at the serve's own height)
+    this.hud.setCharge(this.inMenu ? null : wind ? charge : this.actions.tossHold(), wind ? null : tossGroove() / SERVE.hold.full);
     const collarErr =
       this.idealValid && me.state === 'air' && !this.inMenu
         ? this.simTime + ContactSystem.swingLead(wind ? charge : 0) - this.idealCache.t
@@ -1138,7 +1181,14 @@ export class Game {
   private updateAimReticle(dt: number): void {
     const me = this.me;
     const mat = this.aimReticle.material as THREE.MeshBasicMaterial;
-    const show = !this.inMenu && (me.state === 'air' || me.state === 'load' || me.action?.kind === 'toss' || me.action?.kind === 'windup');
+    // (a serve is aimed from the toss to the hit: the run-up under a jump serve's toss is longer than the toss's own pose)
+    const show =
+      !this.inMenu &&
+      (me.state === 'air' ||
+        me.state === 'load' ||
+        me.action?.kind === 'toss' ||
+        me.action?.kind === 'windup' ||
+        this.contact.serving === me);
     mat.opacity = lerp(mat.opacity, show ? 0.75 : 0, damp(12, dt));
     this.aimReticle.visible = mat.opacity > 0.02;
     if (this.aimReticle.visible) {

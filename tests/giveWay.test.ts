@@ -1,14 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { AI, COURT, SIM } from '../src/config';
-import { Rng } from '../src/core/mathx';
-import type { Touch } from '../src/game/ballEntity';
-import type { Game } from '../src/game/game';
+import { AI, SIM } from '../src/config';
 import { laneFor, SETTER_SPOT } from '../src/game/plays';
-import { makeBall, type BallEnv } from '../src/physics/ball';
-import { BallPredictor } from '../src/physics/predict';
 import { solveApex } from '../src/physics/solve';
 import { SLOT_ROLE, SLOTS, TeamAI } from '../src/ai/team';
 import { Athlete } from '../src/game/athlete';
+import { Simulation } from '../src/game/simulation';
+import { NO_HOOKS } from './simHooks';
 import { moveTo } from '../src/ai/brain';
 import { giveWay, type Mate } from '../src/ai/giveWay';
 
@@ -112,32 +109,11 @@ describe('players give way to each other (Mini Rally)', () => {
 
 describe('the split step (Mini Rally)', () => {
   it("defenders time a split step to land as their hitter meets the set; the blockers don't", () => {
-    const state = makeBall();
-    const predictor = new BallPredictor(DT, SIM.predictHorizon);
-    const env: BallEnv = { netTop: COURT.netHeightMen };
-    let version = 0;
-    let predicted = -1;
-    const ball = {
-      state,
-      active: true,
-      lastTouch: null as Touch | null,
-      get pos() {
-        return state.p;
-      },
-      get vel() {
-        return state.v;
-      },
-      speed: () => Math.hypot(state.v.x, state.v.y, state.v.z),
-      ensurePrediction(e: BallEnv, t: number) {
-        if (predicted !== version) {
-          predictor.compute(state, e, t);
-          predicted = version;
-        }
-        return predictor;
-      },
-    };
-    const g = { simTime: 0, env, rng: new Rng(5), ballLive: true, ball, setBrain() {}, hud: { message() {} }, contact: { lastSet: null } };
-    const team = new TeamAI(1, g as unknown as Game);
+    // a real simulation, built with no browser: the team reads its ball, its clock and its random stream
+    const sim = new Simulation(NO_HOOKS);
+    sim.rng.reseed(5);
+    sim.ballLive = true;
+    const team = new TeamAI(1, sim);
     for (const slot of SLOTS) team.add(slot, new Athlete(SLOT_ROLE[slot], 1), false);
     team.place('defense');
     // their setter sets their outside, high
@@ -145,12 +121,10 @@ describe('the split step (Mini Rally)', () => {
     const from = { x: -SETTER_SPOT.x, y: 2.6, z: -SETTER_SPOT.z };
     const v = { x: 0, y: 0, z: 0 };
     solveApex(from, { x: lane.x, y: 3.25, z: lane.z }, 3.25 + lane.apexAbove, { x: 0, y: 0, z: 0 }, v);
-    Object.assign(state.p, from);
-    Object.assign(state.v, v);
-    version++;
-    ball.lastTouch = { athlete: null, kind: 'set', t: 0, side: -1 };
+    sim.ball.launch(from, v);
+    sim.ball.lastTouch = { athlete: null, kind: 'set', t: 0, side: -1 };
     team.step();
-    const tc = ball.ensurePrediction(env, 0).descendThrough(3.25, 0);
+    const tc = sim.ball.ensurePrediction(sim.env, 0).descendThrough(3.25, 0);
     for (const slot of SLOTS) {
       const a = team.players.get(slot)!;
       if (team.frontRow().includes(a)) expect(a.splitT, slot).toBeLessThan(0);

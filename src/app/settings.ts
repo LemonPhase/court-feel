@@ -9,7 +9,7 @@ import {
   type Settings,
 } from '../config';
 import { sanitizeBodies } from '../game/body';
-import { clamp } from './mathx';
+import { clamp } from '../core/mathx';
 
 const KEY = 'courtfeel.settings.v1';
 

@@ -3,7 +3,7 @@ import { AI, COURT, SIM } from '../src/config';
 import { Rng, wrapAngle, yawFromDir } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import type { Touch, TouchKind } from '../src/game/ballEntity';
-import type { Game } from '../src/game/game';
+import type { AiHost } from '../src/game/brains';
 import { MiniRally } from '../src/game/modes/miniRally';
 import { laneFor, SETTER_SPOT, setterTouchY } from '../src/game/plays';
 import { makeBall, stepBall, type BallEnv, type V3 } from '../src/physics/ball';
@@ -62,10 +62,9 @@ function homeTeam() {
     ball,
     setBrain() {},
     onAiContact() {},
-    hud: { message() {} },
     contact: { lastSet: null, tryPass: () => false, tryBlock: () => false },
   };
-  const game = g as unknown as Game;
+  const game = g as unknown as AiHost;
   const team = new TeamAI(1, game);
   for (const slot of SLOTS) team.add(slot, new Athlete(SLOT_ROLE[slot], 1), false);
   team.place('defense');
@@ -503,7 +502,7 @@ describe('running a ball down (Mini Rally)', () => {
     const t = homeTeam();
     for (const b of t.team.brains.values()) {
       b.job = 'cover';
-      b.step(DT, t.g as unknown as Game);
+      b.step(DT, t.g as unknown as AiHost);
       expect(b.athlete.low).toBe(1);
     }
     // off their block, fast over the cover and down in our deep right corner
@@ -544,7 +543,7 @@ describe('running a ball down (Mini Rally)', () => {
       for (let k = 0; k < 0.9 * SIM.hz && !dived; k++) {
         t.g.simTime += DT;
         stepBall(t.ball.state, DT, t.g.env, []);
-        b.step(DT, t.g as unknown as Game);
+        b.step(DT, t.g as unknown as AiHost);
         L.step(DT, t.g.simTime);
         dived = L.state === 'dive';
       }
@@ -596,7 +595,7 @@ describe('the second ball (Mini Rally)', () => {
     // the libero's pass sails over the net, coming down 3 m into their court
     t.touch('pass', 1, { x: L.pos.x, y: 0.8, z: L.pos.z }, { x: 0.5, y: 0.5, z: -3 }, 4.6, L);
     t.run(AI.setterRead + 0.2);
-    expect(t.team.overpass(t.g as unknown as Game)).toBe(true);
+    expect(t.team.overpass(t.g as unknown as AiHost)).toBe(true);
     expect(t.brain('S').job).not.toBe('set');
     expect(t.team.read).toBeNull();
     for (const slot of ['OH1', 'MB', 'OPP'] as const) expect(t.brain(slot).job).toBe('block');
@@ -608,7 +607,7 @@ describe('the second ball (Mini Rally)', () => {
     const L = t.team.players.get('L')!;
     t.touch('pass', 1, { x: L.pos.x, y: 0.8, z: L.pos.z }, { x: SETTER_SPOT.x, y: 2.4, z: SETTER_SPOT.z }, 4.6, L);
     t.run(AI.setterRead + 0.2);
-    expect(t.team.overpass(t.g as unknown as Game)).toBe(false);
+    expect(t.team.overpass(t.g as unknown as AiHost)).toBe(false);
     expect(t.brain('S').job).toBe('set');
   });
 
@@ -623,7 +622,7 @@ describe('the second ball (Mini Rally)', () => {
     t.touch('pass', 1, { x: L.pos.x, y: 0.8, z: L.pos.z }, { x: -3.8, y: 0.75, z: 8.2 }, 5.5, L);
     t.run(AI.setterRead + 0.2);
     expect(t.team.read?.call).toBe('help');
-    expect(t.team.freeBall(t.g as unknown as Game)).toBe(you);
+    expect(t.team.freeBall(t.g as unknown as AiHost)).toBe(you);
   });
 
   it("a shanked dig flying metres out of everyone's reach is their point: the setter calls nothing on it", () => {
@@ -652,7 +651,7 @@ describe('the second ball (Mini Rally)', () => {
     expect(t.team.read?.call).toBe('help');
     expect(t.brain('L').job).toBe('set');
     expect(t.team.secondBy).toBe(L);
-    expect(t.team.freeBall(t.g as unknown as Game)).toBeNull();
+    expect(t.team.freeBall(t.g as unknown as AiHost)).toBeNull();
   });
 
   it('a shanked pass the libero runs down by the end line is still set to a pin: a much rougher set than one from a few metres off the net', () => {
@@ -661,7 +660,7 @@ describe('the second ball (Mini Rally)', () => {
     expect(far.t.team.read?.call).toBe('help');
     expect(far.t.brain('L').job).toBe('set');
     expect(far.t.team.secondBy).toBe(far.L);
-    expect(far.t.team.freeBall(far.t.g as unknown as Game)).toBeNull();
+    expect(far.t.team.freeBall(far.t.g as unknown as AiHost)).toBeNull();
     expect(far.t.brain('L').setter.sloppy).toBeGreaterThan(near.t.brain('L').setter.sloppy + 0.3);
   });
 
@@ -678,11 +677,11 @@ describe('the second ball (Mini Rally)', () => {
     expect(t.team.read?.call).toBe('help');
     expect(t.brain('OH1').job).toBe('set');
     expect(t.team.secondBy).toBe(oh1);
-    expect(t.team.freeBall(t.g as unknown as Game)).toBeNull();
+    expect(t.team.freeBall(t.g as unknown as AiHost)).toBeNull();
     // a hitter is no setter: never as clean as the libero's easiest
     expect(t.brain('OH1').setter.sloppy).toBeGreaterThanOrEqual(AI.backupSet.otherBase);
     // and the high ball goes to the other pin (the one setting it can't hit it)
-    const call = t.team.callSet(t.g as unknown as Game, oh1);
+    const call = t.team.callSet(t.g as unknown as AiHost, oh1);
     expect(call.hitter).toBe(t.team.players.get('OPP'));
   });
 
@@ -786,7 +785,7 @@ describe('a hard ball is played as well as it can be, and no better (Mini Rally)
       L.place(0, 4);
       // the ball drops onto the libero's hands
       t.put({ x: -0.14, y: L.height + 0.22, z: 4 }, { x: 0, y: -2, z: 0 }, t.team.players.get('OH2')!);
-      sb.step(DT, t.g as unknown as Game);
+      sb.step(DT, t.g as unknown as AiHost);
       expect(t.ball.lastTouch?.athlete).toBe(L);
       // where the set comes down through the hitter's contact height
       const b = makeBall();
@@ -815,7 +814,7 @@ describe('a hard ball is played as well as it can be, and no better (Mini Rally)
     for (let i = 0; i < 60; i++) {
       L.place(0, 4);
       t.put({ x: -0.14, y: L.height + 0.22, z: 4 }, { x: 0, y: -2, z: 0 }, t.team.players.get('OH2')!);
-      sb.step(DT, t.g as unknown as Game);
+      sb.step(DT, t.g as unknown as AiHost);
       const b = makeBall();
       Object.assign(b.p, t.ball.state.p);
       Object.assign(b.v, t.ball.state.v);
@@ -875,7 +874,7 @@ describe('a hard ball is played as well as it can be, and no better (Mini Rally)
     for (let i = 0; i < 0.6 * SIM.hz && !dug; i++) {
       t.g.simTime += DT;
       stepBall(t.ball.state, DT, t.g.env, []);
-      b.step(DT, t.g as unknown as Game);
+      b.step(DT, t.g as unknown as AiHost);
       S.step(DT, t.g.simTime);
       dug = S.action?.kind === 'pass' || S.state === 'dive';
     }
@@ -1411,7 +1410,7 @@ describe('nobody dives backwards at a serve or a spike (Mini Rally)', () => {
     for (let k = 0; k < 0.9 * SIM.hz && !dived; k++) {
       t.g.simTime += DT;
       stepBall(t.ball.state, DT, t.g.env, []);
-      b.step(DT, t.g as unknown as Game);
+      b.step(DT, t.g as unknown as AiHost);
       L.step(DT, t.g.simTime);
       dived = L.state === 'dive';
     }
@@ -1447,7 +1446,7 @@ describe('given the ball (Mini Rally)', () => {
     b.hitter!.phase = 'approach';
     t.put({ x: -3, y: 3, z: 5 }, { x: 0, y: 0, z: 0 }, t.team.players.get('L')!, 'pass', 1);
     b.job = 'free';
-    b.step(DT, t.g as unknown as Game);
+    b.step(DT, t.g as unknown as AiHost);
     expect(b.hitter!.phase).toBe('ready');
   });
 });
@@ -1462,7 +1461,7 @@ describe('who the setter sets (Mini Rally)', () => {
       const oh = t.team.players.get('OH1')!;
       oh.dive(0);
       t.put({ x: SETTER_SPOT.x, y: 2.6, z: SETTER_SPOT.z }, { x: 0, y: -1, z: 0 }, t.team.players.get('L')!);
-      expect(t.team.callSet(t.g as unknown as Game, S).hitter, `seed ${seed}`).not.toBe(oh);
+      expect(t.team.callSet(t.g as unknown as AiHost, S).hitter, `seed ${seed}`).not.toBe(oh);
     }
   });
 });
@@ -1587,7 +1586,7 @@ describe('a ball at the net (Mini Rally)', () => {
       for (let k = 0; k < 0.9 * SIM.hz && !dived; k++) {
         t.g.simTime += DT;
         stepBall(t.ball.state, DT, t.g.env, []);
-        b.step(DT, t.g as unknown as Game);
+        b.step(DT, t.g as unknown as AiHost);
         L.step(DT, t.g.simTime);
         dived = L.state === 'dive';
         // (and never through the net)

@@ -4,7 +4,7 @@ import type { HitterBrain } from '../ai/hitter';
 import { solveApex } from '../physics/solve';
 import type { Athlete } from './athlete';
 import type { SetOption } from './contact';
-import type { Game } from './game';
+import type { AiHost } from './brains';
 import {
   attackHeight,
   isQuick,
@@ -33,7 +33,7 @@ export interface CallHitter {
    * The pass on its way to you, for a hitter whose call is a quick: when the ball leaves your
    * hands and where (null: no quick off this pass). The mode's read; a quick runs on it.
    */
-  read?: (g: Game) => { t: number; x: number } | null;
+  read?: (g: AiHost) => { t: number; x: number } | null;
 }
 export type CallHitters = Map<SetterKey, CallHitter>;
 
@@ -91,7 +91,7 @@ export function syncRuns(hitters: CallHitters, calls: SetterCalls): void {
 }
 
 /** where and when `setter` will touch the ball now in flight (null: it never comes down onto their hands) */
-function touchOf(g: Game, setter: Athlete): { t: number; at: { x: number; y: number; z: number } } | null {
+function touchOf(g: AiHost, setter: Athlete): { t: number; at: { x: number; y: number; z: number } } | null {
   // a setter going up for it meets the ball higher and sooner
   const c = g.contact.setCatch(setter);
   if (c && c.feetY > 0) return { t: c.t, at: { x: c.at.x, y: c.at.y, z: c.at.z } };
@@ -121,7 +121,7 @@ function runFast(h: CallHitter, at: { x: number; y: number; z: number }, tSet: n
  * goes from the hitter's own read of the pass. Returns whether the pass is out of system: then
  * everyone waits for a high ball, until you ask one of them for their fast set (askFast).
  */
-export function startCallRuns(g: Game, setter: Athlete, hitters: CallHitters, calls: SetterCalls): boolean {
+export function startCallRuns(g: AiHost, setter: Athlete, hitters: CallHitters, calls: SetterCalls): boolean {
   const touch = touchOf(g, setter);
   const oos = !touch || Math.hypot(touch.at.x - SETTER_SPOT.x, touch.at.z - SETTER_SPOT.z) > AI.outOfSystem;
   calls.lock(oos);
@@ -139,7 +139,7 @@ export function startCallRuns(g: Game, setter: Athlete, hitters: CallHitters, ca
  * `AI.oosAsk.quick` s before the ball leaves your hands (to load and jump), a second-tempo run
  * `AI.oosAsk.tempo` s (to get into their last steps).
  */
-export function canAskFast(g: Game, setter: Athlete, calls: SetterCalls, k: SetterKey): boolean {
+export function canAskFast(g: AiHost, setter: Athlete, calls: SetterCalls, k: SetterKey): boolean {
   const touch = touchOf(g, setter);
   const p = calls.fastPlay(k);
   if (!touch || !p) return false;
@@ -147,7 +147,7 @@ export function canAskFast(g: Game, setter: Athlete, calls: SetterCalls, k: Sett
 }
 
 /** after the pass you asked `k` for their fast set (out of system, or back from a high ball): they line up for it and run it */
-export function askFast(g: Game, setter: Athlete, hitters: CallHitters, calls: SetterCalls, k: SetterKey): void {
+export function askFast(g: AiHost, setter: Athlete, hitters: CallHitters, calls: SetterCalls, k: SetterKey): void {
   applyCalls(hitters, calls, calls.oos);
   const h = hitters.get(k);
   const touch = touchOf(g, setter);
@@ -161,7 +161,7 @@ export function holdForHigh(hitters: CallHitters, k: SetterKey): boolean {
 }
 
 /** the pass on its way to the user setter: when the ball leaves their hands (the catch plus the load) and where */
-export function passToUser(g: Game, setter: Athlete): { t: number; x: number } | null {
+export function passToUser(g: AiHost, setter: Athlete): { t: number; x: number } | null {
   const touch = touchOf(g, setter);
   return touch ? { t: touch.t + TIMING.setLoad, x: touch.at.x } : null;
 }
@@ -171,7 +171,7 @@ export function passToUser(g: Game, setter: Athlete): { t: number; x: number } |
  * is off the net (`oos`: then no middle, as nobody sets a middle a high ball, unless you asked
  * them for the quick).
  */
-export function callOptions(g: Game, hitters: CallHitters, calls: SetterCalls, oos: boolean): SetOption[] {
+export function callOptions(g: AiHost, hitters: CallHitters, calls: SetterCalls, oos: boolean): SetOption[] {
   const W = CONTACT.setTouch.window;
   const out: SetOption[] = [];
   for (const [k, h] of hitters) {

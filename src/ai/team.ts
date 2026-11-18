@@ -4,7 +4,7 @@ import { clamp, lerp, smooth01, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
-import type { Game } from '../game/game';
+import type { AiHost, Brain } from '../game/brains';
 import { AI_TOUCH, planSetJump } from '../game/setJump';
 import {
   attackHeight,
@@ -18,7 +18,7 @@ import {
   type SetPlay,
 } from '../game/plays';
 import { BlockerBrain } from './blocker';
-import { moveTo, netYaw, stop, type Brain } from './brain';
+import { moveTo, netYaw, stop } from './brain';
 import { attackKind, readSpots, seamSpot } from './defence';
 import { giveWay, shoulderToShoulder, type Mate } from './giveWay';
 import { HitterBrain } from './hitter';
@@ -194,13 +194,13 @@ export class TeamPlayer implements Brain {
     return !!this.hitter && this.hitter.phase !== 'ready' && this.hitter.phase !== 'recover';
   }
 
-  step(dt: number, g: Game): void {
+  step(dt: number, g: AiHost): void {
     this.act(dt, g);
     // anyone just walking to a spot gives way to the others
     if (!this.firm) giveWay(this.athlete, this.team.mates(this.athlete));
   }
 
-  private act(dt: number, g: Game): void {
+  private act(dt: number, g: AiHost): void {
     const a = this.athlete;
     const face = netYaw(a.side);
     // covering: low, hands ready, and still low as the ball comes off the block until it is read
@@ -295,7 +295,7 @@ export class TeamPlayer implements Brain {
    * get to on foot is run down and dived for (PLAYER.dive*). A ball going by to one side is played
    * with the platform out to that side (the contact system finds it).
    */
-  private playFirstOrFree(_dt: number, g: Game): void {
+  private playFirstOrFree(_dt: number, g: AiHost): void {
     const a = this.athlete;
     const ball = g.ball;
     const now = g.simTime;
@@ -456,7 +456,7 @@ export class TeamPlayer implements Brain {
     }
   }
   /** the ball the setter is sent to has dropped below their hands, out of reach of them: too late to set */
-  private underTheHands(g: Game): boolean {
+  private underTheHands(g: AiHost): boolean {
     const a = this.athlete;
     const ball = g.ball;
     const lt = ball.lastTouch;
@@ -511,7 +511,7 @@ export class TeamAI {
    * Who was sent to play the ball now in flight when it isn't the setter's to set (the setter
    * called HELP, or nobody can attack the third ball): may be the user, who is told it is theirs.
    */
-  freeBall(g: Game): Athlete | null {
+  freeBall(g: AiHost): Athlete | null {
     return this.freeFor === g.ball.lastTouch ? this.freeAthlete : null;
   }
 
@@ -522,7 +522,7 @@ export class TeamAI {
    * once per ball, while it is still to come down to the hands (a tight pass the setter is about
    * to set would land over the net if left alone: it is no overpass).
    */
-  overpass(g: Game): boolean {
+  overpass(g: AiHost): boolean {
     const lt = g.ball.lastTouch;
     const s = this.side;
     if (!g.ball.active || !lt || lt.side !== s || this.touches !== 1 || g.ball.state.rest) return false;
@@ -554,6 +554,8 @@ export class TeamAI {
   setInSystem = true;
   /** the setter has just called a read (the Mini Rally shows and voices it) */
   onRead: ((r: SetterRead) => void) | null = null;
+  /** our setter has just set the user (the Mini Rally tells them) */
+  onUserSet: (() => void) | null = null;
   /** our serve is in the air and nobody has touched it since */
   private ourServe = false;
   /** one of us touched our own serve before the other side did: a service fault */
@@ -576,7 +578,7 @@ export class TeamAI {
 
   constructor(
     public side: 1 | -1,
-    private g: Game,
+    private g: AiHost,
   ) {}
 
   add(slot: Slot, a: Athlete, isUser: boolean): void {
@@ -660,7 +662,7 @@ export class TeamAI {
    * loads in the hands first) and where. Null for anything else, or for a pass too far off the
    * net to run a quick.
    */
-  passToSetter(g: Game): { t: number; x: number } | null {
+  passToSetter(g: AiHost): { t: number; x: number } | null {
     const lt = g.ball.lastTouch;
     const s = this.side;
     if (!g.ball.active || !lt || lt.side !== s || (lt.kind !== 'pass' && lt.kind !== 'dig' && lt.kind !== 'free')) return null;
@@ -688,7 +690,7 @@ export class TeamAI {
    * the hands (as SetterBrain does). A ball that never comes down through the hands is
    * judged where it lands (`orLanding`), or not at all.
    */
-  private setterSpotFor(setter: Athlete, g: Game, orLanding: boolean): Spot | null {
+  private setterSpotFor(setter: Athlete, g: AiHost, orLanding: boolean): Spot | null {
     const now = g.simTime;
     const pred = g.ball.ensurePrediction(g.env, now);
     const t = pred.descendThrough(setterTouchY(setter), now);
@@ -706,7 +708,7 @@ export class TeamAI {
    * but a call only ever gets worse: once "high" is called the set goes up high.
    * A backup setting for the setter (who played the first ball) always calls it high.
    */
-  private readPass(g: Game, setter: Athlete, lt: Touch, help: boolean): void {
+  private readPass(g: AiHost, setter: Athlete, lt: Touch, help: boolean): void {
     const r = this.read && this.read.touch === lt ? this.read : null;
     if (r) {
       // only while the ball is still coming down to the hands (not as it drops through them)
@@ -727,7 +729,7 @@ export class TeamAI {
   }
 
   /** the setter's call: who gets the ball */
-  callSet(g: Game, setter: Athlete) {
+  callSet(g: AiHost, setter: Athlete) {
     const s = this.side;
     const options: { slot: Slot; a: Athlete; lane: PositionId; w: number }[] = [];
     // a pin hitter already running a fast set gets it only if the ball can meet the hand in time
@@ -804,7 +806,7 @@ export class TeamAI {
 
   onSet(hitter: Athlete | null): void {
     this.setFor = hitter;
-    if (hitter && hitter.isUser) this.g.hud.message('Set to you · attack!', 1.2);
+    if (hitter && hitter.isUser) this.onUserSet?.();
   }
 
   /** count touches for this side, reset when the other side touches */
@@ -1639,7 +1641,7 @@ export class TeamAI {
     const server = this.players.get(this.userSlot === 'OH2' ? 'OPP' : 'OH2')!;
     const b = this.brains.get(server)!;
     b.job = 'serve';
-    b.server.serve(target, this.side * -2.5, jump);
+    b.server.serve(target, this.side * -2.5, jump ? 'jump' : 'float');
     return server;
   }
 }

@@ -2,12 +2,12 @@ import { AI, BALL, PLAYER } from '../config';
 import { clamp } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
-import type { Game } from '../game/game';
+import type { AiHost, Brain } from '../game/brains';
 import { laneFor, quickSpot, SETTER_SPOT } from '../game/plays';
 import type { V3 } from '../physics/ball';
-import { predictJump } from './approach';
+import { predictJump } from '../game/approach';
+import { atNet, moveTo, netYaw, stop } from './brain';
 import { decoyFor, dumpHeld, greenFools } from './greenBite';
-import { atNet, moveTo, netYaw, stop, type Brain } from './brain';
 import { BallRead } from './read';
 
 /** what a middle expects before the set: nothing in particular (read it), the quick, or one of their pins */
@@ -88,7 +88,7 @@ export class MiddleBlocker implements Brain {
     this.fooled = null;
   }
 
-  step(dt: number, g: Game): void {
+  step(dt: number, g: AiHost): void {
     const a = this.athlete;
     const now = g.simTime;
     const face = netYaw(a.side);
@@ -124,7 +124,7 @@ export class MiddleBlocker implements Brain {
   }
 
   /** their first ball: line up across from their middle, guess once it has been read */
-  private readPass(g: Game, lt: Touch): void {
+  private readPass(g: AiHost, lt: Touch): void {
     const a = this.athlete;
     const now = g.simTime;
     this.passRead.look(lt, now, g.rng);
@@ -145,7 +145,7 @@ export class MiddleBlocker implements Brain {
     this.targetX = lineX + Math.sign(pin) * M.cheatShift;
   }
 
-  private makeGuess(g: Game): Guess {
+  private makeGuess(g: AiHost): Guess {
     const r = g.rng.next();
     if (r < AI.middle.commit) return 'quick';
     if (r < AI.middle.commit + AI.middle.cheat) return g.rng.next() < 0.5 ? 'outside' : 'opposite';
@@ -153,7 +153,7 @@ export class MiddleBlocker implements Brain {
   }
 
   /** will their setter take the pass near their spot (a quick is on)? */
-  private passGood(g: Game): boolean {
+  private passGood(g: AiHost): boolean {
     const now = g.simTime;
     const pred = g.ball.ensurePrediction(g.env, now);
     const t = pred.descendThrough(2.6, now);
@@ -164,7 +164,7 @@ export class MiddleBlocker implements Brain {
   }
 
   /** a commit block: up with their middle's quick, timed off their plant and take-off */
-  private commit(g: Game): void {
+  private commit(g: AiHost): void {
     const a = this.athlete;
     const now = g.simTime;
     const them = this.theirMiddle();
@@ -181,7 +181,7 @@ export class MiddleBlocker implements Brain {
   }
 
   /** their set: react, read where it is going, run to close the block, jump on time or late with a gap */
-  private readSet(g: Game, lt: Touch): void {
+  private readSet(g: AiHost, lt: Touch): void {
     const a = this.athlete;
     const now = g.simTime;
     if (this.setRead.look(lt, now, g.rng, dumpHeld(g, lt) ? AI.middle.dumpHold : 0)) {
@@ -208,7 +208,7 @@ export class MiddleBlocker implements Brain {
   }
 
   /** when and where their hitter meets the set (`tc`, `attackX`), re-read as it flies: false while it can't tell */
-  private attack(g: Game): boolean {
+  private attack(g: AiHost): boolean {
     const now = g.simTime;
     const pred = g.ball.ensurePrediction(g.env, now);
     // the hitter meets a set around 3.2 m on its way down; a quick never gets that high on the
@@ -248,7 +248,7 @@ export class MiddleBlocker implements Brain {
    *   it sees where the set is going.
    * Then it does all it can, a beat behind (`goAfter`).
    */
-  private foolFor(g: Game, lt: Touch): Fooled {
+  private foolFor(g: AiHost, lt: Touch): Fooled {
     const a = this.athlete;
     const now = g.simTime;
     const F = AI.greenFooled;
@@ -284,7 +284,7 @@ export class MiddleBlocker implements Brain {
   }
 
   /** fooled by your green set (`foolFor`): it never gets to the ball, the pin blocker is on their own */
-  private playFooled(g: Game, f: Fooled): void {
+  private playFooled(g: AiHost, f: Fooled): void {
     const a = this.athlete;
     const now = g.simTime;
     if (f.spent || now >= f.seeT) this.goAfter(now, f);

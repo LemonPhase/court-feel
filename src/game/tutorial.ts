@@ -1,7 +1,7 @@
-import { PLAYER, SIM, TIMING, TUTORIAL as T } from '../config';
+import { PLAYER, SERVE, SERVE_KINDS, SIM, TIMING, TUTORIAL as T, type ServeKind } from '../config';
 import { clamp } from '../core/mathx';
 import type { Athlete, Grade } from './athlete';
-import { ContactSystem } from './contact';
+import { ContactSystem, tossGroove } from './contact';
 import type { Game } from './game';
 import { kbd } from './modes/mode';
 
@@ -19,6 +19,12 @@ import { kbd } from './modes/mode';
  * already down when its moment comes counts. Nobody has to let go and press again.
  *
  * Persisted once per browser: `courtFeel.tutorial.v1` = `done | skipped | in_progress:{step}`.
+ *
+ * The serve lessons (one per serve: standing float, jump float, jump serve) are the same three
+ * reps on the Serve Drill. They add the toss before the rest (TOSS › RUN › JUMP › DRAW › HIT, and
+ * TOSS › DRAW › HIT for the standing float, which has no run or jump), and the coach holds the
+ * server behind the line until GO. They are taken from Learn; which have been finished is kept in
+ * `courtFeel.serveLessons.v1`.
  */
 
 export const TUTORIAL_KEY = 'courtFeel.tutorial.v1';
@@ -27,13 +33,23 @@ export const TUTORIAL_KEY = 'courtFeel.tutorial.v1';
 export type TutorialStep = 0 | 1 | 2 | 3 | 4;
 export const LAST_STEP = 4;
 
-/** where the together rep is */
-export type Beat = 'watch' | 'run' | 'plant' | 'draw' | 'hit' | 'swing' | 'result';
+/** which lesson: the spike, or one of the three serves */
+export type Lesson = 'spike' | ServeKind;
+export const isLesson = (v: unknown): v is Lesson => v === 'spike' || SERVE_KINDS.includes(v as ServeKind);
 
-/** the four things a spike is made of, in order */
-export type CueId = 'run' | 'jump' | 'draw' | 'hit';
+/** where the together rep is */
+export type Beat = 'toss' | 'watch' | 'run' | 'plant' | 'draw' | 'hit' | 'swing' | 'result';
+
+/** the four things a spike is made of, in order (a serve has the toss first) */
+export type CueId = 'toss' | 'run' | 'jump' | 'draw' | 'hit';
 export const CUE_ORDER: readonly CueId[] = ['run', 'jump', 'draw', 'hit'];
-export const CUE_NAMES: Record<CueId, string> = { run: 'RUN', jump: 'JUMP', draw: 'DRAW', hit: 'HIT' };
+export const CUE_NAMES: Record<CueId, string> = { toss: 'TOSS', run: 'RUN', jump: 'JUMP', draw: 'DRAW', hit: 'HIT' };
+
+/** what a lesson's rep is made of, in order */
+export function cueOrder(lesson: Lesson): readonly CueId[] {
+  if (lesson === 'spike') return CUE_ORDER;
+  return lesson === 'float' ? ['toss', 'draw', 'hit'] : ['toss', 'run', 'jump', 'draw', 'hit'];
+}
 
 export interface Cue {
   id: CueId;
@@ -45,6 +61,7 @@ export interface Cue {
 }
 
 const KEYS: Record<CueId, string> = {
+  toss: kbd('Q'),
   run: `${kbd('Shift')}+${kbd('W')}`,
   jump: kbd('Space'),
   draw: kbd('Left mouse'),
@@ -70,7 +87,17 @@ export const TEXT = {
   soloIntro: 'Full speed. Run when you see GO.',
   again: "Let's take that one again.",
   aim: 'You aim with where you look: higher is deeper.',
+  toss: 'Hold to toss',
+  tossMark: "Let go at the white mark: that is this serve's toss",
+  tossHeld: 'The toss goes up at the white mark',
+  watchToss: 'Watch the toss. The ball waits for you.',
+  serveSolo: 'Full speed. Toss, and run when you see GO.',
+  floatSolo: 'Full speed. Toss, draw, hit.',
+  drawFloat: 'Hold to draw your arm back',
 };
+
+/** the name of a serve lesson's serve, in a sentence */
+const serveName = (k: ServeKind): string => SERVE[k].name.toLowerCase();
 
 const STEP = 1 / SIM.hz;
 
@@ -118,6 +145,8 @@ export interface TutorialStorage {
 }
 
 export interface TutorialBegin {
+  /** the spike (the first-run lesson, the default) or a serve */
+  lesson?: Lesson;
   /** start at the welcome even if a previous run was saved */
   replay?: boolean;
   /** force a step (0 welcome … 4 hand-off). Used by replay and `?tutorial=` */
@@ -148,6 +177,33 @@ export function writeTutorialFlag(value: string, storage?: TutorialStorage | nul
   if (!s) return;
   try {
     s.setItem(TUTORIAL_KEY, value);
+  } catch {
+    /* private mode / blocked storage */
+  }
+}
+
+export const SERVE_LESSONS_KEY = 'courtFeel.serveLessons.v1';
+
+/** the serve lessons finished in this browser */
+export function readServeLessons(storage?: TutorialStorage | null): ServeKind[] {
+  const s = storage === undefined ? browserStore() : storage;
+  if (!s) return [];
+  try {
+    const v: unknown = JSON.parse(s.getItem(SERVE_LESSONS_KEY) ?? '[]');
+    return Array.isArray(v) ? SERVE_KINDS.filter((k) => v.includes(k)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** remember that a serve lesson has been finished */
+export function markServeLessonDone(kind: ServeKind, storage?: TutorialStorage | null): void {
+  const s = storage === undefined ? browserStore() : storage;
+  if (!s) return;
+  const done = readServeLessons(s);
+  if (!done.includes(kind)) done.push(kind);
+  try {
+    s.setItem(SERVE_LESSONS_KEY, JSON.stringify(done));
   } catch {
     /* private mode / blocked storage */
   }
@@ -210,6 +266,12 @@ export interface GuideFacts {
   attack: boolean;
   /** feet to where the run started (m) */
   startD: number;
+  /** serve lessons: how long the toss button has been held (s), -1 while it is up */
+  tossHeld?: number;
+  /** serve lessons: the hold that gives this serve its own toss (s) */
+  tossAt?: number;
+  /** standing float lesson: when the draw cue comes (sim time; -1 not known yet) */
+  drawAt?: number;
 }
 
 /** what the lesson asks of the game this frame */
@@ -223,7 +285,7 @@ export interface GuideOut {
   /** together rep: the coach holds the hitter still, or runs them down the line to the spot */
   drive: 'none' | 'stand' | 'run';
   /** together rep: the one thing to do for the player this frame */
-  act: 'none' | 'plant' | 'takeoff' | 'draw' | 'swing';
+  act: 'none' | 'toss' | 'plant' | 'takeoff' | 'draw' | 'swing';
   /** the wind-up charges in real time while the ball waits */
   fill: boolean;
   /** do not simulate past this sim time (the moment the ball waits at) */
@@ -231,6 +293,7 @@ export interface GuideOut {
 }
 
 interface RepStats {
+  tossed: boolean;
   ran: boolean;
   jumped: boolean;
   landed: boolean;
@@ -238,9 +301,21 @@ interface RepStats {
   swung: boolean;
   grade: Grade | null;
   note: string;
+  /** a serve's outcome when it was not in (the drill's word: OUT, IN THE NET, FOOT FAULT...) */
+  why: string;
 }
 
-const freshRep = (): RepStats => ({ ran: false, jumped: false, landed: false, drew: false, swung: false, grade: null, note: '' });
+const freshRep = (): RepStats => ({
+  tossed: false,
+  ran: false,
+  jumped: false,
+  landed: false,
+  drew: false,
+  swung: false,
+  grade: null,
+  note: '',
+  why: '',
+});
 
 const idleOut = (): GuideOut => ({ scale: 1, snap: false, waiting: false, drive: 'none', act: 'none', fill: false, stopAt: Infinity });
 
@@ -251,6 +326,8 @@ const idleOut = (): GuideOut => ({ scale: 1, snap: false, waiting: false, drive:
 export class TutorialDirector {
   active = false;
   step: TutorialStep = 0;
+  /** the spike, or a serve */
+  lesson: Lesson = 'spike';
   beat: Beat = 'watch';
   /** time is stopped for the player right now */
   waiting = false;
@@ -282,8 +359,9 @@ export class TutorialDirector {
   /** this rep's ball has been tossed (until then the last rep's ball may still be lying there) */
   private live = false;
 
-  begin(step: TutorialStep): void {
+  begin(step: TutorialStep, lesson: Lesson = 'spike'): void {
     this.active = true;
+    this.lesson = lesson;
     this.step = step;
     this.tries = 0;
     this.clean = false;
@@ -333,17 +411,39 @@ export class TutorialDirector {
     this.rep.swung = true;
     this.rep.grade = grade;
     this.rep.note = note;
-    if (this.beat !== 'result') this.stage = 4;
+    if (this.beat !== 'result') this.stage = this.order.length;
+  }
+
+  /** what this lesson's rep is made of, in order */
+  get order(): readonly CueId[] {
+    return cueOrder(this.lesson);
+  }
+
+  /** a serve lesson */
+  get serving(): boolean {
+    return this.lesson !== 'spike';
+  }
+
+  /** the standing float: no run, no jump */
+  get standing(): boolean {
+    return this.lesson === 'float';
+  }
+
+  /** where a cue sits in this lesson's order (the HUD strip lights the ones before it) */
+  private at(id: CueId): number {
+    return this.order.indexOf(id);
   }
 
   /**
    * The rep is over (the ball is down, or nobody played it): the coach says one thing about it.
-   * `kill`: the ball landed in their court.
+   * `kill`: the ball landed in their court. `why`: a serve's outcome when it was not in.
    */
-  noteRepEnd(kill = false): void {
+  noteRepEnd(kill = false, why = ''): void {
     if (!this.active || this.step < 1 || this.step > 3 || this.beat === 'result') return;
     const r = this.rep;
-    const clean = r.grade === 'Perfect' || r.grade === 'Good';
+    r.why = why;
+    // (a serve has to be in as well: a foot fault or a ball in the net is not a clean serve)
+    const clean = (r.grade === 'Perfect' || r.grade === 'Good') && (!this.serving || kill);
     // together: any ball over the net is the point of it. After that the timing has to be there.
     const ok = this.step === 1 ? r.swung && r.grade !== 'Miss' : clean;
     this.tries += 1;
@@ -387,6 +487,7 @@ export class TutorialDirector {
       return out;
     }
     const r = this.rep;
+    if (this.serving && f.setUp) r.tossed = true;
     // what the hitter did with this set (the jog back to the start before it is not a run)
     if (f.setUp && f.startD > T.ranDist) r.ran = true;
     if (f.state === 'air') r.jumped = true;
@@ -407,10 +508,18 @@ export class TutorialDirector {
   /** the coach's line at the bottom of the screen */
   hint(): string {
     if (!this.active) return '';
-    if (this.step === 0) return TEXT.welcome;
+    if (this.step === 0)
+      return this.serving
+        ? `The ${serveName(this.lesson as ServeKind)}, in three balls. We'll serve the first one together.`
+        : TEXT.welcome;
     if (this.beat === 'result') return this.line;
     if (this.nudge) return this.nudge;
-    if (this.stage === 0 && !this.cue) return this.step === 1 ? TEXT.watch : this.step === 2 ? TEXT.slowIntro : TEXT.soloIntro;
+    if (this.step === 1 && this.serving && this.beat === 'watch' && !this.cue) return TEXT.watchToss;
+    if (this.stage === 0 && !this.cue) {
+      if (this.step === 1) return this.serving ? TEXT.toss : TEXT.watch;
+      if (this.step === 2) return TEXT.slowIntro;
+      return this.serving ? (this.standing ? TEXT.floatSolo : TEXT.serveSolo) : TEXT.soloIntro;
+    }
     return '';
   }
 
@@ -445,11 +554,41 @@ export class TutorialDirector {
    */
   private together(f: GuideFacts, out: GuideOut): void {
     // a beat that is already over hands on to the next one within the same frame
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       switch (this.beat) {
+        case 'toss': {
+          // a serve starts with the server's own toss: nothing moves until it goes up
+          out.drive = 'stand';
+          this.stage = this.at('toss');
+          if (f.setUp) {
+            this.beat = 'watch';
+            continue;
+          }
+          const held = f.tossHeld ?? -1;
+          // held: the lesson lets go at the serve's own toss, so the rest of the rep is the serve's own timing
+          if (held >= 0 && held >= (f.tossAt ?? 0) - STEP) out.act = 'toss';
+          this.show('toss', held >= 0 ? TEXT.tossHeld : TEXT.toss, false);
+          return;
+        }
         case 'watch': {
           out.drive = 'stand';
-          this.stage = 0;
+          if (this.standing) {
+            // a standing float: the toss goes up, and the arm is drawn as it tops out
+            this.stage = this.at('draw');
+            const at = f.drawAt ?? -1;
+            if (at < 0) return;
+            if (reached(f.simTime, at)) {
+              this.beat = 'draw';
+              this.airAt = at - T.drawDelay;
+              continue;
+            }
+            const until = at - f.simTime;
+            out.scale = f.attack ? T.watchScale : this.ease(until, T.watchScale);
+            out.stopAt = at;
+            if (until < T.cueLead) this.show('draw', TEXT.drawFloat, false);
+            return;
+          }
+          this.stage = this.at('run');
           // the toss and the set play at full speed: nothing to do yet
           if (!f.setUp || f.tGo < 0) return;
           const until = f.tGo - f.simTime;
@@ -464,7 +603,7 @@ export class TutorialDirector {
         }
         case 'run': {
           out.drive = 'run';
-          this.stage = 0;
+          this.stage = this.at('run');
           const until = f.tPlant - f.simTime;
           if (reached(f.simTime, f.tPlant) || f.state !== 'ground') {
             this.beat = 'plant';
@@ -484,7 +623,7 @@ export class TutorialDirector {
           return;
         }
         case 'plant': {
-          this.stage = 1;
+          this.stage = this.at('jump');
           this.nudge = '';
           if (f.state === 'air') {
             this.beat = 'draw';
@@ -515,8 +654,8 @@ export class TutorialDirector {
           return;
         }
         case 'draw': {
-          this.stage = 2;
-          if (f.state !== 'air') {
+          this.stage = this.at('draw');
+          if (!this.inPlay(f)) {
             // landed without a swing (it should not happen): the drill ends the rep and we go again
             this.beat = 'swing';
             return;
@@ -537,11 +676,11 @@ export class TutorialDirector {
             if (!reached(f.simTime, this.airAt + T.drawDelay)) {
               out.scale = T.airScale;
               out.stopAt = this.airAt + T.drawDelay;
-              this.show('draw', TEXT.draw, false);
+              this.show('draw', this.standing ? TEXT.drawFloat : TEXT.draw, false);
               return;
             }
             this.stop(out);
-            this.show('draw', TEXT.draw, true);
+            this.show('draw', this.standing ? TEXT.drawFloat : TEXT.draw, true);
             return;
           }
           // drawing: the charge fills in real time while it is held
@@ -556,8 +695,8 @@ export class TutorialDirector {
           return;
         }
         case 'hit': {
-          this.stage = 3;
-          if (f.state !== 'air' || f.charge < 0) {
+          this.stage = this.at('hit');
+          if (!this.inPlay(f) || f.charge < 0) {
             this.beat = 'swing';
             return;
           }
@@ -576,7 +715,7 @@ export class TutorialDirector {
           if (fell) {
             out.act = 'swing';
             this.beat = 'swing';
-            this.stage = 4;
+            this.stage = this.order.length;
             return;
           }
           this.stop(out);
@@ -599,16 +738,30 @@ export class TutorialDirector {
     const slow = this.step === 2;
     this.nudge = '';
     if (r.swung || r.landed) {
-      this.stage = r.swung ? 4 : this.stage;
+      this.stage = r.swung ? this.order.length : this.stage;
       return;
     }
     if (slow && f.setUp) out.scale = T.slowScale;
     if (f.swinging) {
-      this.stage = 3;
+      this.stage = this.at('hit');
+      return;
+    }
+    if (this.serving && !f.setUp) {
+      // the toss is the first thing, and the player's own
+      this.stage = this.at('toss');
+      if (slow) this.show('toss', (f.tossHeld ?? -1) >= 0 ? TEXT.tossMark : TEXT.toss, false);
+      return;
+    }
+    if (this.standing) {
+      const drawn = f.charge >= 0;
+      this.stage = this.at(drawn ? 'hit' : 'draw');
+      if (!slow) return;
+      if (drawn) this.show('hit', TEXT.ride, false);
+      else if (f.drawAt !== undefined && f.drawAt > 0 && f.simTime >= f.drawAt - T.reactLead) this.show('draw', TEXT.drawFloat, false);
       return;
     }
     if (f.state === 'air') {
-      this.stage = f.charge >= 0 ? 3 : 2;
+      this.stage = this.at(f.charge >= 0 ? 'hit' : 'draw');
       if (slow) {
         if (f.charge >= 0) this.show('hit', TEXT.ride, false);
         else this.show('draw', TEXT.draw, false);
@@ -616,23 +769,28 @@ export class TutorialDirector {
       return;
     }
     if (f.state === 'load') {
-      this.stage = 1;
+      this.stage = this.at('jump');
       if (slow) this.show('jump', TEXT.load, false);
       return;
     }
     if (!f.setUp || f.tGo < 0) {
-      this.stage = 0;
+      this.stage = this.at('run');
       return;
     }
     // on the floor with the set up: run from GO, and the jump cue as the spot comes up
     // (a cue a reaction time ahead of its moment, so acting on it is on time)
-    this.stage = r.ran && f.simTime >= f.tPlant - T.reactLead ? 1 : 0;
+    this.stage = this.at(r.ran && f.simTime >= f.tPlant - T.reactLead ? 'jump' : 'run');
     if (!slow) return;
-    if (this.stage === 1) this.show('jump', TEXT.jump, false);
+    if (this.stage === this.at('jump')) this.show('jump', TEXT.jump, false);
     else if (f.simTime >= f.tGo - T.reactLead) this.show('run', TEXT.run, false);
   }
 
   // ---------------------------------------------------------------- helpers
+
+  /** the hitter can still meet the ball: in the air, or for a standing float on the floor under the toss */
+  private inPlay(f: GuideFacts): boolean {
+    return this.standing ? f.state === 'ground' || f.state === 'land' : f.state === 'air';
+  }
 
   /** game speed into a moment the player has not acted on yet: down to a crawl as it comes */
   private ease(until: number, base: number): number {
@@ -659,6 +817,7 @@ export class TutorialDirector {
   /** one thing about the rep, the first thing that went wrong */
   private verdict(kill: boolean): string {
     const r = this.rep;
+    if (this.serving) return this.serveVerdict(kill);
     if (this.step === 1) {
       if (!r.swung || r.grade === 'Miss') return TEXT.again;
       return `${r.grade === 'Perfect' ? 'Perfect.' : 'Nice.'} That is the whole spike: run, jump, draw, hit.`;
@@ -690,9 +849,56 @@ export class TutorialDirector {
     }
   }
 
+  /** one thing about a serve, the first thing that went wrong */
+  private serveVerdict(kill: boolean): string {
+    const r = this.rep;
+    const kind = this.lesson as ServeKind;
+    if (this.step === 1) {
+      if (!r.swung || r.grade === 'Miss') return TEXT.again;
+      const parts = this.order.map((id) => id).join(', ');
+      return `${r.grade === 'Perfect' ? 'Perfect.' : 'Nice.'} That is the whole ${serveName(kind)}: ${parts}.`;
+    }
+    if (!r.tossed) return `Hold ${KEYS.toss} and let go to toss.`;
+    if (!this.standing) {
+      if (!r.ran) return `Run in when you see GO: hold ${KEYS.run}.`;
+      if (!r.jumped) return `Jump at the spot: hold ${KEYS.jump} as your feet reach the line on the floor.`;
+    }
+    if (!r.swung) {
+      if (r.drew) return `Let go of ${KEYS.hit} to serve.`;
+      return this.standing
+        ? `As the toss tops out, hold ${KEYS.draw}, then let go as the ball comes down.`
+        : `In the air, hold ${KEYS.draw}, then let go as the ball comes down.`;
+    }
+    if (r.why === 'FOOT FAULT') return 'Foot fault: you were on the end line. Toss from further back, or jump sooner.';
+    const clean = r.grade === 'Perfect' || r.grade === 'Good';
+    if (clean && !kill) {
+      const where = r.why === 'IN THE NET' || r.why === 'SHORT' ? 'it was in the net' : 'it was out';
+      return `${r.grade} timing, but ${where}. ${TEXT.aim}`;
+    }
+    switch (r.grade) {
+      case 'Perfect':
+        return 'Perfect. Right on the gold.';
+      case 'Good':
+        if (r.note === 'Reaching') return 'Good, but you were reaching for it. Toss at the mark and follow the arrows.';
+        if (r.note === 'Jumped early') return 'Good, but you jumped early. Wait for the line.';
+        if (r.note === 'Jumped late') return `Good, but you jumped late. Hold ${KEYS.jump} as you reach the line.`;
+        return 'Good. Just off the gold.';
+      case 'Early':
+        return 'Early: you were under the ball. Let go a touch later.';
+      case 'Late':
+        return 'Late: over the top of the ball. Let go a touch sooner.';
+      default:
+        if (r.note === 'Swung early') return 'You swung while the toss was still going up. Wait for it to come down.';
+        if (r.note === 'Swung late') return 'The ball was past you. Let go sooner.';
+        return this.standing
+          ? 'The ball was out of reach. Toss at the mark.'
+          : 'The ball was out of reach. Toss at the mark and jump from the line.';
+    }
+  }
+
   private resetRep(): void {
     this.rep = freshRep();
-    this.beat = 'watch';
+    this.beat = this.serving ? 'toss' : 'watch';
     this.stage = 0;
     this.cue = null;
     this.waiting = false;
@@ -752,7 +958,7 @@ export class Tutorial {
       }
       this.out = idleOut();
       this.clearChrome();
-      this.g.onTutorialDone?.(this.director.clean);
+      this.g.onTutorialDone?.(this.director.clean, this.director.lesson);
     };
     this.director.onStuck = () => this.g.hud.setNudge(true);
     g.hud.onSkip = () => this.requestSkip();
@@ -764,6 +970,16 @@ export class Tutorial {
 
   get step(): TutorialStep {
     return this.director.step;
+  }
+
+  /** the spike, or a serve */
+  get lesson(): Lesson {
+    return this.director.lesson;
+  }
+
+  /** a serve lesson is running */
+  get serving(): boolean {
+    return this.director.active && this.director.serving;
   }
 
   /** time is stopped for the player */
@@ -825,15 +1041,25 @@ export class Tutorial {
   }
 
   begin(opts: TutorialBegin = {}): void {
-    const step = clampStep(opts.step !== undefined ? opts.step : opts.replay ? 0 : resumeStep(readTutorialFlag()));
+    const lesson = opts.lesson ?? 'spike';
+    // (a serve lesson is taken from Learn and always starts at its welcome, unless told a step)
+    const step = clampStep(opts.step !== undefined ? opts.step : opts.replay || lesson !== 'spike' ? 0 : resumeStep(readTutorialFlag()));
     this.out = idleOut();
-    this.settled = !tutorialPending(readTutorialFlag());
-    this.director.begin(step);
+    this.settled = lesson !== 'spike' || !tutorialPending(readTutorialFlag());
+    this.director.begin(step, lesson);
     this.save(step);
   }
 
-  /** remember how far the lesson has got (a lesson taken again by someone who is done with it changes nothing) */
+  /**
+   * remember how far the lesson has got (a lesson taken again by someone who is done with it
+   * changes nothing). A serve lesson is only remembered once it is finished.
+   */
   private save(step: TutorialStep): void {
+    const lesson = this.director.lesson;
+    if (lesson !== 'spike') {
+      if (step >= LAST_STEP) markServeLessonDone(lesson);
+      return;
+    }
     if (this.settled) return;
     writeTutorialFlag(step >= LAST_STEP ? 'done' : `in_progress:${step}`);
   }
@@ -842,7 +1068,8 @@ export class Tutorial {
     this.applyChrome();
     this.g.hud.clearFlash();
     this.g.hud.dip();
-    if (this.director.step === 0) this.g.hud.showBanner('True to the court.', 'neutral', T.welcome);
+    if (this.director.step === 0)
+      this.g.hud.showBanner(this.director.serving ? 'Serve it yourself.' : 'True to the court.', 'neutral', T.welcome);
   }
 
   /**
@@ -916,12 +1143,16 @@ export class Tutorial {
     // the charge fills in real time while the ball waits on the draw
     if (this.out.fill && wind && attack) wind.t0 -= realDt;
     const charge = wind ? ContactSystem.chargeFor(g.simTime - wind.t0) : -1;
-    const ideal = me.state === 'air' ? g.idealT() : -1;
-    const lead = ContactSystem.swingLead(Math.max(0, charge));
     const lt = g.ball.lastTouch;
+    // a serve's toss is up from the moment it leaves the hand (and still counts once it is served)
+    const tossUp = g.ball.active && !!lt && lt.athlete === me && (lt.kind === 'feed' || lt.kind === 'serve');
+    // a standing float is met from the floor: where the toss comes down to the hand (as the drill sees it)
+    let ideal = me.state === 'air' ? g.idealT() : -1;
+    if (d.standing && tossUp && g.contact.serving === me) ideal = g.contact.ideal(me, g.simTime, T.floatDraw + 1)?.t ?? -1;
+    const lead = ContactSystem.swingLead(Math.max(0, charge));
     const out = d.guide({
       simTime: g.simTime,
-      setUp: g.ball.active && lt?.kind === 'set',
+      setUp: d.serving ? tossUp : g.ball.active && lt?.kind === 'set',
       tGo: line?.tGo ?? -1,
       tPlant: line?.tPlant ?? -1,
       hold: line?.hold ?? PLAYER.loadMax,
@@ -935,9 +1166,15 @@ export class Tutorial {
       jump: g.user.isHeld('jump'),
       attack,
       startD: line ? Math.hypot(me.pos.x - line.start.x, me.pos.z - line.start.z) : 0,
+      tossHeld: g.actions.tossHeld(),
+      tossAt: tossGroove(),
+      drawAt: d.standing && ideal > 0 ? ideal - T.floatDraw : -1,
     });
     this.out = out;
     switch (out.act) {
+      case 'toss':
+        g.actions.releaseToss();
+        break;
       case 'plant':
         me.jumpPress();
         break;
@@ -955,7 +1192,7 @@ export class Tutorial {
     }
     g.hud.setFrozen(d.waiting);
     g.hud.setNudge(d.stuck);
-    g.hud.setCoach(d.step >= 1 && d.step <= 3 ? { stage: d.stage, cue: d.cue } : null);
+    g.hud.setCoach(d.step >= 1 && d.step <= 3 ? { stage: d.stage, cue: d.cue, order: d.order } : null);
   }
 
   noteFeed(): void {
@@ -966,8 +1203,8 @@ export class Tutorial {
     this.director.noteContact(grade, note);
   }
 
-  noteRepEnd(kill = false): void {
-    this.director.noteRepEnd(kill);
+  noteRepEnd(kill = false, why = ''): void {
+    this.director.noteRepEnd(kill, why);
   }
 
   onPause(): void {

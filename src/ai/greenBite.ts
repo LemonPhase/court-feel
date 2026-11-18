@@ -1,7 +1,7 @@
 import { AI } from '../config';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
-import type { Game } from '../game/game';
+import type { AiHost } from '../game/brains';
 
 /**
  * Your green set beats their middle: an exact set at the called tempo shows nothing early, so
@@ -11,7 +11,7 @@ import type { Game } from '../game/game';
  */
 
 /** is `lt` the user's green set? */
-export function userGreen(g: Game, lt: Touch | null | undefined): boolean {
+export function userGreen(g: AiHost, lt: Touch | null | undefined): boolean {
   const us = g.contact.lastSetResult;
   return !!lt && lt.kind === 'set' && !!us?.green && lt.athlete === us.athlete && lt.t === us.t;
 }
@@ -20,7 +20,7 @@ export function userGreen(g: Game, lt: Touch | null | undefined): boolean {
  * Did the user's set `lt` hold their middle? A jump set by a front-row setter with the dump on:
  * the setter in the air at the net is an attacker until the ball leaves the hands.
  */
-export function dumpHeld(g: Game, lt: Touch | null | undefined): boolean {
+export function dumpHeld(g: AiHost, lt: Touch | null | undefined): boolean {
   const us = g.contact.lastSetResult;
   return !!lt && lt.kind === 'set' && !!us?.held && lt.athlete === us.athlete && lt.t === us.t;
 }
@@ -31,7 +31,7 @@ export function dumpHeld(g: Game, lt: Touch | null | undefined): boolean {
  * it and closes the block as on any set. The hitter still has your perfect set to swing at: a
  * full, well-timed swing that the block can touch but not stuff (CONTACT: a green attack).
  */
-export function greenFools(g: Game, lt: Touch | null | undefined): boolean {
+export function greenFools(g: AiHost, lt: Touch | null | undefined): boolean {
   if (!userGreen(g, lt)) return false;
   const set = g.contact.lastSet;
   return !(set?.outOfSystem && Math.abs(set.target.x) > AI.middle.pinX);
@@ -43,7 +43,7 @@ export function greenFools(g: Game, lt: Touch | null | undefined): boolean {
  * to the first tempo), then the nearest along the net. Null when nobody else is going: the
  * middle then guesses for itself (MiddleBlocker.foolFor).
  */
-export function decoyFor(g: Game, blocker: Athlete, set: Touch): Athlete | null {
+export function decoyFor(g: AiHost, blocker: Athlete, set: Touch): Athlete | null {
   const B = AI.greenBite;
   const setTo = g.contact.lastSet?.hitter ?? null;
   let best: Athlete | null = null;

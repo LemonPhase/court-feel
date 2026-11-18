@@ -1,0 +1,82 @@
+# Production ships on a version tag. Merging to main only updates the dev site.
+#
+# Vercel's Git integration does the deploying, and it follows branches, not tags:
+#   release - the production branch (the public site)
+#   main    - a preview branch with the dev domain assigned to it
+# So releasing means moving `release` to the tagged commit, which is all this workflow does,
+# after checking that the tag is one we want in production.
+#
+# To release: bump "version" in package.json in a pull request, merge it, then tag that commit
+# v<version> and push the tag (or publish a GitHub release that creates the tag).
+#
+# The push uses a deploy key (secret RELEASE_DEPLOY_KEY: the private half of a deploy key that
+# has write access to this repository). Turned down:
+#   - GITHUB_TOKEN: GitHub refuses to let it move a branch across commits that change a file in
+#     .github/workflows/, so a release would fail whenever CI had changed since the last one.
+#   - Deploying from here with the Vercel CLI, which is Vercel's own guide for tag releases: the
+#     production build would move to the Actions runner and stop being the one every pull
+#     request preview and the dev site go through, and it adds a Vercel token to look after.
+#
+# `release` only moves forward. To take a bad release back, use Instant Rollback in Vercel, then
+# fix main and tag again (Vercel holds the next release until it is promoted after a rollback).
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+# one release at a time, and never cancel one halfway
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # the GitHub release; the branch push uses the deploy key
+
+jobs:
+  release:
+    name: Ship the tag to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: The deploy key is configured
+        env:
+          RELEASE_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+        run: |
+          if [ -z "$RELEASE_DEPLOY_KEY" ]; then
+            echo "::error::The RELEASE_DEPLOY_KEY secret is missing. See the top of .github/workflows/release.yml."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the ancestry checks below need main and release
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: The tag matches package.json and is on main
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json (v$version). The menus show the package.json version, so bump it on main first."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main. Only commits merged to main are released."
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run check
+      # typecheck already ran in check; `npm run build` would repeat it
+      - run: npx vite build
+      - name: Move release to the tag (Vercel deploys it to production)
+        # a plain push: it is refused unless release can fast-forward, so production never goes backwards
+        run: git push origin "HEAD:refs/heads/release"
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # skipped when the tag came from a release published by hand
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes

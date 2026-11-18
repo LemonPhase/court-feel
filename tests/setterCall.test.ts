@@ -3,9 +3,9 @@ import { AI, COURT, SIM, type PositionId } from '../src/config';
 import { Rng } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import type { Touch } from '../src/game/ballEntity';
-import type { Game } from '../src/game/game';
+import type { AiHost } from '../src/game/brains';
 import { attackHeight, handSetAllowed, laneFor, LANES, needsGoodPass, SET_PLAYS, SETTER_SPOT, SETTER_TARGET } from '../src/game/plays';
-import { planApproach } from '../src/ai/approach';
+import { planApproach } from '../src/game/approach';
 import { makeBall, stepBall, type BallEnv, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { solveApex } from '../src/physics/solve';
@@ -55,10 +55,9 @@ function homeTeam(pos: PositionId) {
     ballLive: true,
     ball,
     setBrain() {},
-    hud: { message() {} },
     contact: { lastSet: null },
   };
-  const team = new TeamAI(1, g as unknown as Game);
+  const team = new TeamAI(1, g as unknown as AiHost);
   const me = new Athlete(pos, 1);
   me.isUser = true;
   for (const slot of SLOTS) {
@@ -141,7 +140,7 @@ describe("the setter's call on the pass (Mini Rally)", () => {
       // the setter is wherever: the call decides, not where they ended up standing
       const setter = team.players.get('S')!;
       setter.place(SETTER_SPOT.x, SETTER_SPOT.z, 0);
-      const set = team.callSet(g as unknown as Game, setter);
+      const set = team.callSet(g as unknown as AiHost, setter);
       expect(set.hitter).toBe(me);
       const above = set.apex - attackHeight(me);
       if (out) expect(above).toBeGreaterThanOrEqual(LANES.OH.apexAbove + 0.4 - 1e-6);
@@ -159,7 +158,7 @@ describe("the setter's call on the pass (Mini Rally)", () => {
     // even taken right on the setter's spot, the set is the high one that was called
     const setter = team.players.get('S')!;
     setter.place(SETTER_SPOT.x, SETTER_SPOT.z, 0);
-    const set = team.callSet(g as unknown as Game, setter);
+    const set = team.callSet(g as unknown as AiHost, setter);
     expect(set.apex - attackHeight(team.user!)).toBeGreaterThan(LANES.OPP.apexAbove);
   });
 });
@@ -198,7 +197,7 @@ describe('when our setter plays the first ball (Mini Rally)', () => {
     expect(reads).toHaveLength(1);
     expect(reads[0].r.setter).toBe(team.players.get('L'));
     expect(reads[0].r.call).toBe('out');
-    const set = team.callSet(g as unknown as Game, team.players.get('L')!);
+    const set = team.callSet(g as unknown as AiHost, team.players.get('L')!);
     expect(set.hitter).toBe(me);
     expect((set as { time?: number }).time).toBeUndefined();
     expect(set.apex - attackHeight(me)).toBeGreaterThanOrEqual(LANES.OH.apexAbove + 0.4 - 1e-6);
@@ -212,7 +211,7 @@ describe('when our setter plays the first ball (Mini Rally)', () => {
     const libero = team.players.get('L')!;
     const pins = new Set([team.players.get('OH1'), team.players.get('OPP')]);
     for (let i = 0; i < 40; i++) {
-      const set = team.callSet(g as unknown as Game, libero);
+      const set = team.callSet(g as unknown as AiHost, libero);
       expect(pins.has(set.hitter!)).toBe(true);
       expect((set as { time?: number }).time).toBeUndefined();
     }
@@ -328,7 +327,7 @@ describe('the pipe (back-row attack, Mini Rally and the libero in the Spike Dril
       const setter = team.players.get('S')!;
       const n: Record<string, number> = {};
       for (let i = 0; i < 2000; i++) {
-        const h = team.callSet(g as unknown as Game, setter).hitter!;
+        const h = team.callSet(g as unknown as AiHost, setter).hitter!;
         const slot = team.slotOf(h)!;
         n[slot] = (n[slot] ?? 0) + 1 / 2000;
       }
@@ -357,7 +356,7 @@ describe('the pipe (back-row attack, Mini Rally and the libero in the Spike Dril
     const pipe = team.players.get('OH2')!;
     let seen = 0;
     for (let i = 0; i < 60; i++) {
-      const set = team.callSet(g as unknown as Game, setter);
+      const set = team.callSet(g as unknown as AiHost, setter);
       if (set.hitter !== pipe) continue;
       seen++;
       expect(set.target.z).toBeGreaterThan(COURT.attackLine + 0.5);

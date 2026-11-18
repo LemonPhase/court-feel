@@ -21,14 +21,14 @@ import { Judge } from '../src/game/judge';
 import { copyBall, makeBall, R, stepBall, type BallState, type CollisionEvent } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { flyFor, solveApex, solveFixedTime } from '../src/physics/solve';
-import { planQuick } from '../src/ai/approach';
+import { planQuick } from '../src/game/approach';
 import { laneFor, QUICK, quickSetFor, quickSpot, SET_PLAYS, SETTER_TARGET } from '../src/game/plays';
 import { HitterBrain } from '../src/ai/hitter';
 import { AthleteView } from '../src/character/athleteView';
 import { makeKit } from '../src/character/kits';
 import { AudioEngine } from '../src/audio/audio';
 import { bodyStats, isCustomBody, resolveBody, sanitizeBodies, setBodyValue, spikeReach, topSpikeKmh, type Bodies } from '../src/game/body';
-import { loadSettings, saveSettings } from '../src/core/settings';
+import { loadSettings, saveSettings } from '../src/app/settings';
 
 const DT = 1 / SIM.hz;
 

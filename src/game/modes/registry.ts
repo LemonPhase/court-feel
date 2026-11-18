@@ -5,6 +5,7 @@ import { SpikeDrill } from './spikeDrill';
 import { BlockDrill } from './blockDrill';
 import { ReceiveDrill } from './receiveDrill';
 import { SetterDrill } from './setterDrill';
+import { ServeDrill } from './serveDrill';
 import { FreePlay } from './freePlay';
 import { MiniRally } from './miniRally';
 
@@ -20,6 +21,8 @@ export function createMode(id: ModeId, g: Game, pos: PositionId): Mode {
       return new ReceiveDrill(g, pos);
     case 'setter':
       return new SetterDrill(g, pos);
+    case 'serve':
+      return new ServeDrill(g, pos);
     case 'spike':
     default:
       return new SpikeDrill(g, pos);

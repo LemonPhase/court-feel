@@ -12,9 +12,12 @@ npm run check                     # typecheck, lint, format check, unit tests. R
 npm test                          # unit tests only (Vitest, tests/)
 npm run format                    # fix formatting with Prettier
 npm run e2e                       # every drill in headless Chromium, several minutes, writes scripts/out/
+npm run trace:compare             # a refactor only: plays every drill here and on main and compares every frame
 ```
 
 Run `npm run e2e` when a change touches a drill, the autopilots, input, touch controls or the menus. First time: `npx playwright install chromium`.
+
+Run `npm run trace:compare` for a `refactor`: it must print `same play`. A `feat` or a `fix` that changes the play will differ, and that is expected.
 
 ## Show it working in the app
 
@@ -24,6 +27,7 @@ Passing tests do not prove a change to the game, its menus, HUD or controls. Dri
 
 - **Every tunable number lives in `src/config.ts`**, in its section, with a doc comment when the name does not say what it is. No magic numbers in game code, so the feel can be tuned in one place.
 - **`src/physics/` stays pure**: no three.js scene, no DOM, only `config`. That keeps it deterministic and testable.
+- **Every import points down** ([docs/adr/0010](docs/adr/0010-the-simulation-runs-on-its-own.md)): `config`, then `core` and `physics`, then the simulation (`game`, `ai`, the drills in `game/modes`), then everything a player sees or hears, then `main.ts`. `tests/architecture.test.ts` enforces it. What still breaks it is listed in `tests/architecture.known.ts`: fix new code, do not add it to the list.
 - **All input goes through `Input`** (`src/core/input.ts`). Keys, mouse, touch and the autopilots share that path, so timing windows are identical everywhere. Do not add a side door.
 - **Assist may help the player's body, never the ball**, and it must be fully off at 0.
 - **A change to physics, timing, contacts or AI decisions comes with a unit test that states the real-court fact**, for example "the middle leaves the floor on the setter's touch".
@@ -60,11 +64,18 @@ When you make a call that someone would otherwise argue about again, write the r
 - A pull request is merged once CI is green, it has been reviewed and, for a change to the feel, a volleyball player has tried its Vercel preview.
 - GitHub deletes a branch when its pull request is merged. Start the next change on a new branch from `main`.
 
+## Releasing
+
+- Merging to `main` updates the dev site, [court-feel-dev.jackzxq.dev](https://court-feel-dev.jackzxq.dev). The public site, [court-feel.jackzxq.dev](https://court-feel.jackzxq.dev), changes only when a version tag is pushed.
+- `vercel.json` tells search engines not to index the dev site. Vercel does that itself for preview URLs, but not for a custom domain assigned to a branch. If the dev domain changes, change it there too.
+- To release: bump `version` in `package.json` in a pull request (`npm version <x.y.z> --no-git-tag-version`), merge it, then tag that commit on `main` as `v<x.y.z>` and push the tag. [.github/workflows/release.yml](.github/workflows/release.yml) checks the tag, runs `npm run check` and the build, and fast-forwards the `release` branch, which Vercel deploys to production.
+- `release` is moved by that workflow only. To take a bad release back, use Instant Rollback in Vercel, then fix `main` and tag again. After a rollback Vercel holds the next release until someone promotes it.
+
 ## Boundaries
 
 - **Always:** run `npm run check` before committing, and verify user-facing changes in the app.
 - **Ask first:** anything that changes how the game plays (timing windows, physics constants, controls, AI decisions, a new drill or mechanic), a new dependency, and any art or audio asset. Assets need an MIT-compatible licence and an entry in [CREDITS.md](CREDITS.md).
-- **Never:** skip, weaken or delete a test to get CI green, or commit directly to `main`.
+- **Never:** skip, weaken or delete a test to get CI green, or commit directly to `main` or `release`.
 
 ## Agent conventions
 

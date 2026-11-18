@@ -4,9 +4,9 @@ import { handSetAllowed } from '../game/plays';
 import type { V3 } from '../physics/ball';
 import { solveApex, solveFixedTime } from '../physics/solve';
 import type { Athlete } from '../game/athlete';
-import type { Game } from '../game/game';
+import type { AiHost, Brain } from '../game/brains';
 import { AI_TOUCH, autoSetJump, planSetJump, takeoffSpot } from '../game/setJump';
-import { moveTo, stop, type Brain } from './brain';
+import { moveTo, stop } from './brain';
 
 export interface SetCall {
   /** ball centre target (on the descending branch) */
@@ -26,8 +26,8 @@ export interface SetCall {
 export class SetterBrain implements Brain {
   enabled = true;
   /** whether this ball is ours to set */
-  shouldPlay: (g: Game) => boolean = () => true;
-  call: (g: Game) => SetCall | null = () => null;
+  shouldPlay: (g: AiHost) => boolean = () => true;
+  call: (g: AiHost) => SetCall | null = () => null;
   onSet: ((call: SetCall) => void) | null = null;
   private v = new THREE.Vector3();
   private p: V3 = { x: 0, y: 0, z: 0 };
@@ -63,7 +63,7 @@ export class SetterBrain implements Brain {
     return out.set(at.x + fx * 0.14, at.y + a.height + 0.17, at.z + fz * 0.14);
   }
 
-  step(_dt: number, g: Game): void {
+  step(_dt: number, g: AiHost): void {
     const a = this.athlete;
     const ball = g.ball;
     if (!this.enabled) return;
@@ -124,7 +124,7 @@ export class SetterBrain implements Brain {
     if (d < (this.bump ? CONTACT.passRadius : CONTACT.setRadius) && ball.vel.y < 0.5) this.doSet(g);
   }
 
-  private doSet(g: Game): void {
+  private doSet(g: AiHost): void {
     const a = this.athlete;
     const call = this.call(g);
     const ball = g.ball;

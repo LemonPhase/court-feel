@@ -105,22 +105,42 @@ export const DRILL_INFO: Record<ModeId, DrillInfo> = {
       { k: 'BLOCK', a: 'Hold: it sets when the ball drops onto you' },
     ],
   },
+  serve: {
+    tag: 'Serve',
+    short: 'Three serves at three passers.',
+    about:
+      'Pick your serve: a standing float, a jump float or a jump serve, each harder to hit and harder to pass. You toss from behind the end line and serve at three passers, the two outsides and the libero: aim at the seams and the deep corners. The rep ends at their pass.',
+    scored: 'the pass you force, 0 to 4: 0 a fault (net, out, foot fault, a toss not hit), 1 a perfect pass, 4 an ace',
+    keys: [
+      { k: '1  2  3', a: 'Standing float, jump float, jump serve' },
+      { k: 'Q', a: 'Toss. Hold it longer for a higher toss.' },
+      { k: 'Left mouse', a: 'Hold to wind up, release as the ball comes down' },
+      { k: 'Shift + W', a: 'Jump float, jump serve: run in under the toss' },
+      { k: 'Space', a: 'Jump behind the end line. Hold to load.' },
+    ],
+    touch: [
+      { k: 'SERVE', a: 'Top left: standing float, jump float, jump serve' },
+      { k: 'TOSS', a: 'Toss. Hold it longer for a higher toss.' },
+      { k: 'HIT', a: 'Hold to wind up, release as the ball comes down' },
+      { k: 'Left thumb', a: 'Jump float, jump serve: push the stick out to run in under the toss' },
+      { k: 'JUMP', a: 'Jump behind the end line' },
+    ],
+  },
   free: {
     tag: 'Open gym',
     short: 'A ball machine feeds you. Practise anything.',
-    about:
-      'No score. The ball machine feeds a set, a free ball, a float serve or a hard attack. Feed 5 is serve practice: toss and hit your own from behind the end line.',
+    about: 'No score. The ball machine feeds a set, a free ball, a float serve or a hard attack.',
     scored: 'nothing. This one is for the feel.',
     keys: [
-      { k: '1 to 5', a: 'Feed type' },
+      { k: '1 to 4', a: 'Feed type' },
       { k: 'F', a: 'Feed a ball' },
       { k: 'T', a: 'Auto feed' },
-      { k: 'Q', a: 'Serve toss' },
+      { k: 'Q', a: 'Toss a ball up for yourself' },
     ],
     touch: [
       STICK_MOVE,
       { k: 'Top left', a: 'Feed types, FEED a ball, AUTO feed' },
-      { k: 'TOSS', a: 'Serve toss, in serve practice' },
+      { k: 'TOSS', a: 'Toss a ball up for yourself' },
       { k: 'HIT  PASS  BLOCK', a: 'As in the drills' },
     ],
   },
@@ -148,7 +168,7 @@ export const DRILL_INFO: Record<ModeId, DrillInfo> = {
 };
 
 /** Train: one skill at a time, in the order of a rally's hardest part first */
-export const TRAIN_MODES: readonly ModeId[] = ['spike', 'block', 'receive', 'setter', 'free'];
+export const TRAIN_MODES: readonly ModeId[] = ['spike', 'block', 'receive', 'setter', 'serve', 'free'];
 /** Play: the games */
 export const PLAY_MODES: readonly ModeId[] = ['rally'];
 
@@ -187,7 +207,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
       rows: [
         { k: 'Space', a: 'Plant and jump. Hold to load.' },
         { k: 'Left mouse', a: 'Hold to wind up, release to spike. Longer is harder; a tap is a tip.' },
-        { k: 'Q', a: 'Serve toss' },
+        { k: 'Q', a: 'Serve toss: hold longer for a higher toss. Then run, jump and swing as for a spike.' },
       ],
     },
     {
@@ -218,8 +238,9 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
         },
         { k: 'G   5', a: 'Front row, and your dump there (Setter Drill)' },
         { k: 'H', a: "Help: you can't get to the second ball (Mini Rally)" },
+        { k: '1  2  3', a: 'Standing float, jump float, jump serve (Serve Drill)' },
         { k: 'B', a: 'Opposing block: off, single, double (Spike Drill)' },
-        { k: '1 to 5', a: 'Feed type (Free Play)' },
+        { k: '1 to 4', a: 'Feed type (Free Play)' },
         { k: 'F   T', a: 'Feed a ball, auto feed (Free Play)' },
       ],
     },
@@ -250,7 +271,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
       title: 'Game',
       rows: [
         { k: 'Top right', a: 'Pause, camera, reset the rep, and REPLAY your last attempt' },
-        { k: 'TOSS', a: 'Serve toss (Free Play)' },
+        { k: 'TOSS', a: 'Serve toss: hold longer for a higher toss (Serve Drill, Free Play)' },
       ],
     },
     {
@@ -261,6 +282,7 @@ export const ALL_CONTROLS: { kb: KeyGroup[]; touch: KeyGroup[] } = {
         { k: 'PLAY', a: 'Top left: the play wheel when you set, then tap a play (Setter Drill, Mini Rally)' },
         { k: 'ROW  DUMP', a: 'Top left: front row, and your dump there (Setter Drill)' },
         { k: 'HELP', a: "Top left: you can't get to the second ball (Mini Rally)" },
+        { k: 'SERVE', a: 'Top left: standing float, jump float, jump serve (Serve Drill)' },
         { k: 'VS BLOCK', a: 'Top left: opposing block (Spike Drill)' },
         { k: 'FEED  AUTO', a: 'Top left: feed types, feed a ball, auto feed (Free Play)' },
       ],
