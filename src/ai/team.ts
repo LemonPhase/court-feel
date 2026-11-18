@@ -1129,7 +1129,10 @@ export class TeamAI {
         const margin = freeIn ? AI.pick.liberoFree : AI.pick.libero;
         // between the user and an AI libero, any ball the libero gets to is the libero's: called
         // early, never taken off the user late
-        const users = !!this.receiver?.isUser && !!L && !L.isUser;
+        // (a serve only in the seam: serve receive goes by lanes, and a serve in the user's lane is theirs)
+        const seam = (u: Athlete) =>
+          !serve || (!!L && this.reachTime(L, p, AI.pick.lane) <= this.reachTime(u, p, AI.pick.lane) + AI.pick.seam);
+        const users = !!this.receiver?.isUser && !!L && !L.isUser && seam(this.receiver);
         const late = users && !!lt && now - lt.t > AI.pick.call;
         const takeOver =
           (claim || users) &&
@@ -1143,7 +1146,7 @@ export class TeamAI {
           setJob(this.receiver, 'receive');
         } else if (comingToUs && tDown > 0 && (inBounds || mustPlay)) {
           let r = this.pickReceiver(p, serve, exclude, null, claim ? tDown - now : undefined, margin);
-          if (r?.isUser && L && !L.isUser && this.liberoGets(p, tDown - now, exclude, null, margin)) r = L;
+          if (r?.isUser && L && !L.isUser && seam(r) && this.liberoGets(p, tDown - now, exclude, null, margin)) r = L;
           this.receiver = r;
           this.receiverFor = lt;
           this.receiverAt = { x: p.x, z: p.z };

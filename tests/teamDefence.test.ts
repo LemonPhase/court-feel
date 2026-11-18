@@ -266,6 +266,19 @@ describe('who takes the ball (Mini Rally)', () => {
     expect(t.team.receiver).toBe(t.team.players.get('OH2'));
   });
 
+  it('a serve coming down on you is yours, even when the libero could run over and take it: serve receive goes by lanes', () => {
+    // a high, slow float 0.2 m from you (the outside, in left back), 4.8 m from the libero
+    const t = homeTeam();
+    t.team.place('receive');
+    const you = t.team.players.get('OH1')!;
+    you.isUser = true;
+    t.touch('serve', -1, { x: 0, y: 2.8, z: -10 }, { x: -2.3, y: 0.75, z: 6.1 }, 6.0);
+    t.run(0.05);
+    expect(t.team.receiver).toBe(you);
+    t.run(0.3);
+    expect(t.team.receiver).toBe(you);
+  });
+
   it("a serve in the seam between two passers is the libero's", () => {
     const t = ballAt({ x: 1.25, z: 6.35 }, null);
     expect(t.team.receiver).toBe(t.team.players.get('L'));

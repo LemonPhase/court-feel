@@ -1681,13 +1681,17 @@ export const AI = {
    * most free balls, not the middle or a pin hitter who should be getting ready to attack
    * (MatusGib, 2026-11-14). And between the user and an AI libero, any first ball the libero gets
    * to (with `libero` s to spare) is the libero's ("if the libero can take it, it takes it":
-   * MatusGib, 2026-11-14). A ball is called early: once it has been the user's for `call` s the
-   * libero no longer takes it off them. The setter calls HELP only on a ball somebody can still
-   * get to: one that will be down more than `dive` s before the first of them arrives (a shank
-   * into the stands) is the other team's point, and nothing is called. A serve is received in
-   * lanes: a passer's run forward, to a ball coming down in front of them, counts only `lane` of
-   * its length when choosing who takes it, so a serve short of the middle passer is theirs and not
-   * the passer's two metres to the side of it (MatusGib, 2026-11-15: "it is right in front of them").
+   * MatusGib, 2026-11-14); a serve only in the seam (the libero there within `seam` s of the
+   * user, lanes counted as below): a serve in the user's lane is theirs (MatusGib, 2026-11-18;
+   * measured before: the libero took 7 of 63 serves meant for an outside user, every one landing
+   * 0.2-1.4 m from them, 0.5-1.1 s nearer the user). A ball is called early: once it has been the
+   * user's for `call` s the libero no longer takes it off them. The setter calls HELP only on a ball
+   * somebody can still get to: one that will be down more than `dive` s before the first of them
+   * arrives (a shank into the stands) is the other team's point, and nothing is called. A serve is
+   * received in lanes: a passer's run forward, to a ball coming down in front of them, counts only
+   * `lane` of its length when choosing who takes it, so a serve short of the middle passer is theirs
+   * and not the passer's two metres to the side of it (MatusGib, 2026-11-15: "it is right in front
+   * of them").
    */
   pick: { seam: 0.15, setter: 0.2, shuffle: 1.5, libero: 0.1, liberoFree: 0.3, call: 0.4, dive: 0.5, lane: 0.3 },
   /**
