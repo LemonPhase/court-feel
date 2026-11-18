@@ -242,6 +242,15 @@ export class AthleteView {
     this.velS.set(0, 0, 0);
   }
 
+  /** standing still as if it had always stood there: nothing for the loose trunk to lean or twist into */
+  private settle(): void {
+    this.velS.set(0, 0, 0);
+    this.prevVel.set(0, 0, 0);
+    this.accS.set(0, 0, 0);
+    this.yawRate = 0;
+    this.lastYaw = this.athlete.ryaw;
+  }
+
   /** idle stance position for a foot (world, at ankle height) */
   private stanceFoot(s: number, out: V): V {
     const a = this.athlete;
@@ -273,6 +282,7 @@ export class AthleteView {
     if (!this.initialized || this.lastPos.distanceToSquared(a.rpos) > 4) {
       this.initialized = true;
       this.resetFeet();
+      this.settle();
     }
     if (dt <= 0) {
       // frozen (hit-stop / pause): keep the last pose, but camera toggles still apply
@@ -290,15 +300,17 @@ export class AthleteView {
     this.rootMove.subVectors(a.rpos, this.lastPos);
     const inst = _t1.subVectors(a.rpos, this.lastPos).divideScalar(Math.max(dt, 1e-4));
     inst.y = 0;
-    this.velS.lerp(inst, damp(14, dt));
+    // (put on a spot between rallies, not moved there: faster than anyone runs, it starts still)
+    if (inst.lengthSq() > CHARACTER.loose.placed ** 2) this.settle();
+    else this.velS.lerp(inst, damp(14, dt));
     this.lastPos.copy(a.rpos);
     const speed = Math.hypot(this.velS.x, this.velS.z);
     const vLocal = this.worldToBody(this.velS, _t2);
     // how the body is speeding up and turning (smoothed: what the trunk answers to, `CHARACTER.loose`)
     if (dt > 1e-3) {
       _t1.subVectors(this.velS, this.prevVel).divideScalar(dt);
-      this.accS.lerp(_t1, damp(8, dt));
-      this.yawRate = lerp(this.yawRate, wrapAngle(a.ryaw - this.lastYaw) / dt, damp(10, dt));
+      this.accS.lerp(_t1, damp(CHARACTER.loose.accRate, dt));
+      this.yawRate = lerp(this.yawRate, wrapAngle(a.ryaw - this.lastYaw) / dt, damp(CHARACTER.loose.turnRate, dt));
     }
     this.prevVel.copy(this.velS);
     this.lastYaw = a.ryaw;
@@ -388,8 +400,9 @@ export class AthleteView {
       if (!a.isUser) {
         const Lo = CHARACTER.loose;
         // a ball in play: lower, chest over the knees, bouncing on the balls of the feet
-        this.readyW = lerp(this.readyW, a.alert * still, damp(5, dt));
+        this.readyW = lerp(this.readyW, a.alert * still, damp(Lo.readyRate, dt));
         const rw = this.readyW * (1 - this.lowW);
+        // (`a.id * 2.3`: a per-player hash like `ph`, not a tunable)
         const hz = Lo.bounceHz * (1 + Lo.tempo * Math.sin(a.id * 2.3));
         drop += (Lo.readyDrop + Lo.bounce * (0.5 - 0.5 * Math.cos(tr * hz * Math.PI * 2 + ph))) * H * rw;
         spineX -= Lo.readyLean * rw;

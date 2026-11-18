@@ -470,16 +470,16 @@ export class HitterBrain implements Brain {
         const outer = up.reduce((p, q) => (Math.abs(blockHands(q).x) > Math.abs(blockHands(p).x) ? q : p));
         const hx = blockHands(outer).x;
         this.lastShot = 'wipe';
-        return new THREE.Vector3(hx + Math.sign(hx || 1) * CONTACT.blockHalfWidth * O.wipeEdge, 0, opp * 0.2);
+        return new THREE.Vector3(hx + Math.sign(hx || 1) * CONTACT.blockHalfWidth * O.wipeEdge, 0, opp * O.wipeZ);
       }
     }
     if (r < O.tip) {
       // (the swing aims a tip short, just over the block)
       this.lastShot = 'tip';
-      return new THREE.Vector3(hitX, 0, opp * 2);
+      return new THREE.Vector3(hitX, 0, opp * O.tipZ);
     }
-    const lineX = clamp(hitX, -hw + 0.8, hw - 0.8);
-    const crossX = -Math.sign(hitX || 1) * (hw - 1.2);
+    const lineX = clamp(hitX, -hw + O.lineIn, hw - O.lineIn);
+    const crossX = -Math.sign(hitX || 1) * (hw - O.crossIn);
     const spots = [
       { x: lineX, z: O.deep },
       { x: crossX, z: O.deep },

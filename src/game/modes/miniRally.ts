@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { AI } from '../../config';
 import { netYaw } from '../../ai/brain';
 import { serveAim } from '../../ai/server';
-import { SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
+import { PASSERS, SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
 import { Athlete } from '../athlete';
 import {
   applyCalls,
@@ -164,7 +164,6 @@ export class MiniRally extends Mode {
       word = 'HELP!';
       // (a HELP ball given to you says so: nobody else is going for it)
       sub = this.yourFreeBall ? 'YOUR BALL · bump it high or set a pin' : "can't get there · no set";
-      if (this.yourFreeBall) g.hud.message('Your ball!', 0.9);
     }
     const s = r.setter;
     g.hud.call(this.setterName(s), word, sub, r.call === 'in' ? 'in' : 'out', (out) =>
@@ -439,10 +438,10 @@ export class MiniRally extends Mode {
         1.0,
       );
     }
-    // their server tosses for a jump serve: the passers call it and step back
+    // their server tosses for a jump serve: the passers call it and step back (only they do)
     if (this.home.jumpServe && !this.jumpCalled && this.phase === 'serve' && !g.tutorial.active) {
       this.jumpCalled = true;
-      g.hud.message('Jump serve · step back', 1.2);
+      if (PASSERS.has(USER_SLOT[this.position])) g.hud.message('Jump serve · step back', 1.2);
     }
     g.ball.markerColor.setRGB(...((yours ? [0.35, 1.0, 0.45] : [0.3, 0.85, 1.0]) as [number, number, number]));
     switch (this.phase) {

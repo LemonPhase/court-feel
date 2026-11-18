@@ -982,6 +982,12 @@ describe('early transition (Mini Rally)', () => {
       // it is on its way to the net to set
       expect(t.brain('S').spot).toEqual(t.team.formSpot('offense', 'S'));
     }
+    // (a quick, flat one dropping by the setter that nobody else gets to in time is the setter's:
+    // dug, and someone else sets)
+    const q = homeTeam();
+    q.touch('pass', -1, { x: 0, y: 2.2, z: -1.5 }, { x: 3.6, y: 0.8, z: 7.6 }, 3.0);
+    q.run(0.3);
+    expect(q.team.receiver).toBe(q.team.players.get('S'));
     // (their attack at the setter is still the setter's to dig)
     const h = homeTeam();
     const S = h.team.players.get('S')!;

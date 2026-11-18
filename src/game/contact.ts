@@ -483,8 +483,9 @@ export class ContactSystem {
     // contact under the ball: sails long (a jump serve keeps its line and loses its topspin below)
     if (grade === 'Early' && !serve) target.z += side * 2.2;
     if (grade === 'Late' && !safeServe) target.z -= side * 1.8; // over the top: drives down into the net
-    // (a tip is placed, not driven: mistimed it drops short behind the tape, never back into the tipper's own court)
-    if (tip) target.z = side * Math.max(CONTACT.tipOver, target.z * side);
+    // (an AI's tip is placed, not driven: mistimed it drops short behind the tape, never back into
+    // the tipper's own court. Yours is graded like any swing: late, over the top, into the net)
+    if (tip && !a.isUser) target.z = side * Math.max(CONTACT.tipOver, target.z * side);
     if (safeServe) {
       target.x = clamp(target.x, -COURT.halfWidth + CONTACT.serveSafe, COURT.halfWidth - CONTACT.serveSafe);
       target.z = side * clamp(Math.abs(target.z), 2.5, COURT.halfLength - CONTACT.serveSafe);
@@ -885,8 +886,8 @@ export class ContactSystem {
       const C = CONTACT.covered;
       const bv = ball.vel;
       const hv = Math.hypot(bv.x, bv.z);
-      const hx = hv > 0.5 ? bv.x / hv : 0;
-      const hz = hv > 0.5 ? bv.z / hv : a.side;
+      const hx = hv > C.still ? bv.x / hv : 0;
+      const hz = hv > C.still ? bv.z / hv : a.side;
       const turn = (h.rand() * 2 - 1) * K.turn;
       const pop = lerp(K.pop[0], K.pop[1], h.rand());
       const wx = bp.x + (hx * Math.cos(turn) - hz * Math.sin(turn)) * pop;

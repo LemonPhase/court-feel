@@ -531,7 +531,7 @@ export const CONTACT = {
   spikeSpinGood: 55,
   spikeSpinOk: 35,
   rollSpin: 45,
-  /** a tip always goes over: however it was timed it is aimed at least this far (m) into the other court */
+  /** an AI hitter's tip always goes over: however it was timed it is aimed at least this far (m) into the other court (the user's is graded like any swing) */
   tipOver: 0.6,
   /** swing power at the shortest (just past a tap) wind-up; full charge = 1 */
   chargePowerMin: 0.7,
@@ -588,7 +588,8 @@ export const CONTACT = {
    * edge (down by `edge` at the rim), with the feet still moving (down by `moving` at a full run),
    * reaching to the side or diving (x `reach`). That share goes to the setter like any pass; the
    * rest pops up `pop` m from the coverer, on from the way the ball came (up to `turn` rad either
-   * side), `up` m above the contact, as far as `wide` m outside the sidelines. So a slow ball off
+   * side; a ball dropping nearly straight down, under `still` m/s along the floor, is taken as coming
+   * from the net), `up` m above the contact, as far as `wide` m outside the sidelines. So a slow ball off
    * the block is in system about half the time and a stuff that is kept up rarely is (MatusGib,
    * 2026-11-14). The same for the user and the AI: the user's timing is their platform.
    *
@@ -612,6 +613,7 @@ export const CONTACT = {
     reach: 0.6,
     pop: [0.8, 4.0] as [number, number],
     turn: 2.4,
+    still: 0.5,
     up: [0.6, 3.6] as [number, number],
     wide: 1.5,
     stuff: {
@@ -1276,6 +1278,10 @@ export const CHARACTER = {
    *   as they push off, back as they brake, into a sidestep.
    * - The chest follows the hips into a turn `turnLag` s late (at most `turnMax` rad): the feet turn
    *   first, the shoulders come round after.
+   * - How fast each follows (damp rates, 1/s): the ready stance `readyRate`, the acceleration
+   *   `accRate`, the turn `turnRate`.
+   * - A body that goes faster than `placed` m/s from one frame to the next (twice a sprint) was put
+   *   on its spot between rallies, not moved there: it starts still, with nothing to lean into.
    */
   loose: {
     readyDrop: 0.03,
@@ -1287,6 +1293,10 @@ export const CHARACTER = {
     accMax: 0.18,
     turnLag: 0.08,
     turnMax: 0.3,
+    readyRate: 5,
+    accRate: 8,
+    turnRate: 10,
+    placed: 15,
   },
   /**
    * The two-arm swing of a jump. On the plant the arms go back behind the hips: `backStanding` (rad from
@@ -1731,13 +1741,14 @@ export const AI = {
    * A scramble's second ball: one nobody could set (the setter called HELP, the libero could not
    * get under it either) is just kept up by an AI player, somewhere a team-mate can get to:
    * between `near` and `far` m from where it was played, towards the middle of our court give or
-   * take `turn` rad, peaking between the two `apex` values (m), no nearer than `net` m to the net
+   * take `turn` rad, peaking between the two `apex` values (m) and at least `over` m above where it
+   * was played, no nearer than `net` m to the net
    * and at most `out` m outside the lines. It used to go to one spot every time (the middle of
    * the court on the 3 m line, 5.2 m high), so every scramble ended with the same free ball from
    * the same place (MatusGib, 2026-11-15: far more randomness in where the ups go). The third
    * ball is then played from wherever that is. (The sizes are inferred.)
    */
-  up: { near: 1.0, far: 5.5, turn: 1.3, apex: [3.0, 6.5] as [number, number], net: 1.5, out: 0.5 },
+  up: { near: 1.0, far: 5.5, turn: 1.3, apex: [3.0, 6.5] as [number, number], over: 1.0, net: 1.5, out: 0.5 },
   /**
    * Covering our hitter, `read` s after our setter sets, low and facing the net, so a ball blocked
    * straight down is dug back up. The spots are the real ones (3-2 coverage: CoachingVB, hitter
@@ -1750,9 +1761,9 @@ export const AI = {
    * the two pins on the 3 m line either side, the back row stays. A back-row attack: the middle
    * under the block, the setter and the left back close. They hold it until the attack is over the
    * net, then go back to base defence. Low and watching the hands, a coverer reacts to a ball off
-   * the block in `react` s (a defender reading a hit: 0.3 s).
+   * the block in `react` s (a defender reading a hit: 0.3 s), still so `hold` s after the cover ends.
    */
-  cover: { read: 0.2, net: 1.2, inside: 1.3, line: 3.0, behind: 2.5, deep: 6.3, react: 0.12 },
+  cover: { read: 0.2, net: 1.2, inside: 1.3, line: 3.0, behind: 2.5, deep: 6.3, react: 0.12, hold: 0.6 },
   /**
    * An AI hitter's swing timing is off by this much (s, 1 sd) plus 0.06 x (1 - skill): Early sails
    * long, Late goes into the net, Good scatters the shot. Men's pros still miss: about 62% kills at
@@ -2102,9 +2113,10 @@ export const AI = {
    * out past the end line: a light ball is a choice (MatusGib, 2026-11-14). `adjust` of the time it
    * feels it and plays the ball off-speed, its timing error cut to x `timing` (a soft touch needs
    * little timing): pushed at the outer edge (`wipeEdge` of the hand's half-width) of the outside
-   * hand of a block within `blockNear` m in front (weight `wipe`: off it and out), tipped short
-   * over the block (`tip`), or rolled (`roll`) to whichever of the deep corners (`deep` m off the
-   * net), the middle of the court (`middle`) and the short cross-court angle (`short`) their
+   * hand of a block within `blockNear` m in front (weight `wipe`: off it and out, aimed `wipeZ` m
+   * past the net), tipped short over the block (`tip`, aimed `tipZ` m past it), or rolled (`roll`)
+   * to whichever of the deep corners (`deep` m off the net; `lineIn` m in from the sideline down the
+   * line, `crossIn` m cross court), the middle of the court (`middle`) and the short cross-court angle (`short`) their
    * nearest player is furthest from (plus up to `guess` m of guesswork). The rest of the time it
    * swings through it, a full swing: hard, and long (the hitting error of a real match: about
    * 5-8% of attacks hit out or into the net, see `attackErr`).
@@ -2116,6 +2128,10 @@ export const AI = {
     tip: 0.6,
     roll: 1.2,
     wipeEdge: 0.85,
+    wipeZ: 0.2,
+    tipZ: 2.0,
+    lineIn: 0.8,
+    crossIn: 1.2,
     blockNear: 1.6,
     deep: 7.4,
     middle: 5.2,
