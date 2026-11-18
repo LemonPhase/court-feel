@@ -3,13 +3,13 @@ import * as THREE from 'three';
 import { AI, COURT, PLAYER, SIM, TIMING } from '../src/config';
 import { Rng } from '../src/core/mathx';
 import { SetterBrain } from '../src/ai/setter';
-import { Athlete } from '../src/game/athlete';
+import { Athlete, FEET_OFF_NET } from '../src/game/athlete';
 import { ContactSystem, type ContactEvent, type ContactHost, type SetOption } from '../src/game/contact';
 import type { Game } from '../src/game/game';
 import { SETTER_SPOT } from '../src/game/plays';
 import { autoSetJump, HANDS_FWD, hopDrift, planSetJump, setHop, takeoffSpot } from '../src/game/setJump';
 import { setTouch, setWindow, type SetShape } from '../src/game/setTiming';
-import { makeBall, stepBall, type BallState } from '../src/physics/ball';
+import { makeBall, stepBall, type BallState, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { solveApex } from '../src/physics/solve';
 
@@ -49,8 +49,11 @@ class FakeBall {
   }
 }
 
-/** a home setter facing the outside, a pass on its way down to `to` (a point at standing hands height), and the contact system */
-function stage(o: { to?: { x: number; z: number }; steep?: boolean } = {}) {
+/**
+ * A home setter facing the outside, a pass on its way down to `to` (a point at standing hands
+ * height) or aimed at `aim` (into the net, or over it), and the contact system.
+ */
+function stage(o: { to?: { x: number; z: number }; steep?: boolean; aim?: V3 } = {}) {
   const ball = new FakeBall();
   const events: ContactEvent[] = [];
   const rng = new Rng(3);
@@ -77,7 +80,7 @@ function stage(o: { to?: { x: number; z: number }; steep?: boolean } = {}) {
   // (steep: popped up from close by, so it comes almost straight down)
   const from = o.steep ? { x: to.x + 0.3, y: 0.85, z: to.z + 0.6 } : { x: -1, y: 0.85, z: 6.4 };
   const v = { x: 0, y: 0, z: 0 };
-  solveApex(from, { x: to.x, y: a.height + 0.17, z: to.z }, 4.4, { x: 0, y: 0, z: 0 }, v);
+  solveApex(from, o.aim ?? { x: to.x, y: a.height + 0.17, z: to.z }, 4.4, { x: 0, y: 0, z: 0 }, v);
   Object.assign(ball.state.p, from);
   Object.assign(ball.state.v, v);
   ball.version++;
@@ -89,7 +92,7 @@ function stage(o: { to?: { x: number; z: number }; steep?: boolean } = {}) {
  * jumps themself this long before the ball would reach standing hands. The setter starts on the
  * floor spot, presses as the ball reaches the hands and releases at the top of the bar.
  */
-function rep(o: { jump?: boolean; space?: number; to?: { x: number; z: number }; steep?: boolean } = {}) {
+function rep(o: { jump?: boolean; space?: number; to?: { x: number; z: number }; steep?: boolean; aim?: V3 } = {}) {
   const { ball, events, host, cs, a } = stage(o);
   a.jumpSets = !!o.jump;
   a.airIntent = 'set';
@@ -312,5 +315,38 @@ describe('running into a jump set', () => {
   it('too far from the take-off spot the body stays down: the hop would not reach the ball', () => {
     expect(runIn(0, PLAYER.setJump.near + 0.1).went).toBe(false);
     expect(runIn(0, PLAYER.setJump.near - 0.1).went).toBe(true);
+  });
+});
+
+describe("a pass into the net that drops back on our side is still the setter's", () => {
+  // (a pass a little tight, just under the tape: it dies in the net and drops down it, our side)
+  const NET_BALL = { x: 1.0, y: 2.3, z: 0.1 };
+  it('it hits the net and comes down on our side', () => {
+    const flight = stage({ aim: NET_BALL }).ball.ensurePrediction(ENV, 0);
+    expect(flight.events.some((e) => e.kind === 'net')).toBe(true);
+    expect(flight.land.z).toBeGreaterThan(0);
+  });
+  it('the floor spot shows, as near the net as the feet go, and the right button sets it', () => {
+    const { cs, a } = stage({ aim: NET_BALL });
+    const spot = cs.setSpot(a, { x: 0, y: 0, z: 0 });
+    expect(spot).not.toBeNull();
+    expect(spot!.z).toBeGreaterThanOrEqual(FEET_OFF_NET);
+    expect(cs.wantsSet(a)).toBe(true);
+    const r = rep({ aim: NET_BALL });
+    expect(r.set.kind).toBe('set');
+    expect(r.set.grade).not.toBe('Miss');
+  });
+  it('auto jump set goes up for it: the hands meet it on our side before it reaches the net', () => {
+    const r = rep({ aim: NET_BALL, jump: true });
+    expect(r.peak).toBeGreaterThan(0.2);
+    expect(r.feetAtCatch).toBeGreaterThan(0.1);
+    expect(r.set.point.z).toBeGreaterThan(0);
+    expect(r.set.grade).not.toBe('Miss');
+  });
+  it('a pass that goes over the net is theirs: no spot, and the right button blocks', () => {
+    const { ball, cs, a } = stage({ aim: { x: 1.0, y: 2.45, z: -0.4 } });
+    expect(ball.ensurePrediction(ENV, 0).land.z).toBeLessThan(0);
+    expect(cs.setSpot(a, { x: 0, y: 0, z: 0 })).toBeNull();
+    expect(cs.wantsSet(a)).toBe(false);
   });
 });

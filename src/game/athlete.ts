@@ -11,6 +11,9 @@ export type Grade = 'Perfect' | 'Good' | 'Early' | 'Late' | 'Miss';
 /** how a first ball is played: the platform in front, the platform out to one side, overhand, or diving */
 export type PassForm = 'platform' | 'side' | 'hands' | 'dive';
 
+/** how near (m) the feet come to the centre line: a player stays on their own side of it */
+export const FEET_OFF_NET = 0.22;
+
 export interface Action {
   kind: ActionKind;
   t0: number;
@@ -458,7 +461,7 @@ export class Athlete {
     this.pos.z += this.vel.z * dt;
 
     // ---- court constraints: stay on own side of the centre line (small allowance)
-    const minZ = 0.22;
+    const minZ = FEET_OFF_NET;
     if (this.side === 1 && this.pos.z < minZ) {
       this.pos.z = minZ;
       if (this.vel.z < 0) this.vel.z = 0;

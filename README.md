@@ -631,6 +631,10 @@ Setting works like a jump shot in NBA 2K, with one press per ball:
 1. **Get to the spot.** While the ball is yours to set, a ring on the floor
    shows where your feet should be (under where the ball comes down through
    your hands, not where it would land). It turns green when you are on it.
+   A pass tight to the net, or one that hits the net and drops back on your
+   side, is still yours: the ring sits as near the net as your feet can go,
+   and the jump set (below) meets it before it reaches the net. A pass going
+   over the net is theirs: right mouse blocks.
    The bar is already there, empty, waiting where you will catch the ball:
    its green band is the window your touch has earned so far, and it grows as
    your feet stop and the ball lines up on your hands. Three pips beside it
@@ -1028,7 +1032,9 @@ branch: the change has to play exactly like `main` (`npm run trace:compare`, bel
   or the libero's, the step back for a jump serve, no dive backwards at a serve or a spike, the setter never taking a free ball, the 3 m line kept clear by the pipe's take-off and the libero's hand set, a stuff kept up coming off the arms anywhere, a scramble's ups never to the same place twice, a free ball over from deep bumped, no set to a hitter on the floor and no jump beside a set out of reach, the spike timing grades driven through the real
   contact system (press, hold, release), the jump set (met higher and sooner than
   off the floor, the top of the jump in the middle of the touch, the cue true before the body
-  moves, a pass off the net set from the floor, a run carried onto the ball, a drift or a ball
+  moves, a pass off the net set from the floor, a pass into the net that drops back on our side
+  still set (the floor spot as near the net as the feet go, the hop meeting it before the net)
+  while one over the net is blocked, a run carried onto the ball, a drift or a ball
   off the top of the jump costing green, an AI setter's jump set, their middle held a beat by a jump
   set with the dump on), the timed set (one press per ball:
   spamming cannot restart the catch, a tap is a push far too early; the ball

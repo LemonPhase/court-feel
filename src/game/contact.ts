@@ -3,7 +3,7 @@ import { ASSIST, BALL, CONTACT, COURT, PLAYER, SERVE, SET_LEVELS, SIM, TIMING, t
 import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
 import { flyUntilY, netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
-import { Athlete, type Action, type Grade, type PassForm } from './athlete';
+import { Athlete, FEET_OFF_NET, type Action, type Grade, type PassForm } from './athlete';
 import type { BallEntity, TouchKind } from './ballEntity';
 import { DEFAULT_PICK, type SetPick } from './setterCalls';
 import { HANDS_FWD, HANDS_UP, planSetJump, type SetJumpPlan } from './setJump';
@@ -995,7 +995,9 @@ export class ContactSystem {
       return friendly && ball.vel.y < 0 && Math.hypot(bp.x - P.x, bp.y - P.y, bp.z - P.z) < this.setReach(a);
     }
     if (c.t - h.simTime > SET_LOOK) return false;
-    if (c.at.z * a.side < 0.2) return false; // the ball will still be on their side: block
+    // it reaches the hands over their side (our pass went over): block. Short of that it is ours,
+    // even tight to the net or dropping back down it after hitting the net
+    if (c.at.z * a.side <= 0) return false;
     const near = Math.hypot(c.at.x - a.pos.x, c.at.z - a.pos.z) < 2.5;
     return near && friendly;
   }
@@ -1326,18 +1328,19 @@ export class ContactSystem {
 
   /**
    * Where `a` should stand to set the ball now in flight: their feet, with the ball dropping onto
-   * the hands (null if it never comes down through hands height on their side).
+   * the hands (null if it never comes down through hands height on their side). A ball tight to
+   * the net, or dropping back down it, is set from as near the net as the feet go.
    */
   setSpot(a: Athlete, out: V3): V3 | null {
     const h = this.host;
     if (!h.ball.active || h.ball.state.rest) return null;
     const c = this.setCatch(a);
-    if (!c || c.at.z * a.side < 0.2) return null;
+    if (!c || c.at.z * a.side <= 0) return null;
     // the hands are in front of the feet (handsPoint)
     const f = dirFromYaw(a.yaw, _f);
     out.x = c.at.x - f.x * HANDS_FWD;
     out.y = 0;
-    out.z = c.at.z - f.z * HANDS_FWD;
+    out.z = a.side * Math.max(FEET_OFF_NET, (c.at.z - f.z * HANDS_FWD) * a.side);
     return out;
   }
 
