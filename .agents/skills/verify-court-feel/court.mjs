@@ -366,14 +366,18 @@ function snapshot() {
     : null;
   out.hud = disp('.hud')
     ? {
-        title: txt('.hud-title'),
-        score: txt('.hud-score'),
+        // the tab under the score: the drill, then what you are in it ("Mini Rally · you are the Setter")
+        title: q('.bug-tab') ? [...q('.bug-tab').children].map((e) => e.textContent).join(' · ') || null : null,
+        // the score bar as one line: a drill's cells ("12 pts · rep 5"), or the match ("YOU 1 : 0 THEM · your serve")
+        score: q('.bug')?.getAttribute('aria-label') ?? null,
         camera: txt('.hud-cam'),
         lastBallKmh: txt('.hud-speed-val'),
         streak: txt('.hud-streak-val'),
         hint: txt('.hud-hint'),
         grade: shown('.hud-grade') ? { text: txt('.hud-grade-text'), sub: txt('.hud-grade-sub') } : null,
         banner: shown('.hud-banner') ? txt('.hud-banner') : null,
+        // who won the point and why, on the plate under the score (the Mini Rally)
+        point: shown('.bug-strap') ? `${txt('.bug-strap-who')} · ${txt('.bug-strap-what')}` : null,
         message: shown('.hud-msg') ? txt('.hud-msg') : null,
         call: shown('.callout') ? { who: txt('.callout-who'), word: txt('.callout-word'), sub: txt('.callout-sub') } : null,
         // a hitter's route strip at the bottom: the route, its tempo, then the setter's play once one is called
@@ -447,7 +451,7 @@ function digest(s) {
   if (s.hud) {
     d.title = s.hud.title;
     d.score = s.hud.score;
-    for (const k of ['grade', 'banner', 'message', 'call', 'route']) if (s.hud[k]) d[k] = s.hud[k];
+    for (const k of ['grade', 'banner', 'point', 'message', 'call', 'route']) if (s.hud[k]) d[k] = s.hud[k];
   }
   if (s.game) {
     d.clock = s.game.clock;

@@ -299,6 +299,8 @@ export class Hud {
   setScore(t: string): void {
     this.bug.dataset.kind = 'drill';
     delete this.bug.dataset.serve;
+    // the cells, read as one line (a screen reader, the verify helper)
+    this.bug.setAttribute('aria-label', t);
     if (t === this.cellsText) return;
     this.cellsText = t;
     this.cells.replaceChildren();
@@ -321,6 +323,7 @@ export class Hud {
     this.setPts(this.usPts, m.us, first);
     this.setPts(this.themPts, m.them, first);
     const serve = m.serving === 1 ? 'us' : 'them';
+    this.bug.setAttribute('aria-label', `YOU ${m.us} : ${m.them} THEM · ${serve === 'us' ? 'your' : 'their'} serve`);
     if (this.bug.dataset.serve === serve && !first) return;
     this.bug.dataset.serve = serve;
     if (first) this.ballDirty = true;
