@@ -1,0 +1,612 @@
+/* ==================================================================== HUD
+   Two looks over one HUD (Settings → Screen → Look, body[data-hud]). VNL, the default, is the base CSS; Games is
+   the body[data-hud='games'] overrides below it.
+
+   VNL: a Nations League world feed. One score bar across the top: a flag at each end in the team's kit colour,
+   violet plates with the team's code in heavy slanted capitals that rise out of the bar, the kit colour under each
+   plate, the points either side of the game's own mark (where the league's logo sits). Only the bar is violet:
+   captions and panels are the base game's dark ink; what is picked takes the bar's orange.
+
+   GAMES: an Olympic-style world feed cut down to an indicator. A small dark glass score in the top-left corner: a
+   sliver of pastel art-deco on its edge, a row per team (its flag, its code, the serve ball, its points on a
+   white cell). Captions on the same glass.
+
+   Both keep the score an indicator, not the show: during a rally the score and what you call stay up. The feedback is
+   big, as the base game had it: who won the point on a plate in their kit colour under the score, the grade of your
+   touch in heavy italics over the court with its glow, the km/h under it (so the last ball's speed and the streak are
+   not shown). Gold, cyan, orange and green are timing grades
+   (the spike collar's colours). A setter's calls keep each hitter's own colour (CALL_COLOR in game/callRuns.ts),
+   the legend the set guide on the court, the play wheel and the play designer share; the HUD doesn't re-key it.
+   Condensed DIN numerals from the system (Bahnschrift on Windows, DIN on Apple, Roboto Condensed on Android, a
+   narrow sans on Linux; nothing is downloaded), nothing over the middle of the court; only the grade and a good rep
+   glow. */
+
+:root {
+  --hud-cond: Bahnschrift, 'DIN Condensed', 'DIN Alternate', 'Roboto Condensed', sans-serif-condensed, 'Ubuntu Condensed',
+    'Liberation Sans Narrow', 'Arial Narrow', sans-serif;
+  /* the feedback's own face: the game's (the start screen's), heavy italic, as the base game had it */
+  --hud-loud: Inter, 'Segoe UI', Roboto, Helvetica, Arial, system-ui, sans-serif;
+  /* the score's top edge (the VNL codes rise above it) and the left edge of what sits in the corner */
+  --hud-top: calc(24px + env(safe-area-inset-top, 0px));
+  --hud-left: calc(20px + env(safe-area-inset-left, 0px));
+  /* how tall the score is, for what hangs under it */
+  --bug-h: 31px;
+  /* the real net, where the HUD draws one (the call sheet, the route panel): its top band and antennae */
+  --band: #f1f0ea;
+  --ant-r: #d6262f;
+  --ant-w: #f7f6f2;
+  /* VNL: the bar's violets, its centre and its orange */
+  --vnl-hi: #5b2fb4;
+  --vnl: #3f1c8c;
+  --vnl-lo: #2a1166;
+  --vnl-mid: #5a2fae;
+  --vnl-edge: #3a1a82;
+  --vnl-orange: #ffa04f;
+  --plate: linear-gradient(180deg, var(--vnl-hi), var(--vnl) 62%, #33157a);
+  /* every caption, and the panels (the route panel, the play wheel): the base game's dark ink */
+  --tag: rgba(12, 14, 20, 0.82);
+  --tag-solid: #12161f;
+  --tag-line: rgba(255, 255, 255, 0.14);
+  --panel: rgba(12, 14, 20, 0.92);
+  --panel-2: #1a1f2b;
+  --slice: rgba(12, 14, 20, 0.78);
+  --slice-on: rgba(58, 68, 89, 0.96);
+  --print: #ffffff;
+  --print-2: rgba(255, 255, 255, 0.74);
+  --print-3: rgba(255, 255, 255, 0.52);
+  /* a key you can press now, and the thing that is picked */
+  --key: #ffffff;
+  --key-ink: #12161f;
+  --pick: var(--vnl-orange);
+  --pick-ink: #12161f;
+  /* a result that went your way (the banner): the base game's green */
+  --win: #7dff9b;
+  /* timing grades: the collar's colours */
+  --g-perfect: #ffd23f;
+  --g-good: #4fd1ff;
+  --g-off: #ff8a3d;
+  --g-miss: #c9c9d1;
+  --g-green: #3ddc84;
+  --g-bad: #ff4d5e;
+  /* the ball: its three panel colours */
+  --vb-y: #f6c82e;
+  --vb-b: #1c4aa8;
+  --vb-w: #f4f2e8;
+  --lift: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 22px rgba(0, 0, 0, 0.32);
+  --r: 0px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+body[data-hud='games'] {
+  --hud-top: calc(28px + env(safe-area-inset-top, 0px));
+  --hud-left: calc(28px + env(safe-area-inset-left, 0px));
+  --bug-h: 54px;
+  /* GAMES: dark glass, pearl, and the art-deco pastels */
+  --gm-ink: #12161f;
+  --gm-glass: rgba(12, 14, 20, 0.7);
+  --gm-pearl: #f5f2ff;
+  --gm-rose: #f3a6bb;
+  --gm-lilac: #b9a4f3;
+  --gm-sky: #9cc3f0;
+  --gm-pastel: linear-gradient(90deg, #f6b3c5, #cfb3f2 60%, #a9cbf2);
+  --gm-blur: blur(14px) saturate(1.4);
+  --tag: var(--gm-glass);
+  --tag-solid: #12161f;
+  --tag-line: rgba(255, 255, 255, 0.13);
+  --panel: rgba(12, 14, 20, 0.9);
+  --panel-2: #1a1f2b;
+  --slice: rgba(12, 14, 20, 0.74);
+  --slice-on: rgba(58, 68, 89, 0.95);
+  --print-2: rgba(255, 255, 255, 0.7);
+  --print-3: rgba(255, 255, 255, 0.5);
+  --key: var(--gm-pearl);
+  --key-ink: var(--gm-ink);
+  --pick: var(--gm-pearl);
+  --pick-ink: var(--gm-ink);
+  --lift: inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 10px 26px rgba(0, 0, 0, 0.4);
+  --r: 7px;
+}
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  user-select: none;
+  font-family: var(--hud-cond);
+  font-stretch: 87.5%;
+  color: var(--print);
+  /* what hangs under the score moves down while the point's tag is up */
+  --strap-push: 0px;
+}
+.hud:has(.bug-strap.show) { --strap-push: 58px; }
+
+/* ------------------------------------------------------------ the score
+   VNL: one bar across the top. Each side, from its end in: the team's flag, its plate (the serve ball before the code
+   while it serves, the code rising out of the bar, the kit colour under it) and its points; the game's mark between
+   the points. A drill's bar is its name on a plate, then a box per part of its line. */
+.bug { position: absolute; top: var(--hud-top); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center;
+  filter: drop-shadow(0 6px 14px rgba(12, 4, 34, 0.5)); }
+.bug-band { position: relative; display: flex; align-items: stretch; height: 28px; }
+.bug-match, .bug-cells { display: none; align-items: stretch; }
+.bug[data-kind='match'] .bug-match, .bug[data-kind='drill'] .bug-cells { display: flex; }
+/* the middle of the bar: lighter towards the mark (the plates and flags cover its ends) */
+.bug-match { background: linear-gradient(90deg, var(--vnl-edge), var(--vnl-mid) 50%, var(--vnl-edge)); }
+.bug-team { --k: var(--us); position: relative; display: flex; align-items: stretch; }
+.bug-team.them { --k: var(--them); flex-direction: row-reverse; }
+/* the flag, in the kit colour: a white sash for us, a white band for them; at the end of the bar */
+.bug-kit { order: -1; flex: none; display: block; width: 40px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  background: linear-gradient(to bottom right, var(--k) 0 43%, #fff 43% 57%, var(--k) 57%); }
+.bug-team.them .bug-kit { background: linear-gradient(var(--k) 0 39%, #fff 39% 61%, var(--k) 61%); }
+/* where the serve ball sits: on the plate, before the code (after it on their side) */
+.bug-slot { position: absolute; top: 7px; left: 48px; width: 14px; height: 14px; }
+.bug-team.them .bug-slot { left: auto; right: 48px; }
+/* the plate: room for the serve ball, the code, the kit colour under it */
+.bug-name { display: flex; align-items: flex-end; padding: 0 9px 0 30px; background: var(--plate); box-shadow: 0 3px 0 var(--k); }
+.bug-team.them .bug-name { padding: 0 30px 0 9px; }
+.bug-code { display: block; padding-bottom: 2px; font-size: 41px; font-weight: 700; font-stretch: 75%; line-height: 0.74; letter-spacing: 0.005em;
+  text-transform: uppercase; transform: skewX(-9deg); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); }
+.bug-pts { display: grid; place-items: center; min-width: 36px; padding: 0 7px; font-size: 22px; font-weight: 700; font-stretch: 80%; line-height: 1;
+  font-variant-numeric: tabular-nums; }
+.bug-pts.tick { animation: ptsRoll 0.5s var(--ease-out); }
+@keyframes ptsRoll { from { transform: translateY(55%); opacity: 0; } to { transform: none; opacity: 1; } }
+/* the game's own mark, where the league's logo sits */
+.bug-mid { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 9px; line-height: 1; color: var(--vnl-orange);
+  font-weight: 700; }
+.bug-mid::before { content: 'COURT'; margin-right: -0.12em; font-size: 9px; letter-spacing: 0.12em; }
+.bug-mid::after { content: 'FEEL'; margin-top: 1px; font-size: 13px; font-stretch: 75%; letter-spacing: 0.06em; }
+
+/* the serve ball: flies over the bar to the side that wins the serve, with topspin */
+.bug-ball { position: absolute; left: 0; top: 0; z-index: 2; width: 14px; height: 14px; transition: transform 0.72s cubic-bezier(0.45, 0.05, 0.55, 0.95); }
+.bug-ball.still { transition: none; }
+.bug[data-kind='drill'] .bug-ball { display: none; }
+.bug-ball svg { display: block; width: 100%; height: 100%; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4)); }
+.bug-ball.fly svg { animation: serveArc 0.72s; }
+@keyframes serveArc {
+  0% { transform: translateY(0) rotate(0deg); animation-timing-function: cubic-bezier(0.3, 0.6, 0.6, 1); }
+  50% { transform: translateY(-26px) rotate(-200deg); animation-timing-function: cubic-bezier(0.4, 0, 0.7, 0.4); }
+  100% { transform: translateY(0) rotate(-400deg); }
+}
+.vb-y { fill: var(--vb-y); }
+.vb-b { fill: none; stroke: var(--vb-b); stroke-width: 5.5; }
+.vb-w { fill: none; stroke: var(--vb-w); stroke-width: 5; }
+.vb-seam { fill: none; stroke: rgba(20, 22, 30, 0.45); stroke-width: 1; }
+.vb-rim { fill: none; stroke: rgba(20, 22, 30, 0.55); stroke-width: 1.2; }
+
+/* a drill's line, one box per part like the bar's SETS boxes: what it counts small over the value (words after it beside it) */
+.bug-cells { background: var(--vnl-lo); }
+.bug-cell { display: flex; flex-flow: row wrap; justify-content: center; align-content: center; align-items: baseline; column-gap: 3px; padding: 0 11px;
+  line-height: 1; white-space: nowrap; }
+.bug-cell + .bug-cell { box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.12); }
+.bug-lab { flex-basis: 100%; margin-bottom: 1px; text-align: center; }
+.bug-cell small { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--print-2); }
+.bug-cell b { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.bug-cell.txt b { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* what you play: in a drill, the bar's plate (the drill's name rising out of it, the variant beside it); a match's
+   bar has none (you know who you are) */
+.bug[data-kind='drill'] { flex-direction: row; align-items: stretch; }
+.bug-tab { order: -1; display: flex; align-items: flex-end; gap: 9px; height: 28px; padding: 0 12px; background: var(--plate); box-shadow: 0 3px 0 var(--us);
+  white-space: nowrap; }
+.bug-tab b { display: block; padding-bottom: 2px; font-size: 30px; font-weight: 700; font-stretch: 75%; line-height: 0.74; text-transform: uppercase;
+  transform: skewX(-9deg); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); }
+.bug-tab span { align-self: center; font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--print-2); }
+.bug-tab:empty, .bug[data-kind='match'] .bug-tab { display: none; }
+
+/* who won the point and why: a big plate in the winner's kit colour under the bar, who on its end */
+.bug-strap { --k: var(--us); --kit-plate: linear-gradient(180deg, color-mix(in srgb, var(--k) 70%, #fff), var(--k) 55%, color-mix(in srgb, var(--k) 82%, #000));
+  position: absolute; top: calc(100% + 10px); left: 50%; display: flex; align-items: stretch; height: 44px; white-space: nowrap;
+  filter: drop-shadow(0 6px 14px rgba(12, 4, 34, 0.5)); opacity: 0; transform: translate(-50%, -6px);
+  transition: opacity 0.18s ease-out, transform 0.32s var(--ease-out); }
+.bug-strap[data-side='them'] { --k: var(--them); }
+.bug-strap.show { opacity: 1; transform: translate(-50%, 0); }
+.bug-strap svg { display: none; }
+.bug-strap-what { display: flex; align-items: center; padding: 0 20px; background: var(--kit-plate); font-size: 36px; font-weight: 700; font-stretch: 75%;
+  line-height: 1; letter-spacing: 0.04em; text-transform: uppercase; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3); }
+.bug-strap-who { display: flex; align-items: center; padding: 0 14px; background: var(--tag-solid); font-size: 12px; font-weight: 700; letter-spacing: 0.2em;
+  text-transform: uppercase; }
+
+/* ------------------------------------------------------------ notes: under the score (under the point's plate while that is up) */
+.hud-msg { position: absolute; left: 50%; top: calc(var(--hud-top) + var(--bug-h) + 10px + var(--strap-push)); transform: translateX(-50%); max-width: 92vw;
+  padding: 6px 13px 7px; border-radius: var(--r); background: var(--tag); box-shadow: var(--lift);
+  font-size: 13px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; transition: opacity 0.25s, top 0.32s var(--ease-out); }
+.hud-msg.show { opacity: 1; }
+
+/* ------------------------------------------------------------ the grade of a touch
+   Big over the court, as the base game had it: the word in heavy italics in the collar's colour (gold Perfect, cyan
+   Good, orange Early or Late, green a green set, grey a miss) with its glow, how fast the ball went under it. It is the
+   moment, not the scoreboard, so it takes the game's own face, not the score's narrow one. */
+.hud-grade { --gc: var(--g-perfect); position: absolute; left: 50%; top: 30%; translate: -50% -50%; display: flex; flex-direction: column; align-items: center;
+  white-space: nowrap; opacity: 0; transition: opacity 0.25s; }
+.hud-grade.show { opacity: 1; }
+.hud-grade.aside { left: 22%; top: 40%; }
+.hud-grade-text { color: var(--gc); font-family: var(--hud-loud); font-size: 60px; font-weight: 900; font-style: italic; font-stretch: 100%; line-height: 1;
+  letter-spacing: 0.04em; text-transform: uppercase; transform: skewX(-8deg); -webkit-text-stroke: 1px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.65); }
+.hud-grade.aside .hud-grade-text { font-size: 44px; }
+.hud-grade-sub { max-width: 52vw; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; font-family: var(--hud-loud); font-size: 18px; font-weight: 700;
+  font-stretch: 100%; line-height: 1.2; letter-spacing: 0.06em; color: #f2f2f2; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.65); }
+.hud-grade-sub:empty { display: none; }
+.hud-grade.pop .hud-grade-text { animation: gradePop 0.42s cubic-bezier(0.2, 1.6, 0.35, 1); }
+@keyframes gradePop { 0% { transform: scale(0.4) skewX(-8deg); opacity: 0; } 60% { transform: scale(1.15) skewX(-8deg); opacity: 1; }
+  100% { transform: skewX(-8deg); } }
+@media (prefers-reduced-motion: reduce) { .hud-grade.pop .hud-grade-text { animation: none; } }
+.g-perfect .hud-grade-text { text-shadow: 0 0 22px rgba(255, 190, 40, 0.85), 0 0 60px rgba(255, 120, 0, 0.6), 0 3px 0 #7a4b00; }
+.g-good { --gc: var(--g-good); }
+.g-good .hud-grade-text { text-shadow: 0 0 16px rgba(60, 190, 255, 0.6), 0 3px 0 #0a3a5a; }
+.g-early, .g-late { --gc: var(--g-off); }
+.g-early .hud-grade-text, .g-late .hud-grade-text { text-shadow: 0 3px 0 #5a2a08, 0 2px 8px rgba(0, 0, 0, 0.65); }
+.g-miss { --gc: var(--g-miss); }
+.g-miss .hud-grade-text { text-shadow: 0 3px 0 #333; }
+.g-green { --gc: var(--g-green); }
+.g-green .hud-grade-text { text-shadow: 0 0 20px rgba(61, 220, 132, 0.8), 0 0 54px rgba(20, 160, 90, 0.55), 0 3px 0 #0b4a2a; }
+
+/* ------------------------------------------------------------ a drill rep's result: big words over the court, as the base game had them */
+.hud-banner { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); font-family: var(--hud-loud); font-size: 40px; font-weight: 900;
+  font-stretch: 100%; line-height: 1.05; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.65); opacity: 0; transition: opacity 0.25s; }
+.hud-banner.show { opacity: 1; }
+.hud-banner.pop { animation: bannerIn 0.34s var(--ease-out); }
+@keyframes bannerIn { from { transform: translate(-50%, -30%); opacity: 0; } to { transform: translate(-50%, -50%); opacity: 1; } }
+/* a result that went your way in the base game's green, with its glow; a ball out, blocked or missed in red */
+.b-good { color: var(--win); text-shadow: 0 0 18px rgba(125, 255, 155, 0.45), 0 3px 0 #0b4a2a, 0 2px 8px rgba(0, 0, 0, 0.65); }
+.b-bad { color: var(--g-bad); }
+
+/* ------------------------------------------------------------ the last ball's speed, the streak: not shown in either look
+   (the grade says the km/h; the score is an indicator, not a board of everything) */
+.hud-bl, .hud-streak { display: none; }
+
+/* ------------------------------------------------------------ what hangs at the bottom
+   The calls (or your route), the lesson's cue and the keys to press now, in one column between the speed and the
+   streak: each sits on the one below it, so none covers another however long the key line runs. */
+.hud-foot { position: absolute; left: calc(170px + env(safe-area-inset-left, 0px)); right: calc(170px + env(safe-area-inset-right, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; align-items: center; gap: 9px; }
+.hud-hint { order: 2; width: max-content; max-width: 100%; padding: 5px 13px 6px; border-radius: var(--r); background: var(--tag); box-shadow: var(--lift);
+  font-size: 13px; font-weight: 600; line-height: 1.75; letter-spacing: 0.02em; text-align: center; text-wrap: balance; }
+.hud-hint:empty { display: none; }
+.hud-hint .hs { display: inline-block; width: 1px; height: 12px; margin: 0 11px; vertical-align: -1px; background: var(--tag-line); }
+.hud kbd { display: inline-block; min-width: 20px; padding: 1px 6px; margin: 0 2px; border-radius: 3px; background: var(--key); color: var(--key-ink);
+  font: 700 11.5px/1.35 var(--hud-cond); font-stretch: 87.5%; letter-spacing: 0.02em; text-align: center; box-shadow: 0 1px 0 rgba(0, 0, 0, 0.55); }
+
+/* ------------------------------------------------------------ the setter's calls, under their own net
+   laid out like the net seen from the setter: outside, middle, opposite; the pipe behind the middle */
+.call-sheet { display: none; grid-template-columns: repeat(3, minmax(96px, auto)); gap: 5px 6px; font-size: 12.5px; }
+.call-sheet.pins { grid-template-columns: repeat(2, minmax(96px, auto)); }
+.cs-play { grid-column: 1 / -1; justify-self: center; padding: 2px 9px 3px; border-radius: 2px; background: var(--tag-solid);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+.cs-net { grid-column: 1 / -1; position: relative; height: 5px; margin: 3px 4px 4px; border-radius: 1px; background: var(--band);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.cs-net::before, .cs-net::after { content: ''; position: absolute; top: -7px; width: 3px; height: 19px; border-radius: 2px;
+  background: repeating-linear-gradient(var(--ant-r) 0 4px, var(--ant-w) 4px 8px); }
+.cs-net::before { left: -4px; }
+.cs-net::after { right: -4px; }
+.cs-item { display: flex; align-items: center; gap: 6px; padding: 5px 9px 5px 5px; border-radius: var(--r); background: var(--tag);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3); color: var(--print-2); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  transition: color 0.12s, box-shadow 0.12s, background-color 0.12s; }
+.cs-PIPE { grid-column: 2; }
+.cs-item b { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 3px; background: var(--key); color: var(--key-ink);
+  font-size: 11.5px; font-weight: 700; }
+.cs-item span { color: var(--c); }
+.cs-item i { display: flex; gap: 3px; margin-left: auto; padding-left: 4px; }
+.cs-item em { width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.26); }
+.cs-item em.on { background: var(--c); }
+/* the pass is played: the calls are locked, their keys no longer do anything */
+.call-sheet.locked .cs-item i { opacity: 0.35; }
+.call-sheet.locked .cs-item b { background: none; color: var(--print-3); box-shadow: inset 0 0 0 1px var(--tag-line); }
+/* who your set goes to: outlined by default (the outside), filled once you pressed their key */
+.cs-item.lit { color: var(--print); box-shadow: inset 0 0 0 1.5px var(--c), 0 2px 6px rgba(0, 0, 0, 0.3); }
+.cs-item.lit.picked { background: color-mix(in srgb, var(--c) 28%, var(--tag-solid)); }
+.cs-item.off { opacity: 0.35; text-decoration: line-through; }
+
+/* ------------------------------------------------------------ your route as a hitter (keys 1-5) */
+.route-strip { display: flex; align-items: center; gap: 10px; padding: 5px 10px 5px 5px; border-radius: var(--r); background: var(--tag); box-shadow: var(--lift);
+  font-size: 12.5px; white-space: nowrap; }
+.rs-key { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 5px; border-radius: 3px; background: var(--key); color: var(--key-ink);
+  font-size: 15px; font-weight: 700; font-stretch: 75%; font-variant-numeric: tabular-nums; }
+.rs-key.pop { animation: rsPop 0.28s var(--ease-out); }
+@keyframes rsPop { 0% { transform: scale(0.7); } 100% { transform: scale(1); } }
+.rs-name { font-size: 15px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c); }
+/* the tempo meter: bars rising left to right, more of them lit for a faster set */
+.tempo { display: inline-flex; align-items: flex-end; gap: 2px; }
+.tempo i { width: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.3); }
+.tempo i:nth-child(1) { height: 6px; }
+.tempo i:nth-child(2) { height: 9px; }
+.tempo i:nth-child(3) { height: 12px; }
+.tempo i:nth-child(4) { height: 15px; }
+.tempo[data-n='1'] i:nth-child(-n + 1), .tempo[data-n='2'] i:nth-child(-n + 2), .tempo[data-n='3'] i:nth-child(-n + 3), .tempo[data-n='4'] i { background: var(--c); }
+.tempo em { margin-left: 6px; font-style: normal; font-weight: 700; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--print-2); }
+.rs-pips { display: inline-flex; gap: 3px; }
+.rs-pips em { width: 5px; height: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
+.rs-pips em.on { background: var(--c); }
+.rs-play { display: inline-flex; align-items: center; gap: 7px; padding-left: 10px; border-left: 1px solid var(--tag-line); }
+.rs-play small, .rp-play small { font-weight: 700; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--print-3); }
+.rs-play strong { font-weight: 700; letter-spacing: 0.04em; }
+.rs-why { color: var(--g-off); font-size: 11.5px; }
+.rs-badge { padding: 3px 6px 2px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--tag-line); font-size: 10px; font-weight: 700; line-height: 1;
+  letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; color: var(--print); }
+.rs-badge.on { background: var(--g-green); box-shadow: none; color: var(--tag-solid); }
+.rs-badge.high { background: var(--g-off); box-shadow: none; color: var(--tag-solid); }
+.rs-off strong, .rs-badge.off { color: var(--print-3); text-decoration: line-through; }
+
+/* the route panel (C): at the side, never over the middle of the court; the game runs on behind it */
+.route-panel { position: absolute; left: calc(20px + env(safe-area-inset-left, 0px)); top: calc(var(--hud-top) + 44px); width: 300px;
+  max-height: calc(100% - var(--hud-top) - 44px - 110px); overflow: hidden auto; padding: 12px 12px 10px; border-radius: 4px;
+  background: var(--panel); box-shadow: inset 0 0 0 1px var(--tag-line), var(--lift); opacity: 0; visibility: hidden; transform: translateX(-14px);
+  transition: opacity 0.18s var(--ease-out), transform 0.24s var(--ease-out), visibility 0s 0.24s; scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent; }
+.route-panel.open { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+.rp-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+.rp-head h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.rp-head h2 span { color: var(--c); }
+.rp-court { margin: 9px 0 8px; border-radius: 3px; overflow: hidden; background: var(--panel-2); }
+.rp-court svg { display: block; width: 100%; height: auto; }
+.rp-line { stroke: rgba(255, 255, 255, 0.28); stroke-width: 1.2; fill: none; }
+.rp-3m { stroke-dasharray: 5 4; }
+.rp-tag { fill: var(--print-3); font: 600 9px/1 var(--hud-cond); letter-spacing: 0.08em; }
+.rp-net { stroke: var(--band); stroke-width: 3; stroke-linecap: round; }
+.rp-ant { stroke: var(--ant-r); stroke-width: 2.4; stroke-dasharray: 2.5 2.5; }
+.rp-setter { fill: var(--print); }
+.rp-setter-s { fill: var(--tag-solid); font: 700 9.5px/1 var(--hud-cond); }
+.rp-mate { fill: none; stroke-width: 1.4; stroke-dasharray: 3 4; stroke-linecap: round; opacity: 0.55; }
+.rp-mate-dot { opacity: 0.65; }
+.rp-mate-tag { font: 700 9px/1 var(--hud-cond); letter-spacing: 0.04em; opacity: 0.85; }
+.rp-run { fill: none; stroke: rgba(255, 255, 255, 0.36); stroke-width: 1.6; stroke-linecap: round; }
+.rp-run.on { stroke: var(--c); stroke-width: 3; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6)); }
+.rp-start { fill: var(--tag-solid); stroke: rgba(255, 255, 255, 0.5); stroke-width: 1.2; }
+.rp-start.on { stroke: var(--c); stroke-width: 2; }
+.rp-spot { fill: var(--tag-solid); stroke: rgba(255, 255, 255, 0.55); stroke-width: 1.2; }
+.rp-spot.on { fill: var(--c); stroke: var(--c); filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)); }
+.rp-num { fill: var(--print); font: 700 10.5px/1 var(--hud-cond); }
+.rp-num.on { fill: var(--tag-solid); }
+.rp-play { margin: 0 0 8px; padding: 7px 9px; border-radius: 3px; background: rgba(255, 255, 255, 0.05); }
+.rp-play div { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; }
+.rp-play div small { flex-basis: 100%; }
+.rp-play strong { font-size: 14px; font-weight: 700; letter-spacing: 0.04em; }
+.rp-play .rs-badge { margin-left: auto; }
+.rp-play p { margin: 4px 0 0; font-size: 12px; line-height: 1.35; color: var(--print-2); }
+.rp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.rp-list li { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 9px; padding: 5px 6px; border-radius: 3px; }
+.rp-list li.on { background: color-mix(in srgb, var(--c) 17%, transparent); }
+.rp-list b { display: grid; place-items: center; height: 22px; border-radius: 3px; background: var(--key); color: var(--key-ink); font-size: 12px; font-weight: 700; }
+.rp-list li.on b { background: var(--c); color: var(--tag-solid); }
+.rp-name { font-size: 13.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.rp-list li.on .rp-name { color: var(--c); }
+.rp-name small { display: block; margin-top: 2px; font-size: 11.5px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--print-2); }
+.rp-t { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.rp-t u { text-decoration: none; font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--print-3); }
+
+/* ------------------------------------------------------------ the play wheel (C, the setter)
+   The slice the mouse is on is picked (the look's pick colour); the play the calls make now is outlined */
+.play-wheel { position: absolute; left: 50%; top: 50%; display: none; transform: translate(-50%, -50%); }
+.play-wheel svg { display: block; overflow: visible; filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.35)); }
+/* the ball is in play: the wheel steps aside, off the court, smaller (a pick goes by direction, not position) */
+.play-wheel.aside { left: calc(24px + env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%) scale(0.72); transform-origin: left center; }
+.pw-slice { fill: var(--slice); stroke: rgba(255, 255, 255, 0.14); stroke-width: 1; transition: fill 0.1s; }
+.pw-slice.on { fill: var(--slice-on); stroke: rgba(255, 255, 255, 0.55); stroke-width: 1.5; }
+.pw-slice.sel { fill: var(--pick); stroke: var(--pick); stroke-width: 2; }
+.pw-label { fill: var(--print); font: 700 12.5px/1 var(--hud-cond); font-stretch: 87.5%; letter-spacing: 0.03em; text-anchor: middle; pointer-events: none; }
+.pw-num { fill: var(--print-3); font: 700 10.5px/1 var(--hud-cond); text-anchor: middle; pointer-events: none; }
+.pw-slice.sel + .pw-num, .pw-slice.sel + .pw-num + .pw-label { fill: var(--pick-ink); }
+.pw-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 4px; border-radius: 50%; background: var(--panel); box-shadow: inset 0 0 0 1px var(--tag-line);
+  text-align: center; pointer-events: none; }
+.pw-name { font-size: 14px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.pw-court { flex: none; width: 100px; height: 52px; }
+.pw-net { stroke: var(--band); stroke-width: 1.6; }
+.pw-setter { fill: var(--print); }
+.pw-run { stroke-width: 1.8; stroke-linecap: round; }
+.pw-idea { max-width: 128px; font-size: 11px; line-height: 1.25; color: var(--print-2); }
+body.touchmode .play-wheel .pw-slice { pointer-events: auto; }
+body.touchmode .play-wheel.aside { left: 50%; top: calc(var(--hud-top) + var(--bug-h) + 6px); transform: translateX(-50%) scale(0.56); transform-origin: center top; }
+
+/* ------------------------------------------------------------ a team-mate's call over their head */
+.callout { --c: var(--g-good); position: absolute; left: 50%; top: 26%; transform: translate(-50%, -100%); opacity: 0; transition: opacity 0.2s; }
+.callout.show { opacity: 1; }
+.callout.c-out { --c: var(--g-off); }
+.callout-bubble { position: relative; margin-bottom: 9px; padding: 4px 13px 6px; border-radius: 4px; background: var(--tag); box-shadow: var(--lift);
+  text-align: center; white-space: nowrap; transform-origin: 50% 100%; }
+.callout-bubble::after { content: ''; position: absolute; left: 50%; bottom: -8px; margin-left: -7px; width: 14px; height: 8px;
+  background: var(--tag); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+/* a warning (HIGH, HELP): an orange edge along its top */
+.c-out .callout-bubble::before { content: ''; position: absolute; left: 6px; right: 6px; top: -2px; height: 3px; border-radius: 2px; background: var(--g-off); }
+.callout.edge .callout-bubble::after { display: none; }
+.callout.edge-l .callout-who::before, .callout.edge-r .callout-who::after { content: ''; display: inline-block; width: 6px; height: 6px;
+  border: solid var(--c); vertical-align: 1px; transform: rotate(45deg); }
+.callout.edge-l .callout-who::before { border-width: 0 0 2px 2px; margin-right: 7px; }
+.callout.edge-r .callout-who::after { border-width: 2px 2px 0 0; margin-left: 7px; }
+.callout-who { font-size: 10px; font-weight: 700; letter-spacing: 0.24em; color: var(--print-3); }
+.callout-word { font-size: 28px; font-weight: 700; font-stretch: 75%; letter-spacing: 0.05em; line-height: 1.05; color: var(--c); }
+.c-in .callout-word { font-size: 21px; }
+.callout-sub { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--print-2); }
+.callout.pop .callout-bubble { animation: calloutIn 0.3s var(--ease-out); }
+@keyframes calloutIn { from { transform: translateY(6px) scale(0.86); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ------------------------------------------------------------ the lesson: the parts of a rep, and the one to do now */
+.coach-strip { position: absolute; left: 50%; top: calc(var(--hud-top) + var(--bug-h) + 46px); transform: translateX(-50%); display: none; align-items: center;
+  gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; white-space: nowrap; pointer-events: none; }
+.coach-strip.show { display: flex; }
+.coach-step { padding: 3px 9px 4px; border-radius: var(--r); background: var(--tag); color: var(--print-3); }
+.coach-step.done { color: var(--g-green); }
+.coach-step.now { background: var(--key); color: var(--key-ink); }
+.coach-sep { width: 8px; height: 1px; background: var(--print-3); font-size: 0; }
+.coach-cue { order: 1; position: relative; display: none; align-items: center;
+  gap: 12px; padding: 9px 18px 10px; border-radius: 4px; background: var(--tag); box-shadow: var(--lift); font-size: 17px; font-weight: 700;
+  letter-spacing: 0.02em; white-space: nowrap; pointer-events: none; }
+.coach-cue.show { display: flex; }
+.coach-cue kbd { min-width: 28px; padding: 4px 10px; font-size: 15px; }
+.coach-text kbd { min-width: 22px; padding: 1px 6px; font-size: 13px; }
+/* waiting for you: the cue is outlined and its key presses itself (nothing glows); a nudge puts an orange edge
+   along its top, as on a warning */
+@keyframes coachKey { 0%, 50%, 100% { transform: none; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.55); }
+  65%, 85% { transform: translateY(2px); box-shadow: 0 0 0 rgba(0, 0, 0, 0.55); } }
+.coach-cue.waiting { box-shadow: inset 0 0 0 1.5px var(--key), var(--lift); }
+.coach-cue.waiting .coach-keys kbd { animation: coachKey 1.1s ease-in-out infinite; }
+.coach-cue.nudge::before { content: ''; position: absolute; left: 6px; right: 6px; top: -2px; height: 4px; border-radius: 2px; background: var(--g-off); }
+@media (prefers-reduced-motion: reduce) { .coach-cue.waiting .coach-keys kbd { animation: none; } }
+.t-skip-kb.nudge, .t-skip.nudge { border-color: var(--key); box-shadow: inset 0 0 0 1px var(--key); }
+
+/* ------------------------------------------------------------ the camera tag: says the view for a moment after V */
+.hud-cam { position: absolute; top: calc(16px + env(safe-area-inset-top, 0px)); right: calc(20px + env(safe-area-inset-right, 0px)); padding: 4px 9px 5px;
+  border-radius: var(--r); background: var(--tag); font-size: 11px; font-weight: 700; letter-spacing: 0.2em; opacity: 0; }
+.hud-cam.pulse { animation: camTag 1.8s ease-out; }
+@keyframes camTag { 0% { opacity: 0; transform: translateY(-4px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+/* keyboard skip sits where the camera tag is; the tag drops below it */
+button.t-skip-kb { position: absolute; top: 12px; right: 20px; z-index: 5; display: none; pointer-events: auto; cursor: pointer; color: inherit; font: inherit; }
+.hud.tutoring button.t-skip-kb { display: flex; }
+.hud.tutoring .hud-cam { top: 54px; }
+
+/* ------------------------------------------------------------ the timing cues and calls drawn over the court: the HUD's type */
+.set-to { font-family: var(--hud-cond); font-stretch: 87.5%; font-weight: 700; font-size: 12px; border-radius: 3px; background: var(--tag); }
+.sb-pips, .go-cue { font-family: var(--hud-cond); }
+.go-cue { font-style: normal; font-stretch: 75%; font-size: 26px; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.5); }
+.replay-tag { font-family: var(--hud-cond); font-style: normal; font-weight: 700; letter-spacing: 0.24em; }
+
+/* ------------------------------------------------------------ Settings → Screen: the parts you turned off */
+.hud.no-grades .hud-grade { display: none; }
+.hud.no-calls .call-sheet, .hud.no-calls .route-strip, .hud.no-calls .callout { display: none !important; }
+
+/* ==================================================================== GAMES
+   A small glass score in the top-left corner: the art-deco pastels down its left edge, a row per team (its flag, its
+   code, the serve ball, its points on a pearl cell). Who won the point hangs under it; notes go to the top of the
+   screen in the middle, which this look leaves free. */
+body[data-hud='games'] .bug { left: var(--hud-left); transform: none; align-items: flex-start; filter: none; }
+body[data-hud='games'] .bug-band { display: grid; grid-template-columns: 4px auto; height: auto; border-radius: 7px; overflow: hidden;
+  background: var(--gm-glass); -webkit-backdrop-filter: var(--gm-blur); backdrop-filter: var(--gm-blur); box-shadow: var(--lift); }
+body[data-hud='games'] .bug-band::before { content: ''; background: linear-gradient(180deg, var(--gm-rose) 0 34%, var(--gm-lilac) 34% 67%, var(--gm-sky) 67%); }
+body[data-hud='games'] .bug-match { flex-direction: column; background: none; }
+body[data-hud='games'] .bug-team { display: grid; grid-template-columns: 22px minmax(38px, auto) 12px 36px; grid-template-areas: 'kit name slot pts';
+  column-gap: 8px; align-items: center; height: 27px; padding-left: 9px; }
+body[data-hud='games'] .bug-team.them { box-shadow: inset 0 1px 0 var(--tag-line); }
+body[data-hud='games'] .bug-kit { grid-area: kit; width: 22px; height: 15px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
+body[data-hud='games'] .bug-slot { grid-area: slot; position: static; width: 12px; height: 12px; }
+body[data-hud='games'] .bug-team .bug-name { grid-area: name; display: block; padding: 0; background: none; box-shadow: none; }
+body[data-hud='games'] .bug-code { padding: 0; font-size: 15px; font-weight: 600; font-stretch: 87.5%; line-height: 1; letter-spacing: 0.07em; transform: none;
+  text-shadow: none; }
+body[data-hud='games'] .bug-pts { grid-area: pts; align-self: stretch; min-width: 0; padding: 0; font-size: 17px; font-stretch: 87.5%; color: var(--gm-ink);
+  background: var(--gm-pearl); }
+body[data-hud='games'] .bug-team.them .bug-pts { box-shadow: inset 0 1px 0 #ddd6f5; }
+/* a new point: its cell flashes lilac (the cell doesn't roll; the number would drag the cell with it) */
+body[data-hud='games'] .bug-pts.tick { animation: ptsLit 0.7s ease-out; }
+@keyframes ptsLit { from { background-color: var(--gm-lilac); } }
+body[data-hud='games'] .bug-mid { display: none; }
+/* the serve ball moves between the rows: it spins as it goes, no arc */
+body[data-hud='games'] .bug-ball { width: 12px; height: 12px; transition: transform 0.42s cubic-bezier(0.65, 0, 0.35, 1); }
+body[data-hud='games'] .bug-ball.fly svg { animation: serveSpin 0.42s cubic-bezier(0.65, 0, 0.35, 1); }
+@keyframes serveSpin { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+/* a drill: its name on a pastel header, its line in the glass under it */
+body[data-hud='games'] .bug[data-kind='drill'] { flex-direction: column; align-items: stretch; }
+body[data-hud='games'] .hud:has(.bug[data-kind='drill']) { --bug-h: 64px; }
+body[data-hud='games'] .bug-tab { align-items: baseline; height: auto; padding: 5px 12px 4px; border-radius: 7px 7px 0 0; background: var(--gm-pastel);
+  color: var(--gm-ink); box-shadow: none; }
+body[data-hud='games'] .bug-tab b { padding: 0; font-size: 12px; font-stretch: 87.5%; line-height: 1; letter-spacing: 0.12em; transform: none; text-shadow: none; }
+body[data-hud='games'] .bug-tab span { font-size: 9.5px; color: rgba(29, 20, 70, 0.7); }
+body[data-hud='games'] .bug[data-kind='drill'] .bug-band { border-radius: 0 0 7px 7px; }
+body[data-hud='games'] .bug-cells { background: none; }
+body[data-hud='games'] .bug-cell { justify-content: flex-start; padding: 7px 12px 7px; }
+body[data-hud='games'] .bug-lab { text-align: left; }
+body[data-hud='games'] .bug-cell small { font-size: 9px; color: var(--print-3); }
+body[data-hud='games'] .bug-cell b { font-size: 18px; font-stretch: 87.5%; }
+body[data-hud='games'] .bug-cell.txt b { font-size: 13px; }
+/* who won the point: the same kit-colour plate under the corner score, the winner's jersey on its end */
+body[data-hud='games'] .bug-strap { position: static; align-items: center; height: 40px; margin-top: 8px; border-radius: 7px; overflow: hidden;
+  background: var(--kit-plate); filter: none; box-shadow: 0 10px 26px rgba(8, 4, 30, 0.4); transform: translateY(-6px); }
+body[data-hud='games'] .bug-strap.show { transform: none; }
+body[data-hud='games'] .bug-strap svg { display: block; flex: none; width: 40px; height: 40px; padding: 8px; background: rgba(0, 0, 0, 0.22); fill: #fff; }
+body[data-hud='games'] .bug-strap-what { padding: 0 12px; background: none; font-size: 28px; font-stretch: 78%; }
+body[data-hud='games'] .bug-strap-who { padding: 0 14px 0 0; background: none; font-size: 11px; color: rgba(255, 255, 255, 0.85); }
+body[data-hud='games'] .hud:has(.bug-strap.show) { --strap-push: 50px; }
+/* notes and the lesson's steps: the top middle is free in this look */
+body[data-hud='games'] .hud-msg { top: var(--hud-top); }
+body[data-hud='games'] .coach-strip { top: calc(var(--hud-top) + 40px); }
+body[data-hud='games'] .route-panel { left: var(--hud-left); top: calc(var(--hud-top) + var(--bug-h) + 12px); max-height: calc(100% - var(--hud-top) - var(--bug-h) - 12px - 110px); }
+
+/* ==================================================================== touch: a phone held sideways
+   The drill's chips sit across the top left, pause and camera top right: the score goes in the row under them
+   with the point's plate under it. Your route or the setter's calls, the lesson's cue and the key line stack
+   between the thumbs, so the net and the far court stay clear. The key line keeps only what the buttons don't
+   say themselves (dropSelfNamed in hud.ts). */
+body.touchmode { --hud-top: calc(58px + env(safe-area-inset-top, 0px)); --bug-h: 27px; }
+body.touchmode .hud:has(.bug-strap.show) { --strap-push: 40px; }
+/* the VNL bar, smaller */
+body.touchmode:not([data-hud='games']) .bug-band, body.touchmode:not([data-hud='games']) .bug-tab { height: 24px; }
+body.touchmode:not([data-hud='games']) .bug-kit { width: 30px; }
+body.touchmode:not([data-hud='games']) .bug-slot { top: 6px; left: 35px; width: 11px; height: 11px; }
+body.touchmode:not([data-hud='games']) .bug-team.them .bug-slot { left: auto; right: 35px; }
+body.touchmode:not([data-hud='games']) .bug-ball { width: 11px; height: 11px; }
+body.touchmode:not([data-hud='games']) .bug-name { padding: 0 7px 0 22px; }
+body.touchmode:not([data-hud='games']) .bug-team.them .bug-name { padding: 0 22px 0 7px; }
+body.touchmode:not([data-hud='games']) .bug-code { font-size: 31px; }
+body.touchmode:not([data-hud='games']) .bug-pts { min-width: 27px; padding: 0 5px; font-size: 17px; }
+body.touchmode:not([data-hud='games']) .bug-mid { padding: 0 7px; }
+body.touchmode:not([data-hud='games']) .bug-mid::before { font-size: 9px; letter-spacing: 0.06em; margin-right: -0.06em; }
+body.touchmode:not([data-hud='games']) .bug-mid::after { font-size: 10px; }
+body.touchmode:not([data-hud='games']) .bug-cell { padding: 0 8px; }
+body.touchmode:not([data-hud='games']) .bug-cell b { font-size: 12.5px; }
+body.touchmode:not([data-hud='games']) .bug-cell small { font-size: 9px; }
+body.touchmode:not([data-hud='games']) .bug-cell.txt b { font-size: 10px; }
+body.touchmode:not([data-hud='games']) .bug-tab { padding: 0 9px; }
+body.touchmode:not([data-hud='games']) .bug-tab b { font-size: 23px; }
+body.touchmode:not([data-hud='games']) .bug-strap { top: calc(100% + 8px); height: 30px; }
+body.touchmode:not([data-hud='games']) .bug-strap-what { padding: 0 12px; font-size: 24px; }
+body.touchmode:not([data-hud='games']) .bug-strap-who { padding: 0 9px; font-size: 9px; }
+/* the drill's variant stays off on a phone: the chips across the top left already say it */
+body.touchmode .bug-tab span { display: none; }
+body.touchmode .hud-msg { top: calc(var(--hud-top) + var(--bug-h) + 8px + var(--strap-push)); max-width: 56vw; font-size: 11.5px; line-height: 1.4; white-space: normal; text-align: center; }
+/* the bottom column on a phone: between the stick and the buttons */
+body.touchmode .hud-foot { left: 50%; right: auto; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); width: 48vw; transform: translateX(-50%); gap: 6px; }
+body.touchmode .call-sheet, body.touchmode .route-strip { font-size: 11px; }
+body.touchmode .route-strip { gap: 8px; }
+/* a phone's call sheet: one row shallower (the net line goes) */
+body.touchmode .call-sheet { gap: 3px 5px; }
+body.touchmode .cs-net { display: none; }
+body.touchmode .cs-play { padding: 1px 7px 2px; font-size: 9.5px; }
+body.touchmode .cs-item { gap: 5px; padding: 3px 7px 3px 3px; }
+body.touchmode .cs-item b { min-width: 16px; height: 16px; font-size: 10px; }
+body.touchmode .route-strip .rs-c, body.touchmode .route-panel .rs-c { display: none; }
+body.touchmode .route-strip.panel-open { display: none !important; }
+/* the route panel between the stick and the thumb buttons, so neither is covered (it covers the score while it is open) */
+body.touchmode .route-panel { left: 50%; top: calc(48px + env(safe-area-inset-top, 0px)); width: min(600px, calc(100vw - 360px)); max-height: calc(100% - 150px);
+  transform: translate(-50%, -10px); display: grid; grid-template-columns: minmax(180px, 230px) 1fr; column-gap: 12px; align-items: start; }
+body.touchmode .route-panel.open { transform: translate(-50%, 0); }
+body.touchmode .rp-head { grid-column: 1 / -1; }
+body.touchmode .rp-court { grid-row: 2 / span 2; }
+body.touchmode .rp-play { margin-top: 9px; }
+body.touchmode .rp-list li { padding: 3px 6px; }
+body.touchmode .hud-hint { padding: 3px 10px 4px; font-size: 11px; line-height: 1.6; }
+body.touchmode .hud-hint .hs { margin: 0 7px; }
+body.touchmode .hud-hint kbd { min-width: 16px; padding: 0 4px; font-size: 10px; }
+/* the grade beside the play, above the stick: the middle of a phone is the court, its top the score and the calls */
+body.touchmode .hud-grade, body.touchmode .hud-grade.aside { left: 24%; top: 45%; }
+body.touchmode .hud-grade-text, body.touchmode .hud-grade.aside .hud-grade-text { font-size: 40px; }
+body.touchmode .hud-grade-sub { margin-top: 3px; font-size: 13px; }
+body.touchmode .hud-banner { font-size: 26px; }
+body.touchmode .hud-cam { top: calc(56px + env(safe-area-inset-top, 0px)); }
+body.touchmode .hud.tutoring .hud-cam { top: calc(56px + env(safe-area-inset-top, 0px)); }
+body.touchmode .hud.tutoring button.t-skip-kb { display: none; }
+body.touchmode .callout-word { font-size: 21px; }
+body.touchmode .c-in .callout-word { font-size: 16px; }
+body.touchmode .callout-sub { font-size: 9px; }
+body.touchmode .coach-strip { top: calc(var(--hud-top) + var(--bug-h) + 40px + var(--strap-push)); font-size: 10px; gap: 5px; }
+body.touchmode .coach-cue { padding: 8px 14px; font-size: 14px; }
+/* the Games score on a phone: in the corner under the chips, a size down; who won the point hangs under it */
+body.touchmode[data-hud='games'] { --hud-top: calc(54px + env(safe-area-inset-top, 0px)); --hud-left: calc(14px + env(safe-area-inset-left, 0px)); --bug-h: 44px; }
+body.touchmode[data-hud='games'] .hud:has(.bug[data-kind='drill']) { --bug-h: 52px; }
+body.touchmode[data-hud='games'] .hud:has(.bug-strap.show) { --strap-push: 38px; }
+body.touchmode[data-hud='games'] .bug-team { height: 22px; grid-template-columns: 19px minmax(32px, auto) 11px 30px; column-gap: 7px; padding-left: 8px; }
+body.touchmode[data-hud='games'] .bug-kit { width: 19px; height: 13px; }
+body.touchmode[data-hud='games'] .bug-slot, body.touchmode[data-hud='games'] .bug-ball { width: 11px; height: 11px; }
+body.touchmode[data-hud='games'] .bug-code { font-size: 13px; }
+body.touchmode[data-hud='games'] .bug-pts { font-size: 14px; }
+body.touchmode[data-hud='games'] .bug-tab { padding: 3px 10px 3px; }
+body.touchmode[data-hud='games'] .bug-tab b { font-size: 10.5px; }
+body.touchmode[data-hud='games'] .bug-cell { padding: 5px 9px; }
+body.touchmode[data-hud='games'] .bug-cell b { font-size: 14px; }
+body.touchmode[data-hud='games'] .bug-cell small { font-size: 9px; }
+body.touchmode[data-hud='games'] .bug-strap { height: 30px; margin-top: 6px; }
+body.touchmode[data-hud='games'] .bug-strap svg { width: 30px; height: 30px; padding: 6px; }
+body.touchmode[data-hud='games'] .bug-strap-what { padding: 0 10px; font-size: 20px; }
+body.touchmode[data-hud='games'] .bug-strap-who { padding: 0 10px 0 0; font-size: 9px; }
+body.touchmode[data-hud='games'] .hud-msg { top: calc(var(--hud-top) - 4px); }
+body.touchmode[data-hud='games'] .coach-strip { top: calc(var(--hud-top) + 36px); }
+/* a short window: the route panel's list gets the room (the court sketch shrinks) */
+@media (max-height: 560px) { .route-panel { padding: 9px; } .rp-court { max-width: 220px; margin: 6px auto; } }

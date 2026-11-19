@@ -140,7 +140,7 @@ export class SpikeDrill extends Mode {
     this.updateScore();
     const what =
       level === 0 ? 'Block off' : level === 1 ? 'Block: single · hit around it' : 'Block: double · line or cross, or over the top';
-    this.g.hud.message(what, 1.8);
+    this.g.hud.message(what, 1.8, false);
   }
 
   /** spawn the two opposing blockers the first time the block is turned on */
@@ -245,7 +245,7 @@ export class SpikeDrill extends Mode {
     this.callIdx = i;
     const g = this.g;
     this.setTitle();
-    g.hud.message(`Next set: ${i + 1} · ${this.plays[i].name}`, 1.6);
+    g.hud.message(`Next set: ${i + 1} · ${this.plays[i].name}`, 1.6, false);
     this.updateScore();
     // not tossed yet: head to the new approach start
     if ((this.phase === 'intro' || this.phase === 'feed') && !this.tossed) {

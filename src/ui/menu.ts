@@ -1,6 +1,7 @@
 import {
   ASSIST,
   BODY,
+  HUD_LOOKS,
   isPositionId,
   POSITIONS,
   SERVE,
@@ -1222,7 +1223,25 @@ export class Menu {
         'Auto turns them on for touch screens.',
       ),
       this.sliderRow('Touch aim sensitivity', 'touchSensitivity', two),
-      sw('Key hints', 'showHints', 'The line at the bottom of the screen: what to press now.'),
+    ]);
+    // what the screen shows while you play: the score and the serve always; the rest one switch each
+    // (the timing cues are in Assists, one per skill)
+    group('screen', 'Screen', [
+      seg(
+        'Look',
+        ['VNL', 'Games'],
+        () => HUD_LOOKS.indexOf(s.hudLook),
+        (i) => (s.hudLook = HUD_LOOKS[i]),
+        'VNL: the score bar across the top, as on a Nations League broadcast. Games: a small score in the top-left corner.',
+      ),
+      sw('Grades and km/h', 'hudGrades', 'The grade of each touch, with how fast the ball went.'),
+      sw(
+        'Calls and routes',
+        'hudCalls',
+        "Your setter's call strip, your route strip as a hitter, and your team-mates' calls over their heads.",
+      ),
+      sw('Coaching', 'showHints', 'The keys to press now along the bottom, and short notes like Your ball!'),
+      txt('p', 'set-help', 'The score and the serve are always on. The timing cues are under Assists, one for each skill.'),
     ]);
     group('camera', 'Camera', [
       seg(

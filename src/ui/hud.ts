@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Grade } from '../game/athlete';
-import { TIMING } from '../config';
+import { TIMING, type HudLook } from '../config';
+import { TEAM_COLORS } from '../character/kits';
 import { COLLAR_DEG_PER_S, collarDegrees, collarZone, CUE_NAMES, CUE_ORDER, type Cue, type CueId } from '../game/tutorial';
 import type { CallSheetView } from '../game/callRuns';
 
@@ -15,14 +16,33 @@ const GRADE_CLASS: Record<Grade, string> = {
 /** hint `<kbd>` names → touch button names. Combined approach keys first. */
 export function translateKeyMarkup(t: string, m: Record<string, string>): string {
   t = t.replace(/<kbd>Shift<\/kbd>\+<kbd>W<\/kbd>/g, `<kbd>${m['Shift+W'] ?? 'RUN'}</kbd>`);
-  // (a key range named as one button: the setter's 1-4 is the SET TO chips)
-  t = t.replace(/<kbd>1<\/kbd>-<kbd>4<\/kbd>/g, (all) => (m['1-4'] ? `<kbd>${m['1-4']}</kbd>` : all));
+  // (a key range named as one button: the setter's 1-4 is the SET TO chips, a hitter's 1-5 the ROUTE chips)
+  t = t.replace(/<kbd>1<\/kbd>-<kbd>(\d)<\/kbd>/g, (all, n: string) => {
+    const name = m[`1-${n}`] ?? m['1-n'];
+    return name ? `<kbd>${name}</kbd>` : all;
+  });
   t = t.replace(/<kbd>([^<]*)<\/kbd>/g, (all, k: string) => (k in m ? `<kbd>${m[k]}</kbd>` : all));
   // a setter's chip names itself: "DUMP dump", "OH OH" read once
   t = t.replace(/(<kbd>(OH|MB|OPP|PIPE|DUMP)<\/kbd>) \2\b/gi, '$1');
   // the REPLAY button names itself: "REPLAY last attempt", not "REPLAY replay last attempt"
   t = t.replace(/(<kbd>REPLAY<\/kbd>) replay /g, '$1 ');
   return t.replace(/with the mouse/g, 'by dragging');
+}
+
+/**
+ * On touch, a part of the key line that is only a button and its own verb ("PASS pass", "CAM camera") says what the
+ * button already says on screen: it goes, and the line keeps what the buttons can't (when, how, a hitter's call).
+ * `t` is a line already in touch names (translateKeyMarkup); `m` the names, whose values are the buttons.
+ */
+export function dropSelfNamed(t: string, m: Record<string, string>): string {
+  const buttons = new Set(Object.values(m));
+  return t
+    .split(' · ')
+    .filter((part) => {
+      const k = /^<kbd>([^<]+)<\/kbd> [a-z/]+$/.exec(part.trim());
+      return !(k && buttons.has(k[1]));
+    })
+    .join(' · ');
 }
 
 /** annular sector. Degrees are collar degrees: 0 at 12 o'clock, positive (late) to the right. */
@@ -39,6 +59,48 @@ function ringSector(a0: number, a1: number, r0: number, r1: number): string {
   return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r1} ${r1} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} A ${r0} ${r0} 0 ${large} 0 ${x3.toFixed(2)} ${y3.toFixed(2)} Z`;
 }
 
+/** a team's jersey, drawn in its kit colour: who won the point, on the strap */
+const JERSEY =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.3 2.6 3 5.3l1.7 5.2 2.5-.9v11.8h9.6V9.6l2.5.9L21 5.3l-5.3-2.7c-.6 1.8-2 2.8-3.7 2.8s-3.1-1-3.7-2.8Z"/></svg>';
+
+/** the game's ball (yellow, blue and white panels, as the 3D ball is drawn): who serves */
+const BALL =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><defs><clipPath id="vb-clip"><circle cx="12" cy="12" r="10"/></clipPath></defs>' +
+  '<circle cx="12" cy="12" r="10" class="vb-y"/><g clip-path="url(#vb-clip)">' +
+  '<path d="M3.2 2.2C9.4 6 11.2 12.4 8.1 22.6" class="vb-b"/><path d="M23.4 8.4c-6.2 1.6-9.6 6.4-9.4 15" class="vb-w"/>' +
+  '<path d="M1 13.6c4.6-.6 8.6-2.6 11.6-6.4" class="vb-seam"/></g><circle cx="12" cy="12" r="10" class="vb-rim"/></svg>';
+
+/** one part of a drill's score line, as the score shows it: a value and what it counts */
+export interface StatCell {
+  label: string;
+  value: string;
+  /** the value is a number (set in the numerals) */
+  num: boolean;
+  /** words after the number ("of 4" in "avg 2.30 of 4"), shown small after it */
+  tail: string;
+}
+
+/** a drill's score line ("12 pts · rep 5 · target: Line") as the score's cells: each part split into its value and its label */
+export function statCells(t: string): StatCell[] {
+  return t
+    .split(' · ')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s): StatCell => {
+      // "12 pts", "+40"
+      let m = /^([+-]?\d+(?:[.:]\d+)?)\s*(.*)$/.exec(s);
+      if (m) return { value: m[1], label: m[2], num: true, tail: '' };
+      // "target: Line", "Serve 1: Jump float"
+      m = /^([^:]+):\s*(.+)$/.exec(s);
+      if (m) return { label: m[1], value: m[2], num: /^[+-]?\d+(?:\.\d+)?$/.test(m[2]), tail: '' };
+      // "rep 5", "avg 2.30 of 4", "last 3 (64 km/h)"
+      m = /^(\D+?)\s+([+-]?\d+(?:\.\d+)?)(?:\s+(.+))?$/.exec(s);
+      if (m) return { label: m[1], value: m[2], num: true, tail: m[3] ?? '' };
+      // "auto on"
+      return { label: '', value: s, num: false, tail: '' };
+    });
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, text = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   e.className = cls;
@@ -50,8 +112,30 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: 
 /** In-game HUD: timing grade, ball speed, streak, score line, key hints. */
 export class Hud {
   readonly root: HTMLDivElement;
-  private title: HTMLDivElement;
-  private score: HTMLDivElement;
+  /** what hangs at the bottom, stacked: the calls (a hitter's route strip goes here too), the lesson's cue, the keys */
+  readonly foot: HTMLDivElement;
+  /** the score: the VNL bar or the Games bug (the look decides how it is laid out) */
+  private bug: HTMLDivElement;
+  private band: HTMLDivElement;
+  private usPts: HTMLElement;
+  private themPts: HTMLElement;
+  private usSlot: HTMLElement;
+  private themSlot: HTMLElement;
+  private usTeam: HTMLElement;
+  private themTeam: HTMLElement;
+  private cells: HTMLDivElement;
+  private cellsText = '';
+  /** the serve marker: flies over to the side that wins the serve */
+  private ball: HTMLElement;
+  private ballDirty = true;
+  /** what you play, on the tab under the score */
+  private tab: HTMLDivElement;
+  /** why the point ended, on the strap under the score (Mini Rally) */
+  private strap: HTMLDivElement;
+  private strapWhat: HTMLElement;
+  private strapWho: HTMLElement;
+  private strapTimer = 0;
+  private speedBox: HTMLDivElement;
   private grade: HTMLDivElement;
   private gradeText: HTMLDivElement;
   private gradeSub: HTMLDivElement;
@@ -110,14 +194,32 @@ export class Hud {
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud', parent);
-    const top = el('div', 'hud-top', this.root);
-    this.title = el('div', 'hud-title', top);
-    this.score = el('div', 'hud-score', top);
+    const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+    this.root.style.setProperty('--us', hex(TEAM_COLORS.home.jersey));
+    this.root.style.setProperty('--them', hex(TEAM_COLORS.away.jersey));
+    // the score: a flag, the team's code and its points per side (or a drill's cells), what you play on a tab, the point's reason on a strap
+    this.bug = el('div', 'bug', this.root);
+    this.bug.dataset.kind = 'drill';
+    this.band = el('div', 'bug-band', this.bug);
+    const match = el('div', 'bug-match', this.band);
+    [this.usTeam, this.usPts, this.usSlot] = this.team(match, 'us', 'You');
+    el('i', 'bug-mid', match);
+    [this.themTeam, this.themPts, this.themSlot] = this.team(match, 'them', 'Them');
+    this.cells = el('div', 'bug-cells', this.band);
+    this.ball = el('i', 'bug-ball still', this.band);
+    this.ball.innerHTML = BALL;
+    this.tab = el('div', 'bug-tab', this.bug);
+    this.strap = el('div', 'bug-strap', this.bug);
+    this.strap.innerHTML = JERSEY;
+    this.strapWhat = el('b', 'bug-strap-what', this.strap);
+    this.strapWho = el('span', 'bug-strap-who', this.strap);
+    window.addEventListener('resize', () => (this.ballDirty = true));
     this.grade = el('div', 'hud-grade', this.root);
     this.gradeText = el('div', 'hud-grade-text', this.grade);
     this.gradeSub = el('div', 'hud-grade-sub', this.grade);
     this.banner = el('div', 'hud-banner', this.root);
-    const bl = el('div', 'hud-bl', this.root);
+    const bl = el('div', 'hud-bl empty', this.root);
+    this.speedBox = bl;
     const sp = el('div', 'hud-speed', bl);
     this.speedVal = el('span', 'hud-speed-val', sp, '--');
     el('span', 'hud-speed-unit', sp, 'km/h');
@@ -125,8 +227,9 @@ export class Hud {
     this.streakBox = el('div', 'hud-streak', this.root);
     el('span', 'hud-streak-label', this.streakBox, 'STREAK');
     this.streakVal = el('span', 'hud-streak-val', this.streakBox, '0');
-    this.hint = el('div', 'hud-hint', this.root);
-    this.sheet = el('div', 'call-sheet', this.root);
+    this.foot = el('div', 'hud-foot', this.root);
+    this.hint = el('div', 'hud-hint', this.foot);
+    this.sheet = el('div', 'call-sheet', this.foot);
     this.msg = el('div', 'hud-msg', this.root);
     this.skipBtn = el('button', 't-tap t-skip-kb', this.root, 'SKIP TUTORIAL');
     this.skipBtn.type = 'button';
@@ -144,7 +247,7 @@ export class Hud {
     this.freezeVeil = el('div', 't-freeze', this.root);
     this.coachStrip = el('div', 'coach-strip', this.root);
     this.buildCoachSteps(CUE_ORDER);
-    this.coachCue = el('div', 'coach-cue', this.root);
+    this.coachCue = el('div', 'coach-cue', this.foot);
     this.coachKeys = el('span', 'coach-keys', this.coachCue);
     this.coachText = el('span', 'coach-text', this.coachCue);
     this.goCue = el('div', 'go-cue', this.root, 'GO');
@@ -156,22 +259,119 @@ export class Hud {
     this.fadeEl = el('div', 'fade', parent);
   }
 
+  /** Settings → Screen: the grades (with km/h) and the calls each on or off; the score always shows */
+  setShown(grades: boolean, calls: boolean): void {
+    this.root.classList.toggle('no-grades', !grades);
+    this.root.classList.toggle('no-calls', !calls);
+  }
+
   setVisible(v: boolean): void {
     this.root.style.display = v ? 'block' : 'none';
   }
 
+  /** a team's half of the score: its flag (in its kit colour), its name on a plate, points and the slot the serve ball sits in */
+  private team(parent: HTMLElement, side: 'us' | 'them', name: string): [HTMLElement, HTMLElement, HTMLElement] {
+    const t = el('div', `bug-team ${side}`, parent);
+    const slot = el('i', 'bug-slot', t);
+    el('i', 'bug-kit', t);
+    // (the name in its own box: the VNL look slants the letters, not the plate)
+    el('b', 'bug-code', el('span', 'bug-name', t), name);
+    const pts = el('b', 'bug-pts', t);
+    return [t, pts, slot];
+  }
+
+  /** the look (Settings → Screen): the VNL bar or the Games bug */
+  setLook(look: HudLook): void {
+    if (document.body.dataset.hud === look) return;
+    document.body.dataset.hud = look;
+    this.ballDirty = true;
+  }
+
+  /** what you play: "Mini Rally · you are the Setter" (the first part is the drill, the rest what you are in it) */
   setTitle(t: string): void {
-    this.title.textContent = t;
+    const [head, ...rest] = t.split(' · ');
+    this.tab.replaceChildren();
+    el('b', '', this.tab, head);
+    if (rest.length) el('span', '', this.tab, rest.join(' · '));
   }
 
+  /** a drill's score line ("12 pts · rep 5"): one cell per part */
   setScore(t: string): void {
-    this.score.textContent = t;
+    this.bug.dataset.kind = 'drill';
+    delete this.bug.dataset.serve;
+    if (t === this.cellsText) return;
+    this.cellsText = t;
+    this.cells.replaceChildren();
+    for (const c of statCells(t)) {
+      const cell = el('span', c.num ? 'bug-cell' : 'bug-cell txt', this.cells);
+      // every cell reads the same way: what it counts, the value, then any words after it ("PTS 288", "AVG 2.30 OF 4")
+      const parts: ['b' | 'small', string, string][] = [
+        ['small', 'bug-lab', c.label],
+        ['b', '', c.value],
+        ['small', 'bug-tail', c.tail],
+      ];
+      for (const [tag, cls, text] of parts) if (text) el(tag, cls, cell, text);
+    }
   }
 
-  /** `force` keeps a tutorial coach line up even when Settings → Hints is off */
+  /** a match's score (the Mini Rally): our points, theirs, and who serves. A new point rolls in; the serve ball flies over */
+  setMatch(m: { us: number; them: number; serving: 1 | -1 }): void {
+    const first = this.bug.dataset.kind !== 'match';
+    this.bug.dataset.kind = 'match';
+    this.setPts(this.usPts, m.us, first);
+    this.setPts(this.themPts, m.them, first);
+    const serve = m.serving === 1 ? 'us' : 'them';
+    if (this.bug.dataset.serve === serve && !first) return;
+    this.bug.dataset.serve = serve;
+    if (first) this.ballDirty = true;
+    else this.placeBall(true);
+  }
+
+  private setPts(cell: HTMLElement, n: number, quiet: boolean): void {
+    const s = String(n);
+    if (cell.textContent === s) return;
+    cell.textContent = s;
+    if (quiet) return;
+    cell.classList.remove('tick');
+    void cell.offsetWidth;
+    cell.classList.add('tick');
+  }
+
+  /** the serve ball to the serving side's slot; `fly`: over the band, as a side-out */
+  private placeBall(fly: boolean): void {
+    const slot = this.bug.dataset.serve === 'them' ? this.themSlot : this.usSlot;
+    const b = this.band.getBoundingClientRect();
+    const s = slot.getBoundingClientRect();
+    // hidden (a menu is up): place it on the first frame it shows
+    this.ballDirty = !b.width;
+    if (this.ballDirty) return;
+    this.ball.classList.toggle('still', !fly);
+    this.ball.style.transform = `translate(${(s.left - b.left).toFixed(1)}px, ${(s.top - b.top).toFixed(1)}px)`;
+    if (!fly) return;
+    this.ball.classList.remove('fly');
+    void this.ball.offsetWidth;
+    this.ball.classList.add('fly');
+  }
+
+  /** the point is over: who won it and why, on the strap under the score, and their points light */
+  point(ours: boolean, reason: string): void {
+    this.strapWhat.textContent = reason;
+    this.strapWho.textContent = ours ? 'Point · you' : 'Point · them';
+    this.strap.dataset.side = ours ? 'us' : 'them';
+    this.usTeam.classList.toggle('scored', ours);
+    this.themTeam.classList.toggle('scored', !ours);
+    this.strap.classList.remove('show');
+    void this.strap.offsetWidth;
+    this.strap.classList.add('show');
+    this.strapTimer = 2.4;
+  }
+
+  /** `force` keeps a tutorial coach line up even when Settings → Coaching is off */
   setHint(t: string, force = false): void {
     if (!this.showHints && !force) t = '';
-    else if (this.keyLabels && t) t = translateKeyMarkup(t, this.keyLabels);
+    else if (this.keyLabels && t) t = dropSelfNamed(translateKeyMarkup(t, this.keyLabels), this.keyLabels);
+    // each part of the line its own group, with a gap between them, not a dot
+    t = t.replace(/ · /g, '<i class="hs"></i>');
     if (t !== this.lastHint) {
       this.lastHint = t;
       this.hint.innerHTML = t;
@@ -327,7 +527,8 @@ export class Hud {
           return `<div class="${cls}" style="--c:${i.color}"><b>${i.key}</b>${i.who}${i.call ? `<span>${i.call}</span>` : ''}${dots}</div>`;
         })
         .join('');
-      // the combination the calls make, named above the strip
+      // the net the hitters run at, above them; the combination the calls make, named above it
+      html = `<div class="cs-net"></div>${html}`;
       if (v.play) html = `<div class="cs-play">${escapeHtml(v.play)}</div>${html}`;
       this.sheet.classList.toggle('locked', v.locked);
       this.sheet.classList.toggle('pins', !v.items.some((i) => i.id === 'MB'));
@@ -372,8 +573,10 @@ export class Hud {
   clearFlash(): void {
     this.gradeTimer = 0;
     this.bannerTimer = 0;
+    this.strapTimer = 0;
     this.grade.classList.remove('show');
     this.banner.classList.remove('show');
+    this.strap.classList.remove('show');
   }
 
   /** show the grade to one side, off the line a served ball flies down (the Serve Drill) */
@@ -382,7 +585,9 @@ export class Hud {
   /** `green`: a perfectly timed set reads GREEN, in green */
   showGrade(g: Grade, sub: string, green = false): void {
     this.gradeText.textContent = green ? 'GREEN' : g === 'Miss' ? 'MISS' : g.toUpperCase();
-    this.grade.className = 'hud-grade show ' + (green ? 'g-green' : GRADE_CLASS[g]) + (this.gradeAside ? ' aside' : '');
+    // (kmh: the grade says the ball's speed, so the LAST BALL corner yields until it goes)
+    this.grade.className =
+      'hud-grade show ' + (green ? 'g-green' : GRADE_CLASS[g]) + (this.gradeAside ? ' aside' : '') + (/km\/h/.test(sub) ? ' kmh' : '');
     this.gradeSub.textContent = sub;
     // restart animation
     void this.grade.offsetWidth;
@@ -412,8 +617,9 @@ export class Hud {
     this.msgTimer = 0;
   }
 
-  message(text: string, dur = 1.5): void {
-    if (this.msgPinned) return;
+  /** a short note. `coach`: a coaching note, down when Settings → Coaching is off (false: what your own key just changed) */
+  message(text: string, dur = 1.5, coach = true): void {
+    if (this.msgPinned || (coach && !this.showHints)) return;
     if (this.keyLabels) text = Hud.translateText(text);
     this.msg.textContent = text;
     this.msg.classList.add('show');
@@ -422,10 +628,13 @@ export class Hud {
 
   setSpeed(kmh: number | null): void {
     this.speedVal.textContent = kmh === null ? '--' : kmh.toFixed(0);
+    this.speedBox.classList.toggle('empty', kmh === null);
   }
 
+  /** the streak shows from two in a row */
   setStreak(n: number): void {
     this.streakVal.textContent = String(n);
+    this.streakBox.classList.toggle('on', n >= 2);
     this.streakBox.classList.toggle('hot', n >= 3);
     this.streakBox.classList.toggle('fire', n >= 6);
   }
@@ -554,6 +763,15 @@ export class Hud {
   }
 
   update(dt: number): void {
+    if (this.ballDirty && this.bug.dataset.kind === 'match') this.placeBall(false);
+    if (this.strapTimer > 0) {
+      this.strapTimer -= dt;
+      if (this.strapTimer <= 0) {
+        this.strap.classList.remove('show');
+        this.usTeam.classList.remove('scored');
+        this.themTeam.classList.remove('scored');
+      }
+    }
     if (this.gradeTimer > 0) {
       this.gradeTimer -= dt;
       if (this.gradeTimer <= 0) this.grade.classList.remove('show');

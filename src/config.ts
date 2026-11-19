@@ -2313,6 +2313,10 @@ export const AI = {
 /** the hand you spike, tip and serve with; passing, setting and blocking use both hands */
 export type Hand = 'right' | 'left';
 
+/** the HUD's look: VNL (a Nations League score bar across the top, the default) or Games (a small score in the top-left corner) */
+export type HudLook = 'vnl' | 'games';
+export const HUD_LOOKS: readonly HudLook[] = ['vnl', 'games'];
+
 /** user-adjustable settings (persisted) */
 export interface Settings {
   sensitivity: number;
@@ -2352,8 +2356,14 @@ export interface Settings {
   shake: number;
   volume: number;
   firstPerson: boolean;
-  /** the key hint line at the bottom of the screen */
+  /** coaching: the key hint line at the bottom of the screen and the coach's notes ("Your ball!") */
   showHints: boolean;
+  /** the grade of each touch, with the ball's km/h (the score and the serve are always shown) */
+  hudGrades: boolean;
+  /** the calls: your setter's call strip, your route strip as a hitter, your team-mates' calls over their heads */
+  hudCalls: boolean;
+  /** how the HUD looks (HUD_LOOKS) */
+  hudLook: HudLook;
   /** touch controls: auto (on touch screens), always on, or off */
   touchControls: 'auto' | 'on' | 'off';
   /** touch aim sensitivity multiplier */
@@ -2389,6 +2399,9 @@ export const DEFAULT_SETTINGS: Settings = {
   volume: AUDIO.master,
   firstPerson: false,
   showHints: true,
+  hudGrades: true,
+  hudCalls: true,
+  hudLook: 'vnl',
   touchControls: 'auto',
   touchSensitivity: 1.0,
   bodies: {},

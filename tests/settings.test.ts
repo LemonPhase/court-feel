@@ -148,6 +148,16 @@ describe('quick-start links', () => {
   });
 });
 
+describe('the HUD look', () => {
+  it('a saved look is kept only if it is one of the looks; one from an older build (Broadcast, Net band) gets the default', () => {
+    expect(sanitizeSettings({ hudLook: 'games' }).hudLook).toBe('games');
+    expect(sanitizeSettings({ hudLook: 'vnl' }).hudLook).toBe('vnl');
+    expect(sanitizeSettings({ hudLook: 'tv' }).hudLook).toBe(DEFAULT_SETTINGS.hudLook);
+    expect(sanitizeSettings({ hudLook: 'net' }).hudLook).toBe(DEFAULT_SETTINGS.hudLook);
+    expect(DEFAULT_SETTINGS.hudLook).toBe('vnl');
+  });
+});
+
 describe('the venue', () => {
   it('a saved venue is kept only if it is one of the venues', () => {
     expect(sanitizeSettings({ venue: 'seaside' }).venue).toBe('seaside');

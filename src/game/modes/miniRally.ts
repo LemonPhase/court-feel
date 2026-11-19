@@ -139,7 +139,7 @@ export class MiniRally extends Mode {
     this.callIdx = i;
     const play = this.plays[i];
     this.home.userPlay = play;
-    this.g.hud.message(`Calling ${i + 1}: ${play.name}`, 1.6);
+    this.g.hud.message(`Calling ${i + 1}: ${play.name}`, 1.6, false);
     this.updateScore();
   }
 
@@ -251,9 +251,9 @@ export class MiniRally extends Mode {
     return (lt.kind === 'pass' || lt.kind === 'dig' || lt.kind === 'free') && this.home.secondBy === g.me;
   }
 
+  /** the score and who serves (the route you call is on your route strip, not here) */
   private updateScore(): void {
-    const call = this.play ? ` · call ${this.callIdx + 1}: ${this.play.name}` : '';
-    this.g.hud.setScore(`YOU ${this.scoreHome} : ${this.scoreAway} THEM · ${this.servingSide === 1 ? 'your serve' : 'their serve'}${call}`);
+    this.g.hud.setMatch({ us: this.scoreHome, them: this.scoreAway, serving: this.servingSide });
   }
 
   frame(dt: number): void {
@@ -270,7 +270,7 @@ export class MiniRally extends Mode {
         g.hud.call('YOU', 'HELP!', "can't get there", 'out', (out) => out.set(g.me.rpos.x, g.me.rpos.y + g.me.height + 0.42, g.me.rpos.z));
         g.events.emit('setterCall', { athlete: g.me, call: 'help' });
       }
-      if (c.takeLate()) g.hud.message('Too late to change it · they are committed', 1.2);
+      if (c.takeLate()) g.hud.message('Too late to change it · they are committed', 1.2, false);
       const yours = this.userSetsNext();
       const oos = this.outOfSystem || !this.userSetter;
       const keys = this.userSetter ? SETTER_KEYS : PIN_PICKS;
@@ -573,7 +573,7 @@ export class MiniRally extends Mode {
     const mine = winner === 1;
     this.bumpStreak(mine);
     this.score = this.scoreHome;
-    g.hud.showBanner(`${mine ? 'POINT YOU' : 'POINT THEM'} · ${this.reason}`, mine ? 'good' : 'bad');
+    g.hud.point(mine, this.reason);
     g.crowd(mine ? (this.reason === 'YOUR KILL' ? 1.2 : 0.7) : 0.25, mine);
     this.updateScore();
     // everyone relaxes towards their spots while the banner shows

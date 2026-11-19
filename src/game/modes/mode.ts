@@ -39,10 +39,15 @@ export interface DrillHud {
   gradeAside: boolean;
   setTitle(t: string): void;
   setScore(t: string): void;
+  /** a match's score (the Mini Rally): our points, theirs, and who serves */
+  setMatch(m: { us: number; them: number; serving: 1 | -1 }): void;
+  /** the point is over: who won it and why */
+  point(ours: boolean, reason: string): void;
   setStreak(n: number): void;
   setCallSheet(v: CallSheetView | null): void;
   showBanner(text: string, kind?: 'good' | 'bad' | 'neutral', dur?: number): void;
-  message(text: string, dur?: number): void;
+  /** `coach`: a coaching note, down when Settings → Coaching is off (false: what your own key just changed) */
+  message(text: string, dur?: number, coach?: boolean): void;
   go(): void;
   call(
     who: string,

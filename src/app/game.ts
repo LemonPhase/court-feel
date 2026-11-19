@@ -608,6 +608,8 @@ export class Game implements AiHost {
     this.rig.blockers = this.arena.cameraBlockers;
     if (!this.inMenu) this.rig.setMode(s.firstPerson ? 'fp' : 'tp');
     this.hud.showHints = s.showHints;
+    this.hud.setShown(s.hudGrades, s.hudCalls);
+    this.hud.setLook(s.hudLook);
     this.fx?.audio.setVolume(s.volume);
     this.applyUserBody();
     this.persist(s);
@@ -878,7 +880,7 @@ export class Game implements AiHost {
     for (let i = 0; i < plays.length; i++) if (this.input.consumePress('Digit' + (i + 1))) pick = i;
     if (pick < 0 && w.sel >= 0 && (released || this.input.consumePress('Mouse0'))) pick = w.sel;
     if (pick < 0) return true;
-    if (calls.setCombo(plays[pick])) this.hud.message(`Play · ${plays[pick].name}`, 1.4);
+    if (calls.setCombo(plays[pick])) this.hud.message(`Play · ${plays[pick].name}`, 1.4, false);
     w.hide();
     return false;
   }

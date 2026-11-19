@@ -1,4 +1,5 @@
 import './ui/styles.css';
+import './ui/hud.css';
 import { BUILD_ID } from './core/build';
 import { ErrorReporter, type ErrorReport } from './core/errors';
 import { parseLaunchParams, parseVenueParam } from './app/launch';
@@ -192,7 +193,7 @@ window.addEventListener(
   },
   { passive: true, capture: true },
 );
-const routes = new RouteHud(game.hud.root);
+const routes = new RouteHud(game.hud.root, game.hud.foot);
 game.onFrame = () => {
   touch.update();
   routes.update(game.routeView(), game.routesOpen);

@@ -20,6 +20,8 @@ function silentHud(said: string[]): DrillHud {
     gradeAside: false,
     setTitle: say('title'),
     setScore: say('score'),
+    setMatch: (m) => said.push(`match ${m.us} : ${m.them} serving ${m.serving}`),
+    point: (ours, reason) => said.push(`point ${ours ? 'us' : 'them'} ${reason}`),
     setStreak: say('streak'),
     setCallSheet: () => {},
     showBanner: say('banner'),
