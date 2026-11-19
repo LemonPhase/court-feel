@@ -72,7 +72,7 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/stuff-block-first-person.jpg" alt="First person block: both hands pressed over the net, the opposing hitter right in front, PERFECT 57 km/h Stuff">
+      <img src="docs/screenshots/stuff-block-first-person.jpg" alt="First person block: both hands pressed over the net, the opposing hitter right in front, PERFECT 56 km/h Stuff">
       <b>At the net.</b> Read the set, time the jump, press over. A stuff block, seen through the blocker's eyes.
     </td>
     <td width="50%" valign="top">
@@ -122,12 +122,22 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/phone-touch-controls.jpg" alt="Phone in landscape: joystick on the left, PASS, BLOCK, JUMP and HIT buttons on the right, set call chips at the top">
+      <img src="docs/screenshots/phone-touch-controls.jpg" alt="Phone in landscape: joystick on the left, PASS, BLOCK, JUMP and HIT buttons on the right, your routes as chips at the top">
       <b>On your phone.</b> A joystick for your feet, drag to aim, hold to jump and hold to swing. The timing windows are the same as on a keyboard.
     </td>
     <td width="50%" valign="top">
       <img src="docs/screenshots/start-screen.jpg" alt="Start screen, Train: the BETA tag under the name, the six drills in a list, the Spike Drill's panel with its own keys, the five positions to play it as, and PLAY; the venue, athlete and settings pills at the top right">
       <b>Pick a drill.</b> Each drill shows what it scores, its own keys and the position you play it as.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/hud-vnl-point.jpg" alt="Mini Rally in the VNL look: the score bar across the top, YOU 0 : 1 THEM, and under it a plate in their blue, KILL, POINT · THEM, the spike's trail still in the air">
+      <b>The score.</b> A score bar across the top, and under it who won the point and how, in their kit colour.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/hud-games-look.jpg" alt="Mini Rally in the Games look: a small score in the top-left corner, YOU 0 and THEM 1, the plate OUT, POINT · THEM under it">
+      <b>Or keep it small.</b> The Games look puts the score in the corner. Settings, Screen switches between the two.
     </td>
   </tr>
 </table>
@@ -987,7 +997,7 @@ venue for that visit without changing the saved one.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/venue-games-arena.jpg" alt="Games arena from the top of one end during a rally: a coral court on indigo, a rectangle of light hung over it, tiers of crowd in the dark with phone lights">
+      <img src="docs/screenshots/venue-games-arena.jpg" alt="Games arena from behind the receivers, looking up: a coral court on indigo, a rectangle of light hung over it, tiers of crowd in the dark with phone lights">
       <b>Games arena.</b>
     </td>
     <td width="50%" valign="top">
