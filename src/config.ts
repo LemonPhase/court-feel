@@ -1493,6 +1493,13 @@ export const FX = {
    * the ring says when.
    */
   floatBreak: { size: 0.9, strength: 0.6 },
+  /**
+   * The block's shadow on their floor (Spike Drill): how wide (m) the outline of each patch is. Picked
+   * by eye against the one-pixel line it replaces (src/fx/drillMarkers.ts says why it is not a line):
+   * from behind the hitter, some 8 m away, it is about two pixels of a 720-line picture. A court line
+   * is 0.05 m, and the outline is thinner so it reads as the patch's edge and not as a line of the court.
+   */
+  blockShadow: { edge: 0.03 },
   /** where your feet go (the plant spot of an approach): ring radius (m), and the lesson's arrows towards it */
   floorSpot: {
     radius: 0.36,

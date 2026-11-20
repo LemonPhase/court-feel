@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FX } from '../config';
 import type { FloorPoly } from '../game/blockShadow';
 import type {
   ApproachGuideState,
@@ -180,38 +181,46 @@ export class SceneMarkers implements DrillMarkers {
   blockShadow(): ShadowMark {
     const pos = new Float32Array(SHADOW_POLYS * SHADOW_CORNERS * 3);
     const idx = new Uint16Array(SHADOW_POLYS * (SHADOW_CORNERS - 2) * 3);
-    const edgePos = new Float32Array(SHADOW_POLYS * SHADOW_CORNERS * 2 * 3);
+    // the outline: a quad along each side
+    const edgePos = new Float32Array(SHADOW_POLYS * SHADOW_CORNERS * 4 * 3);
+    const edgeIdx = new Uint16Array(SHADOW_POLYS * SHADOW_CORNERS * 6);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setIndex(new THREE.BufferAttribute(idx, 1));
     geo.setDrawRange(0, 0);
-    // the court floor is pulled towards the camera with a polygon offset: pull the overlay further, or
-    // it loses the depth test at grazing angles (the far court seen from behind the hitter)
-    const offset = { polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 };
-    const shadow = new THREE.Mesh(
-      geo,
+    // The court floor is pulled towards the camera with a polygon offset: pull the overlay further, or
+    // it loses the depth test at grazing angles (the far court seen from behind the hitter). It is still
+    // tested against depth and writes none, so anyone standing nearer the camera hides it.
+    const overlay = (color: number, opacity: number) =>
       new THREE.MeshBasicMaterial({
-        color: 0xff4a3a,
+        color,
         transparent: true,
-        opacity: 0.3,
+        opacity,
         depthWrite: false,
         side: THREE.DoubleSide,
-        ...offset,
-      }),
-    );
+        polygonOffset: true,
+        polygonOffsetFactor: -4,
+        polygonOffsetUnits: -4,
+      });
+    const shadow = new THREE.Mesh(geo, overlay(0xff4a3a, 0.3));
     shadow.renderOrder = 2;
     shadow.visible = false;
     this.add(shadow);
+    // The outline is a surface too, a thin band, and not a line (`LineSegments`, which it was). A polygon
+    // offset is defined for surfaces only, and what a line does with one is up to the GPU. By the OpenGL
+    // rules it is left out, and the line then loses to the floor (measured: gone from behind the hitter,
+    // 8 m away). The software GPU the end-to-end run draws on (SwiftShader) gave the line a different
+    // depth on every draw: the same frame showed it over an athlete's legs, on the floor or not at all.
+    // A band takes the patch's own offset on every GPU.
     const egeo = new THREE.BufferGeometry();
     egeo.setAttribute('position', new THREE.BufferAttribute(edgePos, 3));
+    egeo.setIndex(new THREE.BufferAttribute(edgeIdx, 1));
     egeo.setDrawRange(0, 0);
-    const edge = new THREE.LineSegments(
-      egeo,
-      new THREE.LineBasicMaterial({ color: 0xff7a68, transparent: true, opacity: 0.85, ...offset }),
-    );
+    const edge = new THREE.Mesh(egeo, overlay(0xff7a68, 0.85));
     edge.renderOrder = 3;
     edge.visible = false;
     this.add(edge);
+    const half = FX.blockShadow.edge / 2;
     return {
       draw: (polys: readonly FloorPoly[] | null) => {
         shadow.visible = !!polys;
@@ -220,19 +229,30 @@ export class SceneMarkers implements DrillMarkers {
         const y = 0.013;
         let nv = 0;
         let ni = 0;
-        let ne = 0;
+        let ev = 0;
+        let ei = 0;
         for (const poly of polys.slice(0, SHADOW_POLYS)) {
           const n = Math.min(poly.length, SHADOW_CORNERS);
           const base = nv;
           for (let k = 0; k < n; k++) {
-            pos[nv * 3] = poly[k][0];
+            const [ax, az] = poly[k];
+            pos[nv * 3] = ax;
             pos[nv * 3 + 1] = y;
-            pos[nv * 3 + 2] = poly[k][1];
+            pos[nv * 3 + 2] = az;
             nv++;
-            // edge k -> k+1
-            const nx = poly[(k + 1) % n];
-            edgePos.set([poly[k][0], y, poly[k][1], nx[0], y, nx[1]], ne * 3);
-            ne += 2;
+            // side k -> k+1: a quad centred on it, and half its width past both ends so the corners close
+            const [bx, bz] = poly[(k + 1) % n];
+            const len = Math.hypot(bx - ax, bz - az);
+            if (len === 0) continue;
+            const ux = ((bx - ax) / len) * half;
+            const uz = ((bz - az) / len) * half;
+            edgePos.set(
+              [ax - ux - uz, y, az - uz + ux, ax - ux + uz, y, az - uz - ux, bx + ux + uz, y, bz + uz - ux, bx + ux - uz, y, bz + uz + ux],
+              ev * 3,
+            );
+            edgeIdx.set([ev, ev + 1, ev + 2, ev, ev + 2, ev + 3], ei);
+            ev += 4;
+            ei += 6;
           }
           // triangle fan
           for (let k = 1; k < n - 1; k++) {
@@ -246,7 +266,8 @@ export class SceneMarkers implements DrillMarkers {
         geo.setDrawRange(0, ni);
         geo.computeBoundingSphere();
         (egeo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
-        egeo.setDrawRange(0, ne);
+        egeo.index!.needsUpdate = true;
+        egeo.setDrawRange(0, ei);
         egeo.computeBoundingSphere();
       },
     };

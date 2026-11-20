@@ -1034,7 +1034,7 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `BODY` | Slider ranges for the custom height, vert and spike power (Athlete) |
 | `BALL` | Drag, Magnus scale, restitution and friction for floor/tape/antenna; the float (`float`: how hard a no-spin ball breaks, how long it flies true between breaks and how long a break lasts, how often it breaks downward, the critical speed under which it dies, and how old everyone's read of a floating ball is); the soft net (`netGive`, `netStiffness`, `netDampingRatio`, `netReturn`, `netRestitution`, `netGrip`) |
 | `CAMERA` | FOV, approach FOV boost, sensitivity, TP distance/height/framing, shake |
-| `FX` | The play wheel (`playWheel`); The set's catch ring, bar (and its pips, and its place in first person), floor spot, first-person dial (`setRadar`) and guide (the hitter marker and the set's arc, `setGuide`), the ring round a float where it breaks (`floatBreak`), hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
+| `FX` | The play wheel (`playWheel`); The set's catch ring, bar (and its pips, and its place in first person), floor spot, first-person dial (`setRadar`) and guide (the hitter marker and the set's arc, `setGuide`), the ring round a float where it breaks (`floatBreak`), the outline of the block's shadow (`blockShadow`), hit-stop lengths (and the extra at full power), FOV punch and camera kick, ball squash, shake amounts, spark count, crack life, replay timing, bloom |
 | `CHARACTER` | How athletes are drawn: rim and side fill light, the arm swing of a jump (`jumpSwing`), how early hands go to where the ball will be (`meet`), the passing stance and what the platform does after the touch (`pass`), hand shapes (`hand`: how the fingers curl and spread loose, flat, on the ball and closed), where a palm meets the ball, how far arms, head, knees and toes keep from the net (`netClear`), idle breathing, and what keeps an AI player's body from being rigid (`loose`: the ready stance and bounce with a ball in play, the lean into a push-off or a stop, the chest coming round after the hips) |
 | `ARENA` | The hall: floor mirror (size, strength, blur), the stands (`bowl`: tiers, rows, seats, how brightly the crowd is lit), how the net mesh goes in with a ball that is in it and settles after, lights, the final grade |
 | `VENUES` | The five venues: floor colours and how much the floor mirrors, the sky, the lights, haze, grade, the athletes' rim light, the crowd's light and sound, the boards, and whether the sky is open (`openSky`: no ceiling) |
@@ -1127,7 +1127,8 @@ branch it goes into and fails when the known lists grow
   left-handed player (the contact point, serve toss, plant and wind-up mirror,
   a quick still meets a lefty middle's hand, the same release gives the same
   grade and speed with either hand, the stored hand is sanitised), the block
-  shadow, the touch pad model, the pointer-lock fallback, the replay of
+  shadow (and how it is drawn: its outline a surface with the patch's own depth offset, no line or
+  point asked for one), the touch pad model, the pointer-lock fallback, the replay of
   athletes added mid-recording (the Spike Drill's blockers), stored-settings
   and quick-start-link validation, and the error reporter.
 * `npm run e2e` — starts Vite, loads the game in headless Chromium and plays
