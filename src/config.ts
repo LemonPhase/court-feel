@@ -2007,15 +2007,42 @@ export const AI = {
    * out than that (up to `anywayFar` m beyond the hands), run at flat out, is dived for anyway
    * `anyway` of the time: they mostly don't get it, but nobody watches a ball drop (MatusGib,
    * 2026-11-14; 2026-11-20: they "should still try to dive and fully run and get balls they might
-   * not be able to get", so it went from half the time to three in four). Nobody dives backwards at a serve or a spike: a dive that
-   * would go more than `back` (the share of it pointing away from the net: 0.3 is about 17 degrees
-   * behind straight sideways) backwards isn't made, and the ball is played on the feet or not at
-   * all. Forwards and sideways only; a ball going over them is run down like any other
-   * (MatusGib, 2026-11-14). Nor does anyone dive into the net: a ball coming down within `net` m
-   * of it, or beyond it, is not dived for or run at through the net (MatusGib, 2026-11-15: a
-   * setter diving into the net after a pass that went over).
+   * not be able to get", so it went from half the time to three in four).
+   * A dive is the whole body thrown at the ball, so it waits for a real reaction to the touch: none
+   * starts sooner than `react` s after it, and a ball only a dive started sooner would have reached
+   * is not dived for (MatusGib, 2026-11-20: no dive at a hard hit "not within realistic reaction
+   * time"; a coverer could dive at a ball off the block 0.08 s after it). A simple reaction to a
+   * light is about 0.2 s (`reactionTime`); a defender's first move
+   * on a hit is about 0.3 s (`cover`), and a dive commits the whole body, so 0.3 s is the soonest
+   * (an estimate from those, not a measurement).
+   * Nobody dives backwards at a serve or a spike: a dive that would go more than `back` (the share
+   * of it pointing away from the net: 0.3 is about 17 degrees behind straight sideways) backwards
+   * isn't made, and the ball is played on the feet or not at all. Forwards and sideways only; a
+   * ball going over them is run down like any other (MatusGib, 2026-11-14). At any other ball, a
+   * dive backwards is only the end of a chase: the player has turned to it (facing within about 45
+   * degrees of the dive's way, the cosine over `chase`) and is running flat out that way (faster
+   * than a shuffle), at a ball no faster than `quick` m/s. Never at a hard ball or a fast deflection
+   * coming at them, whoever touched it (MatusGib, 2026-11-20: "diving backwards should only be
+   * possible when chasing a ball and you are running then you dive to get it, never when defending
+   * any hard hit or very quick ball"). A ball dropping out of a high flight comes down at 10-13 m/s;
+   * a spike leaves the hand at 17-28 m/s, and a deflection off the block keeps much of that.
+   * Nor does anyone dive into the net: a ball coming down within `net` m of it, or beyond it, is not
+   * dived for or run at through the net (MatusGib, 2026-11-15: a setter diving into the net after a
+   * pass that went over).
    */
-  dive: { late: 0.9, minDist: 1.0, fit: 0.35, stretch: 0.6, anyway: 0.75, anywayFar: 2.5, back: 0.3, net: 0.6 },
+  dive: {
+    late: 0.9,
+    minDist: 1.0,
+    fit: 0.35,
+    stretch: 0.6,
+    anyway: 0.75,
+    anywayFar: 2.5,
+    react: 0.3,
+    back: 0.3,
+    chase: 0.7,
+    quick: 14,
+    net: 0.6,
+  },
   /** a platform put out for a ball the player is no longer sent to is dropped after this long (s) */
   passDrop: 0.35,
   /**

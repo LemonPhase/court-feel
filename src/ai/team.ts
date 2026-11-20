@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { AI, BALL, CONTACT, COURT, PLAYER, TIMING, type PositionId } from '../config';
-import { clamp, lerp, Rng, smooth01, yawFromDir } from '../core/mathx';
+import { clamp, lerp, Rng, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
@@ -445,9 +445,19 @@ export class TeamPlayer implements Brain {
       const dx = this.low.x - a.pos.x;
       const dz = this.low.z - a.pos.z;
       const dl = Math.hypot(dx, dz);
-      // (nobody dives backwards at a serve or a spike: that ball is played on the feet, or not at all)
+      // (nobody dives backwards at a serve or a spike: that ball is played on the feet, or not at all;
+      // at any other, only at the end of a chase: turned to it, running flat out that way, at a ball
+      // that isn't coming fast)
       const driven = !!lt && lt.side !== a.side && (lt.kind === 'serve' || lt.kind === 'spike');
-      const backwards = driven && dl > 1e-3 && (dz * a.side) / dl > AI.dive.back;
+      const backwards =
+        dl > 1e-3 &&
+        (dz * a.side) / dl > AI.dive.back &&
+        (driven ||
+          (a.vel.x * dx + a.vel.z * dz) / dl <= a.stats.shuffleSpeed ||
+          Math.cos(wrapAngle(a.yaw - yawFromDir(dx, dz))) <= AI.dive.chase ||
+          sp > AI.dive.quick);
+      // (and a dive is a reaction: none before a real one to the touch)
+      const reacted = !lt || now - lt.t >= AI.dive.react;
       // (nor into the net: a ball coming down at it, or beyond it, is the other team's)
       const atNet = this.low.z * a.side < AI.dive.net;
       if (tLow > now && !backwards && !atNet) {
@@ -459,7 +469,7 @@ export class TeamPlayer implements Brain {
         // (one just beyond the hands: dived for at the last moment the arms still get all the way
         // out; one arm reaches further still, `CONTACT.diveOut.reach`, a scrape that barely keeps it up)
         const short = (T <= PLAYER.diveDown ? AI.dive.stretch : AI.dive.fit) + CONTACT.diveOut.reach;
-        if (T <= PLAYER.diveDown + 0.1 && reach - dl < AI.dive.fit && dl - reach < short) {
+        if (reacted && T <= PLAYER.diveDown + 0.1 && reach - dl < AI.dive.fit && dl - reach < short) {
           a.dive(yawFromDir(dx, dz));
           a.startAction('pass', now);
           this.pressT = now;
@@ -472,6 +482,7 @@ export class TeamPlayer implements Brain {
         }
         if (
           this.anyway &&
+          reacted &&
           T <= PLAYER.diveDown &&
           dl - reach >= short &&
           dl - reach < AI.dive.anywayFar &&

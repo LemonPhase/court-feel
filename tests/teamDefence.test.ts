@@ -1560,6 +1560,104 @@ describe('nobody dives backwards at a serve or a spike (Mini Rally)', () => {
   });
 });
 
+describe('a dive is a reaction, and backwards only at the end of a chase (Mini Rally)', () => {
+  /**
+   * The libero, facing the net at (0, 6) and sent for the ball, which is at `p` moving at `v`
+   * off a `kind` touch `ago` s ago (`cover`: low behind our hitter, reading the block). When it
+   * dives: how long after the touch, the share of the dive pointing away from the net, how fast
+   * it was running the dive's way (and its shuffle speed) and how square it was turned to it.
+   * null: no dive.
+   */
+  const dive = (kind: TouchKind, side: 1 | -1, p: V3, v: V3, ago: number, cover = false) => {
+    const keep = AI.dive.anyway;
+    AI.dive.anyway = 1;
+    try {
+      const t = homeTeam();
+      const L = t.team.players.get('L')!;
+      const b = t.brain('L');
+      L.place(0, 6, 0);
+      t.put(p, v, side === 1 ? t.team.players.get('OH2')! : t.theirs, kind, side);
+      t.ball.lastTouch!.t -= ago;
+      if (cover) b.coverT = t.g.simTime;
+      b.job = 'receive';
+      for (let k = 0; k < 1.5 * SIM.hz; k++) {
+        const vx = L.vel.x;
+        const vz = L.vel.z;
+        const yaw = L.yaw;
+        t.g.simTime += DT;
+        stepBall(t.ball.state, DT, t.g.env, []);
+        b.step(DT, t.g as unknown as AiHost);
+        L.step(DT, t.g.simTime);
+        if (L.state === 'dive') {
+          // (the dive's way: where the body goes off the floor)
+          const dl = Math.hypot(L.vel.x, L.vel.z);
+          const dx = L.vel.x / dl;
+          const dz = L.vel.z / dl;
+          return {
+            after: t.g.simTime - t.ball.lastTouch!.t,
+            back: dz,
+            run: vx * dx + vz * dz,
+            shuffle: L.stats.shuffleSpeed,
+            turned: Math.cos(wrapAngle(yaw - yawFromDir(dx, dz))),
+          };
+        }
+      }
+      return null;
+    } finally {
+      AI.dive.anyway = keep;
+    }
+  };
+  /** the ball leaving `from` straight for `to` (ball centre) at `speed` m/s along the floor */
+  const at = (from: V3, to: V3, speed: number) => {
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const t = Math.hypot(dx, dz) / speed;
+    return { x: dx / t, y: (to.y - from.y + 0.5 * 9.81 * t * t) / t, z: dz / t };
+  };
+
+  it('a hard ball off the block that only a dive started before anyone could react would reach is not dived for; the same ball read in time is', () => {
+    // off their block at 20 m/s, 2.5 m to the side of a coverer: a dive at it would have to start at once
+    const from = { x: 0.5, y: 2.4, z: 0.3 };
+    const v = at(from, { x: 2.5, y: 0.2, z: 6 }, 20);
+    expect(dive('block', -1, from, v, 1, true)).not.toBeNull();
+    expect(dive('block', -1, from, v, 0, true)).toBeNull();
+  });
+
+  it('nobody dives before a real reaction to the touch (AI.dive.react)', () => {
+    // a ball off our own block dropping 3 m to the side: slower, so there is time to dive for it
+    const from = { x: 0.5, y: 2.6, z: 0.4 };
+    const d = dive('block', 1, from, at(from, { x: 3.0, y: 0.2, z: 6 }, 9), 0);
+    expect(d).not.toBeNull();
+    expect(d!.after).toBeGreaterThanOrEqual(AI.dive.react);
+  });
+
+  it('a hard ball flying past behind them is never dived for backwards, whoever touched it', () => {
+    const from = { x: 0.5, y: 2.6, z: 0.5 };
+    for (const [kind, side] of [
+      ['block', -1],
+      ['block', 1],
+      ['pass', 1],
+    ] as const)
+      for (const behind of [1.5, 2, 2.5, 3]) {
+        const d = dive(kind, side, from, at(from, { x: 0.3, y: 0.2, z: 6 + behind }, 17), 1);
+        expect(d && d.back > AI.dive.back, `${kind} ${side}, ${behind} m behind`).toBeFalsy();
+      }
+  });
+
+  it('a ball going over them is run down, and dived for at the end of the run: turned, running flat out the way they dive', () => {
+    // a ball dropping from 4 m, 5-7 m behind them (a dig flying deep, off the court): a chase
+    let dived = 0;
+    for (const behind of [5, 6, 7]) {
+      const d = dive('dig', -1, { x: 0.3, y: 4.0, z: 6 + behind }, { x: 0, y: 0, z: 0 }, 1);
+      if (!d || d.back <= AI.dive.back) continue;
+      dived++;
+      expect(d.run, `${behind} m behind`).toBeGreaterThan(d.shuffle);
+      expect(d.turned, `${behind} m behind`).toBeGreaterThan(AI.dive.chase);
+    }
+    expect(dived).toBeGreaterThan(0);
+  });
+});
+
 describe('given the ball (Mini Rally)', () => {
   it('a hitter running in for a set that is not coming, sent to play the ball, breaks off the approach', () => {
     const t = homeTeam();
