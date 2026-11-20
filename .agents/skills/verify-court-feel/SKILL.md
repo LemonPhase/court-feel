@@ -77,7 +77,7 @@ Read-only. Run it first, and again whenever a result looks off. It exits 0 when 
 
 A command that gets no answer from the page fails after 60 seconds (`open` 330, `shot` 120, `step` 900, `wait` its `--timeout` plus 10), so one stuck command cannot block the session. `doctor` and `stop` never wait behind a running command.
 
-Every action command prints its result and one `state` line: the screen (`welcome`, `start`, `play`, `paused`, `settings`, `replay`, `crash`), the HUD title and score, and any grade, banner, message, call or route strip on screen. On the start screen the line has `start`: the section (`home`, `train`, `play`, `learn`), the position, the drill and the view that section's gold button would start, and that button's label. `settings` is either full-screen sheet, Settings or Athlete, over the start screen or the pause menu: the line then has `"sheet":"settings"` with the `tab` in view, or `"sheet":"athlete"`. `state unchanged` means the same as after the previous command. A failed command prints `FAILED` and exits 1.
+Every action command prints its result and one `state` line: the screen (`welcome`, `start`, `play`, `paused`, `settings`, `replay`, `crash`), the HUD title and score, and any grade, banner, point plate, message, call or route strip on screen. On the start screen the line has `start`: the section (`home`, `train`, `play`, `learn`), the position, the drill and the view that section's gold button would start, and that button's label. `settings` is either full-screen sheet, Settings or Athlete, over the start screen or the pause menu: the line then has `"sheet":"settings"` with the `tab` in view, or `"sheet":"athlete"`. `state unchanged` means the same as after the previous command. A failed command prints `FAILED` and exits 1.
 
 A minimal run:
 
@@ -156,7 +156,7 @@ Proof standards:
 - Drive the real user path: the control the player uses, by the handle in the feature map. A drill started with `eval` or a setting written to `localStorage` is not proof.
 - Capture the action and the state it produced. Take a `shot` after the step that matters, and quote the `state` line or the `events` entry that shows the result. A final screenshot alone is not proof.
 - Verify side effects. A changed setting must show in `state` under `saved.settings` and must survive `open` (a reload). A played rep must show in `events` (contact, grade, speed, outcome) and in the HUD score.
-- HUD grades, banners, messages and call bubbles stay up for a few seconds of game time at most. Read them from the `state` line of the command that produced them, or from `events`. Do not rely on catching them later.
+- HUD grades, banners, point plates, messages and call bubbles stay up for a few seconds of game time at most. Read them from the `state` line of the command that produced them, or from `events`. Do not rely on catching them later.
 - End every proof with `errors`. It exits 1 if the page logged an error or a warning since the last `open`.
 - Name every hook and stand-in the proof used (manual clock, autopilot, `look`, `esc`, `set`).
 - A feature has several entry points in the map. Drive the ones your change touches. Report the ones you skipped as skipped, never as verified.

@@ -58,8 +58,8 @@ export const SETTER_KEY_LABELS: Record<string, string> = {
   '5': 'DUMP',
 };
 
-/** while you call your own route as a hitter, C is the ROUTES chip (the route panel) */
-export const HITTER_KEY_LABELS: Record<string, string> = { ...TOUCH_KEY_LABELS, C: 'ROUTES' };
+/** while you call your own route as a hitter, C is the ROUTES chip (the route panel) and the 1-5 keys the ROUTE chips */
+export const HITTER_KEY_LABELS: Record<string, string> = { ...TOUCH_KEY_LABELS, C: 'ROUTES', '1-n': 'ROUTE' };
 
 const HOLD_BUTTONS: { id: PadButton; cls: string; label: string }[] = [
   { id: 'hit', cls: 't-hit', label: 'HIT' },

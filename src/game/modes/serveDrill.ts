@@ -136,7 +136,7 @@ export class ServeDrill extends Mode {
     this.kindIdx = i;
     const g = this.g;
     g.serveKind = this.kind;
-    g.hud.message(`Serve ${i + 1}: ${SERVE[this.kind].name}`, 1.6);
+    g.hud.message(`Serve ${i + 1}: ${SERVE[this.kind].name}`, 1.6, false);
     this.updateScore();
     // nothing tossed yet: walk to where this serve starts
     if (this.phase === 'ready') this.toStart();

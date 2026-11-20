@@ -246,7 +246,7 @@ export class ReceiveDrill extends Mode {
     this.score += pts;
     this.bumpStreak(rating >= 2);
     if (!p) g.hud.showBanner(this.kind === 'serve' ? 'ACE' : 'NO DIG', 'bad');
-    else g.hud.message(`+${pts}`, 1.2);
+    else g.hud.message(`+${pts}`, 1.2, false);
     this.updateScore();
   }
 

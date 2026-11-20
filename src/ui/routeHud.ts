@@ -41,9 +41,11 @@ const same = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.le
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-function tempoMeter(t: RouteTempo): string {
-  const n = TEMPO[t].bars;
-  return `<span class="tempo" data-n="${n}"><i></i><i></i><i></i><i></i><em>${TEMPO[t].word}</em></span>`;
+/** a route's tempo as bars, with its word unless the route is named after it (the High route reads "High", not "High High") */
+function tempoMeter(t: RouteTempo, name: string): string {
+  const { bars, word } = TEMPO[t];
+  const said = name.toLowerCase() === word.toLowerCase() ? '' : `<em>${word}</em>`;
+  return `<span class="tempo" data-n="${bars}"><i></i><i></i><i></i><i></i>${said}</span>`;
 }
 
 /** what a route is, in a few words: the name's own explanation, else its full name */
@@ -79,13 +81,17 @@ export class RouteHud {
   private lastOn = -1;
   private lastPos = '';
 
-  constructor(parent: HTMLElement) {
+  /** the panel goes on `parent`, the strip in `foot` (the HUD's bottom column, so it stacks over the key line) */
+  constructor(parent: HTMLElement, foot: HTMLElement = parent) {
     this.strip = document.createElement('div');
     this.strip.className = 'route-strip';
+    // hidden until there is a route to show (the first update with none changes nothing)
+    this.strip.style.display = 'none';
     this.panel = document.createElement('div');
     this.panel.className = 'route-panel';
     this.panel.setAttribute('aria-hidden', 'true');
-    parent.append(this.strip, this.panel);
+    foot.append(this.strip);
+    parent.append(this.panel);
   }
 
   /** draw both for `v` (null: you are not calling a route; both hide), the panel when `open` */
@@ -116,7 +122,7 @@ export class RouteHud {
       play = `<span class="rs-play rs-${s.cls}"><small>Setter</small><strong>${esc(v.play.name)}</strong><b class="rs-badge ${s.cls}">${s.word}</b></span>`;
     }
     this.strip.innerHTML =
-      `<b class="rs-key">${v.on + 1}</b><span class="rs-name">${esc(p.short)}</span>${tempoMeter(routeTempo(p))}` +
+      `<b class="rs-key">${v.on + 1}</b><span class="rs-name">${esc(p.short)}</span>${tempoMeter(routeTempo(p), p.short)}` +
       `<span class="rs-pips">${pips}</span>${play}<kbd class="rs-c">C</kbd>`;
     // a new call: the key pops (same position, so not on the first draw)
     if (this.lastOn >= 0 && this.lastOn !== v.on && this.lastPos === v.position) {
@@ -140,7 +146,7 @@ export class RouteHud {
       .map(
         (p, i) =>
           `<li${i === v.on ? ' class="on"' : ''}><b>${i + 1}</b><span class="rp-name">${esc(p.short)}<small>${esc(note(p))}</small></span>` +
-          `<span class="rp-t">${tempoMeter(routeTempo(p))}${needsGoodPass(p) ? '<u>good pass</u>' : ''}</span></li>`,
+          `<span class="rp-t">${tempoMeter(routeTempo(p), p.short)}${needsGoodPass(p) ? '<u>good pass</u>' : ''}</span></li>`,
       )
       .join('');
     let play = '';

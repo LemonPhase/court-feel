@@ -72,7 +72,7 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/stuff-block-first-person.jpg" alt="First person block: both hands pressed over the net, the opposing hitter right in front, PERFECT 57 km/h Stuff">
+      <img src="docs/screenshots/stuff-block-first-person.jpg" alt="First person block: both hands pressed over the net, the opposing hitter right in front, PERFECT 56 km/h Stuff">
       <b>At the net.</b> Read the set, time the jump, press over. A stuff block, seen through the blocker's eyes.
     </td>
     <td width="50%" valign="top">
@@ -122,12 +122,22 @@ Real frames from the game: no paint-overs, no staged cameras.
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/phone-touch-controls.jpg" alt="Phone in landscape: joystick on the left, PASS, BLOCK, JUMP and HIT buttons on the right, set call chips at the top">
+      <img src="docs/screenshots/phone-touch-controls.jpg" alt="Phone in landscape: joystick on the left, PASS, BLOCK, JUMP and HIT buttons on the right, your routes as chips at the top">
       <b>On your phone.</b> A joystick for your feet, drag to aim, hold to jump and hold to swing. The timing windows are the same as on a keyboard.
     </td>
     <td width="50%" valign="top">
       <img src="docs/screenshots/start-screen.jpg" alt="Start screen, Train: the BETA tag under the name, the six drills in a list, the Spike Drill's panel with its own keys, the five positions to play it as, and PLAY; the venue, athlete and settings pills at the top right">
       <b>Pick a drill.</b> Each drill shows what it scores, its own keys and the position you play it as.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/hud-vnl-point.jpg" alt="Mini Rally in the VNL look: the score bar across the top, YOU 0 : 1 THEM, and under it a plate in their blue, KILL, POINT · THEM, the spike's trail still in the air">
+      <b>The score.</b> A score bar across the top, and under it who won the point and how, in their kit colour.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/hud-games-look.jpg" alt="Mini Rally in the Games look: a small score in the top-left corner, YOU 0 and THEM 1, the plate OUT, POINT · THEM under it">
+      <b>Or keep it small.</b> The Games look puts the score in the corner. Settings, Screen switches between the two.
     </td>
   </tr>
 </table>
@@ -346,7 +356,7 @@ screen show them. Only your player uses them; AI players keep the defaults.
    from your contact point would hit into the hands, updated live as the block
    forms, so you can see the line, the cross and the seam opening up, and how
    deep a ball has to go to clear the top. A stuffed ball scores **BLOCKED**
-   (0, streak lost); a ball off their hands that goes out or over scores
+   (0); a ball off their hands that goes out or over scores
    **TOOLED** (timing points + 50); a kill past the block scores as usual.
 3. **Block Drill** — the opponent setter sets one of three hitters. Every rep
    starts at the net in front of their middle; read the set, shuffle, hands up,
@@ -629,7 +639,7 @@ screen show them. Only your player uses them; AI players keep the defaults.
    set in time. If you can't get to the ball at all, **H** calls for help: the
    libero sets it if it can, else a team-mate bumps it up.
 
-The HUD shows the timing grade, ball speed in km/h, your streak and a key hint.
+The HUD shows the timing grade with the ball's speed in km/h, and a key hint.
 
 ### The timed set
 
@@ -987,7 +997,7 @@ venue for that visit without changing the saved one.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/venue-games-arena.jpg" alt="Games arena from the top of one end during a rally: a coral court on indigo, a rectangle of light hung over it, tiers of crowd in the dark with phone lights">
+      <img src="docs/screenshots/venue-games-arena.jpg" alt="Games arena from behind the receivers, looking up: a coral court on indigo, a rectangle of light hung over it, tiers of crowd in the dark with phone lights">
       <b>Games arena.</b>
     </td>
     <td width="50%" valign="top">
@@ -1043,7 +1053,14 @@ Every tunable number is in **[`src/config.ts`](src/config.ts)**:
 | `QUALITY` | The quality governor: how slow a machine has to be, and for how long, before the picture gets cheaper |
 | `AI` | How long a jump set with the dump on holds their middle (`middle.dumpHold`); A pin hitter going inside: how far off square the run is, how much speed is kept through the plant and how much of it goes into the ball (`insideRun`); Your green set: who their middle bites on (`greenBite`, `greenBlockGuess`) and your hitter's bounce (`greenBounce`); how much an AI hitter's run across the court curves (`approach`); how late a hitter can still be asked for a fast set out of system (`oosAsk`); How often the pipe's hitter looks for the open spot (`pipe.open`), the 3 m line kept clear by a back-row hitter's take-off and the libero's hand set (`backRow`), where a scramble's ups go (`up`, `diveUp`), no approach for a set out of reach (`approachMiss`), no overhand free ball from deep (`freeOver.bumpFrom`); Reaction time and skill of hitters, blockers, defenders, setter accuracy; the Mini Rally middle blocker (`middle`: its reaction and read of the set, how often it commits on the quick or cheats to a pin, how close it closes on the pin blocker, how late it still jumps and how far it reaches sideways) and pin blockers (`wing`: how late a pin still goes up, how far out it goes at the antenna); how much room team-mates give each other (`giveWay`) and when the defence split-steps (`splitStep`); who the setter sets (`setWeight`) and how often the pipe (`pipe`); an overpass (`overpass`), an AI hitter misreading the user's block (`userBlockMisread`), who takes a ball (`pick`: first there takes it, the seam goes to the libero or you, the setter only when nobody else is close, a ball off a block or a second ball the libero gets to is the libero's, and so is their free ball when it gets there comfortably: `liberoFree`; no HELP call on a ball that is down `dive` s before anyone arrives); a block only from the net (`blockNet`), what players without the ball do in each of the ten situations (`sit`: the back row moving along the net with the ball, pin blockers fronting their hitters, the serve-receive transition and back-up, following the pass, waiting deeper out of system, closing on a scramble, each player's own offset for the rally), arriving on the hitter's contact instead of early (`pace`), turning to run a ball down (`chase`); where an AI free ball over goes (`freeOver`: a deep corner or short, wherever they aren't); perimeter defence read spots and reaction times (`defence`), early transition and the front row's transition off the net after a block (`transition`, `approachOff`: no quick from the net) and covering our hitter in the real 3-2 spots (`cover`: when, the middle at the net, the setter on the 3 m line, the back row behind and deep, how fast a coverer reads a ball off the block); when the setter calls the pass (`setterRead`), how far off the net is out of system (`outOfSystem`) and how much higher an out-of-system set goes (`outOfSystemApex`); the AI's serves (`serve`: jump share, run-up, toss, error, where they aim); the attack: swing timing error (`attackErr`), the open spot (`openShot*`, `digReach`, `digTop`, `blockReachBand`), where a quick goes (`quickShot`), how often the setter goes to the middle (`quickWeight`), fast sets to the pins (`tempo`), tool, roll and recycle shots (`toolShot`, `rollShot`, `recycleShot`), what a hitter under the ball does instead of a weak swing (`offSpeed`: a wipe off the block, a tip, a roll to the open court, or a hard swing through it); a backup's set off a hard ball (`backupSet`: the libero's or anyone's, how hard it is by time, distance and the run under it, how much it misses, the one barely reached that is bumped instead; never a set to the user), what an AI dive does with the ball (`diveUp`: a bit up, toward the middle) and when a free ball is aimed (`freeOver.aimSpeed`), a setter too late for the hands digging it (`lateSet`); how far out a ball must land before a receiver lets it go (`outJudge`) and how much a hard ball rushes an AI passer's timing (`passPressure`); first balls overhand (`overhand`), dives (`dive`, `stretch`: a last-ditch dive at a ball just past the hands; `anyway`, `anywayFar`: now and then a dive at one out of reach) and a second player running at a ball the first may not reach (`scramble`); your green set as a point (their middle's wrong guess, the wings' late read, the diggers' late start: `greenSet*`, `greenBlockGuess`) and how much harder your bad set is to hit (`badSetErr`, `badSetTip`); when a hitter backing off the net is ready for a called tempo run (`transitionReady`, `transitionLatest`); how often an AI setter runs a play from the wheel, on a free ball and off a perfect serve-receive pass (`plays`) |
 
-Player-facing settings (sensitivity, FOV, invert Y, key hints, net height; under
+Player-facing settings (sensitivity, FOV, invert Y, net height; under Screen, the
+look (VNL, the default: a Nations League score bar across the top, each team's flag and
+code either side of the points; or Games: a small score in the top-left corner; in both
+who won the point shows under the score on a plate in their kit colour, and the grade of
+your touch shows big over the court), and what
+the screen shows while you play besides the score and the serve, each on by default:
+grades and km/h, calls and routes (the setter's call strip, your
+route strip, team-mates' calls), coaching (the key line and notes like "Your ball!"); under
 Assists, for hitting, passing and blocking: aim assist, spike timing collar, spike
 slow-mo, run-up spot and GO, landing marker; for setting: set difficulty, set ring
 and bar, set slow-mo, auto jump set, set aim assist, set arc and hitter marker,

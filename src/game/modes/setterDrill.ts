@@ -224,6 +224,7 @@ export class SetterDrill extends Mode {
     this.g.hud.message(
       c.frontRow ? 'Front row · the opposite hits the D · 5 is your dump' : 'Back row · three hitters at the net · no dump',
       2.2,
+      false,
     );
   }
 
@@ -231,7 +232,7 @@ export class SetterDrill extends Mode {
     const g = this.g;
     this.t += dt;
     this.calls.readKeys(this.keys);
-    if (this.calls.takeLate()) g.hud.message('Too late to change it · they are committed', 1.2);
+    if (this.calls.takeLate()) g.hud.message('Too late to change it · they are committed', 1.2, false);
     if (g.keyPressed('KeyG') && !this.calls.locked) this.toggleRow();
     // before the pass the hitters walk to the start of their call's run
     if (!this.calls.locked) applyCalls(this.hitters, this.calls, false);

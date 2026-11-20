@@ -9,28 +9,8 @@ canvas { display: block; outline: none; }
   background: rgba(0,0,0,0.55); padding: 8px 10px; border-radius: 6px; font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace; }
 .debug pre { margin: 0 0 6px; white-space: pre; }
 
-/* ------------------------------------------------------------------ HUD */
+/* ------------------------------------------------------------------ HUD (the rest is in hud.css) */
 :root { --gold: #ffd23f; --cyan: #4fd1ff; --orange: #ff8a3d; --red: #ff4d5e; --ink: #0b0d14; }
-.hud { position: absolute; inset: 0; pointer-events: none; z-index: 10; user-select: none;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.65); }
-.hud-top { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); text-align: center; }
-.hud-title { font-weight: 800; letter-spacing: 0.22em; font-size: 13px; opacity: 0.85; text-transform: uppercase; }
-.hud-score { font-weight: 700; font-size: 20px; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.hud-grade { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; opacity: 0;
-  transition: opacity 0.25s; }
-.hud-grade.show { opacity: 1; }
-.hud-grade.aside { left: 22%; top: 40%; }
-.hud-grade.aside .hud-grade-text { font-size: 44px; }
-.hud-grade-text { font-weight: 900; font-style: italic; font-size: 60px; letter-spacing: 0.04em; line-height: 1;
-  -webkit-text-stroke: 1px rgba(0,0,0,0.35); }
-.hud-grade-sub { font-weight: 700; font-size: 18px; margin-top: 6px; letter-spacing: 0.06em; }
-.hud-grade.pop .hud-grade-text { animation: gradePop 0.42s cubic-bezier(.2,1.6,.35,1); }
-@keyframes gradePop { 0% { transform: scale(0.4) skewX(-8deg); opacity: 0; } 60% { transform: scale(1.15) skewX(-8deg); opacity: 1; }
-  100% { transform: scale(1) skewX(-8deg); } }
-.hud-grade-text { transform: skewX(-8deg); }
-.g-perfect .hud-grade-text { color: var(--gold); text-shadow: 0 0 22px rgba(255,190,40,0.85), 0 0 60px rgba(255,120,0,0.6), 0 3px 0 #7a4b00; }
-.g-good .hud-grade-text { color: var(--cyan); text-shadow: 0 0 16px rgba(60,190,255,0.6), 0 3px 0 #0a3a5a; }
-.g-green .hud-grade-text { color: #3ddc84; text-shadow: 0 0 20px rgba(61,220,132,0.8), 0 0 54px rgba(20,160,90,0.55), 0 3px 0 #0b4a2a; }
 /* the set bar (2K's meter) beside the ball: fills from the catch, release in the green band */
 .set-bar { position: absolute; left: 0; top: 0; display: none; border-radius: 3px; background: rgba(8,10,16,0.6);
   box-shadow: 0 0 0 1px rgba(255,255,255,0.4), 0 2px 8px rgba(0,0,0,0.5); }
@@ -47,26 +27,6 @@ canvas { display: block; outline: none; }
   border: 1px solid var(--c); color: var(--c); font: 800 11px/1 system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase;
   white-space: nowrap; text-shadow: none; pointer-events: none; }
 .set-to::after { content: ''; position: absolute; left: 50%; top: 100%; margin-left: -5px; border: 5px solid transparent; border-top-color: var(--c); }
-/* the play wheel: the setter's combinations, called before the pass. The slice the mouse is on is gold; the play the calls make now is lit */
-.play-wheel { position: absolute; left: 50%; top: 50%; display: none; transform: translate(-50%, -50%); text-shadow: none; }
-.play-wheel svg { display: block; }
-/* the ball is in play: the wheel steps aside, off the court, smaller (a pick goes by direction, not position) */
-.play-wheel.aside { left: 24px; top: 50%; transform: translateY(-50%) scale(0.72); transform-origin: left center; opacity: 0.94; }
-body.touchmode .play-wheel.aside { left: 50%; top: calc(48px + env(safe-area-inset-top, 0px)); transform: translateX(-50%) scale(0.56); transform-origin: center top; }
-.pw-slice { fill: rgba(8,10,16,0.74); stroke: rgba(255,255,255,0.16); stroke-width: 1; }
-.pw-slice.on { fill: rgba(60,70,92,0.82); stroke: rgba(255,255,255,0.4); }
-.pw-slice.sel { fill: rgba(96,72,14,0.86); stroke: var(--gold); stroke-width: 2; }
-.pw-label { fill: #e9edf5; font: 700 12px/1 system-ui, sans-serif; text-anchor: middle; pointer-events: none; }
-.pw-num { fill: rgba(255,255,255,0.5); font: 700 10px/1 ui-monospace, Menlo, monospace; text-anchor: middle; pointer-events: none; }
-.pw-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(8,10,16,0.74);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; pointer-events: none; }
-.pw-name { font-weight: 800; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
-.pw-court { width: 100px; height: 52px; flex: none; }
-.pw-net { stroke: #e9edf5; stroke-width: 1.6; }
-.pw-setter { fill: #e9edf5; }
-.pw-run { stroke-width: 1.8; stroke-linecap: round; }
-.pw-idea { font-size: 10px; line-height: 1.25; opacity: 0.8; max-width: 128px; }
-body.touchmode .play-wheel .pw-slice { pointer-events: auto; }
 /* first person: where to stand, on a dial under the crosshair. The mark is your feet, up is where you look, the ring is the spot */
 .set-radar { position: absolute; left: 50%; top: 50%; display: none; transform: translateX(-50%); border-radius: 50%; pointer-events: none;
   background: rgba(8,10,16,0.38); box-shadow: 0 0 0 1px rgba(255,255,255,0.3); }
@@ -87,138 +47,6 @@ body.touchmode .play-wheel .pw-slice { pointer-events: auto; }
 .sb-pip.on::before { background: #3ddc84; border-color: #3ddc84; }
 .sb-pip.miss { color: var(--orange); }
 .sb-pip.miss::before { border-color: var(--orange); }
-.g-early .hud-grade-text, .g-late .hud-grade-text { color: var(--orange); text-shadow: 0 3px 0 #5a2a08; }
-.g-miss .hud-grade-text { color: #c9c9d1; text-shadow: 0 3px 0 #333; }
-.hud-banner { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); font-weight: 900; font-size: 34px;
-  letter-spacing: 0.12em; opacity: 0; transition: opacity 0.3s; }
-.hud-banner.show { opacity: 1; }
-.hud-banner.pop { animation: bannerPop 0.35s ease-out; }
-@keyframes bannerPop { 0% { transform: translate(-50%, -30%); opacity: 0; } 100% { transform: translate(-50%, -50%); opacity: 1; } }
-.b-good { color: #7dff9b; } .b-bad { color: var(--red); } .b-neutral { color: #fff; }
-.hud-bl { position: absolute; left: 22px; bottom: 20px; }
-.hud-speed { font-weight: 900; font-style: italic; }
-.hud-speed-val { font-size: 46px; font-variant-numeric: tabular-nums; }
-.hud-speed-unit { font-size: 16px; margin-left: 6px; opacity: 0.8; }
-.hud-speed-label { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.6; margin-top: -4px; }
-.hud-streak { position: absolute; right: 22px; bottom: 22px; text-align: right; font-weight: 900; font-style: italic; }
-.hud-streak-label { font-size: 12px; letter-spacing: 0.25em; opacity: 0.7; margin-right: 8px; }
-.hud-streak-val { font-size: 42px; font-variant-numeric: tabular-nums; }
-.hud-streak.hot .hud-streak-val { color: var(--orange); }
-.hud-streak.fire .hud-streak-val { color: var(--gold); text-shadow: 0 0 18px rgba(255,140,0,0.9); }
-.hud-hint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 13px; opacity: 0.85;
-  white-space: nowrap; background: rgba(8,10,16,0.45); padding: 6px 12px; border-radius: 6px; text-shadow: none; }
-/* the call strip when you set, laid out like the net: outside, middle, opposite, the pipe behind the middle.
-   One chip per hitter (key, who, call, a dot per call); the one your set goes to is lit */
-.call-sheet { position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); display: none; gap: 5px 6px;
-  grid-template-columns: repeat(3, minmax(92px, auto)); text-shadow: none; font-size: 12px; }
-.call-sheet.pins { grid-template-columns: repeat(2, minmax(92px, auto)); }
-.cs-item { display: flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 6px; background: rgba(8,10,16,0.55);
-  border: 1px solid rgba(255,255,255,0.14); font-weight: 700; opacity: 0.7; transition: opacity 0.12s, border-color 0.12s, box-shadow 0.12s; }
-.cs-PIPE { grid-column: 2; }
-.cs-play { grid-column: 1 / -1; text-align: center; font-weight: 800; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.8;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-.cs-item b { font: 700 10px/1 ui-monospace, Menlo, monospace; opacity: 0.7; }
-.cs-item span { font-weight: 600; color: var(--c); }
-.cs-item i { display: flex; gap: 3px; margin-left: auto; padding-left: 4px; }
-.cs-item em { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.28); }
-.cs-item em.on { background: var(--c); }
-.call-sheet.locked .cs-item i { opacity: 0.35; }
-/* lit by default (no key yet): the outline only; picked with their key: the glow too */
-.cs-item.lit { opacity: 1; border-color: var(--c); }
-.cs-item.lit.picked { box-shadow: 0 0 0 1px var(--c), 0 0 14px color-mix(in srgb, var(--c) 45%, transparent); }
-.cs-item.off { opacity: 0.3; text-decoration: line-through; }
-/* your route as a hitter (keys 1-5): key, call, how fast it is, a dot per route, and your setter's play.
-   Where a setter's call strip sits; the hitter's colour is the position's (--c) */
-.route-strip { position: absolute; bottom: 54px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
-  padding: 5px 8px 5px 5px; border-radius: 8px; background: rgba(8,10,16,0.62); border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.35); font-size: 12px; white-space: nowrap; text-shadow: none; }
-.rs-key { display: grid; place-items: center; min-width: 24px; height: 24px; padding: 0 5px; border-radius: 5px; background: var(--c); color: var(--ink);
-  font: 800 13px/1 ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
-.rs-key.pop { animation: rsPop 0.28s cubic-bezier(.16,1,.3,1); }
-@keyframes rsPop { 0% { transform: scale(0.7); } 100% { transform: scale(1); } }
-.rs-name { font-weight: 900; font-style: italic; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c); }
-/* the tempo meter: slanted bars rising left to right, more of them lit for a faster set */
-.tempo { display: inline-flex; align-items: flex-end; gap: 2px; }
-.tempo i { width: 4px; border-radius: 1px; background: rgba(255,255,255,0.2); transform: skewX(-16deg); }
-.tempo i:nth-child(1) { height: 5px; } .tempo i:nth-child(2) { height: 8px; } .tempo i:nth-child(3) { height: 11px; } .tempo i:nth-child(4) { height: 14px; }
-.tempo[data-n="1"] i:nth-child(-n+1), .tempo[data-n="2"] i:nth-child(-n+2), .tempo[data-n="3"] i:nth-child(-n+3), .tempo[data-n="4"] i { background: var(--c); }
-.tempo em { margin-left: 6px; font-style: normal; font-weight: 700; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #c9cfdb; }
-.rs-pips { display: inline-flex; gap: 3px; }
-.rs-pips em { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.25); }
-.rs-pips em.on { background: var(--c); }
-.rs-play { display: inline-flex; align-items: center; gap: 7px; padding-left: 10px; border-left: 1px solid rgba(255,255,255,0.16); }
-.rs-play small, .rp-play small { font-weight: 700; font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; color: #aab1c0; }
-.rs-play strong { font-weight: 800; letter-spacing: 0.04em; }
-.rs-why { color: #ffc49b; font-size: 11px; }
-.rs-badge { padding: 3px 6px 2px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.32); font: 800 9.5px/1 system-ui, sans-serif;
-  letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; color: #e9edf5; }
-.rs-badge.on { background: #3ddc84; border-color: #3ddc84; color: var(--ink); }
-.rs-badge.high { background: var(--orange); border-color: var(--orange); color: var(--ink); }
-.rs-off strong, .rs-badge.off { color: #8a91a0; text-decoration: line-through; }
-.route-strip kbd, .route-panel kbd { min-width: 18px; padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.25);
-  font: 600 11px/1.4 ui-monospace, Menlo, monospace; text-align: center; color: #e9edf5; }
-/* the route panel (C): at the side, never over the middle of the screen; the game runs on behind it */
-/* top left, its bottom above the route strip (bottom 54px + the strip) */
-.route-panel { position: absolute; left: 22px; top: 56px; width: 300px; max-height: calc(100% - 56px - 100px); overflow: hidden auto;
-  padding: 12px 12px 10px; border-radius: 12px; background: rgba(8,10,16,0.9); border: 1px solid rgba(255,255,255,0.12);
-  box-shadow: 0 18px 40px rgba(0,0,0,0.45); text-shadow: none; opacity: 0; visibility: hidden; transform: translateX(-14px);
-  transition: opacity 0.18s cubic-bezier(.16,1,.3,1), transform 0.24s cubic-bezier(.16,1,.3,1), visibility 0s 0.24s; scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.25) transparent; }
-.route-panel.open { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
-.rp-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
-.rp-head h2 { margin: 0; font-weight: 900; font-style: italic; font-size: 15px; letter-spacing: 0.12em; text-transform: uppercase; }
-.rp-head h2 span { color: var(--c); }
-.rp-court { margin: 9px 0 8px; border-radius: 8px; overflow: hidden; background: #10141d; }
-.rp-court svg { display: block; width: 100%; height: auto; }
-.rp-line { stroke: rgba(255,255,255,0.28); stroke-width: 1.2; fill: none; }
-.rp-3m { stroke-dasharray: 5 4; }
-.rp-tag { fill: rgba(255,255,255,0.4); font: 600 9px/1 system-ui, sans-serif; letter-spacing: 0.08em; }
-.rp-net { stroke: #e9edf5; stroke-width: 3; stroke-linecap: round; }
-.rp-ant { stroke: var(--red); stroke-width: 2.4; stroke-dasharray: 2.5 2.5; }
-.rp-setter { fill: #e9edf5; }
-.rp-setter-s { fill: var(--ink); font: 900 9.5px/1 system-ui, sans-serif; }
-.rp-mate { fill: none; stroke-width: 1.4; stroke-dasharray: 3 4; stroke-linecap: round; opacity: 0.55; }
-.rp-mate-dot { opacity: 0.65; }
-.rp-mate-tag { font: 700 8.5px/1 system-ui, sans-serif; letter-spacing: 0.04em; opacity: 0.8; }
-.rp-run { fill: none; stroke: rgba(255,255,255,0.38); stroke-width: 1.6; stroke-linecap: round; }
-.rp-run.on { stroke: var(--c); stroke-width: 3; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
-.rp-start { fill: rgba(8,10,16,0.9); stroke: rgba(255,255,255,0.5); stroke-width: 1.2; }
-.rp-start.on { stroke: var(--c); stroke-width: 2; }
-.rp-spot { fill: rgba(8,10,16,0.92); stroke: rgba(255,255,255,0.55); stroke-width: 1.2; }
-.rp-spot.on { fill: var(--c); stroke: var(--c); filter: drop-shadow(0 2px 4px rgba(0,0,0,0.55)); }
-.rp-num { fill: #e9edf5; font: 800 10px/1 ui-monospace, Menlo, monospace; }
-.rp-num.on { fill: var(--ink); }
-.rp-play { margin: 0 0 8px; padding: 7px 9px; border-radius: 8px; background: rgba(255,255,255,0.05); }
-.rp-play div { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; }
-.rp-play div small { flex-basis: 100%; }
-.rp-play strong { font-weight: 800; font-size: 13px; letter-spacing: 0.04em; }
-.rp-play .rs-badge { margin-left: auto; }
-.rp-play p { margin: 4px 0 0; font-size: 11.5px; line-height: 1.35; color: #c3c9d6; }
-.rp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.rp-list li { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 9px; padding: 5px 6px; border-radius: 7px; }
-.rp-list li.on { background: color-mix(in srgb, var(--c) 17%, transparent); }
-.rp-list b { display: grid; place-items: center; height: 22px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.25);
-  font: 800 11px/1 ui-monospace, Menlo, monospace; color: #dfe3ec; }
-.rp-list li.on b { background: var(--c); border-color: var(--c); color: var(--ink); }
-.rp-name { font-weight: 800; font-size: 12.5px; letter-spacing: 0.05em; text-transform: uppercase; }
-.rp-list li.on .rp-name { color: var(--c); }
-.rp-name small { display: block; margin-top: 2px; font-weight: 500; font-size: 10.5px; letter-spacing: 0; text-transform: none; color: #aeb5c4; }
-.rp-t { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
-.rp-t u { text-decoration: none; font-weight: 700; font-size: 8.5px; letter-spacing: 0.14em; text-transform: uppercase; color: #8f97a8; }
-.hud-hint:empty { display: none; }
-.hud-hint kbd { display: inline-block; min-width: 18px; padding: 1px 5px; margin: 0 2px; border-radius: 4px; background: rgba(255,255,255,0.14);
-  border: 1px solid rgba(255,255,255,0.25); font: 600 11px/1.4 ui-monospace, Menlo, monospace; text-align: center; }
-.hud-msg { position: absolute; left: 50%; top: 13%; transform: translateX(-50%); font-weight: 800; font-size: 15px; letter-spacing: 0.1em;
-  opacity: 0; transition: opacity 0.3s; text-transform: uppercase; white-space: nowrap; max-width: 92vw; overflow: hidden; text-overflow: ellipsis;
-  background: rgba(8,10,16,0.5); padding: 6px 14px; border-radius: 6px; }
-.hud-msg.show { opacity: 1; }
-.hud-cam { position: absolute; top: 16px; right: 20px; font-size: 11px; letter-spacing: 0.2em; opacity: 0.45; font-weight: 700; }
-/* keyboard skip sits where the camera tag was; the tag drops below it (touch already uses 56px) */
-button.t-skip-kb { position: absolute; top: 12px; right: 20px; z-index: 5; display: none; pointer-events: auto; cursor: pointer; color: inherit; font: inherit; }
-.hud.tutoring button.t-skip-kb { display: flex; }
-.hud.tutoring .hud-cam { top: 54px; }
-.hud-cam.pulse { animation: camPulse 0.6s ease-out; }
-@keyframes camPulse { 0% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.45; transform: scale(1); } }
 .crosshair { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.75); box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
 .crosshair::after { content: ''; position: absolute; left: 50%; top: 50%; width: 2px; height: 2px; margin: -1px 0 0 -1px; background: #fff; border-radius: 50%; }
@@ -711,90 +539,18 @@ body.collar .charge-ring.full:not(.sweet) { animation: none; }
 body.frozen canvas { filter: saturate(0.72) brightness(0.84); }
 .t-freeze { position: absolute; inset: 0; pointer-events: none; opacity: 0; box-shadow: inset 0 0 140px rgba(90, 150, 190, 0.28); transition: opacity 0.12s; }
 .hud.frozen .t-freeze { opacity: 1; }
-/* the lesson: the four parts of a spike under the title, and the one to do now under the crosshair */
-.coach-strip { position: absolute; left: 50%; top: calc(13% + 30px); transform: translateX(-50%); display: none; align-items: center; gap: 8px;
-  font-weight: 800; font-size: 11px; letter-spacing: 0.14em; white-space: nowrap; pointer-events: none; }
-.coach-strip.show { display: flex; }
-.coach-step { padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.22); color: rgba(255,255,255,0.55); background: rgba(8,12,20,0.45); }
-.coach-step.done { color: #3ddc84; border-color: rgba(61,220,132,0.55); }
-.coach-step.now { color: #10151f; background: #fff; border-color: #fff; }
-.coach-sep { opacity: 0.4; }
-.coach-cue { position: absolute; left: 50%; bottom: 62px; transform: translateX(-50%); display: none; align-items: center; gap: 12px; padding: 10px 18px;
-  border-radius: 12px; background: rgba(8,12,20,0.72); border: 1px solid rgba(255,255,255,0.18); font-weight: 700; font-size: 17px; white-space: nowrap;
-  pointer-events: none; }
-.coach-cue.show { display: flex; }
-.coach-cue kbd { display: inline-block; min-width: 26px; padding: 4px 10px; margin: 0 2px; border-radius: 7px; background: #fff; color: #10151f;
-  font: inherit; font-weight: 800; font-size: 15px; text-align: center; box-shadow: 0 2px 0 rgba(0,0,0,0.45); }
-.coach-text kbd { background: rgba(255,255,255,0.16); color: inherit; box-shadow: none; font-size: 14px; }
-@keyframes coachWait { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.06); } }
-@keyframes coachKey { from { background: #fff; } to { background: var(--gold); } }
-.coach-cue.waiting { border-color: var(--gold); box-shadow: 0 0 22px rgba(255,210,63,0.45); animation: coachWait 0.55s ease-in-out infinite alternate; }
-.coach-cue.waiting .coach-keys kbd { animation: coachKey 0.55s ease-in-out infinite alternate; }
-.coach-cue.nudge { box-shadow: 0 0 34px rgba(255,210,63,0.9); }
-@media (prefers-reduced-motion: reduce) { .coach-cue.waiting, .coach-cue.waiting .coach-keys kbd { animation: none; } }
-body.touchmode .coach-strip { top: calc(22% + 30px); font-size: 10px; gap: 5px; }
-body.touchmode .coach-cue { bottom: 44px; font-size: 14px; padding: 8px 14px; }
-.t-skip-kb.nudge, .t-skip.nudge { border-color: var(--gold); box-shadow: 0 0 12px rgba(255,210,63,0.65); }
 .go-cue { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); font-weight: 900; font-style: italic; font-size: 22px;
   letter-spacing: 0.2em; color: #6fe3ff; opacity: 0; text-shadow: 0 0 14px rgba(80,200,255,0.8); }
 .go-cue.show { animation: goCue 0.7s ease-out; }
 @keyframes goCue { 0% { opacity: 0; transform: translateX(-50%) scale(1.6); } 20% { opacity: 1; transform: translateX(-50%) scale(1); }
   100% { opacity: 0; transform: translateX(-50%) scale(1); } }
 
-/* a team-mate's call (the setter's read of the pass): a speech bubble over their head */
-.callout { position: absolute; left: 50%; top: 26%; transform: translate(-50%, -100%); opacity: 0; transition: opacity 0.25s;
-  --c: var(--cyan); }
-.callout.show { opacity: 1; }
-.callout.c-out { --c: var(--orange); }
-.callout-bubble { position: relative; margin-bottom: 11px; padding: 3px 14px 6px; border-radius: 12px; text-align: center; white-space: nowrap;
-  background: rgba(8,10,16,0.74); border: 2px solid var(--c); box-shadow: 0 0 16px color-mix(in srgb, var(--c) 45%, transparent);
-  transform-origin: 50% 100%; }
-.callout-bubble::after { content: ''; position: absolute; left: 50%; bottom: -10px; margin-left: -8px;
-  border: 8px solid transparent; border-bottom: 0; border-top: 10px solid var(--c); }
-.callout.edge .callout-bubble::after { display: none; }
-.callout.edge-l .callout-who::before { content: '\25C0  '; color: var(--c); }
-.callout.edge-r .callout-who::after { content: '  \25B6'; color: var(--c); }
-.callout-who { font-size: 10px; font-weight: 800; letter-spacing: 0.28em; opacity: 0.75; }
-.callout-word { font-size: 30px; font-weight: 900; font-style: italic; letter-spacing: 0.05em; line-height: 1.05; color: var(--c); }
-.c-in .callout-word { font-size: 22px; }
-.callout-sub { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.9; }
-.callout.pop .callout-bubble { animation: calloutPop 0.38s cubic-bezier(.2,1.6,.35,1); }
-@keyframes calloutPop { 0% { transform: scale(0.3); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-body.touchmode .callout-word { font-size: 22px; }
-body.touchmode .c-in .callout-word { font-size: 17px; }
-body.touchmode .callout-sub { font-size: 9px; }
 
 /* ------------------------------------------------------------------ touch controls */
 .touch { position: absolute; inset: 0; z-index: 15; touch-action: none; user-select: none; -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent; font-family: inherit;
   --sa-l: env(safe-area-inset-left, 0px); --sa-r: env(safe-area-inset-right, 0px); --sa-b: env(safe-area-inset-bottom, 0px); --sa-t: env(safe-area-inset-top, 0px); }
 .touch * { pointer-events: none; }
-body.touchmode .hud-cam { top: 56px; }
-body.touchmode .hud.tutoring .hud-cam { top: 56px; }
-body.touchmode .hud.tutoring button.t-skip-kb { display: none; }
-body.touchmode .hud-title { font-size: 11px; }
-body.touchmode .hud-score { font-size: 15px; }
-body.touchmode .hud-msg { top: 22%; font-size: 12px; max-width: 56vw; white-space: normal; line-height: 1.4; }
-body.touchmode .call-sheet { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px)); font-size: 11px; }
-/* touch: the route strip at the top like the call strip; the panel a sheet across the top (court beside the list), the strip hidden under it */
-body.touchmode .route-strip { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px)); font-size: 11px; gap: 8px; }
-body.touchmode .route-strip .rs-c, body.touchmode .route-panel .rs-c { display: none; }
-body.touchmode .route-strip.panel-open { display: none !important; }
-/* between the stick and the thumb buttons, so neither is covered */
-body.touchmode .route-panel { left: 50%; top: calc(52px + env(safe-area-inset-top, 0px)); width: min(600px, calc(100vw - 360px)); max-height: calc(100% - 150px);
-  transform: translate(-50%, -10px); display: grid; grid-template-columns: minmax(180px, 230px) 1fr; column-gap: 12px; align-items: start; }
-body.touchmode .route-panel.open { transform: translate(-50%, 0); }
-body.touchmode .rp-head { grid-column: 1 / -1; }
-body.touchmode .rp-court { grid-row: 2 / span 2; }
-body.touchmode .rp-play { margin-top: 9px; }
-body.touchmode .rp-list li { padding: 3px 6px; }
-/* a short window: the panel's list gets the room (the court sketch shrinks) */
-@media (max-height: 560px) { .route-panel { padding: 9px; } .rp-court { max-width: 220px; margin: 6px auto; } }
-body.touchmode .hud-hint { bottom: 10px; font-size: 11px; max-width: 40vw; white-space: normal; text-align: center; line-height: 1.55; }
-body.touchmode .hud-bl { left: 16px; bottom: auto; top: 90px; }
-body.touchmode .hud-bl .hud-speed-val { font-size: 30px; }
-body.touchmode .hud-streak { right: 16px; bottom: auto; top: 90px; }
-body.touchmode .hud-streak-val { font-size: 28px; }
 /* joystick: a faint home marker, the live stick floats to the thumb */
 .t-stick { position: absolute; left: calc(110px + var(--sa-l)); top: calc(100% - 120px - var(--sa-b)); width: 0; height: 0; opacity: 0.35; transition: opacity 0.15s; }
 .t-stick.live { opacity: 1; }

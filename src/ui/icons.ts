@@ -18,6 +18,7 @@ export const ICONS = {
     '<path d="M4 7h8.8M17.2 7H20M4 12h2.8M11.2 12H20M4 17h10.8M19.2 17H20"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="12" r="2.2"/><circle cx="17" cy="17" r="2.2"/>',
   ),
   controls: svg('<rect x="7.5" y="3.5" width="9" height="17" rx="4.5"/><path d="M12 7v3"/>'),
+  screen: svg('<rect x="3.5" y="4.5" width="17" height="12" rx="1.5"/><path d="M6.5 8h4M14 13.5h3.5M9 20h6M12 16.5V20"/>'),
   camera: svg('<rect x="3.5" y="7" width="12" height="10" rx="2"/><path d="M15.5 10.5l5-2.5v8l-5-2.5"/>'),
   assists: svg('<circle cx="12" cy="12" r="6"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>'),
   sound: svg(
