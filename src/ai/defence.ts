@@ -13,11 +13,24 @@ export interface Attack {
   x: number;
   off: number;
   kind: AttackKind;
+  /** on a pin attack, how far outside it our pin blocker lines up (`pinShade`; below 0: inside it). Unknown: as against a hitter it has not seen */
+  shade?: number;
 }
 export type AttackKind = 'pin' | 'middle' | 'back';
 export type Spot = { x: number; z: number };
 /** the defenders' read spots by team slot; null: a front-row player blocks, a back-row player holds its base */
 export type ReadSpots = Record<'S' | 'L' | 'OH2' | 'OH1' | 'OPP', Spot | null>;
+
+/**
+ * Where a pin blocker lines up on a pin attack, against a hitter it has seen hit cross `cross` of
+ * the time (0: always line, 1: always cross; `AI.wing.scout`): this far (m) outside the ball,
+ * taking the line from a line hitter, inside it taking the cross from a cross hitter, square on the
+ * ball when it cannot tell. Never more than `AI.defence.shade` off the ball: it blocks the hitter
+ * first, and the ball stays on its hands.
+ */
+export function pinShade(cross: number = AI.wing.scoutStart): number {
+  return AI.defence.shade * (1 - 2 * cross);
+}
 
 /** a pin attack outside the middle of the net (a back-row one from zone 1 or 5 too); a back-row attack well off the net; else a middle attack (the quick, an inside ball) */
 export function attackKind(x: number, off: number): AttackKind {
@@ -45,9 +58,10 @@ export function readSpots(a: Attack): ReadSpots {
       OPP: null,
     };
   }
-  // a pin attack on our right (r = 1) or left (r = -1): the pin blocker shades the line, the middle closes inside
+  // a pin attack on our right (r = 1) or left (r = -1): the pin blocker lines up on it, shaded to
+  // the side the hitter hits, and the middle closes inside it
   const r = a.x >= 0 ? 1 : -1;
-  const pinBlocker = a.x + r * D.shade;
+  const pinBlocker = a.x + r * (a.shade ?? pinShade());
   const middle = pinBlocker - r * AI.middle.closeGap;
   const insideHand = middle - r * D.handHalf;
   const seam = (middle + r * D.handHalf + pinBlocker - r * D.handHalf) / 2;

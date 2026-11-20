@@ -114,6 +114,15 @@ function homeTeam() {
   return { g, team, ball, touch, put, spike, run, brain, theirs };
 }
 
+/**
+ * their set is for their outside, a hitter we have seen hit line every time: our pin blocker takes
+ * the line (`pinShade`), the libero digs cross outside the block's shadow
+ */
+function lineHitter(t: ReturnType<typeof homeTeam>) {
+  t.team.theirSetFor = () => t.theirs;
+  t.team.crossReads.set(t.theirs, 0);
+}
+
 /** their setter sets their outside high (our right) */
 function setOutside(t: ReturnType<typeof homeTeam>) {
   const lane = laneFor('OH', -1);
@@ -210,6 +219,7 @@ describe('going for every ball (Mini Rally)', () => {
 
   it('a ball out of reach on foot: the defender sent runs at it and dives for it, and a team-mate runs with them, to where the dive pops it up (toward the middle)', () => {
     const t = homeTeam();
+    lineHitter(t);
     setOutside(t);
     t.run(1.1);
     const lane = laneFor('OH', -1);
@@ -1045,6 +1055,7 @@ describe('early transition (Mini Rally)', () => {
     expect(t.brain('S').spot).toEqual(t.team.formSpot('offense', 'S'));
 
     const h = homeTeam();
+    lineHitter(h);
     setOutside(h);
     h.run(1.1);
     const lane = laneFor('OH', -1);

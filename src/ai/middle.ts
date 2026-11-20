@@ -7,6 +7,7 @@ import { laneFor, quickSpot, SETTER_SPOT } from '../game/plays';
 import type { V3 } from '../physics/ball';
 import { predictJump } from '../game/approach';
 import { atNet, moveTo, netYaw, stop } from './brain';
+import { pinShade } from './defence';
 import { decoyFor, dumpHeld, greenFools } from './greenBite';
 import { BallRead } from './read';
 
@@ -231,10 +232,10 @@ export class MiddleBlocker implements Brain {
     const M = AI.middle;
     if (Math.abs(bx) <= M.pinX) return bx;
     // close on our pin blocker, hands to hands: on the wing itself when it is at the net on that
-    // side (wherever it read the set to), else where a pin blocker shading the line would be
+    // side (wherever it read the set to), else where a pin blocker would line up on a hitter it does not know
     const r = Math.sign(bx);
     const wing = this.ourWings().find((w) => Math.sign(w.pos.x) === r && Math.abs(w.pos.z) < 1.5);
-    return (wing ? wing.pos.x : bx + r * AI.defence.shade) - r * M.closeGap;
+    return (wing ? wing.pos.x : bx + r * pinShade()) - r * M.closeGap;
   }
 
   /**

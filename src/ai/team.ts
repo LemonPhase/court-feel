@@ -19,7 +19,7 @@ import {
 } from '../game/plays';
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop } from './brain';
-import { attackKind, readSpots, seamSpot } from './defence';
+import { attackKind, pinShade, readSpots, seamSpot } from './defence';
 import { giveWay, shoulderToShoulder, type Mate } from './giveWay';
 import { HitterBrain } from './hitter';
 import { MiddleBlocker } from './middle';
@@ -179,6 +179,7 @@ export class TeamPlayer implements Brain {
             mate: () => team.players.get('MB') ?? null,
             setTo: () => team.theirSetFor(),
             reads: team.pinReads,
+            crossReads: team.crossReads,
           });
     this.server = new ServerBrain(athlete);
   }
@@ -489,6 +490,8 @@ export class TeamAI {
   opponents: TeamAI | null = null;
   /** how often each of their pin hitters has gone inside, as our wings read it (`AI.wing.learn`) */
   readonly pinReads = new Map<Athlete, number>();
+  /** how often each of their hitters hits cross rather than line off a pin attack, as our wings scouted it (`AI.wing.scout`) */
+  readonly crossReads = new Map<Athlete, number>();
   /** who should take the incoming first ball (sticky per incoming ball) */
   receiver: Athlete | null = null;
   private receiverFor: unknown = null;
@@ -1366,6 +1369,9 @@ export class TeamAI {
     }
     const atk = this.attack;
     const s = this.side;
+    // our pin blocker lines up shaded to the side their hitter hits: the defence plays around that block
+    const h = this.theirSetFor();
+    const shade = pinShade((h && this.crossReads.get(h)) ?? AI.wing.scoutStart);
     for (const slot of ['S', 'L', 'OH2', 'OH1', 'OPP'] as const) {
       const a = this.players.get(slot);
       const b = a ? this.brains.get(a) : null;
@@ -1374,7 +1380,7 @@ export class TeamAI {
       if (!b.setRead.seen(now)) continue;
       const x = b.setRead.x(atk.x, now, atk.t) * s;
       const off = Math.abs(atk.z);
-      const spot = readSpots({ x, off, kind: attackKind(x, off) })[slot];
+      const spot = readSpots({ x, off, kind: attackKind(x, off), shade })[slot];
       const back = slot === 'S' || slot === 'L' || slot === 'OH2';
       if (spot) {
         b.readSpot = { x: spot.x * s, z: spot.z * s };

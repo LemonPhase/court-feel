@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AI, COURT } from '../src/config';
-import { attackKind, readSpots, seamSpot } from '../src/ai/defence';
+import { attackKind, pinShade, readSpots, seamSpot } from '../src/ai/defence';
 
 const W = COURT.halfWidth;
 const D = AI.defence;
@@ -23,7 +23,7 @@ describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
     expect(s.L!.x).toBeLessThan(0);
     expect(s.L!.x).toBeGreaterThanOrEqual(-(W - D.sideIn) - 1e-9);
     // outside the inside blocker's shadow: the line from the hitter past the inside hand misses the libero
-    const insideHand = 4.05 + D.shade - AI.middle.closeGap - D.handHalf;
+    const insideHand = 4.05 + pinShade() - AI.middle.closeGap - D.handHalf;
     const shadowX = 4.05 + (insideHand - 4.05) * ((0.9 + D.digDepth) / 0.9);
     expect(s.L!.x).toBeLessThanOrEqual(Math.max(shadowX, -(W - D.sideIn)) + 1e-9);
   });
@@ -34,12 +34,12 @@ describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
     expect(s.OH2!.z).toBeCloseTo(D.middleBack, 6);
     expect(s.OH2!.z).toBeGreaterThan(8.5);
     // the double block closes hands to hands (no seam to stand behind): beside its inside edge, towards the cross
-    const insideHand = 4.05 + D.shade - AI.middle.closeGap - D.handHalf;
+    const insideHand = 4.05 + pinShade() - AI.middle.closeGap - D.handHalf;
     expect(s.OH2!.x).toBeCloseTo(insideHand - D.middleBackCross, 6);
     expect(s.OH2!.x).toBeLessThan(insideHand);
     // and the same on the other side
     const o = readSpots({ x: -4.0, off: 0.9, kind: 'pin' });
-    expect(o.OH2!.x).toBeCloseTo(-(4.0 + D.shade - AI.middle.closeGap - D.handHalf) + D.middleBackCross, 6);
+    expect(o.OH2!.x).toBeCloseTo(-(4.0 + pinShade() - AI.middle.closeGap - D.handHalf) + D.middleBackCross, 6);
   });
 
   it('the off-blocker (left front) pulls off the net to ~3 m, ~3 m in from the sideline; the right front blocks', () => {
@@ -86,7 +86,7 @@ describe('the middle back reads our block and steps up onto a seam (Mini Rally)'
   it('with a seam in the block, the middle back plays the seam closer than the end line', () => {
     // their outside on our right; our middle is late, so a seam opens next to the pin blocker
     const a = { x: 4.05, off: 0.9, kind: 'pin' as const };
-    const pinX = 4.05 + D.shade; // the pin blocker shades outside the attack
+    const pinX = 4.05 + pinShade(); // the pin blocker shades outside the attack
     const midX = pinX - 1.2; // a late middle: 1.2 m inside leaves a 1.2 - 0.65 = 0.55 m seam
     const s = seamSpot(a, pinX, midX);
     expect(s).not.toBeNull();
@@ -100,7 +100,7 @@ describe('the middle back reads our block and steps up onto a seam (Mini Rally)'
 
   it('with a closed block the middle back stays deep and cross (no seam to step onto)', () => {
     const a = { x: 4.05, off: 0.9, kind: 'pin' as const };
-    const pinX = 4.05 + D.shade;
+    const pinX = 4.05 + pinShade();
     const midX = pinX - AI.middle.closeGap; // hands to hands: 0.6 - 0.65 < 0, no seam
     expect(seamSpot(a, pinX, midX)).toBeNull();
   });
