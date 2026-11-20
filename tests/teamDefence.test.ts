@@ -299,6 +299,30 @@ describe('who takes the ball (Mini Rally)', () => {
     expect(t.team.receiver).toBe(t.team.players.get('OH2'));
   });
 
+  it("in defence a ball an AI libero gets to in time is the libero's, even a metre from a team-mate; one it can't reach is not", () => {
+    // the same roll shot: the libero gets there, so it takes it
+    const t = ballAt({ x: -0.9, z: 8.3 }, null, false);
+    const L = t.team.players.get('L')!;
+    expect(t.team.reachTime(L, { x: -0.9, y: 0.75, z: 8.3 })).toBeGreaterThan(
+      t.team.reachTime(t.team.players.get('OH2')!, { x: -0.9, y: 0.75, z: 8.3 }),
+    );
+    expect(t.team.receiver).toBe(L);
+    // a hard, flat one at the deep defender: the libero can't get there, the one it comes at digs it
+    const q = homeTeam();
+    q.team.place('defense');
+    const deep = q.team.players.get('OH2')!;
+    // (the deep defender stepped up to where it comes down)
+    deep.place(0, 6.6, 0);
+    q.spike({ x: -4.0, y: 3.25, z: -0.9 }, { x: 0, y: 0.75, z: 6.6 }, 22);
+    q.run(0.05);
+    expect(q.team.receiver).toBe(deep);
+  });
+
+  it('serve receive goes by lanes whoever the libero is: a serve in front of the passer beside it is theirs', () => {
+    const t = ballAt({ x: 0.6, z: 6.4 }, null);
+    expect(t.team.receiver).toBe(t.team.players.get('OH2'));
+  });
+
   /** their block sends our attack back down at (-1.8, 3.0); you (our outside) 0.6 m from it, the libero at `L` */
   const offTheirBlock = (L: { x: number; z: number }) => {
     const t = homeTeam();

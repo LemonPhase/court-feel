@@ -1122,14 +1122,15 @@ export class TeamAI {
       const strayed = comingToUs && tDown > 0 && Math.hypot(p.x - this.receiverAt.x, p.z - this.receiverAt.z) > 1.5;
       // (`mustPlay`: a ball off our own block is ours wherever it lands: out, it is their point)
       const receive = (serve: boolean, exclude: Athlete | null, mustPlay = false) => {
-        // a ball off a block is the libero's whenever it gets there (coming in from the cover to a
-        // ball someone else was sent to, it calls it and takes it)
-        // (so is their free ball, when an AI libero gets to it comfortably: `AI.pick.liberoFree`)
+        // a ball off a block is the libero's whenever it gets there in time (coming in from the cover
+        // to a ball someone else was sent to, it calls it and takes it); so is every ball of theirs
+        // in defence (their attack, a tip, a free ball) an AI libero gets to (`AI.pick.liberoDig`).
+        // Serve receive goes by lanes
         const offBlock = lt?.kind === 'block';
         const L = this.players.get('L');
-        const freeIn = !serve && !offBlock && !!lt && lt.side !== this.side && FREE_KINDS.has(lt.kind) && !!L && !L.isUser;
-        const claim = offBlock || freeIn;
-        const margin = freeIn ? AI.pick.liberoFree : AI.pick.libero;
+        const defence = !serve && !offBlock && !!lt && lt.side !== this.side && !!L && !L.isUser;
+        const claim = offBlock || defence;
+        const margin = claim ? AI.pick.liberoDig : AI.pick.libero;
         // between the user and an AI libero, any ball the libero gets to is the libero's: called
         // early, never taken off the user late
         // (a serve only in the seam: serve receive goes by lanes, and a serve in the user's lane is theirs)

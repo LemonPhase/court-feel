@@ -1704,10 +1704,13 @@ export const AI = {
    * ball a team-mate is standing next to. The setter is sent only when nobody else gets there
    * within `setter` s of it: a ball at its feet it digs, and someone else sets. A ball off a block,
    * or a second ball the setter can't get to, is the libero's whenever it gets there with `libero` s
-   * to spare: it calls off whoever was sent (a real libero takes every one of those it can). So is
-   * their free ball when an AI libero gets there with `liberoFree` s to spare: the libero takes
-   * most free balls, not the middle or a pin hitter who should be getting ready to attack
-   * (MatusGib, 2026-11-14). And between the user and an AI libero, any first ball the libero gets
+   * to spare: it calls off whoever was sent (a real libero takes every one of those it can). In
+   * defence (their attack, a tip, a free ball) every ball an AI libero gets to in time, with
+   * `liberoDig` s to spare, is the libero's and it calls off whoever was sent ("the libero should
+   * always take the ball if he can": MatusGib, 2026-11-20; before, it needed 0.3 s to spare on a
+   * free ball and claimed nothing of their attack, and 8 of 30 free balls it could reach went to a
+   * pin hitter getting ready to attack). A ball off a block it takes on the same terms. Serve
+   * receive still goes by lanes. And between the user and an AI libero, any first ball the libero gets
    * to (with `libero` s to spare) is the libero's ("if the libero can take it, it takes it":
    * MatusGib, 2026-11-14); a serve only in the seam (the libero there within `seam` s of the
    * user, lanes counted as below): a serve in the user's lane is theirs (MatusGib, 2026-11-18;
@@ -1721,7 +1724,7 @@ export const AI = {
    * and not the passer's two metres to the side of it (MatusGib, 2026-11-15: "it is right in front
    * of them").
    */
-  pick: { seam: 0.15, setter: 0.2, shuffle: 1.5, libero: 0.1, liberoFree: 0.3, call: 0.4, dive: 0.5, lane: 0.3 },
+  pick: { seam: 0.15, setter: 0.2, shuffle: 1.5, libero: 0.1, liberoDig: 0, call: 0.4, dive: 0.5, lane: 0.3 },
   /**
    * An AI free ball over (a third ball nobody can attack) goes where it is hard to play: deep to a
    * back corner (`deep` m off the net, `side` m off the middle) or short, just over the net (`short`
