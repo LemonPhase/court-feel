@@ -670,9 +670,11 @@ export const CONTACT = {
    * at random. A real dive at the edge of the reach is a scrape: up, but nobody chose where
    * (MatusGib, 2026-11-20: "very inaccurate when diving at close to max reach you should only be
    * able to barely get it up and the direction to be a bit random ... adjusted for the path of
-   * travel"). The numbers are our own judgement, not a measurement.
+   * travel"). The numbers are our own judgement, not a measurement. The touch reads Good only with
+   * `good` of the ball or more under control (met within about 0.3 of the way out), Late otherwise:
+   * what the player sees is what the ball did.
    */
-  diveOut: { reach: 0.3, barely: [0.4, 1.0] as [number, number], body: 0.6, rebound: 0.3, turn: 1.2 },
+  diveOut: { reach: 0.3, barely: [0.4, 1.0] as [number, number], body: 0.6, rebound: 0.3, turn: 1.2, good: 0.5 },
   /**
    * How hard a pass can send the ball (m/s): the platform standing `platform`, swung out to the side
    * `side`, the hands `hands`, from a dive `dive`; a platform down at the floor only `low` of it (no
@@ -684,9 +686,11 @@ export const CONTACT = {
    */
   passPower: { platform: 15, side: 11, hands: 14, dive: 6, low: 0.7, rebound: 0.3 },
   /**
-   * A third ball sent over that comes in faster than `easy` m/s is harder to redirect: by `hard` m/s
+   * A ball sent over the net (in Mini Rally only ever the third) that comes in faster than `easy`
+   * m/s is harder to redirect: by `hard` m/s
    * `loss` of it comes off the arms the way it bounces (the part of it into the platform comes back at
-   * `rebound` of its speed, the part across it goes on at `slide`), not where it was aimed. A hard
+   * `rebound` of its speed, the part across it goes on at `slide`, and a part already going the
+   * aim's way carries on), not where it was aimed. A hard
    * deflection flying across the court goes on across it, not over the net (MatusGib, 2026-11-20:
    * on three, a ball "travelling quickly at them they might not always be able to get"). Our own
    * estimates.
@@ -1813,13 +1817,16 @@ export const AI = {
   },
   /**
    * An AI dive (Mini Rally) keeps the ball alive and no more: it goes between the two `apex` values
-   * (m) above the hands (plus the dive's own metre) and between the two `carry` values (m) toward
+   * (m) above the hands and between the two `carry` values (m) toward
    * the middle of the court, up to `turn` rad to either side of that line, for a team-mate running
    * with the diver to play: no two dives pop it up to the same place. (A free ball over is aimed,
    * `freeOver`, only by a player moving slower than `freeOver.aimSpeed` m/s: one still scrambling
-   * just gets it over.)
+   * just gets it over.) The highest is what a dive can send a soft ball (`CONTACT.passPower.dive`
+   * and some of the ball's own speed, about 6.5-7 m/s): a pancake pops it up a metre or two. It was
+   * aimed 2-3.8 m up (with a metre more for any dive), then cut back to what the dive could do,
+   * short of where it was aimed.
    */
-  diveUp: { carry: [0.8, 3.5] as [number, number], apex: [1.0, 2.8] as [number, number], turn: 1.0 },
+  diveUp: { carry: [0.8, 3.5] as [number, number], apex: [1.0, 1.8] as [number, number], turn: 1.0 },
   /**
    * A scramble's second ball: one nobody could set (the setter called HELP, the libero could not
    * get under it either) is just kept up by an AI player, somewhere a team-mate can get to:

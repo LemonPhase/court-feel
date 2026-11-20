@@ -247,10 +247,32 @@ describe('a dive (PLAYER.dive*, CONTACT.diveOut)', () => {
     const dir = (x: { v: V3 }) => Math.atan2(x.v.x, x.v.z);
     expect(spread(rim.map(dir))).toBeGreaterThan(spread(mid.map(dir)));
   });
+
+  /** a sideways dive (to our left) meeting a roll shot `edge` of the way out on the arms, aimed at `target` */
+  const diveAt = (edge: number, target?: { x: number; y: number; z: number; apex: number }) => {
+    const T = PLAYER.diveDown * 1.5;
+    const hands = handsAt(T, -1, 0);
+    const to = { x: hands.x, y: hands.y, z: hands.z + edge * (CONTACT.passRadius + CONTACT.diveOut.reach) };
+    return play({ from: { x: to.x + 0.5, y: 2.6, z: to.z - 2.5 }, to, T, lead: 0, dive: true, diveAt: { x: -3, z: 6 }, target });
+  };
+
+  it('reads Good only when the ball is mostly under control; a scrape that went where it went reads Late', () => {
+    expect(diveAt(0).e.grade).toBe('Good');
+    // (0.4 of the way out keeps about a third of it under control)
+    expect(diveAt(0.4).e.grade).toBe('Late');
+    expect(diveAt(0.85).e.grade).toBe('Late');
+  });
+
+  it('an AI dive is aimed no higher than a dive can send it: a clean one goes up as high as it was aimed (AI.diveUp, CONTACT.passPower.dive)', () => {
+    const hands = handsAt(PLAYER.diveDown * 1.5, -1, 0);
+    const high = AI.diveUp.apex[1];
+    const x = diveAt(0, { x: hands.x + 1.5, y: 0.9, z: hands.z - 1.5, apex: hands.y + high });
+    expect(x.up).toBeGreaterThan(high - 0.1);
+  });
 });
 
 describe('getting it over on three (CONTACT.passPower, CONTACT.overControl)', () => {
-  const tries = (f: (rand: () => number) => { over: boolean; e?: ContactEvent }) =>
+  const tries = <R extends { over: boolean; e?: ContactEvent }>(f: (rand: () => number) => R) =>
     Array.from({ length: 20 }, (_, i) => {
       const rng = new Rng(i + 1);
       return f(() => rng.next());
@@ -295,6 +317,21 @@ describe('getting it over on three (CONTACT.passPower, CONTACT.overControl)', ()
       play({ from: { x: 5, y: 1.4, z: 6.2 }, to, T: 0.27, lead: TIMING.digLead, target: OVER, third: true, rand }),
     );
     expect(rate(fast)).toBeLessThan(rate(slow) - 0.3);
+  });
+
+  it('a fast third ball already going toward the net (a team-mate shanked it on from behind) goes on up and toward the net, not into the floor', () => {
+    // (about 20 m/s, nearly flat, from 4.5 m behind the defender)
+    const to = { x: 0, y: H * 0.34, z: 6 - 0.45 };
+    const behind = tries((rand) =>
+      play({ from: { x: 0.3, y: 1.3, z: 10.5 }, to, T: 0.24, lead: TIMING.digLead, target: OVER, third: true, rand }),
+    );
+    // (a shank goes wherever it goes)
+    const played = behind.filter((x) => x.e && x.e.note !== 'Shanked');
+    expect(played.length).toBeGreaterThan(behind.length / 2);
+    for (const x of played) {
+      expect(x.v.y, 'up').toBeGreaterThan(0);
+      expect(x.v.z, 'toward the net').toBeLessThan(0);
+    }
   });
 });
 

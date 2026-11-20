@@ -663,14 +663,17 @@ describe('running a ball down (Mini Rally)', () => {
     // (no throwing themselves at a hopeless one: this one is reached)
     AI.dive.anyway = 0;
     let dived = false;
-    for (let k = 0; k < 0.9 * SIM.hz && !dived; k++) {
-      t.g.simTime += DT;
-      stepBall(t.ball.state, DT, t.g.env, []);
-      b.step(DT, t.g as unknown as AiHost);
-      L.step(DT, t.g.simTime);
-      dived = L.state === 'dive';
+    try {
+      for (let k = 0; k < 0.9 * SIM.hz && !dived; k++) {
+        t.g.simTime += DT;
+        stepBall(t.ball.state, DT, t.g.env, []);
+        b.step(DT, t.g as unknown as AiHost);
+        L.step(DT, t.g.simTime);
+        dived = L.state === 'dive';
+      }
+    } finally {
+      AI.dive.anyway = keep;
     }
-    AI.dive.anyway = keep;
     expect(dived).toBe(true);
   });
 });
@@ -969,7 +972,7 @@ describe('a hard ball is played as well as it can be, and no better (Mini Rally)
       expect(q.apex).toBeLessThanOrEqual(at.y + U.apex[1]);
     }
     expect(Math.max(...ups.map((q) => q.x)) - Math.min(...ups.map((q) => q.x))).toBeGreaterThan(1.5);
-    expect(Math.max(...ups.map((q) => q.apex)) - Math.min(...ups.map((q) => q.apex))).toBeGreaterThan(1);
+    expect(Math.max(...ups.map((q) => q.apex)) - Math.min(...ups.map((q) => q.apex))).toBeGreaterThan((U.apex[1] - U.apex[0]) / 2);
     L.isUser = true;
     const yours = target();
     expect(yours.apex).toBeGreaterThan(at.y + U.apex[1] + 0.5);

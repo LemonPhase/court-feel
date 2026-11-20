@@ -265,6 +265,7 @@ export class SpikeBot {
     a.yaw = me.yaw;
     a.state = me.state;
     a.stateT = me.stateT;
+    a.diveUpT = me.diveUpT;
     a.action = null;
     a.onStep = a.onLand = a.onTakeoff = null;
     a.airNudge.set(0, 0, 0);
