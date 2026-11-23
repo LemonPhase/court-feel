@@ -1,8 +1,10 @@
-import { AI } from '../../config';
+import { AI, LEVELS } from '../../config';
+import { applyLevel } from '../../core/level';
 import { netYaw } from '../../ai/brain';
 import { serveAim } from '../../ai/server';
 import { PASSERS, SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
 import { Athlete } from '../athlete';
+import { aiStats } from '../body';
 import {
   applyCalls,
   askFast,
@@ -70,6 +72,8 @@ export class MiniRally extends Mode {
 
   setup(): void {
     const g = this.g;
+    // the level of play: both teams play in that league (LEVELS), set before anyone takes the court
+    applyLevel(g.settings.level);
     this.home = new TeamAI(1, g);
     this.away = new TeamAI(-1, g);
     this.home.opponents = this.away;
@@ -88,13 +92,13 @@ export class MiniRally extends Mode {
         this.home.add(slot, g.me, !g.autoUser);
         continue;
       }
-      const a = new Athlete(SLOT_ROLE[slot], 1);
+      const a = new Athlete(SLOT_ROLE[slot], 1, { stats: aiStats(SLOT_ROLE[slot]) });
       g.addAthlete(a, seed++);
       this.spawned.push(a);
       this.home.add(slot, a, false);
     }
     for (const slot of SLOTS) {
-      const a = new Athlete(SLOT_ROLE[slot], -1);
+      const a = new Athlete(SLOT_ROLE[slot], -1, { stats: aiStats(SLOT_ROLE[slot]) });
       g.addAthlete(a, seed++);
       this.spawned.push(a);
       this.away.add(slot, a, false);
@@ -121,7 +125,7 @@ export class MiniRally extends Mode {
     }
     this.pickRing = g.markers.ring(0xffffff, 1.0);
     this.pickRing.visible = false;
-    g.hud.setTitle('Mini Rally · you are the ' + g.me.stats.name);
+    g.hud.setTitle(`Mini Rally · ${LEVELS[g.settings.level].label} · you are the ${g.me.stats.name}`);
     this.plays = g.autoUser ? null : (SET_PLAYS[this.position] ?? null);
     this.callIdx = 0;
     this.servingSide = -1;
@@ -418,6 +422,12 @@ export class MiniRally extends Mode {
     return `${kbd('WASD')} move · ${kbd('E')} pass · ${kbd('LMB')} attack · ${kbd('RMB')} block/set · ${kbd('V')} camera${calls}`;
   }
 
+  teardown(): void {
+    super.teardown();
+    // every other drill plays at Pro
+    applyLevel('pro');
+  }
+
   restartRep(): void {
     this.prepare();
   }
@@ -505,7 +515,9 @@ export class MiniRally extends Mode {
           this.phase = 'serve';
           this.t = 0;
           const recv = this.servingSide === 1 ? this.away : this.home;
-          // a jump serve or a float, at the seams, the deep corners, short or at a passer (the user too)
+          const serving = this.servingSide === 1 ? this.home : this.away;
+          // a jump serve or a float, at the seams, the deep corners, short, the middle, at a passer (the
+          // user too) or at the one their scouting says passes worst
           const passers = (['OH1', 'OH2', 'L'] as const).map((s) => recv.players.get(s)).filter((a) => a !== undefined);
           const jump = g.rng.next() < AI.serve.jump;
           const aim = serveAim(
@@ -513,6 +525,7 @@ export class MiniRally extends Mode {
             recv.side,
             g.rng,
             jump,
+            serving.scout.weakest(passers)?.pos ?? null,
           );
           (this.servingSide === 1 ? this.home : this.away).serve(aim, jump);
         }

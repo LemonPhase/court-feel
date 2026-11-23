@@ -1,4 +1,4 @@
-import { BODY, CONTACT, POSITIONS, type BodyOverride, type PositionId, type PositionStats } from '../config';
+import { AI, BODY, CONTACT, POSITIONS, type BodyOverride, type PositionId, type PositionStats } from '../config';
 import { standingReach } from './proportions';
 import { clamp } from '../core/mathx';
 
@@ -41,6 +41,23 @@ export function bodyStats(role: PositionId, custom?: CustomBody): PositionStats 
   if (!isCustomBody(role, custom)) return p;
   const b = resolveBody(role, custom);
   return { ...p, height: b.height, jump: b.jump, power: b.power };
+}
+
+/**
+ * An AI player's body at the level of play (`AI.body`): its position's, with the jump, the spike
+ * power and the running speeds scaled. Never the user's: your body is yours at every level.
+ */
+export function aiStats(role: PositionId): PositionStats {
+  const p = POSITIONS[role];
+  const B = AI.body;
+  if (B.jump === 1 && B.power === 1 && B.speed === 1) return p;
+  return {
+    ...p,
+    jump: p.jump * B.jump,
+    power: p.power * B.power,
+    approachSpeed: p.approachSpeed * B.speed,
+    shuffleSpeed: p.shuffleSpeed * B.speed,
+  };
 }
 
 /** a stored bodies map made safe: known positions only, finite and clamped, defaults dropped */

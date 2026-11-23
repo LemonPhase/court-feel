@@ -156,20 +156,42 @@ export class ServerBrain implements Brain {
 /**
  * Where a server aims (the floor of the other court, `recv` the receiving side): the seam
  * between two passers, deep in zone 1 or 5, short in front of the passers, or at one passer
- * (`passers` where the receivers stand), weighted by `AI.serve`; the server's own error comes on
- * top of it in the contact. Serving at the seams and the deep corners is how a serve makes the
- * passers move and talk.
+ * (`passers` where the receivers stand), the middle of the court, or the passer who has passed
+ * worst (`weakest`, where they stand; none yet: at a passer), weighted by `AI.serve`; the server's
+ * own error comes on top of it in the contact. Serving at the seams and the deep corners is how a
+ * serve makes the passers move and talk; a Rec server just puts it in the middle.
  */
-export function serveAim(passers: readonly { x: number; z: number }[], recv: 1 | -1, rng: Rng, jump: boolean): THREE.Vector3 {
+export function serveAim(
+  passers: readonly { x: number; z: number }[],
+  recv: 1 | -1,
+  rng: Rng,
+  jump: boolean,
+  weakest: { x: number; z: number } | null = null,
+): THREE.Vector3 {
   const S = AI.serve;
   const hw = COURT.halfWidth;
   const sorted = [...passers].sort((p, q) => p.x - q.x);
   const pick = <T>(xs: readonly T[]): T => xs[Math.min(xs.length - 1, Math.floor(rng.next() * xs.length))];
-  const w = { seam: S.seam, deep: S.deep, short: jump ? 0 : S.short, body: S.body };
-  let r = rng.next() * (w.seam + w.deep + w.short + w.body);
+  // (nobody stands out yet: the weakest passer's share goes at a passer)
+  const w = {
+    seam: S.seam,
+    deep: S.deep,
+    short: jump ? 0 : S.short,
+    middle: S.middle,
+    weakest: weakest ? S.weakest : 0,
+    body: S.body + (weakest ? 0 : S.weakest),
+  };
+  let r = rng.next() * (w.seam + w.deep + w.short + w.middle + w.weakest + w.body);
   let x: number;
   let z: number;
-  if ((r -= w.seam) < 0 && sorted.length > 1) {
+  if ((r -= w.middle) < 0) {
+    x = 0;
+    z = COURT.halfLength / 2;
+  } else if ((r -= w.weakest) < 0 && weakest) {
+    // (the passer who has passed worst: at them, where they stand)
+    x = weakest.x;
+    z = Math.abs(weakest.z);
+  } else if ((r -= w.seam) < 0 && sorted.length > 1) {
     const k = Math.floor(rng.next() * (sorted.length - 1));
     x = (sorted[k].x + sorted[k + 1].x) / 2;
     z = Math.abs(sorted[k].z + sorted[k + 1].z) / 2;

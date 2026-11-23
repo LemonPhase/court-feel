@@ -31,7 +31,7 @@ export class HitterBrain implements Brain {
   defenders: () => Athlete[] = () => [];
   /** was the set we are about to hit run off a pass in system (the whole court in view)? */
   inSystem: () => boolean = () => true;
-  tipChance = 0.08;
+  tipChance = AI.tipChance;
   private swung = false;
   private err = 0;
   /** stay at the ready spot instead of the approach start (e.g. while defending) */
@@ -55,6 +55,8 @@ export class HitterBrain implements Brain {
 
   /** the set this hitter saw it can't get to (decided once a set) */
   private outOfReach: unknown = null;
+  /** the set it decided on whether to send over as a free ball (`AI.outOfSystemFree`) */
+  private freeFor: unknown = null;
 
   /** how far from the net this hitter's take-off must stay (0: a front-row hitter, anywhere) */
   private get behind(): number {
@@ -231,6 +233,13 @@ export class HitterBrain implements Brain {
               break;
             }
           }
+        }
+        // out of system a hitter who won't swing at the high ball leaves it, and a team-mate sends it
+        // back over as a free ball (`AI.outOfSystemFree`; never your set: that one is always hit)
+        if (g.ball.active && this.isMySet(g) && this.freeFor !== lt) {
+          this.freeFor = lt;
+          const F = AI.outOfSystemFree;
+          if (F > 0 && !this.inSystem() && !this.userSet(g) && g.rng.next() < F) this.outOfReach = lt;
         }
         if (g.ball.active && this.isMySet(g) && a.state === 'ground' && this.outOfReach !== lt) {
           const pred = g.ball.ensurePrediction(g.env, now);
@@ -533,7 +542,10 @@ export class HitterBrain implements Brain {
     // (from the back row the hitter sees less of the court: it looks for the spot less often; off
     // your green set it always looks)
     const looks = green || !this.backRow || g.rng.next() < AI.pipe.open;
-    if (from && !badSet && looks && (green || sees || g.rng.next() < AI.openShotOut)) {
+    // (in system it looks `openShotIn` of the time, out of system `openShotOut`)
+    const I = AI.openShotIn;
+    const looksOpen = green || (sees ? I >= 1 || g.rng.next() < I : g.rng.next() < AI.openShotOut);
+    if (from && !badSet && looks && looksOpen) {
       // off your green set their defence starts late (AI.greenSetDigDelay) and the hitter takes any spot it finds
       const open = this.openSpot(g, from, tHit, green ? AI.greenSetDigDelay : AI.defence.hitReact, misread);
       // the hitter goes for the hardest spot to dig even when it isn't quite open
@@ -600,7 +612,8 @@ export class HitterBrain implements Brain {
         // moving; a spike travels ~20 m/s, so a pipe from the 3 m line gives the block longer)
         const L = AI.greenBounce.lead;
         const bx = b.pos.x + b.reachX + (green ? b.vel.x * (L.react + Math.abs(a.pos.z) / L.speed) : 0);
-        if (Math.abs(cx - bx) < CONTACT.blockHalfWidth + BALL.radius + (green ? AI.greenBounce.wide : 0.3)) o.w *= green ? 0 : 0.15;
+        if (Math.abs(cx - bx) < CONTACT.blockHalfWidth + BALL.radius + (green ? AI.greenBounce.wide : 0.3))
+          o.w *= green ? 0 : AI.blockAvoid;
       }
     }
     // a green set with every shot covered: take the one furthest from a blocker's hands
@@ -618,8 +631,8 @@ export class HitterBrain implements Brain {
       }
       far.w = 1;
     }
-    // a double block that did not close: hit through the seam
-    if (!this.lane.quick) {
+    // a double block that did not close: hit through the seam (a hitter who looks for it, `AI.seamShot`)
+    if (!this.lane.quick && AI.seamShot > 0) {
       for (let i = 0; i + 1 < up.length; i++) {
         const xa = up[i].pos.x + up[i].reachX;
         const xb = up[i + 1].pos.x + up[i + 1].reachX;
@@ -630,7 +643,7 @@ export class HitterBrain implements Brain {
         const dz = Math.abs(a.pos.z);
         const k = (dz + 6.5) / Math.max(0.3, dz);
         const tx = hitX + (gx - hitX) * k;
-        if (Math.abs(tx) < hw - 0.3) options.push({ x: tx, z: opp * 6.5, w: 1.1, name: 'seam' });
+        if (Math.abs(tx) < hw - 0.3) options.push({ x: tx, z: opp * 6.5, w: AI.seamShot, name: 'seam' });
       }
     }
     // a closed block in front: wipe it off the outside hand, or roll it over into the court. Off a

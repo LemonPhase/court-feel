@@ -340,6 +340,7 @@ if (q.get('tutorial') !== null) {
       settings.hand = launch.hand;
       game.applyUserBody();
     }
+    if (launch.level) settings.level = launch.level;
     menu.showStart(false);
     menu.selectPos(launch.pos);
     lastPlay = { mode: launch.mode, pos: launch.pos };

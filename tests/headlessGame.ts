@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_SETTINGS, type PositionId, type ServeKind, type Settings } from '../src/config';
+import { DEFAULT_SETTINGS, type LevelId, type PositionId, type ServeKind, type Settings } from '../src/config';
 import { Athlete } from '../src/game/athlete';
 import type { ContactEvent } from '../src/game/contact';
 import { takeKey } from '../src/game/intent';
@@ -50,7 +50,7 @@ const NO_LESSON: DrillHost['tutorial'] = {
  * with no renderer, no DOM, no HUD and no camera. It is what `Game` is to a drill (`DrillHost`),
  * cut down to what the play needs. The player's hands do nothing unless a test feeds the seat.
  */
-export function headlessGame(id: ModeId, pos: PositionId, seed = 2024) {
+export function headlessGame(id: ModeId, pos: PositionId, seed = 2024, opts: { level?: LevelId; autoUser?: boolean } = {}) {
   const said: string[] = [];
   const touches: string[] = [];
   const outcomes: string[] = [];
@@ -75,7 +75,8 @@ export function headlessGame(id: ModeId, pos: PositionId, seed = 2024) {
   me.place(-3.2, 4.5, 0);
   sim.athletes.push(me);
   const seat = sim.addSeat(me);
-  const settings: Settings = { ...DEFAULT_SETTINGS };
+  // (the Mini Rally plays at Pro unless a test picks its level)
+  const settings: Settings = { ...DEFAULT_SETTINGS, level: opts.level ?? 'pro' };
 
   const host: DrillHost = {
     get simTime() {
@@ -117,7 +118,7 @@ export function headlessGame(id: ModeId, pos: PositionId, seed = 2024) {
     set serveKind(kind: ServeKind) {
       seat.serveKind = kind;
     },
-    autoUser: false,
+    autoUser: opts.autoUser ?? false,
     placeUser: (x, z, yaw) => {
       walkBack = null;
       seat.athlete.place(x, z, yaw);

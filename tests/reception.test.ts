@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { CONTACT, COURT, SIM, TIMING } from '../src/config';
 import { lerp } from '../src/core/mathx';
@@ -8,6 +8,7 @@ import { makeBall, stepBall, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { solveFixedTime } from '../src/physics/solve';
 import { serveAim } from '../src/ai/server';
+import { applyLevel } from '../src/core/level';
 import { Rng } from '../src/core/mathx';
 
 const DT = 1 / SIM.hz;
@@ -116,7 +117,10 @@ describe('serve reception (contact)', () => {
     expect(r.e.note).not.toBe('Shanked');
   });
 
-  it("an AI defender who gets to your hard spike shanks it half the time, well timed or not (playability); an AI hitter's is dug", () => {
+  afterEach(() => applyLevel('pro'));
+
+  it("below Pro an AI defender who gets to your hard spike shanks it more than half the time, well timed or not (playability); an AI hitter's is dug", () => {
+    applyLevel('rec');
     // (the harness's random draw is fixed: under the user-spike shank chance)
     const rand = CONTACT.userSpikeShank * 0.6;
     const yours = receive(24, { rand, spikeBy: 'user' });
@@ -127,7 +131,14 @@ describe('serve reception (contact)', () => {
     expect(receive(12, { rand, spikeBy: 'user' }).e.note).not.toBe('Shanked');
   });
 
+  it("at Pro your hard spike is dug like anyone else's: a well-timed platform keeps it up", () => {
+    applyLevel('pro');
+    expect(CONTACT.userSpikeShank).toBe(0);
+    for (const rand of [0.02, 0.3, 0.6]) expect(receive(24, { rand, spikeBy: 'user' }).e.note).not.toBe('Shanked');
+  });
+
   it('a shank keeps going the way the spike came, at most 100 degrees off its line, up and off the arms', () => {
+    applyLevel('rec');
     for (const rand of [0.02, 0.3, 0.5, 0.7, 0.98]) {
       const r = receive(24, { rand: Math.min(rand, CONTACT.userSpikeShank * 0.99), spikeBy: 'user' });
       expect(r.e.note).toBe('Shanked');

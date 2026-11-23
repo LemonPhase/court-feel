@@ -166,10 +166,13 @@ export class Athlete {
   number = 0;
   time = 0;
 
-  /** `body`: a custom height / vert / spike power for this position, `hand`: the hitting hand (the user's settings) */
-  constructor(role: PositionId, side: 1 | -1, opts: { height?: number; body?: CustomBody; hand?: Hand } = {}) {
+  /**
+   * `body`: a custom height / vert / spike power for this position, `hand`: the hitting hand (the
+   * user's settings); `stats`: the whole body as given (an AI player at its level of play, `aiStats`)
+   */
+  constructor(role: PositionId, side: 1 | -1, opts: { height?: number; body?: CustomBody; hand?: Hand; stats?: PositionStats } = {}) {
     this.role = role;
-    this.stats = bodyStats(role, opts.body);
+    this.stats = opts.stats ?? bodyStats(role, opts.body);
     this.side = side;
     this.team = side === 1 ? 0 : 1;
     this.hand = handSign(opts.hand);

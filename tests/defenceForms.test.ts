@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { AI, BALL, CONTACT, COURT, PLAYER, SIM, TIMING } from '../src/config';
 import { Athlete, type PassForm } from '../src/game/athlete';
+import { applyLevel } from '../src/core/level';
 import { ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
 import { Rng, yawFromDir } from '../src/core/mathx';
 import { makeBall, stepBall, type V3 } from '../src/physics/ball';
@@ -431,7 +432,10 @@ describe('the ball off the block', () => {
     expect(hard.e.note).not.toBe('Off the block');
   });
 
-  it("your spike off the outside of an AI block's hands is wiped off it more often than an AI hitter's (playability)", () => {
+  afterEach(() => applyLevel('pro'));
+
+  it("below Pro your spike off the outside of an AI block's hands is wiped off it more often than an AI hitter's (playability)", () => {
+    applyLevel('club');
     // an AI blocker at the pin; the ball meets the hands just over half their half-width out
     const off = (CONTACT.blockHalfWidth * (CONTACT.userToolEdge + CONTACT.toolEdge)) / 2;
     const yours = blockAt(22, { at: 3, off, user: true });
@@ -439,6 +443,18 @@ describe('the ball off the block', () => {
     expect(yours.e?.note).toBe('Tooled');
     expect(Math.abs(yours.v.x)).toBeGreaterThan(3);
     expect(theirs.e?.kind).toBe('block');
+    expect(theirs.e.note).not.toBe('Tooled');
+  });
+
+  it("at Pro your spike off the block is wiped off it no more than an AI hitter's: the same hands, the same edge", () => {
+    applyLevel('pro');
+    expect([CONTACT.userToolEdge, CONTACT.userToolEdgeP]).toEqual([CONTACT.toolEdge, CONTACT.toolEdgeP]);
+    // just inside the tool edge: a block for both
+    const off = CONTACT.blockHalfWidth * (CONTACT.toolEdge - 0.05);
+    const yours = blockAt(22, { at: 3, off, user: true });
+    const theirs = blockAt(22, { at: 3, off });
+    expect(yours.e?.kind).toBe('block');
+    expect(yours.e.note).not.toBe('Tooled');
     expect(theirs.e.note).not.toBe('Tooled');
   });
 

@@ -134,12 +134,13 @@ describe('loadSettings', () => {
 
 describe('quick-start links', () => {
   it('parses a full link', () => {
-    expect(parseLaunchParams('?mode=spike&pos=MB&cam=fp&bot=good&hand=left')).toEqual({
+    expect(parseLaunchParams('?mode=spike&pos=MB&cam=fp&bot=good&hand=left&level=rec')).toEqual({
       mode: 'spike',
       pos: 'MB',
       cam: 'fp',
       bot: 'good',
       hand: 'left',
+      level: 'rec',
     });
   });
 
@@ -153,13 +154,14 @@ describe('quick-start links', () => {
     expect(parseLaunchParams('')).toBeNull();
   });
 
-  it('unknown camera, bot and hand values are ignored', () => {
-    expect(parseLaunchParams('?mode=block&cam=drone&bot=godmode&hand=ambi')).toEqual({
+  it('unknown camera, bot, hand and level values are ignored', () => {
+    expect(parseLaunchParams('?mode=block&cam=drone&bot=godmode&hand=ambi&level=olympic')).toEqual({
       mode: 'block',
       pos: 'OH',
       cam: null,
       bot: null,
       hand: null,
+      level: null,
     });
   });
 

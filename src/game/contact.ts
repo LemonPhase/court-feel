@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ASSIST, BALL, CONTACT, COURT, PLAYER, SERVE, SET_LEVELS, SIM, TIMING, type ServeKind, type SetLevel } from '../config';
+import { AI, ASSIST, BALL, CONTACT, COURT, PLAYER, SERVE, SET_LEVELS, SIM, TIMING, type ServeKind, type SetLevel } from '../config';
 import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import { R, topspinFor, type V3 } from '../physics/ball';
 import { flyUntilY, netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
@@ -1527,8 +1527,8 @@ export class ContactSystem {
     const toolEdge = userHit ? CONTACT.userToolEdge : CONTACT.toolEdge;
     const toolEdgeP = userHit ? CONTACT.userToolEdgeP : CONTACT.toolEdgeP;
     const edge = Math.abs(off) > halfW * toolEdge && Math.sign(off) === Math.sign(hands.x) && h.rand() < toolEdgeP;
-    // AI blockers convert fewer of their good blocks into stuffs than the user
-    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;
+    // AI blockers convert fewer of their good blocks into stuffs than the user (`AI.blockStuff`)
+    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? AI.blockStuff.perfect : AI.blockStuff.good;
     if (!edge && incoming < CONTACT.recycleSpeed && h.rand() < (rank >= 2 ? CONTACT.recycleP : CONTACT.recyclePLate)) {
       // a soft ball into a good block comes back off the hands to the hitter's side, slow and up:
       // their cover picks it up and they go again (recycling)

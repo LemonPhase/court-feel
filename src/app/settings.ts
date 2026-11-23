@@ -4,6 +4,7 @@ import {
   SET_LEVEL_IDS,
   SETTING_RANGES,
   TOUCH_CONTROL_MODES,
+  isLevelId,
   isVenueId,
   type BooleanSettingKey,
   type NumericSettingKey,
@@ -41,6 +42,7 @@ export const VALIDATED_KEYS: readonly (keyof Settings)[] = [
   'bodies',
   'hand',
   'setLevel',
+  'level',
   'venue',
   'graphics',
 ];
@@ -91,6 +93,7 @@ export function sanitizeSettings(raw: unknown, defaults: Settings = DEFAULT_SETT
   if (TOUCH_CONTROL_MODES.includes(tc as Settings['touchControls'])) out.touchControls = tc as Settings['touchControls'];
   if (src.hand === 'left' || src.hand === 'right') out.hand = src.hand;
   if (SET_LEVEL_IDS.includes(src.setLevel as Settings['setLevel'])) out.setLevel = src.setLevel as Settings['setLevel'];
+  if (isLevelId(src.level)) out.level = src.level;
   if (isVenueId(src.venue)) out.venue = src.venue;
   if (GRAPHICS_SETTINGS.includes(src.graphics as Settings['graphics'])) out.graphics = src.graphics as Settings['graphics'];
   // Each switch does one thing (2026-11-18). A setting that used to come with another one keeps,

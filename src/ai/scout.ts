@@ -15,6 +15,41 @@ export class Scout {
   readonly cross = new Map<Athlete, number>();
   /** the last spike of theirs it noted: each one counts once */
   private shotRef: Touch | null = null;
+  /** each of their passers in serve receive: passes seen, and how far off their setter's spot they went in all (m) */
+  readonly passes = new Map<Athlete, { n: number; off: number }>();
+  private passRef: Touch | null = null;
+
+  /**
+   * Note their serve-receive pass `t`: how far off their setter's spot it came down (m; one nobody
+   * could set counts as `AI.serve.worstPass`). Anyone watching sees it; each pass counts once.
+   */
+  notePass(t: Touch, off: number): void {
+    if (t === this.passRef || !t.athlete) return;
+    this.passRef = t;
+    const p = this.passes.get(t.athlete) ?? { n: 0, off: 0 };
+    p.n++;
+    p.off += Math.min(AI.serve.worstPass, off);
+    this.passes.set(t.athlete, p);
+  }
+
+  /** of `passers`, the one whose passes have come down furthest off on average; null until two passes are seen */
+  weakest<T extends Athlete>(passers: readonly T[]): T | null {
+    let seen = 0;
+    for (const a of passers) seen += this.passes.get(a)?.n ?? 0;
+    if (seen < 2) return null;
+    let worst: T | null = null;
+    let worstOff = -1;
+    for (const a of passers) {
+      const p = this.passes.get(a);
+      if (!p) continue;
+      const mean = p.off / p.n;
+      if (mean > worstOff) {
+        worstOff = mean;
+        worst = a;
+      }
+    }
+    return worst;
+  }
 
   /** our read of their hitter `h`; one we have not seen yet (or nobody), `scoutStart` */
   crossOf(h: Athlete | null): number {

@@ -34,7 +34,7 @@ interface Fooled {
 }
 
 /** how high a middle jumps to block (as `BlockerBrain`): a little over its standing jump */
-const blockJump = (a: Athlete): number => a.jumpMax * a.stats.standingJumpFrac * 1.1;
+export const blockJump = (a: Athlete): number => a.jumpMax * a.stats.standingJumpFrac * 1.1;
 
 /**
  * The Mini Rally middle blocker. Before their set it lines up across from their middle, and off a
@@ -149,6 +149,14 @@ export class MiddleBlocker implements Brain {
     const theirSide = a.side === 1 ? -1 : 1;
     const pin = this.guess === 'outside' ? laneFor('OH', theirSide).x : this.guess === 'opposite' ? laneFor('OPP', theirSide).x : 0;
     this.targetX = lineX + Math.sign(pin) * M.cheatShift;
+  }
+
+  /**
+   * What their setter sees of this middle on the pass `lt`: committed on the quick (standing in to
+   * jump with their middle) or leaning to a pin, or nothing (`read`) before it has guessed on it.
+   */
+  shows(lt: unknown): Guess {
+    return this.guessFor === lt ? this.guess : 'read';
   }
 
   private makeGuess(g: AiHost): Guess {
