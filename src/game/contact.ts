@@ -865,9 +865,9 @@ export class ContactSystem {
     // bad angle, wide and fast, and usually out of play
     const badness = grade === 'Perfect' ? 0 : grade === 'Good' ? CONTACT.shankGood : 1;
     let pShank = CONTACT.shank * fast * Math.max(badness, clamp01(dBest / r));
-    // (playability: the AI gets to the user's hard spike, but shanks a lot of them)
+    // (below Pro the AI gets to the user's hard spike, but shanks a lot of them: the digger's level, `AI.userSpikeShank`)
     const lt = ball.lastTouch;
-    if (dig && !a.isUser && lt?.kind === 'spike' && lt.athlete?.isUser) pShank = Math.max(pShank, CONTACT.userSpikeShank);
+    if (dig && !a.isUser && lt?.kind === 'spike' && lt.athlete?.isUser) pShank = Math.max(pShank, a.ai.userSpikeShank);
     if (h.rand() < pShank) {
       act.form = form;
       this.shank(a, act, incoming, t);
@@ -1485,12 +1485,14 @@ export class ContactSystem {
     const t = h.simTime;
     const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
     const assist = h.aimAssist(a);
-    const halfW = CONTACT.blockHalfWidth + assist * 0.12;
+    // (an AI blocker's hands are as big as its level's: `AI.blockHands`; yours are always full size)
+    const size = a.isUser ? 1 : a.ai.blockHands;
+    const halfW = CONTACT.blockHalfWidth * size + assist * 0.12;
     const hands = blockHands(a);
     const top = hands.top;
-    const bottom = top - CONTACT.blockHeight;
+    const bottom = top - CONTACT.blockHeight * size;
     // hands reach over the net: from our side up to 0.3m into theirs
-    const pen = (a.state === 'air' ? 0.32 : 0.12) * ext;
+    const pen = (a.state === 'air' ? 0.32 : 0.12) * ext * size;
     const zNear = a.side * 0.22;
     const zFar = -a.side * pen;
     const zmin = Math.min(zNear, zFar) - R;
@@ -1522,13 +1524,13 @@ export class ContactSystem {
     // off the outer edge of the hands (away from the middle of the court): the hitter wiped it, the
     // ball goes off the fingers and wide (`CONTACT.toolEdge` of the hand's half-width out)
     const off = bp.x - hands.x;
-    // (playability: the user's spike wipes off an AI block more often)
+    // (the user's spike wipes off an AI block more often below Pro: the blocker's level, `AI.userToolEdge`)
     const userHit = lt.athlete?.isUser === true && !a.isUser;
-    const toolEdge = userHit ? CONTACT.userToolEdge : CONTACT.toolEdge;
-    const toolEdgeP = userHit ? CONTACT.userToolEdgeP : CONTACT.toolEdgeP;
+    const toolEdge = userHit ? a.ai.userToolEdge : CONTACT.toolEdge;
+    const toolEdgeP = userHit ? a.ai.userToolEdgeP : CONTACT.toolEdgeP;
     const edge = Math.abs(off) > halfW * toolEdge && Math.sign(off) === Math.sign(hands.x) && h.rand() < toolEdgeP;
-    // AI blockers convert fewer of their good blocks into stuffs than the user
-    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;
+    // AI blockers convert fewer of their good blocks into stuffs than the user (`AI.blockStuff`)
+    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? a.ai.blockStuff.perfect : a.ai.blockStuff.good;
     if (!edge && incoming < CONTACT.recycleSpeed && h.rand() < (rank >= 2 ? CONTACT.recycleP : CONTACT.recyclePLate)) {
       // a soft ball into a good block comes back off the hands to the hitter's side, slow and up:
       // their cover picks it up and they go again (recycling)

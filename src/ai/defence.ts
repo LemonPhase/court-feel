@@ -1,4 +1,4 @@
-import { AI, COURT } from '../config';
+import { COURT, type AiTuning } from '../config';
 import { clamp } from '../core/mathx';
 
 /**
@@ -28,19 +28,19 @@ export type ReadSpots = Record<'S' | 'L' | 'OH2' | 'OH1' | 'OPP', Spot | null>;
  * ball when it cannot tell. Never more than `AI.defence.shade` off the ball: it blocks the hitter
  * first, and the ball stays on its hands.
  */
-export function pinShade(cross: number = AI.wing.scoutStart): number {
-  return AI.defence.shade * (1 - 2 * cross);
+export function pinShade(ai: AiTuning, cross: number = ai.wing.scoutStart): number {
+  return ai.defence.shade * (1 - 2 * cross);
 }
 
 /** a pin attack outside the middle of the net (a back-row one from zone 1 or 5 too); a back-row attack well off the net; else a middle attack (the quick, an inside ball) */
-export function attackKind(x: number, off: number): AttackKind {
-  const D = AI.defence;
+export function attackKind(ai: AiTuning, x: number, off: number): AttackKind {
+  const D = ai.defence;
   if (Math.abs(x) > D.pinX) return 'pin';
   return off > D.backOff ? 'back' : 'middle';
 }
 
-export function readSpots(a: Attack): ReadSpots {
-  const D = AI.defence;
+export function readSpots(ai: AiTuning, a: Attack): ReadSpots {
+  const D = ai.defence;
   const W = COURT.halfWidth;
   if (a.kind === 'middle') {
     // the quick: no time to move. The corners hold their base, the wings stay at the net to help the
@@ -61,8 +61,8 @@ export function readSpots(a: Attack): ReadSpots {
   // a pin attack on our right (r = 1) or left (r = -1): the pin blocker lines up on it, shaded to
   // the side the hitter hits, and the middle closes inside it
   const r = a.x >= 0 ? 1 : -1;
-  const pinBlocker = a.x + r * (a.shade ?? pinShade());
-  const middle = pinBlocker - r * AI.middle.closeGap;
+  const pinBlocker = a.x + r * (a.shade ?? pinShade(ai));
+  const middle = pinBlocker - r * ai.middle.closeGap;
   const insideHand = middle - r * D.handHalf;
   const seam = (middle + r * D.handHalf + pinBlocker - r * D.handHalf) / 2;
   // where a straight ball from the hitter past `xNet` (at the net) is, `depth` m into our court
@@ -93,8 +93,8 @@ export function readSpots(a: Attack): ReadSpots {
  * two blockers' actual x at the net, all in the defending team's frame. Null when the block is closed
  * (the middle back stays deep, cross, as `readSpots` placed it).
  */
-export function seamSpot(a: Attack, pinX: number, midX: number): Spot | null {
-  const D = AI.defence;
+export function seamSpot(ai: AiTuning, a: Attack, pinX: number, midX: number): Spot | null {
+  const D = ai.defence;
   if (Math.abs(pinX - midX) - 2 * D.handHalf <= 0) return null;
   const along = (xNet: number, depth: number) => a.x + (xNet - a.x) * ((a.off + depth) / Math.max(0.3, a.off));
   const seam = (pinX + midX) / 2;

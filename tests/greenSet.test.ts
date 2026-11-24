@@ -57,7 +57,7 @@ describe('a green set is a point: the open spot', () => {
 
   it('off a green set the outside hits where no digger can get a platform under it in time', () => {
     const diggers = backRow();
-    const shot = openShot(OH_HIT, SPEED, SPIN, -1, env, diggers, [], seq(3))!;
+    const shot = openShot(AI, OH_HIT, SPEED, SPIN, -1, env, diggers, [], seq(3))!;
     expect(shot).not.toBeNull();
     expect(shot.margin).toBeGreaterThanOrEqual(AI.openShotMargin);
     // fly it: below platform height no digger is within reach of where it drops, even running from their late start
@@ -77,7 +77,7 @@ describe('a green set is a point: the open spot', () => {
   it('the hitter varies the zone: different open spots, not one kill shot', () => {
     const spots = new Set<string>();
     for (let s = 1; s <= 12; s++) {
-      const shot = openShot(OH_HIT, SPEED, SPIN, -1, env, backRow(), [], seq(s))!;
+      const shot = openShot(AI, OH_HIT, SPEED, SPIN, -1, env, backRow(), [], seq(s))!;
       spots.add(`${shot.x.toFixed(1)},${shot.z.toFixed(1)}`);
     }
     expect(spots.size).toBeGreaterThanOrEqual(3);
@@ -87,7 +87,7 @@ describe('a green set is a point: the open spot', () => {
     // a wing blocker on the line of the cross-court shot, at full reach
     const block: BlockHands = { x: -2.6, top: () => 2.45 + 0.04 + 0.8 };
     for (let s = 1; s <= 8; s++) {
-      const shot = openShot(OH_HIT, SPEED, SPIN, -1, env, backRow(), [block], seq(s))!;
+      const shot = openShot(AI, OH_HIT, SPEED, SPIN, -1, env, backRow(), [block], seq(s))!;
       for (const { p } of flight(OH_HIT, shot.x, shot.z)) {
         if (Math.abs(p.z) > AI.blockReachBand) continue;
         const clear = Math.abs(p.x - block.x) >= CONTACT.blockHalfWidth + R || p.y >= block.top(0) + R;
@@ -98,7 +98,7 @@ describe('a green set is a point: the open spot', () => {
 
   it('a pipe from behind the 3 m line finds an open spot too (their diggers start late)', () => {
     const pipe = { x: LANES.L.x, y: 3.2, z: LANES.L.z };
-    const shot = openShot(pipe, SPEED, SPIN, -1, env, backRow(), [], seq(5))!;
+    const shot = openShot(AI, pipe, SPEED, SPIN, -1, env, backRow(), [], seq(5))!;
     expect(shot.margin).toBeGreaterThanOrEqual(AI.openShotMargin);
   });
 });

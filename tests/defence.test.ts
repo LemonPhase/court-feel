@@ -12,44 +12,44 @@ const D = AI.defence;
  */
 describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
   it('against their outside (our right) the setter at right back digs the line: ~1 m inside the sideline, ~5.75 m deep', () => {
-    const s = readSpots({ x: 4.05, off: 0.9, kind: 'pin' });
+    const s = readSpots(AI, { x: 4.05, off: 0.9, kind: 'pin' });
     expect(s.S!.x).toBeCloseTo(W - D.lineIn, 6);
     expect(s.S!.z).toBeCloseTo(D.digDepth, 6);
   });
 
   it('the libero at left back digs cross court, outside the inside blocker, and at least 1 m inside the sideline', () => {
-    const s = readSpots({ x: 4.05, off: 0.9, kind: 'pin' });
+    const s = readSpots(AI, { x: 4.05, off: 0.9, kind: 'pin' });
     expect(s.L!.z).toBeCloseTo(D.digDepth, 6);
     expect(s.L!.x).toBeLessThan(0);
     expect(s.L!.x).toBeGreaterThanOrEqual(-(W - D.sideIn) - 1e-9);
     // outside the inside blocker's shadow: the line from the hitter past the inside hand misses the libero
-    const insideHand = 4.05 + pinShade() - AI.middle.closeGap - D.handHalf;
+    const insideHand = 4.05 + pinShade(AI) - AI.middle.closeGap - D.handHalf;
     const shadowX = 4.05 + (insideHand - 4.05) * ((0.9 + D.digDepth) / 0.9);
     expect(s.L!.x).toBeLessThanOrEqual(Math.max(shadowX, -(W - D.sideIn)) + 1e-9);
   });
 
   it('the back-row outside plays middle back: at the end line, beside a closed block on the cross side', () => {
-    const s = readSpots({ x: 4.05, off: 0.9, kind: 'pin' });
+    const s = readSpots(AI, { x: 4.05, off: 0.9, kind: 'pin' });
     // about 9 m off the net: on the end line, feet just inside
     expect(s.OH2!.z).toBeCloseTo(D.middleBack, 6);
     expect(s.OH2!.z).toBeGreaterThan(8.5);
     // the double block closes hands to hands (no seam to stand behind): beside its inside edge, towards the cross
-    const insideHand = 4.05 + pinShade() - AI.middle.closeGap - D.handHalf;
+    const insideHand = 4.05 + pinShade(AI) - AI.middle.closeGap - D.handHalf;
     expect(s.OH2!.x).toBeCloseTo(insideHand - D.middleBackCross, 6);
     expect(s.OH2!.x).toBeLessThan(insideHand);
     // and the same on the other side
-    const o = readSpots({ x: -4.0, off: 0.9, kind: 'pin' });
-    expect(o.OH2!.x).toBeCloseTo(-(4.0 + pinShade() - AI.middle.closeGap - D.handHalf) + D.middleBackCross, 6);
+    const o = readSpots(AI, { x: -4.0, off: 0.9, kind: 'pin' });
+    expect(o.OH2!.x).toBeCloseTo(-(4.0 + pinShade(AI) - AI.middle.closeGap - D.handHalf) + D.middleBackCross, 6);
   });
 
   it('the off-blocker (left front) pulls off the net to ~3 m, ~3 m in from the sideline; the right front blocks', () => {
-    const s = readSpots({ x: 4.05, off: 0.9, kind: 'pin' });
+    const s = readSpots(AI, { x: 4.05, off: 0.9, kind: 'pin' });
     expect(s.OH1).toEqual({ x: -(W - D.offIn), z: D.offOff });
     expect(s.OPP).toBeNull();
   });
 
   it('against their opposite (our left) it mirrors: the libero digs the line, the setter the cross, the right front pulls off', () => {
-    const s = readSpots({ x: -4.0, off: 0.9, kind: 'pin' });
+    const s = readSpots(AI, { x: -4.0, off: 0.9, kind: 'pin' });
     expect(s.L!.x).toBeCloseTo(-(W - D.lineIn), 6);
     expect(s.S!.x).toBeGreaterThan(0);
     expect(s.OPP).toEqual({ x: W - D.offIn, z: D.offOff });
@@ -57,7 +57,7 @@ describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
   });
 
   it('against the quick nobody has time to move: the wings stay at the net, the middle back cheats up', () => {
-    const s = readSpots({ x: -0.2, off: 0.75, kind: 'middle' });
+    const s = readSpots(AI, { x: -0.2, off: 0.75, kind: 'middle' });
     expect(s.OH1).toBeNull();
     expect(s.OPP).toBeNull();
     expect(s.OH2!.z).toBeCloseTo(D.quickMiddleBack, 6);
@@ -65,8 +65,8 @@ describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
   });
 
   it('against a pipe the back row steps in and forward, and both wings stay at the net to block it', () => {
-    const pin = readSpots({ x: 4.05, off: 0.9, kind: 'pin' });
-    const s = readSpots({ x: -0.4, off: 2.0, kind: 'back' });
+    const pin = readSpots(AI, { x: 4.05, off: 0.9, kind: 'pin' });
+    const s = readSpots(AI, { x: -0.4, off: 2.0, kind: 'back' });
     expect(Math.abs(s.S!.x)).toBeLessThan(Math.abs(pin.S!.x));
     expect(s.S!.z).toBeLessThan(pin.S!.z);
     expect(Math.abs(s.L!.x)).toBeLessThan(W - D.lineIn);
@@ -75,10 +75,10 @@ describe('perimeter defence: where each defender reads to (Mini Rally)', () => {
   });
 
   it('a set is read as a pin attack outside the middle third, a back-row attack well off the net, else a middle attack', () => {
-    expect(attackKind(4.0, 0.9)).toBe('pin');
-    expect(attackKind(-3.9, 3.5)).toBe('pin');
-    expect(attackKind(-0.4, 2.0)).toBe('back');
-    expect(attackKind(0.2, 0.75)).toBe('middle');
+    expect(attackKind(AI, 4.0, 0.9)).toBe('pin');
+    expect(attackKind(AI, -3.9, 3.5)).toBe('pin');
+    expect(attackKind(AI, -0.4, 2.0)).toBe('back');
+    expect(attackKind(AI, 0.2, 0.75)).toBe('middle');
   });
 });
 
@@ -86,9 +86,9 @@ describe('the middle back reads our block and steps up onto a seam (Mini Rally)'
   it('with a seam in the block, the middle back plays the seam closer than the end line', () => {
     // their outside on our right; our middle is late, so a seam opens next to the pin blocker
     const a = { x: 4.05, off: 0.9, kind: 'pin' as const };
-    const pinX = 4.05 + pinShade(); // the pin blocker shades outside the attack
+    const pinX = 4.05 + pinShade(AI); // the pin blocker shades outside the attack
     const midX = pinX - 1.2; // a late middle: 1.2 m inside leaves a 1.2 - 0.65 = 0.55 m seam
-    const s = seamSpot(a, pinX, midX);
+    const s = seamSpot(AI, a, pinX, midX);
     expect(s).not.toBeNull();
     expect(s!.z).toBeCloseTo(D.middleBackSeam, 6);
     expect(s!.z).toBeLessThan(D.middleBack);
@@ -100,8 +100,8 @@ describe('the middle back reads our block and steps up onto a seam (Mini Rally)'
 
   it('with a closed block the middle back stays deep and cross (no seam to step onto)', () => {
     const a = { x: 4.05, off: 0.9, kind: 'pin' as const };
-    const pinX = 4.05 + pinShade();
+    const pinX = 4.05 + pinShade(AI);
     const midX = pinX - AI.middle.closeGap; // hands to hands: 0.6 - 0.65 < 0, no seam
-    expect(seamSpot(a, pinX, midX)).toBeNull();
+    expect(seamSpot(AI, a, pinX, midX)).toBeNull();
   });
 });

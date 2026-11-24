@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI } from '../config';
+
 import { clamp, wrapAngle, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 
@@ -45,7 +45,7 @@ export function faceToward(a: Athlete, x: number, z: number): number {
 }
 
 /** near enough to the net to go up and block (`AI.blockNet`): nobody blocks from out in the court */
-export const atNet = (a: Athlete) => Math.abs(a.pos.z) <= AI.blockNet;
+export const atNet = (a: Athlete) => Math.abs(a.pos.z) <= a.ai.blockNet;
 
 /** the yaw facing the net from a side */
 export const netYaw = (side: 1 | -1) => (side === 1 ? 0 : Math.PI);

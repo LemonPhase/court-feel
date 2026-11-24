@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALL, COURT, PLAYER, TIMING, type Hand, type PositionId, type PositionStats } from '../config';
+import { AI, BALL, COURT, PLAYER, TIMING, type AiTuning, type Hand, type PositionId, type PositionStats } from '../config';
 import { standingReach } from './proportions';
 import { bodyStats, type CustomBody } from './body';
 import type { SetTouch } from './setTiming';
@@ -97,6 +97,11 @@ export class Athlete {
   side: 1 | -1;
   team: 0 | 1;
   isUser = false;
+  /**
+   * how this player plays when the AI plays them: its team's tuning (a level's numbers, `tuningFor`;
+   * docs/adr/0013). Every AI decision about this player reads it, never `AI` itself. Pro by default.
+   */
+  ai: AiTuning = AI;
   /** hitting hand: +1 right, -1 left (only the user's athlete can be a lefty) */
   hand: 1 | -1 = 1;
   height: number;
@@ -166,10 +171,13 @@ export class Athlete {
   number = 0;
   time = 0;
 
-  /** `body`: a custom height / vert / spike power for this position, `hand`: the hitting hand (the user's settings) */
-  constructor(role: PositionId, side: 1 | -1, opts: { height?: number; body?: CustomBody; hand?: Hand } = {}) {
+  /**
+   * `body`: a custom height / vert / spike power for this position, `hand`: the hitting hand (the
+   * user's settings); `stats`: the whole body as given (an AI player at its level of play, `aiStats`)
+   */
+  constructor(role: PositionId, side: 1 | -1, opts: { height?: number; body?: CustomBody; hand?: Hand; stats?: PositionStats } = {}) {
     this.role = role;
-    this.stats = bodyStats(role, opts.body);
+    this.stats = opts.stats ?? bodyStats(role, opts.body);
     this.side = side;
     this.team = side === 1 ? 0 : 1;
     this.hand = handSign(opts.hand);

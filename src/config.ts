@@ -598,13 +598,6 @@ export const CONTACT = {
    */
   toolEdge: 0.6,
   toolEdgeP: 0.7,
-  /**
-   * Playability (bent on purpose; the defence is strong and hitting is hard enough): the user's
-   * spike is wiped off an AI block more often, from `userToolEdge` of the hands' half-width out,
-   * `userToolEdgeP` of the time.
-   */
-  userToolEdge: 0.45,
-  userToolEdgeP: 0.85,
   /** speeds (m/s) */
   spikePerfect: 30,
   spikeGood: 26,
@@ -782,15 +775,12 @@ export const CONTACT = {
    * leaves the arms at a bad angle, at `shankSpeed` times the speed it came in, usually out of play:
    * still going the way the ball came, up to `shankTurn` rad off its line either way (straight on
    * into the stands behind, or wide to the side).
-   * Playability (bent on purpose): an AI defender who gets to the user's hard spike (over 14 m/s)
-   * shanks it at least `userSpikeShank` of the time, however well timed. Real defenders dig more of
-   * them, but with the strong AI defence the user's kills were too hard to come by.
+   * A level makes an AI team shank the user's hard spike more (`AI.userSpikeShank`).
    */
   shank: 0.15,
   shankGood: 0.3,
   shankSpeed: [0.35, 0.6] as [number, number],
   shankTurn: 1.7,
-  userSpikeShank: 0.6,
 };
 
 /** the three serves, in the order of the keys that pick them (1-3) */
@@ -1975,7 +1965,19 @@ export const AI = {
    * and not the passer's two metres to the side of it (MatusGib, 2026-11-15: "it is right in front
    * of them").
    */
-  pick: { seam: 0.15, setter: 0.2, shuffle: 1.5, libero: 0.1, liberoDig: 0, mine: 0.8, call: 0.4, dive: 0.5, lane: 0.3 },
+  pick: {
+    seam: 0.15,
+    setter: 0.2,
+    shuffle: 1.5,
+    libero: 0.1,
+    liberoDig: 0,
+    mine: 0.8,
+    call: 0.4,
+    dive: 0.5,
+    lane: 0.3,
+    leave: 0,
+    hesitate: 0.45,
+  },
   /**
    * An AI free ball over (a third ball nobody can attack) goes where it is hard to play: deep to a
    * back corner (`deep` m off the net, `side` m off the middle) or short, just over the net (`short`
@@ -2052,7 +2054,7 @@ export const AI = {
    * net, then go back to base defence. Low and watching the hands, a coverer reacts to a ball off
    * the block in `react` s (a defender reading a hit: 0.3 s), still so `hold` s after the cover ends.
    */
-  cover: { read: 0.2, net: 1.2, inside: 1.3, line: 3.0, behind: 2.5, deep: 6.3, react: 0.12, hold: 0.6 },
+  cover: { read: 0.2, net: 1.2, inside: 1.3, line: 3.0, behind: 2.5, deep: 6.3, react: 0.12, hold: 0.6, share: 1 },
   /**
    * An AI hitter's swing timing is off by this much (s, 1 sd) plus 0.06 x (1 - skill): Early sails
    * long, Late goes into the net, Good scatters the shot. Men's pros still miss: about 62% kills at
@@ -2079,6 +2081,8 @@ export const AI = {
   /** opponent hitter skill 0..1 */
   hitterSkill: 0.8,
   blockerSkill: 0.5,
+  /** how often an AI hitter tips a set it could swing at (it was 0.08 in the hitter's own code) */
+  tipChance: 0.08,
   /**
    * The Mini Rally middle blocker (`src/ai/middle.ts`). It acts on a touch (their pass, their set)
    * `react` s after it (± `reactSd`, 1 sd). Its read of where the set is going is `readErr` m off
@@ -2375,7 +2379,10 @@ export const AI = {
    * the line and lands in the court (FIVB rule 12.4.3); the rest are standing floats (`SERVE.float`'s toss). The player's own
    * jump serve toss is higher (`SERVE.jump`). The target is the seam between two passers,
    * deep in zone 1 or 5 (`deepIn` m inside the corner), short (`shortZ` m off the net, floats only)
-   * or at a passer, weighted `seam` / `deep` / `short` / `body`, `spread` m (1 sd) around it before
+   * or at a passer, weighted `seam` / `deep` / `short` / `body`; or at the middle of the court
+   * (`middle`: the serve of a team that only wants it in), or at the passer who has passed worst
+   * since the game began (`weakest`: as their setter's read of each pass rated it, so only what
+   * anyone watching could see; until two passes are seen it goes at a passer), `spread` m (1 sd) around it before
    * the server's own error: their swing timing is off by `floatErr` / `jumpErr` s (1 sd), never more
    * than `errMax` s (a server always gets a hand on their own toss: a mistimed serve is hit early,
    * long, or late, into the net, it is not whiffed). The jump
@@ -2394,7 +2401,11 @@ export const AI = {
     seam: 0.45,
     deep: 0.25,
     short: 0.1,
-    body: 0.2,
+    body: 0,
+    middle: 0,
+    weakest: 0.2,
+    /** a pass nobody could set counts this far (m) off the setter's spot when their passers are scouted */
+    worstPass: 6,
     deepIn: 1.0,
     shortZ: 3.5,
     spread: 0.6,
@@ -2416,12 +2427,22 @@ export const AI = {
   /** a spot is open when the quickest defender is this much (s) late; several open: one at random */
   openShotMargin: 0.05,
   openShotOut: 0.45,
+  /** in system an AI hitter looks for the open spot `openShotIn` of the time (Pro: every time) */
+  openShotIn: 1,
   /**
-   * Playability (bent on purpose): with the user up in the block, an AI hitter misreads the user's
-   * hands `userBlockMisread` of the time and aims as if they weren't there, so the user gets more
-   * balls into the block. AI blockers are read as before.
+   * A hitter who looks at the block steers away from it: a usual shot whose line crosses the net over
+   * a blocker's hands keeps `blockAvoid` of its weight (1: the block is not looked at, and the ball
+   * goes into it as often as anywhere), and a double block that did not close is hit through its
+   * seam with weight `seamShot`.
    */
-  userBlockMisread: 0.3,
+  blockAvoid: 0.15,
+  seamShot: 1.1,
+  /**
+   * Playability (bent on purpose, below Pro only): with the user up in the block, an AI hitter
+   * misreads the user's hands `userBlockMisread` of the time and aims as if they weren't there, so
+   * the user gets more balls into the block. Off at Pro; the lower levels turn it up (`LEVELS`).
+   */
+  userBlockMisread: 0,
   /** the hitter takes the best spot even if the quickest defender gets there up to this much (s) in time: the hardest ball to dig */
   openShotStretch: 0.15,
   /**
@@ -2620,8 +2641,304 @@ export const AI = {
    */
   badSetErr: 3.5,
   badSetTip: 4,
+  /**
+   * What the levels of play turn (`LEVELS`, `FACETS`, docs/adr/0012 and 0013). Here, Pro: the AI's
+   * own body is its position's (`body`: jump and spike power multipliers; `footSpeed`: running and
+   * shuffling, the AI only, never you). The team's setter jump-sets a pass in system (`jumpSet`).
+   * Before it sets, the setter looks at their middle blocker (`setterSees`): `share` of the time it
+   * sees a middle that has committed on the quick or leans to a pin, and sets away from it (that
+   * hitter keeps `away` of their weight); and it isolates a hitter on a lower block: a hitter whose
+   * reach over the blocker in front of them is better than the others' gets up to `isolate` more
+   * weight (`edge` m better: all of it), one worse up to `isolate` less. Bodies only: it never sees a
+   * blocker's skill. A seam ball between two AI players is left by both `pick.leave` of the time
+   * ("mine!", "yours!"): the one who takes it goes `pick.hesitate` s late. Out of system an AI hitter
+   * sets the high ball back over with the hands `outOfSystemFree` of the time instead of swinging.
+   * Our hitter is covered off our set `cover.share` of the time. An AI dig of an attack is as good
+   * as `digSkill` (a serve or a free ball: `defenderSkill`).
+   */
+  body: { jump: 1, power: 1 },
+  footSpeed: 1,
+  digSkill: 0.7,
+  /**
+   * How a level makes an AI team play the user's attack: an AI defender who gets to the user's hard
+   * spike (over 14 m/s) shanks it at least `userSpikeShank` of the time, however well timed, and the
+   * user's spike is wiped off an AI block from `userToolEdge` of the hands' half-width out,
+   * `userToolEdgeP` of the time. At Pro (these values) it is the same as anyone's (no shank floor,
+   * `CONTACT.toolEdge(P)`); the lower levels turn it up, where real defenders do shank more and
+   * real blocks are softer (issue #137: the top level is the real thing).
+   */
+  userSpikeShank: 0,
+  userToolEdge: 0.6,
+  userToolEdgeP: 0.7,
+  blockStuff: { perfect: 0.36, good: 0.16 },
+  /**
+   * How big an AI blocker's hands are, as a share of a Pro's (`CONTACT.blockHalfWidth`,
+   * `blockHeight` and how far they reach over the net). A Rec blocker's hands are apart and soft
+   * and stay on their side of the tape: a small block a hitter goes past. Your own block is always
+   * full size (your hands are yours).
+   */
+  blockHands: 1,
+  jumpSet: true,
+  setterSees: { share: 1, away: 0.25, isolate: 0.5, edge: 0.3 },
+  outOfSystemFree: 0,
 };
 
+/** how an AI player plays: `AI` with a level's overrides written in (Pro: `AI` itself). Never written to. */
+export type AiTuning = typeof AI;
+
+/**
+ * Overrides of a config section: any of its numbers, nested sections in part. Arrays and tuples are
+ * replaced whole.
+ */
+export type Overrides<T> = {
+  [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? Overrides<T[K]> : T[K];
+};
+
+/**
+ * The parts of a team's play a level changes, each the `AI` keys it owns (a key is in one facet at
+ * most; a key in none is the same at every level). A level overrides a facet, never a team: which
+ * team takes which facet is `YOURS_AT_PRO` (docs/adr/0013).
+ */
+export const FACETS = {
+  /** the AI's jump and spike power */
+  body: ['body'],
+  /** the serve: jump share, error, where it is aimed */
+  serve: ['serve'],
+  /** serve receive and free balls: the first ball that is not an attack */
+  pass: ['defenderSkill', 'overhand', 'pick'],
+  /** the setter: who gets the ball, the tempo, plays, the jump set, the look across the net */
+  set: ['setterAccuracy', 'setWeight', 'quickWeight', 'tempo', 'pipe', 'plays', 'jumpSet', 'setterSees'],
+  /** the hitter: the shot, the error, the tip, the open spot, the free ball off a bad pass */
+  attack: [
+    'hitterSkill',
+    'attackErr',
+    'tipChance',
+    'openShotIn',
+    'openShotOut',
+    'blockAvoid',
+    'seamShot',
+    'toolShot',
+    'rollShot',
+    'recycleShot',
+    'offSpeed',
+    'outOfSystemFree',
+    'userBlockMisread',
+  ],
+  /** the block: the middle's read and commit, the pins, the stuff, the size of the hands, how soft it is to the user */
+  block: ['middle', 'blockerSkill', 'blockStuff', 'blockHands', 'wing', 'userToolEdge', 'userToolEdgeP'],
+  /** floor defence against an attack: reactions, reads, dives, the dig, cover, the user's shank */
+  dig: ['reactionTime', 'defence', 'dive', 'digSkill', 'passPressure', 'cover', 'footSpeed', 'userSpikeShank'],
+} as const satisfies Record<string, readonly (keyof AiTuning)[]>;
+export type Facet = keyof typeof FACETS;
+export const FACET_IDS = Object.keys(FACETS) as Facet[];
+/** a level's overrides of one facet: only that facet's keys */
+export type FacetOverrides<F extends Facet> = Overrides<Pick<AiTuning, (typeof FACETS)[F][number]>>;
+
+/**
+ * The facets your team plays at Pro whatever the level (2026-11-23, the user's call): your
+ * team-mates pass and dig like the best, so a point is lost on your touch, not theirs, and the
+ * points you win are yours; their attack, set, serve, block and body are the level's, like the
+ * other team's. The other team plays every facet at the level.
+ */
+export const YOURS_AT_PRO: readonly Facet[] = ['pass', 'dig'];
+
+export type LevelId = 'rec' | 'club' | 'national' | 'pro';
+export const LEVEL_IDS: readonly LevelId[] = ['rec', 'club', 'national', 'pro'];
+export const isLevelId = (v: unknown): v is LevelId => typeof v === 'string' && (LEVEL_IDS as readonly string[]).includes(v);
+
+export interface Level {
+  label: string;
+  /** one line for the menu: what this league is like */
+  note: string;
+  /** overrides of `AI` by facet; anything left out is Pro's */
+  facets: { [F in Facet]?: FacetOverrides<F> };
+}
+
+/**
+ * Levels of play (Mini Rally; issues #137 and #53, docs/adr/0012 and 0013). A level is a league:
+ * the other team plays in it, and so do your team-mates, but for their pass and dig
+ * (`YOURS_AT_PRO`). Pro is `AI` as it is; each other level is a typed set of overrides of named
+ * numbers by facet, built into each team's tuning when the rally starts (`tuningFor`). Game code
+ * reads its team's numbers and never asks the level.
+ * What a level is for (the user's calls, 2026-11-23), measured on the level card (`npm run levels`):
+ * - The lower the level, the fewer points the AI wins, and it loses them by its attack, not by its
+ *   errors: more tips and softer swings, fewer balls out or in the net (a Rec point is earned,
+ *   never given). `attackErr` rises with the level: a Pro swings harder and misses more.
+ * - Most attacks are in system at every level: both teams pass as well as Pro (no `pass` overrides).
+ * - The other team's floor defence and block get softer as the level drops, so your hit scores.
+ * - Out of system a Rec hitter often sets the ball back over with the hands (`outOfSystemFree`).
+ * What never changes: the timing windows (`TIMING`, the `CONTACT` windows, `SET_LEVELS`), the ball,
+ * the physics, your body and your assists. The AI never misses a serve at any level.
+ * - Rec: high balls to the outside, tips and soft shots that don't look at the block, serves at the
+ *   middle of the court, a small, soft, late block that never commits and hardly ever stuffs (a
+ *   decent hit of yours scores), slow diggers who don't dive and shank your hard spike, no cover.
+ * - Club: the odd quick, line or cross from the set, serves to zones 1 and 5, a middle who commits
+ *   sometimes, hitter cover; the off-blocker stays at the net, so the tip behind the block is open.
+ * - National: fast sets and the pipe, the open spot most of the time, serves at seams and corners, a
+ *   setter who sets away from a committed middle half the time, tip cover, a slow scout of your shots.
+ * - Pro: all of it; the server goes at your weakest passer, the setter isolates a hitter on a lower
+ *   block, the block scouts you within a few balls.
+ * The AI setter never dumps: the Mini Rally's setter is always in the back row (no rotations yet, #3).
+ * Starting values; nobody who plays volleyball has played them yet.
+ */
+export const LEVELS: Record<LevelId, Level> = {
+  rec: {
+    label: 'Rec',
+    note: 'A social league: high balls and tips, slow defence, few errors. Every point is yours to win.',
+    facets: {
+      body: { body: { jump: 0.72, power: 0.75 } },
+      serve: { serve: { jump: 0, floatErr: 0.1, seam: 0, deep: 0, short: 0, body: 0.3, middle: 1, weakest: 0, spread: 1.0 } },
+      set: {
+        setterAccuracy: 0.3,
+        setWeight: { outside: 3 },
+        quickWeight: { good: 0, perfect: 0 },
+        tempo: { share: 0 },
+        pipe: { inSystem: 0, outOfSystem: 0 },
+        plays: { free: 0, receive: 0 },
+        jumpSet: false,
+        setterSees: { share: 0, isolate: 0 },
+      },
+      attack: {
+        hitterSkill: 0.5,
+        attackErr: 0.02,
+        tipChance: 0.45,
+        openShotIn: 0,
+        openShotOut: 0,
+        blockAvoid: 1,
+        seamShot: 0,
+        toolShot: 0,
+        rollShot: 0,
+        recycleShot: 0,
+        offSpeed: { adjust: 0 },
+        outOfSystemFree: 0.5,
+        userBlockMisread: 0.3,
+      },
+      block: {
+        middle: { react: 0.4, reactSd: 0.08, readErr: 2.0, commit: 0, cheat: 0, lateReach: 1.2 },
+        blockerSkill: 0.05,
+        blockStuff: { perfect: 0.06, good: 0 },
+        blockHands: 0.6,
+        wing: { scout: 0 },
+        userToolEdge: 0.3,
+        userToolEdgeP: 0.9,
+      },
+      dig: {
+        reactionTime: 0.26,
+        defence: { react: 0.38, reactSd: 0.08, readErr: 1.6, hitReact: 0.36, hitReactSd: 0.07, offOff: 1.2 },
+        dive: { minDist: 99, anyway: 0 },
+        digSkill: 0.35,
+        passPressure: 1.5,
+        cover: { share: 0 },
+        footSpeed: 0.9,
+        userSpikeShank: 0.85,
+      },
+    },
+  },
+  club: {
+    label: 'Club',
+    note: 'A club side: the odd quick, a middle who is often late, hitter cover.',
+    facets: {
+      body: { body: { jump: 0.84, power: 0.82 } },
+      serve: { serve: { jump: 0.1, floatErr: 0.09, seam: 0.1, deep: 0.5, short: 0, body: 0.3, middle: 0.2, weakest: 0, spread: 0.8 } },
+      set: {
+        setterAccuracy: 0.22,
+        setWeight: { outside: 2.5 },
+        quickWeight: { good: 0.25, perfect: 0.5 },
+        tempo: { share: 0.1 },
+        pipe: { inSystem: 0.1, outOfSystem: 0 },
+        plays: { free: 0.2, receive: 0 },
+        jumpSet: false,
+        setterSees: { share: 0, isolate: 0 },
+      },
+      attack: {
+        hitterSkill: 0.65,
+        attackErr: 0.035,
+        tipChance: 0.3,
+        openShotIn: 0,
+        openShotOut: 0,
+        blockAvoid: 0.5,
+        seamShot: 0.4,
+        toolShot: 0.3,
+        rollShot: 0.15,
+        recycleShot: 0,
+        offSpeed: { adjust: 0.15 },
+        outOfSystemFree: 0.15,
+        userBlockMisread: 0.22,
+      },
+      block: {
+        middle: { react: 0.22, reactSd: 0.06, readErr: 1.3, commit: 0.05, cheat: 0.05 },
+        blockerSkill: 0.3,
+        blockStuff: { perfect: 0.22, good: 0.08 },
+        blockHands: 0.8,
+        wing: { scout: 0 },
+        userToolEdge: 0.5,
+        userToolEdgeP: 0.8,
+      },
+      dig: {
+        reactionTime: 0.23,
+        defence: { react: 0.34, reactSd: 0.07, readErr: 1.3, hitReact: 0.32, hitReactSd: 0.06, offOff: 1.2 },
+        dive: { anyway: 0.25 },
+        digSkill: 0.55,
+        passPressure: 1.3,
+        footSpeed: 0.94,
+        userSpikeShank: 0.45,
+      },
+    },
+  },
+  national: {
+    label: 'National',
+    note: 'A national league: fast sets, the open spot, a block that reads.',
+    facets: {
+      body: { body: { jump: 0.93, power: 0.92 } },
+      serve: { serve: { jump: 0.4, floatErr: 0.08, seam: 0.45, deep: 0.35, short: 0.1, body: 0.1, middle: 0, weakest: 0, spread: 0.7 } },
+      set: {
+        setterAccuracy: 0.17,
+        quickWeight: { good: 0.4, perfect: 0.7 },
+        tempo: { share: 0.3 },
+        pipe: { inSystem: 0.25, outOfSystem: 0.05 },
+        plays: { free: 0.4, receive: 0.15 },
+        setterSees: { share: 0.5, isolate: 0.2 },
+      },
+      attack: {
+        hitterSkill: 0.72,
+        attackErr: 0.05,
+        tipChance: 0.15,
+        openShotIn: 0.7,
+        openShotOut: 0.25,
+        blockAvoid: 0.25,
+        seamShot: 0.8,
+        toolShot: 0.7,
+        rollShot: 0.25,
+        recycleShot: 0.4,
+        offSpeed: { adjust: 0.25 },
+        userBlockMisread: 0.12,
+      },
+      block: {
+        middle: { react: 0.16, reactSd: 0.05, readErr: 1.1, commit: 0.1, cheat: 0.05 },
+        blockerSkill: 0.4,
+        blockStuff: { perfect: 0.3, good: 0.12 },
+        blockHands: 0.9,
+        wing: { scout: 0.12 },
+        userToolEdge: 0.55,
+        userToolEdgeP: 0.75,
+      },
+      dig: {
+        reactionTime: 0.2,
+        defence: { react: 0.3, reactSd: 0.06, readErr: 1.1, hitReact: 0.29, hitReactSd: 0.05 },
+        dive: { anyway: 0.6 },
+        digSkill: 0.62,
+        passPressure: 1.1,
+        footSpeed: 0.97,
+        userSpikeShank: 0.25,
+      },
+    },
+  },
+  pro: {
+    label: 'Pro',
+    note: 'The real thing: they read you, scout you and serve at your weakest passer.',
+    facets: {},
+  },
+};
 /** the hand you spike, tip and serve with; passing, setting and blocking use both hands */
 export type Hand = 'right' | 'left';
 
@@ -2650,6 +2967,8 @@ export interface Settings {
   setAimAssist: number;
   /** set difficulty: how wide the green, the good band and the clean catch are (SET_LEVELS) */
   setLevel: SetLevel;
+  /** the Mini Rally's level of play: the league both teams play in (LEVELS) */
+  level: LevelId;
   /** when you set: the hitter you picked stays picked for the next ball (off: back to the outside) */
   keepSetPick: boolean;
   /** when you set: rings on the floor where your hitters hit from (off by default: the marker over the hitter and the arc say it) */
@@ -2698,6 +3017,7 @@ export const DEFAULT_SETTINGS: Settings = {
   setArc: true,
   setAimAssist: ASSIST.aim,
   setLevel: 'easy',
+  level: 'club',
   keepSetPick: false,
   hitterSpots: false,
   aimAssist: ASSIST.aim,

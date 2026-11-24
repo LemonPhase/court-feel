@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { CONTACT, COURT, SIM, TIMING } from '../src/config';
+import { AI, CONTACT, COURT, SIM, TIMING } from '../src/config';
 import { lerp } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import { ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
@@ -8,6 +8,8 @@ import { makeBall, stepBall, type V3 } from '../src/physics/ball';
 import { BallPredictor } from '../src/physics/predict';
 import { solveFixedTime } from '../src/physics/solve';
 import { serveAim } from '../src/ai/server';
+import { tuningFor } from '../src/core/level';
+import type { LevelId } from '../src/config';
 import { Rng } from '../src/core/mathx';
 
 const DT = 1 / SIM.hz;
@@ -18,7 +20,7 @@ const TARGET = { x: 1, y: 2.35, z: 0.9, apex: 4 };
  * the platform out `lead` s before it arrives (the ideal lead for that speed by default).
  * Returns the contact and how far from the setter's target the pass was aimed.
  */
-function receive(speed: number, opts: { lead?: number; rand?: number; moving?: number; spikeBy?: 'user' | 'ai' } = {}) {
+function receive(speed: number, opts: { lead?: number; rand?: number; moving?: number; spikeBy?: 'user' | 'ai'; level?: LevelId } = {}) {
   const state = makeBall();
   const predictor = new BallPredictor(DT, SIM.predictHorizon);
   let version = 0;
@@ -67,6 +69,8 @@ function receive(speed: number, opts: { lead?: number; rand?: number; moving?: n
   } satisfies ContactHost;
   const cs = new ContactSystem(host);
   const a = new Athlete('L', 1);
+  // (an AI passer of the other team at that level: the user's hard spike comes at a team that plays it)
+  a.ai = tuningFor(opts.level ?? 'pro', 'theirs');
   a.place(0.5, 7.5, 0);
   if (opts.moving) a.vel.set(opts.moving * a.stats.approachSpeed, 0, 0);
   const P = cs.platformPoint(a, new THREE.Vector3());
@@ -116,20 +120,27 @@ describe('serve reception (contact)', () => {
     expect(r.e.note).not.toBe('Shanked');
   });
 
-  it("an AI defender who gets to your hard spike shanks it half the time, well timed or not (playability); an AI hitter's is dug", () => {
+  it("below Pro an AI defender who gets to your hard spike shanks it more than half the time, well timed or not (playability); an AI hitter's is dug", () => {
+    const level = 'rec';
     // (the harness's random draw is fixed: under the user-spike shank chance)
-    const rand = CONTACT.userSpikeShank * 0.6;
-    const yours = receive(24, { rand, spikeBy: 'user' });
-    const theirs = receive(24, { rand, spikeBy: 'ai' });
+    const rand = tuningFor(level, 'theirs').userSpikeShank * 0.6;
+    const yours = receive(24, { rand, spikeBy: 'user', level });
+    const theirs = receive(24, { rand, spikeBy: 'ai', level });
     expect(yours.e.note).toBe('Shanked');
     expect(theirs.e.note).not.toBe('Shanked');
     // a slow ball of yours (a roll shot, an easy swing) is played as usual
-    expect(receive(12, { rand, spikeBy: 'user' }).e.note).not.toBe('Shanked');
+    expect(receive(12, { rand, spikeBy: 'user', level }).e.note).not.toBe('Shanked');
+  });
+
+  it("at Pro your hard spike is dug like anyone else's: a well-timed platform keeps it up", () => {
+    expect(tuningFor('pro', 'theirs').userSpikeShank).toBe(0);
+    for (const rand of [0.02, 0.3, 0.6]) expect(receive(24, { rand, spikeBy: 'user' }).e.note).not.toBe('Shanked');
   });
 
   it('a shank keeps going the way the spike came, at most 100 degrees off its line, up and off the arms', () => {
+    const shank = tuningFor('rec', 'theirs').userSpikeShank;
     for (const rand of [0.02, 0.3, 0.5, 0.7, 0.98]) {
-      const r = receive(24, { rand: Math.min(rand, CONTACT.userSpikeShank * 0.99), spikeBy: 'user' });
+      const r = receive(24, { rand: Math.min(rand, shank * 0.99), spikeBy: 'user', level: 'rec' });
       expect(r.e.note).toBe('Shanked');
       // the spike came in along +z (towards our end line)
       const ang = Math.atan2(r.v.x, r.v.z);
@@ -152,7 +163,7 @@ describe('where the AI serves (Mini Rally)', () => {
     const n = 400;
     for (let i = 0; i < n; i++) {
       const jump = i % 2 === 0;
-      const p = serveAim(passers, -1, rng, jump);
+      const p = serveAim(AI, passers, -1, rng, jump);
       expect(Math.abs(p.x)).toBeLessThan(COURT.halfWidth);
       expect(p.z).toBeLessThan(0);
       expect(-p.z).toBeLessThan(COURT.halfLength);
@@ -168,9 +179,9 @@ describe('where the AI serves (Mini Rally)', () => {
     let floatShort = 0;
     for (let i = 0; i < 400; i++) {
       // short = in front of the passers, inside 4.5 m of the net, with no spread pulling it back
-      const j = serveAim(passers, -1, rng, true);
+      const j = serveAim(AI, passers, -1, rng, true);
       expect(-j.z).toBeGreaterThan(2.5 - 1e-9);
-      const f = serveAim(passers, -1, rng, false);
+      const f = serveAim(AI, passers, -1, rng, false);
       if (-f.z < 4.5) floatShort++;
     }
     expect(floatShort).toBeGreaterThan(10);

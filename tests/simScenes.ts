@@ -1,3 +1,4 @@
+import { AI } from '../src/config';
 import { SLOT_ROLE, SLOTS, TeamAI } from '../src/ai/team';
 import { Athlete } from '../src/game/athlete';
 import { Simulation } from '../src/game/simulation';
@@ -15,7 +16,7 @@ export function freeBallToATeam(seed: number) {
   });
   sim.rng.reseed(seed);
   sim.ballLive = true;
-  const team = new TeamAI(1, sim);
+  const team = new TeamAI(1, sim, AI);
   for (const slot of SLOTS) {
     const a = new Athlete(SLOT_ROLE[slot], 1);
     sim.athletes.push(a);

@@ -1,4 +1,4 @@
-import { COURT, SERVE, SERVE_DRILL, SERVE_KINDS, type ServeKind } from '../../config';
+import { AI, COURT, SERVE, SERVE_DRILL, SERVE_KINDS, type ServeKind } from '../../config';
 import { planApproach, simulateApproach } from '../approach';
 import { SLOT_ROLE, TeamAI, type Slot } from '../../ai/team';
 import { Athlete } from '../athlete';
@@ -96,7 +96,7 @@ export class ServeDrill extends Mode {
 
   setup(): void {
     const g = this.g;
-    this.away = new TeamAI(-1, g);
+    this.away = new TeamAI(-1, g, AI);
     let seed = 70;
     for (const slot of RECEIVERS) {
       const a = new Athlete(SLOT_ROLE[slot], -1);

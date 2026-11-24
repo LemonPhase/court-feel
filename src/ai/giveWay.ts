@@ -1,4 +1,4 @@
-import { AI, PLAYER } from '../config';
+import { PLAYER } from '../config';
 import { clamp } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 
@@ -22,7 +22,7 @@ const sides = new WeakMap<Athlete, WeakMap<Athlete, 1 | -1>>();
  */
 export function giveWay(a: Athlete, mates: readonly Mate[]): void {
   if (a.state !== 'ground' && a.state !== 'land') return;
-  const G = AI.giveWay;
+  const G = a.ai.giveWay;
   let mine = sides.get(a);
   if (!mine) sides.set(a, (mine = new WeakMap()));
   const top = a.cmd.sprint ? a.stats.approachSpeed : a.stats.shuffleSpeed;

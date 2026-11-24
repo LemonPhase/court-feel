@@ -21,7 +21,7 @@ function team(side: 1 | -1, pos: PositionId | null) {
   const g = new Simulation(NO_HOOKS);
   g.rng.reseed(7);
   const ball = g.ball;
-  const t = new TeamAI(side, g);
+  const t = new TeamAI(side, g, AI);
   t.playsOn = true;
   for (const slot of SLOTS) {
     const mine = !!pos && slot === USER_SLOT[pos];

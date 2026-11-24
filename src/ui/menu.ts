@@ -7,6 +7,8 @@ import {
   QUALITY,
   SERVE,
   SERVE_KINDS,
+  LEVEL_IDS,
+  LEVELS,
   SET_LEVEL_IDS,
   SET_LEVELS,
   SETTING_RANGES,
@@ -761,7 +763,24 @@ export class Menu {
         },
       ),
     );
-    setup.append(this.posPicker(), net);
+    // the level of play: the league both teams play in (LEVELS)
+    const level = h('div', 'block');
+    const levelNote = h('div', 'block-note');
+    level.append(
+      txt('div', 'eyebrow', 'Level'),
+      this.chipGroup(
+        'Level',
+        LEVEL_IDS.map((id) => LEVELS[id].label),
+        () => LEVEL_IDS.indexOf(this.settings.level),
+        (i) => {
+          this.settings.level = LEVEL_IDS[i];
+          this.cb.settingsChanged();
+        },
+      ),
+      levelNote,
+    );
+    this.syncs.push(() => levelNote.replaceChildren(LEVELS[this.settings.level].note));
+    setup.append(this.posPicker(), level, net);
     mid.append(calls, setup);
     const foot = h('div', 'panel-foot');
     const go = this.playButton('PLAY', () => this.go(mode));
