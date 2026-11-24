@@ -1485,12 +1485,14 @@ export class ContactSystem {
     const t = h.simTime;
     const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
     const assist = h.aimAssist(a);
-    const halfW = CONTACT.blockHalfWidth + assist * 0.12;
+    // (an AI blocker's hands are as big as its level's: `AI.blockHands`; yours are always full size)
+    const size = a.isUser ? 1 : a.ai.blockHands;
+    const halfW = CONTACT.blockHalfWidth * size + assist * 0.12;
     const hands = blockHands(a);
     const top = hands.top;
-    const bottom = top - CONTACT.blockHeight;
+    const bottom = top - CONTACT.blockHeight * size;
     // hands reach over the net: from our side up to 0.3m into theirs
-    const pen = (a.state === 'air' ? 0.32 : 0.12) * ext;
+    const pen = (a.state === 'air' ? 0.32 : 0.12) * ext * size;
     const zNear = a.side * 0.22;
     const zFar = -a.side * pen;
     const zmin = Math.min(zNear, zFar) - R;

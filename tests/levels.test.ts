@@ -110,6 +110,8 @@ const LEVEL_ORDER: Record<string, 1 | -1 | 0> = {
   blockerSkill: 1,
   'blockStuff.perfect': 1,
   'blockStuff.good': 1,
+  blockHands: 1,
+  'middle.lateReach': 1,
   'wing.scout': 1,
   userToolEdge: 1,
   userToolEdgeP: -1,
@@ -420,6 +422,13 @@ describe('a league against your team (all-AI Mini Rally, 400 s a level, your slo
 
   it('a Rec side’s attack kills far less often than a Pro one’s: the points are yours to win', () => {
     expect(kills(rec.theirs)).toBeLessThan(0.7 * kills(pro.theirs));
+  });
+
+  it('against a Rec side a decent hit scores: their block is small and soft and their diggers shank it', () => {
+    // (your slot is a Pro stand-in: it hits as well as it can)
+    expect(share(rec.you.kills, rec.you.attacks)).toBeGreaterThan(0.6);
+    expect(share(rec.you.kills, rec.you.attacks)).toBeGreaterThan(share(pro.you.kills, pro.you.attacks));
+    expect(rec.you.stuffed).toBe(0);
   });
 
   it('at Rec both teams pass well: most sets are in system', () => {

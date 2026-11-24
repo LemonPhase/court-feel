@@ -2671,6 +2671,13 @@ export const AI = {
   userToolEdge: 0.6,
   userToolEdgeP: 0.7,
   blockStuff: { perfect: 0.36, good: 0.16 },
+  /**
+   * How big an AI blocker's hands are, as a share of a Pro's (`CONTACT.blockHalfWidth`,
+   * `blockHeight` and how far they reach over the net). A Rec blocker's hands are apart and soft
+   * and stay on their side of the tape: a small block a hitter goes past. Your own block is always
+   * full size (your hands are yours).
+   */
+  blockHands: 1,
   jumpSet: true,
   setterSees: { share: 1, away: 0.25, isolate: 0.5, edge: 0.3 },
   outOfSystemFree: 0,
@@ -2717,8 +2724,8 @@ export const FACETS = {
     'outOfSystemFree',
     'userBlockMisread',
   ],
-  /** the block: the middle's read and commit, the pins, the stuff, how soft it is to the user */
-  block: ['middle', 'blockerSkill', 'blockStuff', 'wing', 'userToolEdge', 'userToolEdgeP'],
+  /** the block: the middle's read and commit, the pins, the stuff, the size of the hands, how soft it is to the user */
+  block: ['middle', 'blockerSkill', 'blockStuff', 'blockHands', 'wing', 'userToolEdge', 'userToolEdgeP'],
   /** floor defence against an attack: reactions, reads, dives, the dig, cover, the user's shank */
   dig: ['reactionTime', 'defence', 'dive', 'digSkill', 'passPressure', 'cover', 'footSpeed', 'userSpikeShank'],
 } as const satisfies Record<string, readonly (keyof AiTuning)[]>;
@@ -2763,7 +2770,8 @@ export interface Level {
  * What never changes: the timing windows (`TIMING`, the `CONTACT` windows, `SET_LEVELS`), the ball,
  * the physics, your body and your assists. The AI never misses a serve at any level.
  * - Rec: high balls to the outside, tips and soft shots that don't look at the block, serves at the
- *   middle of the court, a late block that never commits, slow diggers who don't dive, no cover.
+ *   middle of the court, a small, soft, late block that never commits and hardly ever stuffs (a
+ *   decent hit of yours scores), slow diggers who don't dive and shank your hard spike, no cover.
  * - Club: the odd quick, line or cross from the set, serves to zones 1 and 5, a middle who commits
  *   sometimes, hitter cover; the off-blocker stays at the net, so the tip behind the block is open.
  * - National: fast sets and the pipe, the open spot most of the time, serves at seams and corners, a
@@ -2806,12 +2814,13 @@ export const LEVELS: Record<LevelId, Level> = {
         userBlockMisread: 0.3,
       },
       block: {
-        middle: { react: 0.3, reactSd: 0.08, readErr: 1.6, commit: 0, cheat: 0 },
-        blockerSkill: 0.15,
-        blockStuff: { perfect: 0.12, good: 0.04 },
+        middle: { react: 0.4, reactSd: 0.08, readErr: 2.0, commit: 0, cheat: 0, lateReach: 1.2 },
+        blockerSkill: 0.05,
+        blockStuff: { perfect: 0.06, good: 0 },
+        blockHands: 0.6,
         wing: { scout: 0 },
-        userToolEdge: 0.45,
-        userToolEdgeP: 0.85,
+        userToolEdge: 0.3,
+        userToolEdgeP: 0.9,
       },
       dig: {
         reactionTime: 0.26,
@@ -2821,7 +2830,7 @@ export const LEVELS: Record<LevelId, Level> = {
         passPressure: 1.5,
         cover: { share: 0 },
         footSpeed: 0.9,
-        userSpikeShank: 0.6,
+        userSpikeShank: 0.85,
       },
     },
   },
@@ -2860,6 +2869,7 @@ export const LEVELS: Record<LevelId, Level> = {
         middle: { react: 0.22, reactSd: 0.06, readErr: 1.3, commit: 0.05, cheat: 0.05 },
         blockerSkill: 0.3,
         blockStuff: { perfect: 0.22, good: 0.08 },
+        blockHands: 0.8,
         wing: { scout: 0 },
         userToolEdge: 0.5,
         userToolEdgeP: 0.8,
@@ -2907,6 +2917,7 @@ export const LEVELS: Record<LevelId, Level> = {
         middle: { react: 0.16, reactSd: 0.05, readErr: 1.1, commit: 0.1, cheat: 0.05 },
         blockerSkill: 0.4,
         blockStuff: { perfect: 0.3, good: 0.12 },
+        blockHands: 0.9,
         wing: { scout: 0.12 },
         userToolEdge: 0.55,
         userToolEdgeP: 0.75,

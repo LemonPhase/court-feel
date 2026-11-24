@@ -84,7 +84,7 @@ export function playLevel(level: LevelId, seconds: number, seed = 2024): LevelCa
   const teams: Record<1 | -1, TeamAI> = { 1: mode.home, [-1]: mode.away };
   const card: Record<1 | -1, TeamCard> = { 1: blank(), [-1]: blank() };
   const events: { t: number; side: 1 | -1; kind: string; role: string }[] = [];
-  const points: { t: number; winner: 1 | -1 }[] = [];
+  const points: { t: number; winner: 1 | -1; underNet: boolean }[] = [];
   const overs: { t: number; side: 1 | -1; role: string }[] = [];
   const seenOver = new Map<unknown, unknown>();
   const diving = new Set<unknown>();
@@ -118,7 +118,7 @@ export function playLevel(level: LevelId, seconds: number, seed = 2024): LevelCa
       }
     for (; seenSaid < game.said.length; seenSaid++) {
       const m = /^banner POINT (YOU|THEM) /.exec(game.said[seenSaid]);
-      if (m) points.push({ t: game.sim.simTime, winner: m[1] === 'YOU' ? 1 : -1 });
+      if (m) points.push({ t: game.sim.simTime, winner: m[1] === 'YOU' ? 1 : -1, underNet: game.said[seenSaid].includes('UNDER THE NET') });
     }
   }
   for (const p of points) card[p.winner].won++;
@@ -152,7 +152,8 @@ export function playLevel(level: LevelId, seconds: number, seed = 2024): LevelCa
   });
   for (const o of overs) {
     const point = points.find((p) => p.t >= o.t);
-    if (!point) continue;
+    // (a set that went under the net before the hitter could get to it is the set's fault, not a set-over)
+    if (!point || point.underNet) continue;
     card[o.side].setOvers++;
     const touched = events.some((x) => x.t >= o.t && x.t < point.t && x.side === o.side);
     if (!touched) card[o.side].setOverDrops++;

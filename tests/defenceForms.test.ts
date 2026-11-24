@@ -437,8 +437,10 @@ describe('the ball off the block', () => {
 
   it("below Pro your spike off the outside of an AI block's hands is wiped off it more often than an AI hitter's (playability)", () => {
     const level = 'club';
-    // an AI blocker at the pin; the ball meets the hands just over half their half-width out
-    const off = (CONTACT.blockHalfWidth * (tuningFor(level, 'theirs').userToolEdge + CONTACT.toolEdge)) / 2;
+    // an AI blocker at the pin; the ball meets the hands just over half their half-width out (a
+    // blocker's hands are its level's size, `AI.blockHands`)
+    const ai = tuningFor(level, 'theirs');
+    const off = (CONTACT.blockHalfWidth * ai.blockHands * (ai.userToolEdge + CONTACT.toolEdge)) / 2;
     const yours = blockAt(22, { at: 3, off, user: true, level });
     const theirs = blockAt(22, { at: 3, off, level });
     expect(yours.e?.note).toBe('Tooled');
