@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { AI, BALL, CONTACT, COURT, PLAYER, SIM, TIMING } from '../src/config';
 import { Athlete, type PassForm } from '../src/game/athlete';
-import { applyLevel } from '../src/core/level';
+import { tuningFor } from '../src/core/level';
+import type { LevelId } from '../src/config';
 import { ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
 import { Rng, yawFromDir } from '../src/core/mathx';
 import { makeBall, stepBall, type V3 } from '../src/physics/ball';
@@ -357,7 +358,7 @@ describe('getting it over on three (CONTACT.passPower, CONTACT.overControl)', ()
  * A home blocker at the net jumps and puts the hands up; at the top of the jump their attack (side
  * -1) comes into the hands at `speed` m/s. Returns the block's contact and the ball's velocity off it.
  */
-function blockAt(speed: number, opts: { at?: number; off?: number; user?: boolean } = {}) {
+function blockAt(speed: number, opts: { at?: number; off?: number; user?: boolean; level?: LevelId } = {}) {
   const state = makeBall();
   const hitter = new Athlete('OH', -1);
   hitter.isUser = opts.user ?? false;
@@ -393,6 +394,8 @@ function blockAt(speed: number, opts: { at?: number; off?: number; user?: boolea
   } satisfies ContactHost;
   const cs = new ContactSystem(host);
   const a = new Athlete('MB', 1);
+  // (an AI blocker of the other team at that level)
+  a.ai = tuningFor(opts.level ?? 'pro', 'theirs');
   a.place(opts.at ?? 0, 0.45, 0);
   a.jumpPress();
   let act: ReturnType<Athlete['startAction']> | null = null;
@@ -432,14 +435,12 @@ describe('the ball off the block', () => {
     expect(hard.e.note).not.toBe('Off the block');
   });
 
-  afterEach(() => applyLevel('pro'));
-
   it("below Pro your spike off the outside of an AI block's hands is wiped off it more often than an AI hitter's (playability)", () => {
-    applyLevel('club');
+    const level = 'club';
     // an AI blocker at the pin; the ball meets the hands just over half their half-width out
-    const off = (CONTACT.blockHalfWidth * (CONTACT.userToolEdge + CONTACT.toolEdge)) / 2;
-    const yours = blockAt(22, { at: 3, off, user: true });
-    const theirs = blockAt(22, { at: 3, off });
+    const off = (CONTACT.blockHalfWidth * (tuningFor(level, 'theirs').userToolEdge + CONTACT.toolEdge)) / 2;
+    const yours = blockAt(22, { at: 3, off, user: true, level });
+    const theirs = blockAt(22, { at: 3, off, level });
     expect(yours.e?.note).toBe('Tooled');
     expect(Math.abs(yours.v.x)).toBeGreaterThan(3);
     expect(theirs.e?.kind).toBe('block');
@@ -447,8 +448,8 @@ describe('the ball off the block', () => {
   });
 
   it("at Pro your spike off the block is wiped off it no more than an AI hitter's: the same hands, the same edge", () => {
-    applyLevel('pro');
-    expect([CONTACT.userToolEdge, CONTACT.userToolEdgeP]).toEqual([CONTACT.toolEdge, CONTACT.toolEdgeP]);
+    const pro = tuningFor('pro', 'theirs');
+    expect([pro.userToolEdge, pro.userToolEdgeP]).toEqual([CONTACT.toolEdge, CONTACT.toolEdgeP]);
     // just inside the tool edge: a block for both
     const off = CONTACT.blockHalfWidth * (CONTACT.toolEdge - 0.05);
     const yours = blockAt(22, { at: 3, off, user: true });

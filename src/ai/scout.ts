@@ -1,4 +1,4 @@
-import { AI, COURT } from '../config';
+import { COURT, type AiTuning } from '../config';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
 import type { AiHost } from '../game/brains';
@@ -19,6 +19,9 @@ export class Scout {
   readonly passes = new Map<Athlete, { n: number; off: number }>();
   private passRef: Touch | null = null;
 
+  /** `ai`: the scouting team's level (how fast it learns, `AI.wing.scout`) */
+  constructor(private readonly ai: AiTuning) {}
+
   /**
    * Note their serve-receive pass `t`: how far off their setter's spot it came down (m; one nobody
    * could set counts as `AI.serve.worstPass`). Anyone watching sees it; each pass counts once.
@@ -28,7 +31,7 @@ export class Scout {
     this.passRef = t;
     const p = this.passes.get(t.athlete) ?? { n: 0, off: 0 };
     p.n++;
-    p.off += Math.min(AI.serve.worstPass, off);
+    p.off += Math.min(this.ai.serve.worstPass, off);
     this.passes.set(t.athlete, p);
   }
 
@@ -53,7 +56,7 @@ export class Scout {
 
   /** our read of their hitter `h`; one we have not seen yet (or nobody), `scoutStart` */
   crossOf(h: Athlete | null): number {
-    return (h && this.cross.get(h)) ?? AI.wing.scoutStart;
+    return (h && this.cross.get(h)) ?? this.ai.wing.scoutStart;
   }
 
   /**
@@ -68,11 +71,11 @@ export class Scout {
     this.shotRef = lt;
     const h = lt.athlete;
     const { pos } = g.ball;
-    if (!h || attackKind(pos.x, Math.abs(pos.z)) !== 'pin') return;
+    if (!h || attackKind(this.ai, pos.x, Math.abs(pos.z)) !== 'pin') return;
     const pred = g.ball.ensurePrediction(g.env, g.simTime);
     if (pred.landT < 0 || Math.sign(pred.land.z) !== side) return;
-    const line = Math.sign(pos.x) * pred.land.x > COURT.halfWidth - AI.defence.lineLane;
+    const line = Math.sign(pos.x) * pred.land.x > COURT.halfWidth - this.ai.defence.lineLane;
     const seen = this.crossOf(h);
-    this.cross.set(h, seen + AI.wing.scout * ((line ? 0 : 1) - seen));
+    this.cross.set(h, seen + this.ai.wing.scout * ((line ? 0 : 1) - seen));
   }
 }

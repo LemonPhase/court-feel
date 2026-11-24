@@ -57,7 +57,7 @@ function homeTeam(pos: PositionId) {
     setBrain() {},
     contact: { lastSet: null },
   };
-  const team = new TeamAI(1, g as unknown as AiHost);
+  const team = new TeamAI(1, g as unknown as AiHost, AI);
   const me = new Athlete(pos, 1);
   me.isUser = true;
   for (const slot of SLOTS) {

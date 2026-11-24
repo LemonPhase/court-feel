@@ -1,106 +1,195 @@
 import type { LevelId } from '../src/config';
+import { tuningFor } from '../src/core/level';
+import type { TeamAI } from '../src/ai/team';
+import type { MiniRally } from '../src/game/modes/miniRally';
 import { headlessGame } from './headlessGame';
 
-/** how an attack ended */
-export type AttackEnd = 'kill' | 'stuffed' | 'error' | 'kept';
-
-export interface LevelStats {
-  level: LevelId;
-  seconds: number;
-  points: number;
+/** one team's side of a level card: what it did over the rallies */
+export interface TeamCard {
+  /** points it won */
+  won: number;
+  /** its attacks (spikes and tips) that ended before the probe stopped */
   attacks: number;
-  /** each attack's end, counted */
-  ends: Record<AttackEnd, number>;
-  /** attacks whose next touch by the other side was a block */
-  touchedBlock: number;
-  /** attacks that were tips (a soft touch over the block) */
+  /** of those: won straight off the attack, out or in the net, stuffed by the block, kept in play by the other side */
+  kills: number;
+  errors: number;
+  stuffed: number;
+  kept: number;
+  /** its attacks that were tips, and of those the kills */
   tips: number;
-  /** attacks by a middle (the quick) */
+  tipKills: number;
+  /** its quick attacks (by the middle) */
   quicks: number;
-  /** each point's call from the banner (KILL, OUT, BLOCKED, ...) */
-  reasons: Record<string, number>;
-  /** every touch by kind (pass, dig, set, spike, tip, block, free, serve, ...) */
-  kinds: Record<string, number>;
-  /** dives by AI players */
+  /** its sets, and those its setter made in system */
+  sets: number;
+  inSystem: number;
+  /** dives by its players */
   dives: number;
-  /** third balls sent over with the arms or the hands, not attacked: a set, then a pass by the same side */
+  /** third balls it sent over without attacking: a set, then a pass by the same side */
   freeOvers: number;
+  /** high balls its hitters set back over with the hands, and of those, the ones nobody played */
+  setOvers: number;
+  setOverDrops: number;
 }
 
+export interface LevelCard {
+  level: LevelId;
+  seconds: number;
+  seed: number;
+  points: number;
+  /** your team (your slot played by a Pro stand-in) and theirs */
+  yours: TeamCard;
+  theirs: TeamCard;
+  /** your own attacks (the stand-in's): how many, and how many were kills, errors, stuffed */
+  you: { attacks: number; kills: number; errors: number; stuffed: number };
+}
+
+const blank = (): TeamCard => ({
+  won: 0,
+  attacks: 0,
+  kills: 0,
+  errors: 0,
+  stuffed: 0,
+  kept: 0,
+  tips: 0,
+  tipKills: 0,
+  quicks: 0,
+  sets: 0,
+  inSystem: 0,
+  dives: 0,
+  freeOvers: 0,
+  setOvers: 0,
+  setOverDrops: 0,
+});
+
 /**
- * All-AI Mini Rally at `level` (both teams, the user's slot played by the AI) for `seconds` of play
- * on the simulation's own clock, read from the touch log and the point banners. An attack is a spike
- * or a tip; it is a kill when the attacking side wins the next point without touching the ball again,
- * stuffed when the other side's block is the only touch before they win it, an error when the other
- * side wins it without touching it, and kept otherwise.
+ * An all-AI Mini Rally at `level` for `seconds` on the simulation's clock, seeded, read from the
+ * touch log, the point banners and the two teams. Your slot (the opposite) is played by the AI as a
+ * Pro: the stand-in for a player who hits as hard and as well as they can, so the card shows what
+ * your attack does against the level. An attack is a spike or a tip: a kill when its side wins the next point without
+ * touching the ball again and the other side never kept it up, stuffed when only their block
+ * touched it before they won the point, an error when the other side won it without a touch, and
+ * kept otherwise (the other side dug it, whoever won the rally).
  */
-export function playLevel(level: LevelId, seconds: number, seed = 2024): LevelStats {
-  const game = headlessGame('rally', 'OH', seed, { level, autoUser: true });
+export function playLevel(level: LevelId, seconds: number, seed = 2024): LevelCard {
+  const game = headlessGame('rally', 'OPP', seed, { level, autoUser: true });
+  const mode = game.mode as MiniRally;
+  // you: a Pro in your team's slot (the AI plays it; its brain took your team's numbers when it was made)
+  const me = game.host.me;
+  me.ai = tuningFor('pro', 'yours');
+  const mine = mode.home.brains.get(me)!;
+  mine.hitter!.skill = me.ai.hitterSkill;
+  mine.hitter!.tipChance = me.ai.tipChance;
+  const you = { attacks: 0, kills: 0, errors: 0, stuffed: 0 };
+  const teams: Record<1 | -1, TeamAI> = { 1: mode.home, [-1]: mode.away };
+  const card: Record<1 | -1, TeamCard> = { 1: blank(), [-1]: blank() };
   const events: { t: number; side: 1 | -1; kind: string; role: string }[] = [];
-  const points: { t: number; winner: 1 | -1; reason: string }[] = [];
+  const points: { t: number; winner: 1 | -1 }[] = [];
+  const overs: { t: number; side: 1 | -1; role: string }[] = [];
+  const seenOver = new Map<unknown, unknown>();
+  const diving = new Set<unknown>();
   let seenTouches = 0;
   let seenSaid = 0;
-  let dives = 0;
-  const diving = new Set<unknown>();
-  const frames = Math.round(seconds * 60);
-  for (let i = 0; i < frames; i++) {
+  for (let i = 0, frames = Math.round(seconds * 60); i < frames; i++) {
     game.frame();
     for (const a of game.sim.athletes) {
       if (a.state === 'dive' && !diving.has(a)) {
         diving.add(a);
-        dives++;
+        card[a.side].dives++;
       } else if (a.state !== 'dive') diving.delete(a);
     }
     for (; seenTouches < game.touches.length; seenTouches++) {
       // "12.3456 OHH spike Perfect" or "12.3456 SA set ai"
       const [t, who, kind] = game.touches[seenTouches].split(' ');
-      events.push({ t: Number(t), side: who.endsWith('H') ? 1 : -1, kind, role: who.slice(0, -1) });
+      const side = who.endsWith('H') ? 1 : -1;
+      events.push({ t: Number(t), side, kind, role: who.slice(0, -1) });
+      if (kind === 'set') {
+        card[side].sets++;
+        if (teams[side].setInSystem) card[side].inSystem++;
+      }
     }
+    for (const side of [1, -1] as const)
+      for (const [a, b] of teams[side].brains) {
+        const over = b.hitter?.setOver;
+        if (over && seenOver.get(a) !== over) {
+          seenOver.set(a, over);
+          overs.push({ t: game.sim.simTime, side, role: a.role });
+        }
+      }
     for (; seenSaid < game.said.length; seenSaid++) {
-      const m = /^banner POINT (YOU|THEM) . (.+?) (good|bad)/.exec(game.said[seenSaid]);
-      if (m) points.push({ t: game.sim.simTime, winner: m[1] === 'YOU' ? 1 : -1, reason: m[2] });
+      const m = /^banner POINT (YOU|THEM) /.exec(game.said[seenSaid]);
+      if (m) points.push({ t: game.sim.simTime, winner: m[1] === 'YOU' ? 1 : -1 });
     }
   }
-  const stats: LevelStats = {
-    level,
-    seconds,
-    points: points.length,
-    attacks: 0,
-    ends: { kill: 0, stuffed: 0, error: 0, kept: 0 },
-    touchedBlock: 0,
-    tips: 0,
-    quicks: 0,
-    reasons: {},
-    kinds: {},
-    dives,
-    freeOvers: events.filter((e, i) => i > 0 && e.kind === 'pass' && events[i - 1].kind === 'set' && events[i - 1].side === e.side).length,
-  };
-  for (const p of points) stats.reasons[p.reason] = (stats.reasons[p.reason] ?? 0) + 1;
-  for (const e of events) stats.kinds[e.kind] = (stats.kinds[e.kind] ?? 0) + 1;
+  for (const p of points) card[p.winner].won++;
   events.forEach((e, i) => {
+    if (i > 0 && e.kind === 'pass' && events[i - 1].kind === 'set' && events[i - 1].side === e.side) card[e.side].freeOvers++;
     if (e.kind !== 'spike' && e.kind !== 'tip') return;
     const point = points.find((p) => p.t >= e.t);
     // (play still going when the probe stopped: not counted)
     if (!point) return;
-    stats.attacks++;
-    if (e.kind === 'tip') stats.tips++;
-    if (e.role === 'MB') stats.quicks++;
+    const c = card[e.side];
+    const isYou = e.side === 1 && e.role === 'OPP';
+    c.attacks++;
+    if (isYou) you.attacks++;
+    if (e.kind === 'tip') c.tips++;
+    if (e.role === 'MB') c.quicks++;
     const after = events.slice(i + 1).filter((x) => x.t < point.t);
     const theirs = after.filter((x) => x.side !== e.side);
-    const firstTheirs = theirs[0];
-    if (firstTheirs?.kind === 'block') stats.touchedBlock++;
     const oursAgain = after.some((x) => x.side === e.side);
-    let end: AttackEnd = 'kept';
-    if (!oursAgain && point.winner === e.side && !theirs.some((x) => x.kind !== 'block' && x.t > (firstTheirs?.t ?? 0) + 2)) end = 'kill';
-    else if (!theirs.length && point.winner !== e.side) end = 'error';
-    else if (theirs.length && theirs.every((x) => x.kind === 'block') && point.winner !== e.side && !oursAgain) end = 'stuffed';
-    // a ball the other side touched and kept in play is kept, whoever won the rally later
-    if (end === 'kill' && theirs.some((x) => x.kind !== 'block' && after.some((y) => y.side === x.side && y.t > x.t && y !== x)))
-      end = 'kept';
-    stats.ends[end]++;
+    const keptUp = theirs.some((x) => x.kind !== 'block');
+    const end =
+      !theirs.length && point.winner !== e.side
+        ? 'errors'
+        : !keptUp && !oursAgain && point.winner === e.side
+          ? 'kills'
+          : !keptUp && !oursAgain && point.winner !== e.side
+            ? 'stuffed'
+            : 'kept';
+    c[end]++;
+    if (e.kind === 'tip' && end === 'kills') c.tipKills++;
+    if (isYou && end !== 'kept') you[end]++;
   });
-  return stats;
+  for (const o of overs) {
+    const point = points.find((p) => p.t >= o.t);
+    if (!point) continue;
+    card[o.side].setOvers++;
+    const touched = events.some((x) => x.t >= o.t && x.t < point.t && x.side === o.side);
+    if (!touched) card[o.side].setOverDrops++;
+  }
+  return { level, seconds, seed, points: points.length, yours: card[1], theirs: card[-1], you };
+}
+
+/** several cards of one level as one: the counts added up (seed 0) */
+export function poolCards(cards: LevelCard[]): LevelCard {
+  const add = <T extends object>(a: T, b: T): T =>
+    Object.fromEntries(Object.entries(a).map(([k, v]) => [k, (v as number) + (b as Record<string, number>)[k]])) as T;
+  return cards.reduce((p, c) => ({
+    ...p,
+    seconds: p.seconds + c.seconds,
+    seed: 0,
+    points: p.points + c.points,
+    yours: add(p.yours, c.yours),
+    theirs: add(p.theirs, c.theirs),
+    you: add(p.you, c.you),
+  }));
 }
 
 /** a share as a whole percent */
 export const pct = (n: number, of: number): number => (of ? Math.round((100 * n) / of) : 0);
+
+/** what a level card says, team by team, in the numbers a coach would look at */
+export function cardLine(c: LevelCard): string {
+  const t = (name: string, x: TeamCard, other: TeamCard) =>
+    `${name} won ${pct(x.won, c.points)}% | attacks ${x.attacks}: kill ${pct(x.kills, x.attacks)}% err ${pct(x.errors, x.attacks)}% ` +
+    `stuffed ${pct(x.stuffed, x.attacks)}% tip ${pct(x.tips, x.attacks)}% (kill ${pct(x.tipKills, x.tips)}%) quick ${x.quicks} | in system ${pct(x.inSystem, x.sets)}% | ` +
+    `dug ${pct(other.kept, other.attacks - other.errors)}% of theirs, dives ${x.dives} | free balls ${x.freeOvers}, set over ${x.setOvers} (dropped ${x.setOverDrops})`;
+  const y = c.you;
+  const you = `  you     attacks ${y.attacks}: kill ${pct(y.kills, y.attacks)}% err ${pct(y.errors, y.attacks)}% stuffed ${pct(y.stuffed, y.attacks)}%`;
+  return [
+    `${c.level} (${c.seconds} s, ${c.seed ? `seed ${c.seed}` : 'all seeds'}, ${c.points} points)`,
+    t('  yours ', c.yours, c.theirs),
+    you,
+    t('  theirs', c.theirs, c.yours),
+  ].join('\n');
+}

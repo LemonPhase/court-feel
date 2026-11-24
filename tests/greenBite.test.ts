@@ -382,12 +382,12 @@ describe('out of system: a high ball to a pin fools nobody', () => {
     const lane = laneFor('OH', 1);
     const contact = g.contact as { lastSet: object };
     contact.lastSet = { hitter: null, target: { x: lane.x, y: 3.2, z: lane.z }, outOfSystem: true };
-    expect(greenFools(g as unknown as Game, set)).toBe(false);
+    expect(greenFools(AI, g as unknown as Game, set)).toBe(false);
     contact.lastSet = { hitter: null, target: { x: lane.x, y: 3.2, z: lane.z } };
-    expect(greenFools(g as unknown as Game, set)).toBe(true);
+    expect(greenFools(AI, g as unknown as Game, set)).toBe(true);
     // off the net to the pipe, in the middle of the court, it still has to guess
     contact.lastSet = { hitter: null, target: { x: LANES.L.x, y: 3.2, z: LANES.L.z }, outOfSystem: true };
-    expect(greenFools(g as unknown as Game, set)).toBe(true);
+    expect(greenFools(AI, g as unknown as Game, set)).toBe(true);
   });
 
   /**

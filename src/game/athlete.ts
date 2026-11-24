@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALL, COURT, PLAYER, TIMING, type Hand, type PositionId, type PositionStats } from '../config';
+import { AI, BALL, COURT, PLAYER, TIMING, type AiTuning, type Hand, type PositionId, type PositionStats } from '../config';
 import { standingReach } from './proportions';
 import { bodyStats, type CustomBody } from './body';
 import type { SetTouch } from './setTiming';
@@ -97,6 +97,11 @@ export class Athlete {
   side: 1 | -1;
   team: 0 | 1;
   isUser = false;
+  /**
+   * how this player plays when the AI plays them: its team's tuning (a level's numbers, `tuningFor`;
+   * docs/adr/0013). Every AI decision about this player reads it, never `AI` itself. Pro by default.
+   */
+  ai: AiTuning = AI;
   /** hitting hand: +1 right, -1 left (only the user's athlete can be a lefty) */
   hand: 1 | -1 = 1;
   height: number;

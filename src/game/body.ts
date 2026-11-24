@@ -1,4 +1,4 @@
-import { AI, BODY, CONTACT, POSITIONS, type BodyOverride, type PositionId, type PositionStats } from '../config';
+import { BODY, CONTACT, POSITIONS, type AiTuning, type BodyOverride, type PositionId, type PositionStats } from '../config';
 import { standingReach } from './proportions';
 import { clamp } from '../core/mathx';
 
@@ -44,19 +44,21 @@ export function bodyStats(role: PositionId, custom?: CustomBody): PositionStats 
 }
 
 /**
- * An AI player's body at the level of play (`AI.body`): its position's, with the jump, the spike
- * power and the running speeds scaled. Never the user's: your body is yours at every level.
+ * An AI player's body at its team's level of play (`ai.body`, `ai.footSpeed`): its position's,
+ * with the jump, the spike power and the running speeds scaled. Never the user's: your body is
+ * yours at every level.
  */
-export function aiStats(role: PositionId): PositionStats {
+export function aiStats(role: PositionId, ai: AiTuning): PositionStats {
   const p = POSITIONS[role];
-  const B = AI.body;
-  if (B.jump === 1 && B.power === 1 && B.speed === 1) return p;
+  const B = ai.body;
+  const S = ai.footSpeed;
+  if (B.jump === 1 && B.power === 1 && S === 1) return p;
   return {
     ...p,
     jump: p.jump * B.jump,
     power: p.power * B.power,
-    approachSpeed: p.approachSpeed * B.speed,
-    shuffleSpeed: p.shuffleSpeed * B.speed,
+    approachSpeed: p.approachSpeed * S,
+    shuffleSpeed: p.shuffleSpeed * S,
   };
 }
 

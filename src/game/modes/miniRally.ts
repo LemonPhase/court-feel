@@ -1,5 +1,5 @@
 import { AI, LEVELS } from '../../config';
-import { applyLevel } from '../../core/level';
+import { tuningFor } from '../../core/level';
 import { netYaw } from '../../ai/brain';
 import { serveAim } from '../../ai/server';
 import { PASSERS, SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
@@ -72,10 +72,10 @@ export class MiniRally extends Mode {
 
   setup(): void {
     const g = this.g;
-    // the level of play: both teams play in that league (LEVELS), set before anyone takes the court
-    applyLevel(g.settings.level);
-    this.home = new TeamAI(1, g);
-    this.away = new TeamAI(-1, g);
+    // the level of play (LEVELS): the other team plays in that league, and so do your team-mates,
+    // but for their pass and dig (YOURS_AT_PRO). Each team carries its own tuning (docs/adr/0013)
+    this.home = new TeamAI(1, g, tuningFor(g.settings.level, 'yours'));
+    this.away = new TeamAI(-1, g, tuningFor(g.settings.level, 'theirs'));
     this.home.opponents = this.away;
     this.away.opponents = this.home;
     this.home.onRead = (r) => this.setterCall(r);
@@ -92,13 +92,13 @@ export class MiniRally extends Mode {
         this.home.add(slot, g.me, !g.autoUser);
         continue;
       }
-      const a = new Athlete(SLOT_ROLE[slot], 1, { stats: aiStats(SLOT_ROLE[slot]) });
+      const a = new Athlete(SLOT_ROLE[slot], 1, { stats: aiStats(SLOT_ROLE[slot], this.home.ai) });
       g.addAthlete(a, seed++);
       this.spawned.push(a);
       this.home.add(slot, a, false);
     }
     for (const slot of SLOTS) {
-      const a = new Athlete(SLOT_ROLE[slot], -1, { stats: aiStats(SLOT_ROLE[slot]) });
+      const a = new Athlete(SLOT_ROLE[slot], -1, { stats: aiStats(SLOT_ROLE[slot], this.away.ai) });
       g.addAthlete(a, seed++);
       this.spawned.push(a);
       this.away.add(slot, a, false);
@@ -330,7 +330,7 @@ export class MiniRally extends Mode {
     if (team.touches >= 2) {
       // third contact without an attack: a free ball over, deep into their court (the AI aims it
       // where it is hard to play: a deep corner, or short over the net)
-      if (!a.isUser && a.state !== 'dive' && a.speed < AI.freeOver.aimSpeed) return team.freeOverTarget();
+      if (!a.isUser && a.state !== 'dive' && a.speed < team.ai.freeOver.aimSpeed) return team.freeOverTarget();
       return { x: (this.g.rng.next() - 0.5) * 5, y: 0.5, z: -s * 6.5, apex: 5.2 };
     }
     // an AI dive keeps the ball alive and no more: a bit up, toward the middle (a team-mate plays it)
@@ -347,7 +347,7 @@ export class MiniRally extends Mode {
     // the user as setter: their hitters at their calls. As the libero backing up the setter (who
     // played the first ball) the set is out of system: high balls to the pins, no quick, no pipe
     const backup = a !== this.home.players.get('S');
-    const far = Math.hypot(a.pos.x - SETTER_SPOT.x, a.pos.z - SETTER_SPOT.z) > AI.outOfSystem;
+    const far = Math.hypot(a.pos.x - SETTER_SPOT.x, a.pos.z - SETTER_SPOT.z) > this.home.ai.outOfSystem;
     const opts = callOptions(this.g, this.hitters, this.setterCalls, backup || this.outOfSystem || far);
     return backup ? opts.filter((o) => o.key !== 'PIPE') : opts;
   }
@@ -424,8 +424,8 @@ export class MiniRally extends Mode {
 
   teardown(): void {
     super.teardown();
-    // every other drill plays at Pro
-    applyLevel('pro');
+    // your athlete leaves the rally's team: every drill plays at Pro
+    this.g.me.ai = AI;
   }
 
   restartRep(): void {
@@ -519,8 +519,9 @@ export class MiniRally extends Mode {
           // a jump serve or a float, at the seams, the deep corners, short, the middle, at a passer (the
           // user too) or at the one their scouting says passes worst
           const passers = (['OH1', 'OH2', 'L'] as const).map((s) => recv.players.get(s)).filter((a) => a !== undefined);
-          const jump = g.rng.next() < AI.serve.jump;
+          const jump = g.rng.next() < serving.ai.serve.jump;
           const aim = serveAim(
+            serving.ai,
             passers.map((a) => a.pos),
             recv.side,
             g.rng,

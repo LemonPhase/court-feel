@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, CONTACT, TIMING } from '../config';
+import { CONTACT, TIMING, type AiTuning } from '../config';
 import { handSetAllowed } from '../game/plays';
 import type { V3 } from '../physics/ball';
 import { solveApex, solveFixedTime } from '../physics/solve';
@@ -31,7 +31,7 @@ export class SetterBrain implements Brain {
   onSet: ((call: SetCall) => void) | null = null;
   private v = new THREE.Vector3();
   private p: V3 = { x: 0, y: 0, z: 0 };
-  accuracy = AI.setterAccuracy;
+  accuracy: number;
   /** how hard this set is for a backup setter (0-1, `AI.backupSet`): it misses by that much more (never a set to the user) */
   sloppy = 0;
   /** this setter jump-sets a pass in system (the team's setter; a backup setter and the drills' feeders set from the floor) */
@@ -49,7 +49,14 @@ export class SetterBrain implements Brain {
     public athlete: Athlete,
     public base: { x: number; z: number },
     public faceYaw: number,
-  ) {}
+  ) {
+    this.accuracy = athlete.ai.setterAccuracy;
+  }
+
+  /** how this setter plays: its team's level (docs/adr/0013) */
+  private get ai(): AiTuning {
+    return this.athlete.ai;
+  }
 
   reset(): void {
     this.athlete.endAction();
@@ -111,7 +118,7 @@ export class SetterBrain implements Brain {
       if (autoSetJump(a, jump, g.simTime)) a.airIntent = 'set';
     }
     // (far from it they turn and run at it; they square up to set as they get there)
-    const far = Math.hypot(sx - a.pos.x, sz - a.pos.z) > AI.chase.turn;
+    const far = Math.hypot(sx - a.pos.x, sz - a.pos.z) > this.ai.chase.turn;
     moveTo(a, sx, sz, { face: far ? undefined : this.faceYaw, arrive: 0.35, sprintDist: 1.5 });
     const until = tc - g.simTime;
     const kindNow = this.bump ? 'pass' : 'set';
@@ -140,12 +147,12 @@ export class SetterBrain implements Brain {
     let apex = call.apex;
     const miss = call.hitter?.isUser ? 0 : this.sloppy;
     if (miss > 0 && !call.time) {
-      const M = AI.backupSet.miss;
+      const M = this.ai.backupSet.miss;
       t.x += g.rng.gauss() * M.x * miss;
       // (never over the net)
       t.z = a.side * Math.max(0.4, a.side * t.z + g.rng.gauss() * M.z * miss);
       // (however rough, it is still a high ball: the hitter has time to get to it)
-      apex = Math.max(t.y + AI.backupSet.minApex, apex + g.rng.gauss() * M.apex * miss);
+      apex = Math.max(t.y + this.ai.backupSet.minApex, apex + g.rng.gauss() * M.apex * miss);
     }
     const out = { x: 0, y: 0, z: 0 };
     const from = { x: bp.x, y: bp.y, z: bp.z };

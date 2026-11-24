@@ -1,12 +1,27 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { AI, ASSIST, BALL, CONTACT, LEVEL_IDS, LEVELS, POSITIONS, SET_LEVELS, SIM, TIMING, type LevelId } from '../src/config';
+import { describe, expect, it } from 'vitest';
+import {
+  AI,
+  ASSIST,
+  BALL,
+  CONTACT,
+  FACET_IDS,
+  FACETS,
+  LEVEL_IDS,
+  LEVELS,
+  POSITIONS,
+  SET_LEVELS,
+  SIM,
+  TIMING,
+  YOURS_AT_PRO,
+  type LevelId,
+} from '../src/config';
 import type { Guess, MiddleBlocker } from '../src/ai/middle';
 import { SLOT_ROLE, SLOTS } from '../src/ai/team';
 import type { MiniRally } from '../src/game/modes/miniRally';
 import { laneFor, SETTER_SPOT, SETTER_TARGET } from '../src/game/plays';
 import type { V3 } from '../src/physics/ball';
 import { solveApex } from '../src/physics/solve';
-import { applyLevel, currentLevel } from '../src/core/level';
+import { tuningFor } from '../src/core/level';
 import { readSpots } from '../src/ai/defence';
 import { Scout } from '../src/ai/scout';
 import { serveAim } from '../src/ai/server';
@@ -14,104 +29,227 @@ import { Rng } from '../src/core/mathx';
 import { Athlete } from '../src/game/athlete';
 import type { Touch } from '../src/game/ballEntity';
 import { headlessGame } from './headlessGame';
-import { playLevel } from './levelProbe';
+import { playLevel, type TeamCard } from './levelProbe';
 
-// Levels of play (issues #137 and #53, docs/adr/0012): a level is a league, a set of overrides of
-// named config numbers. These are the facts a level has to keep.
+// Levels of play (issues #137 and #53, docs/adr/0012 and 0013): a level is a league, written as
+// overrides of the AI's named numbers, grouped by facet (body, serve, pass, set, attack, block, dig).
+// Each team carries its own tuning: theirs plays the whole level, yours plays it too except for the
+// facets that stay Pro (`YOURS_AT_PRO`: your team passes and digs like a Pro side at every level, so
+// the points are yours to win). These are the facts a level has to keep.
 
-afterEach(() => applyLevel('pro'));
-
-/** what the game reads for `read()` at `level` */
-function at<T>(level: LevelId, read: () => T): T {
-  applyLevel(level);
-  return read();
+type Tree = Record<string, unknown>;
+const isTree = (v: unknown): v is Tree => !!v && typeof v === 'object' && !Array.isArray(v);
+/** every leaf of a tree as `path -> value` */
+function leaves(t: Tree, path = '', out = new Map<string, unknown>()): Map<string, unknown> {
+  for (const [k, v] of Object.entries(t)) {
+    if (isTree(v)) leaves(v, `${path}${k}.`, out);
+    else out.set(`${path}${k}`, v);
+  }
+  return out;
 }
+const get = (t: unknown, path: string): unknown => path.split('.').reduce<unknown>((x, k) => (isTree(x) ? x[k] : undefined), t);
 
-/** everything a level must never change, as one string */
-const fixed = () =>
-  JSON.stringify({
-    TIMING,
-    SET_LEVELS,
-    ASSIST,
-    BALL,
-    POSITIONS,
-    CONTACT: { ...CONTACT, userSpikeShank: 0, userToolEdge: 0, userToolEdgeP: 0 },
-  });
+/** every number a level tunes, at any level, and the facet it is in */
+const TUNED = new Map<string, string>();
+for (const id of LEVEL_IDS)
+  for (const [facet, over] of Object.entries(LEVELS[id].facets)) for (const path of leaves(over as Tree).keys()) TUNED.set(path, facet);
+
+/**
+ * Which way each tuned number goes as the league gets better: +1 it rises, -1 it falls, 0 it has no
+ * order (and why). A new override has to be placed here, so its direction is a decision someone
+ * made, and a change that turns a lower league into a better one somewhere fails here first.
+ */
+const LEVEL_ORDER: Record<string, 1 | -1 | 0> = {
+  // body
+  'body.jump': 1,
+  'body.power': 1,
+  // serve
+  'serve.jump': 1,
+  'serve.floatErr': -1,
+  'serve.seam': 1,
+  // (a Club server floats it deep; from National the serve goes at the seams and short instead)
+  'serve.deep': 0,
+  'serve.short': 1,
+  'serve.body': -1,
+  'serve.middle': -1,
+  'serve.weakest': 1,
+  'serve.spread': -1,
+  // set
+  setterAccuracy: -1,
+  'setWeight.outside': -1,
+  'quickWeight.good': 1,
+  'quickWeight.perfect': 1,
+  'tempo.share': 1,
+  'pipe.inSystem': 1,
+  'pipe.outOfSystem': 1,
+  'plays.free': 1,
+  'plays.receive': 1,
+  jumpSet: 1,
+  'setterSees.share': 1,
+  'setterSees.isolate': 1,
+  // attack: a lower league hits less hard, tips more and misses less (it plays it safe: the points are yours to win)
+  hitterSkill: 1,
+  attackErr: 1,
+  tipChance: -1,
+  openShotIn: 1,
+  openShotOut: 1,
+  blockAvoid: -1,
+  seamShot: 1,
+  toolShot: 1,
+  rollShot: 1,
+  recycleShot: 1,
+  'offSpeed.adjust': 1,
+  outOfSystemFree: -1,
+  userBlockMisread: -1,
+  // block
+  'middle.react': -1,
+  'middle.reactSd': -1,
+  'middle.readErr': -1,
+  'middle.commit': 1,
+  'middle.cheat': 1,
+  blockerSkill: 1,
+  'blockStuff.perfect': 1,
+  'blockStuff.good': 1,
+  'wing.scout': 1,
+  userToolEdge: 1,
+  userToolEdgeP: -1,
+  // dig
+  reactionTime: -1,
+  'defence.react': -1,
+  'defence.reactSd': -1,
+  'defence.readErr': -1,
+  'defence.hitReact': -1,
+  'defence.hitReactSd': -1,
+  'defence.offOff': 1,
+  'dive.minDist': -1,
+  'dive.anyway': 1,
+  digSkill: 1,
+  passPressure: -1,
+  'cover.share': 1,
+  footSpeed: 1,
+  userSpikeShank: -1,
+};
+
+/** everything outside the AI's tuning, which no level may change */
+const fixed = () => JSON.stringify({ AI, TIMING, SET_LEVELS, ASSIST, BALL, POSITIONS, CONTACT });
 
 describe('the levels table', () => {
-  it('Pro is the config as written: it overrides nothing', () => {
-    expect(LEVELS.pro.ai).toEqual({});
-    expect(LEVELS.pro.contact).toEqual({});
+  it('Pro is the AI table as written: it overrides nothing', () => {
+    expect(LEVELS.pro.facets).toEqual({});
+    for (const team of ['yours', 'theirs'] as const) expect(tuningFor('pro', team)).toEqual(AI);
   });
 
-  it('every number a level overrides exists in AI, with the same type', () => {
-    const pro = at('pro', () => structuredClone(AI)) as Record<string, unknown>;
-    const check = (over: Record<string, unknown>, base: Record<string, unknown>, path: string) => {
-      for (const [k, v] of Object.entries(over)) {
-        expect(base, `${path}${k}`).toHaveProperty(k);
-        const b = base[k];
-        if (v && typeof v === 'object' && !Array.isArray(v))
-          check(v as Record<string, unknown>, b as Record<string, unknown>, `${path}${k}.`);
-        else expect(typeof v, `${path}${k}`).toBe(typeof b);
+  it('every number belongs to one facet at most', () => {
+    const keys = FACET_IDS.flatMap((f) => [...FACETS[f]]);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const k of keys) expect(AI, k).toHaveProperty(k);
+  });
+
+  it("a level's facet only overrides that facet's numbers, and each exists in AI with the same type", () => {
+    for (const id of LEVEL_IDS)
+      for (const [facet, over] of Object.entries(LEVELS[id].facets)) {
+        for (const k of Object.keys(over as Tree))
+          expect((FACETS as Record<string, readonly string[]>)[facet], `${id}.${facet}.${k}`).toContain(k);
+        for (const [path, v] of leaves(over as Tree)) expect(typeof v, `${id}: ${path}`).toBe(typeof get(AI, path));
       }
-    };
-    for (const id of LEVEL_IDS) check(LEVELS[id].ai as Record<string, unknown>, pro, `${id}: AI.`);
   });
 
-  it('a level never changes a timing window, the ball, a body of yours or an assist: only the opposition', () => {
-    const pro = at('pro', fixed);
-    for (const id of LEVEL_IDS) expect(at(id, fixed), id).toBe(pro);
+  it('every tuned number has a direction in LEVEL_ORDER, and LEVEL_ORDER names nothing a level does not tune', () => {
+    expect(
+      [...TUNED.keys()].filter((p) => !(p in LEVEL_ORDER)),
+      'missing',
+    ).toEqual([]);
+    expect(
+      Object.keys(LEVEL_ORDER).filter((p) => !TUNED.has(p)),
+      'stale',
+    ).toEqual([]);
   });
 
-  it('putting a level on and Pro back leaves every number as config wrote it', () => {
-    const pro = at('pro', () => JSON.stringify({ AI, CONTACT }));
-    for (const id of LEVEL_IDS) applyLevel(id);
-    expect(at('pro', () => JSON.stringify({ AI, CONTACT }))).toBe(pro);
-    expect(currentLevel()).toBe('pro');
-  });
-
-  it('going up a level the AI is never slower, never reads worse and never has a smaller body', () => {
-    // [what, how the game reads it, +1: higher is better, -1: lower is better]
-    const better: [string, () => number, 1 | -1][] = [
-      ['reaction', () => AI.reactionTime, -1],
-      ['set read', () => AI.defence.react, -1],
-      ['hit read', () => AI.defence.hitReact, -1],
-      ['read error', () => AI.defence.readErr, -1],
-      ['middle reaction', () => AI.middle.react, -1],
-      ['middle read error', () => AI.middle.readErr, -1],
-      ['blocker', () => AI.blockerSkill, 1],
-      ['defender', () => AI.defenderSkill, 1],
-      ['hitter', () => AI.hitterSkill, 1],
-      ['hitting error', () => AI.attackErr, -1],
-      ['setter error', () => AI.setterAccuracy, -1],
-      ['jump', () => AI.body.jump, 1],
-      ['power', () => AI.body.power, 1],
-      ['speed', () => AI.body.speed, 1],
-      ['stuff', () => AI.blockStuff.perfect, 1],
-      ['open spot', () => AI.openShotIn, 1],
-      ['scout', () => AI.wing.scout, 1],
-      ['jump serves', () => AI.serve.jump, 1],
-      ['fast sets', () => AI.tempo.share, 1],
-      ['cover', () => AI.cover.share, 1],
-      ['dives', () => AI.dive.anyway, 1],
-    ];
-    for (const [what, read, sign] of better)
+  it('going up a league every tuned number moves the way LEVEL_ORDER says, or stays', () => {
+    const tunings = LEVEL_IDS.map((id) => tuningFor(id, 'theirs'));
+    for (const [path, sign] of Object.entries(LEVEL_ORDER)) {
+      if (!sign) continue;
       for (let i = 1; i < LEVEL_IDS.length; i++) {
-        const lower = at(LEVEL_IDS[i - 1], read);
-        const upper = at(LEVEL_IDS[i], read);
-        expect(sign * (upper - lower), `${what}: ${LEVEL_IDS[i - 1]} to ${LEVEL_IDS[i]}`).toBeGreaterThanOrEqual(0);
+        const lower = Number(get(tunings[i - 1], path));
+        const upper = Number(get(tunings[i], path));
+        expect(sign * (upper - lower), `${path}: ${LEVEL_IDS[i - 1]} to ${LEVEL_IDS[i]}`).toBeGreaterThanOrEqual(0);
       }
+    }
   });
 
-  it('the bends toward you are off at Pro and grow as the level drops (a Rec team shanks your hard spike for real)', () => {
-    const bends = () => [CONTACT.userSpikeShank, AI.userBlockMisread, -CONTACT.userToolEdge, CONTACT.userToolEdgeP];
-    const pro = at('pro', bends);
-    expect(pro).toEqual([0, 0, -CONTACT.toolEdge, CONTACT.toolEdgeP]);
-    for (let i = 1; i < LEVEL_IDS.length; i++) {
-      const lower = at(LEVEL_IDS[i - 1], bends);
-      const upper = at(LEVEL_IDS[i], bends);
-      lower.forEach((v, k) => expect(v, `${LEVEL_IDS[i - 1]} ${k}`).toBeGreaterThanOrEqual(upper[k]));
+  it('the bends toward you are off at Pro: their diggers never shank your spike more than the sport does', () => {
+    const pro = tuningFor('pro', 'theirs');
+    expect([pro.userSpikeShank, pro.userBlockMisread, pro.userToolEdge, pro.userToolEdgeP]).toEqual([
+      0,
+      0,
+      CONTACT.toolEdge,
+      CONTACT.toolEdgeP,
+    ]);
+  });
+});
+
+describe('each team carries its own tuning', () => {
+  it('a tuning is a new copy every time: changing one never changes AI, another team or another level', () => {
+    const before = fixed();
+    const a = tuningFor('rec', 'theirs');
+    const b = tuningFor('rec', 'theirs');
+    expect(a).not.toBe(b);
+    a.serve.jump = 0.99;
+    a.defence.react = 9;
+    expect(b.serve.jump).toBe(0);
+    expect(tuningFor('rec', 'yours').defence.react).toBe(AI.defence.react);
+    expect(fixed()).toBe(before);
+  });
+
+  it('a Rec rally leaves every config table as it was written', () => {
+    const before = fixed();
+    const game = headlessGame('rally', 'OH', 7, { level: 'rec', autoUser: true });
+    for (let i = 0; i < 60 * 20; i++) game.frame();
+    game.mode.teardown();
+    expect(fixed()).toBe(before);
+    expect(game.host.me.ai).toBe(AI);
+  });
+
+  it('your team passes and digs like a Pro side at every level; theirs passes and digs at the level', () => {
+    for (const id of LEVEL_IDS) {
+      const yours = tuningFor(id, 'yours');
+      const theirs = tuningFor(id, 'theirs');
+      for (const f of YOURS_AT_PRO) for (const k of FACETS[f]) expect(yours[k], `${id} yours ${k}`).toEqual(AI[k]);
+      for (const [path, f] of TUNED) {
+        const over = get(LEVELS[id].facets[f as keyof typeof LEVELS.rec.facets], path);
+        if (over === undefined) continue;
+        expect(get(theirs, path), `${id} theirs ${path}`).toEqual(over);
+        if (!YOURS_AT_PRO.includes(f as (typeof YOURS_AT_PRO)[number])) expect(get(yours, path), `${id} yours ${path}`).toEqual(over);
+      }
     }
+  });
+
+  it('the Mini Rally gives each team its tuning, and every AI player its team’s', () => {
+    const game = headlessGame('rally', 'OH', 2024, { level: 'rec' });
+    const mode = game.mode as MiniRally;
+    expect(mode.home.ai).toEqual(tuningFor('rec', 'yours'));
+    expect(mode.away.ai).toEqual(tuningFor('rec', 'theirs'));
+    for (const a of game.sim.athletes) expect(a.ai, `${a.role} ${a.side}`).toBe(a.side === 1 ? mode.home.ai : mode.away.ai);
+    game.mode.teardown();
+  });
+
+  it("an AI player plays with its team's body: theirs at the level, your team's runs at Pro speed; yours is your own", () => {
+    const game = headlessGame('rally', 'OH', 2024, { level: 'rec' });
+    const rec = LEVELS.rec.facets;
+    const ohs = (side: 1 | -1) => game.sim.athletes.filter((a) => a !== game.seat.athlete && a.role === 'OH' && a.side === side);
+    expect(ohs(-1).length).toBeGreaterThan(0);
+    expect(ohs(1).length).toBeGreaterThan(0);
+    for (const a of ohs(-1)) {
+      expect(a.stats.jump).toBeCloseTo(POSITIONS.OH.jump * rec.body!.body!.jump!, 6);
+      expect(a.stats.approachSpeed).toBeCloseTo(POSITIONS.OH.approachSpeed * rec.dig!.footSpeed!, 6);
+    }
+    for (const a of ohs(1)) {
+      expect(a.stats.jump).toBeCloseTo(POSITIONS.OH.jump * rec.body!.body!.jump!, 6);
+      expect(a.stats.approachSpeed).toBeCloseTo(POSITIONS.OH.approachSpeed, 6);
+    }
+    expect(game.seat.athlete.stats.jump).toBe(POSITIONS.OH.jump);
+    expect(game.seat.athlete.stats.power).toBe(POSITIONS.OH.power);
+    game.mode.teardown();
   });
 });
 
@@ -123,26 +261,26 @@ describe('a level is a league: what its players do', () => {
   ];
 
   it('a Rec server just gets it in: mostly the middle of the court, never a seam, a corner or short', () => {
-    applyLevel('rec');
+    const ai = tuningFor('rec', 'theirs');
     const rng = new Rng(5);
     let middle = 0;
     for (let i = 0; i < 400; i++) {
-      const p = serveAim(passers, -1, rng, false, passers[2]);
+      const p = serveAim(ai, passers, -1, rng, false, passers[2]);
       if (Math.abs(p.x) < 2.5 && Math.abs(-p.z - 4.5) < 2.5) middle++;
     }
     expect(middle / 400).toBeGreaterThan(0.6);
-    expect([AI.serve.seam, AI.serve.deep, AI.serve.short, AI.serve.weakest]).toEqual([0, 0, 0, 0]);
+    expect([ai.serve.seam, ai.serve.deep, ai.serve.short, ai.serve.weakest]).toEqual([0, 0, 0, 0]);
   });
 
   it('a Pro server goes at the passer who has passed worst; a National one does not look', () => {
     const near = (p: { x: number; z: number }, q: { x: number; z: number }) => Math.hypot(p.x - q.x, -p.z - q.z) < 1.2;
     const count = (level: LevelId) => {
-      applyLevel(level);
+      const ai = tuningFor(level, 'theirs');
       const rng = new Rng(9);
       let worst = 0;
       let other = 0;
       for (let i = 0; i < 600; i++) {
-        const p = serveAim(passers, -1, rng, false, passers[2]);
+        const p = serveAim(ai, passers, -1, rng, false, passers[2]);
         if (near(p, passers[2])) worst++;
         if (near(p, passers[0])) other++;
       }
@@ -153,7 +291,7 @@ describe('a level is a league: what its players do', () => {
   });
 
   it("the server's team scouts their passers: the one whose passes came down furthest off the setter's spot, once two passes are seen", () => {
-    const scout = new Scout();
+    const scout = new Scout(AI);
     const a = new Athlete('OH', -1);
     const b = new Athlete('L', -1);
     const pass = (who: Athlete, t: number): Touch => ({ athlete: who, kind: 'pass', t, side: -1 });
@@ -168,25 +306,11 @@ describe('a level is a league: what its players do', () => {
   });
 
   it('at Rec and Club the off-blocker stays at the net, so the tip behind the block is open; from National it drops to cover it', () => {
-    const off = (level: LevelId) => at(level, () => readSpots({ x: 3.5, off: 0.5, kind: 'pin' }).OH1!.z);
+    const off = (level: LevelId) => readSpots(tuningFor(level, 'theirs'), { x: 3.5, off: 0.5, kind: 'pin' }).OH1!.z;
     expect(off('rec')).toBeLessThan(1.5);
     expect(off('club')).toBeLessThan(1.5);
     expect(off('national')).toBeGreaterThan(2.5);
     expect(off('pro')).toBeGreaterThan(2.5);
-  });
-
-  it("an AI player plays with its level's body; yours is your own at every level", () => {
-    const game = headlessGame('rally', 'OH', 2024, { level: 'rec' });
-    const them = game.sim.athletes.filter((a) => a !== game.seat.athlete && a.role === 'OH');
-    expect(them.length).toBeGreaterThan(0);
-    for (const a of them) {
-      expect(a.stats.jump).toBeCloseTo(POSITIONS.OH.jump * LEVELS.rec.ai.body!.jump!, 6);
-      expect(a.stats.approachSpeed).toBeCloseTo(POSITIONS.OH.approachSpeed * LEVELS.rec.ai.body!.speed!, 6);
-    }
-    expect(game.seat.athlete.stats.jump).toBe(POSITIONS.OH.jump);
-    expect(game.seat.athlete.stats.power).toBe(POSITIONS.OH.power);
-    game.mode.teardown();
-    expect(currentLevel()).toBe('pro');
   });
 });
 
@@ -248,7 +372,7 @@ describe("the setter's look across the net", () => {
     const reads = weights();
     t.middleShows('quick');
     const away = weights();
-    expect(away.MB).toBeCloseTo(reads.MB * AI.setterSees.away, 6);
+    expect(away.MB).toBeCloseTo(reads.MB * t.us.ai.setterSees.away, 6);
     expect(away.OH1).toBeCloseTo(reads.OH1, 6);
   });
 
@@ -279,24 +403,40 @@ describe("the setter's look across the net", () => {
   });
 });
 
-// (150 s a level keeps the suite quick, and the rally is seeded, so it plays the same every run;
-// the stuff rate is too rare to rank on so few attacks: `blockStuff` going up is held above)
-describe('a league against itself (all-AI Mini Rally, 150 s a level)', () => {
-  const rec = playLevel('rec', 150, 7);
-  const pro = playLevel('pro', 150, 7);
+// (400 s a level keeps the suite quick, and the rally is seeded, so it plays the same every run. One
+// seed is a few dozen points: these are the facts that hold by a wide margin. `npm run levels` plays
+// an hour a level on four seeds and prints the whole card, for tuning)
+describe('a league against your team (all-AI Mini Rally, 400 s a level, your slot a Pro stand-in)', () => {
+  const rec = playLevel('rec', 400, 7);
+  const pro = playLevel('pro', 400, 7);
+  const share = (n: number, of: number) => (of ? n / of : 0);
+  const tips = (t: TeamCard) => share(t.tips, t.attacks);
+  const kills = (t: TeamCard) => share(t.kills, t.attacks);
 
-  it('a Rec setter never sets a quick, and a Rec team never dives', () => {
-    expect(rec.quicks).toBe(0);
-    expect(rec.dives).toBe(0);
-    expect(pro.quicks).toBeGreaterThan(0);
-    expect(pro.dives).toBeGreaterThan(0);
+  it('a Rec side tips far more than a Pro one, and hardly ever hits out or into the net', () => {
+    expect(tips(rec.theirs)).toBeGreaterThan(2 * tips(pro.theirs));
+    expect(share(rec.theirs.errors, rec.theirs.attacks)).toBeLessThan(0.05);
   });
 
-  it('a Rec hitter puts more balls out and into the net than a Pro one', () => {
-    expect(rec.ends.error / rec.attacks).toBeGreaterThan(pro.ends.error / pro.attacks);
+  it('a Rec side’s attack kills far less often than a Pro one’s: the points are yours to win', () => {
+    expect(kills(rec.theirs)).toBeLessThan(0.7 * kills(pro.theirs));
   });
 
-  it('a Rec team digs far fewer attacks than a Pro one', () => {
-    expect(rec.kinds.dig ?? 0).toBeLessThan((pro.kinds.dig ?? 0) / 2);
+  it('at Rec both teams pass well: most sets are in system', () => {
+    expect(share(rec.yours.inSystem, rec.yours.sets)).toBeGreaterThan(0.6);
+    expect(share(rec.theirs.inSystem, rec.theirs.sets)).toBeGreaterThan(0.6);
+  });
+
+  it('a Rec setter never sets a quick and a Rec side never dives; at Pro both happen', () => {
+    // (both setters set at the level; your team digs at Pro, so only theirs never dives)
+    expect(rec.theirs.quicks + rec.yours.quicks).toBe(0);
+    expect(rec.theirs.dives).toBe(0);
+    expect(pro.theirs.quicks + pro.yours.quicks).toBeGreaterThan(0);
+    expect(pro.theirs.dives).toBeGreaterThan(0);
+  });
+
+  it('a Rec hitter who cannot hit a ball sets it back over with the hands, and somebody plays it', () => {
+    expect(rec.theirs.setOvers + rec.yours.setOvers).toBeGreaterThan(0);
+    expect(rec.theirs.setOverDrops + rec.yours.setOverDrops).toBe(0);
   });
 });

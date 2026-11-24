@@ -31,7 +31,7 @@ function net(seed = 1, midX: number | null = null) {
   mid.place(midX ?? 0, midX === null ? 3 : 0.45, 0);
   const reads = new Map<Athlete, number>();
   // our team's scouting report: the team watches every spike of theirs (as TeamAI does), the wings read it
-  const scout = new Scout();
+  const scout = new Scout(AI);
   let by: Athlete | null = null;
   const wing = (x: number) => {
     const a = new Athlete(x > 0 ? 'OPP' : 'OH', 1);
@@ -157,50 +157,50 @@ function net(seed = 1, midX: number | null = null) {
 
 describe('where a pin blocker goes up (Mini Rally, AI.wing)', () => {
   it('on its hitter wherever it hits from, inside or out: square on the ball against a hitter it does not know, out to the antenna at most', () => {
-    expect(wingSpot(4.0, 0.9, 1)).toBeCloseTo(4.0, 9);
-    expect(wingSpot(-4.0, 0.9, -1)).toBeCloseTo(-4.0, 9);
+    expect(wingSpot(AI, 4.0, 0.9, 1)).toBeCloseTo(4.0, 9);
+    expect(wingSpot(AI, -4.0, 0.9, -1)).toBeCloseTo(-4.0, 9);
     // a hitter 1.2 m inside the pin's base spot: the pin goes in with it
-    expect(wingSpot(1.8, 0.9, 1)).toBeCloseTo(1.8, 9);
+    expect(wingSpot(AI, 1.8, 0.9, 1)).toBeCloseTo(1.8, 9);
     // a set wide of the antenna: the ball has to come back inside it
-    expect(wingSpot(5.2, 0.9, 1)).toBeCloseTo(AI.wing.outMax, 9);
+    expect(wingSpot(AI, 5.2, 0.9, 1)).toBeCloseTo(AI.wing.outMax, 9);
     expect(AI.wing.outMax).toBeLessThan(COURT.halfWidth);
   });
 
   it('against a hitter who hits line it takes the line, against one who hits cross it takes the cross; the ball always on its hands', () => {
     // their outside on our right, their opposite on our left
-    expect(wingSpot(4.0, 0.9, 1, null, 0)).toBeCloseTo(4.0 + AI.defence.shade, 9);
-    expect(wingSpot(4.0, 0.9, 1, null, 1)).toBeCloseTo(4.0 - AI.defence.shade, 9);
-    expect(wingSpot(-4.0, 0.9, -1, null, 0)).toBeCloseTo(-4.0 - AI.defence.shade, 9);
-    expect(wingSpot(-4.0, 0.9, -1, null, 1)).toBeCloseTo(-4.0 + AI.defence.shade, 9);
+    expect(wingSpot(AI, 4.0, 0.9, 1, null, 0)).toBeCloseTo(4.0 + AI.defence.shade, 9);
+    expect(wingSpot(AI, 4.0, 0.9, 1, null, 1)).toBeCloseTo(4.0 - AI.defence.shade, 9);
+    expect(wingSpot(AI, -4.0, 0.9, -1, null, 0)).toBeCloseTo(-4.0 - AI.defence.shade, 9);
+    expect(wingSpot(AI, -4.0, 0.9, -1, null, 1)).toBeCloseTo(-4.0 + AI.defence.shade, 9);
     // a hitter who mixes them: in between
-    expect(wingSpot(4.0, 0.9, 1, null, 0.25)).toBeCloseTo(4.0 + AI.defence.shade / 2, 9);
+    expect(wingSpot(AI, 4.0, 0.9, 1, null, 0.25)).toBeCloseTo(4.0 + AI.defence.shade / 2, 9);
     // however far it shades, the ball is inside its hands
     expect(AI.defence.shade).toBeLessThan(AI.defence.handHalf);
     // and never past the antenna
-    expect(wingSpot(4.2, 0.9, 1, null, 0)).toBeCloseTo(AI.wing.outMax, 9);
+    expect(wingSpot(AI, 4.2, 0.9, 1, null, 0)).toBeCloseTo(AI.wing.outMax, 9);
   });
 
   it('an inside ball on its half: beside the middle, a double block', () => {
-    expect(wingSpot(1.0, 0.8, 1)).toBeCloseTo(1.0 + AI.middle.closeGap, 9);
+    expect(wingSpot(AI, 1.0, 0.8, 1)).toBeCloseTo(1.0 + AI.middle.closeGap, 9);
   });
 
   it('the pipe: both wings close beside the middle, whichever half it is hit on', () => {
     const x = LANES.L.x;
-    expect(wingSpot(x, LANES.L.z, 1)).toBeCloseTo(x + AI.middle.closeGap, 9);
-    expect(wingSpot(x, LANES.L.z, -1)).toBeCloseTo(x - AI.middle.closeGap, 9);
+    expect(wingSpot(AI, x, LANES.L.z, 1)).toBeCloseTo(x + AI.middle.closeGap, 9);
+    expect(wingSpot(AI, x, LANES.L.z, -1)).toBeCloseTo(x - AI.middle.closeGap, 9);
   });
 
   it('beside the middle it closes on our middle where it is at the net, hands to hands, not on the ball', () => {
-    expect(wingSpot(LANES.L.x, LANES.L.z, 1, 0.3)).toBeCloseTo(0.3 + AI.middle.closeGap, 9);
-    expect(wingSpot(1.0, 0.8, 1, 0.7)).toBeCloseTo(0.7 + AI.middle.closeGap, 9);
+    expect(wingSpot(AI, LANES.L.x, LANES.L.z, 1, 0.3)).toBeCloseTo(0.3 + AI.middle.closeGap, 9);
+    expect(wingSpot(AI, 1.0, 0.8, 1, 0.7)).toBeCloseTo(0.7 + AI.middle.closeGap, 9);
     // its own hitter's pin set: on the hitter, wherever the middle is (never closing the gap to it)
-    expect(wingSpot(4.0, 0.9, 1, 0.3)).toBeCloseTo(4.0, 9);
-    expect(wingSpot(4.0, 0.9, 1, 3.4, 0)).toBeCloseTo(4.0 + AI.defence.shade, 9);
+    expect(wingSpot(AI, 4.0, 0.9, 1, 0.3)).toBeCloseTo(4.0, 9);
+    expect(wingSpot(AI, 4.0, 0.9, 1, 3.4, 0)).toBeCloseTo(4.0 + AI.defence.shade, 9);
   });
 
   it('an attack on the other half of the net is not its block (the other wing, or the middle alone)', () => {
-    expect(wingSpot(-4.0, 0.9, 1)).toBeNull();
-    expect(wingSpot(-1.0, 0.8, 1)).toBeNull();
+    expect(wingSpot(AI, -4.0, 0.9, 1)).toBeNull();
+    expect(wingSpot(AI, -1.0, 0.8, 1)).toBeNull();
   });
 });
 
@@ -210,7 +210,7 @@ describe('our pin blockers against their set (Mini Rally)', () => {
       const s = net(seed);
       const r = s.set({ x: LANES.L.x, off: LANES.L.z }, { apexAbove: LANES.L.apexAbove });
       for (const w of s.wings) {
-        const spot = wingSpot(LANES.L.x, LANES.L.z, Math.sign(r.startX.get(w.a)!))!;
+        const spot = wingSpot(AI, LANES.L.x, LANES.L.z, Math.sign(r.startX.get(w.a)!))!;
         const at = r.at.get(w.a)!;
         expect(w.presses.length).toBe(1);
         expect(w.presses[0]).toBeLessThan(r.tc);
@@ -281,7 +281,7 @@ describe('our pin blockers against their set (Mini Rally)', () => {
   it('a high ball set well inside the pin blocker: it follows the hitter in and is up at the hit, over the spot', () => {
     // 1.8 m in from the right pin's base spot (it never went more than 1.3 m along the net before)
     const x = 1.2;
-    const spot = wingSpot(x, 0.9, 1)!;
+    const spot = wingSpot(AI, x, 0.9, 1)!;
     let off = 0;
     for (let seed = 1; seed <= 6; seed++) {
       const s = net(seed);
@@ -300,7 +300,7 @@ describe('our pin blockers against their set (Mini Rally)', () => {
 
   it('late on a fast set inside it, the pin still goes up from where it got to and reaches sideways for it (a side block)', () => {
     const x = 1.3;
-    const spot = wingSpot(x, 0.8, 1)!;
+    const spot = wingSpot(AI, x, 0.8, 1)!;
     let reached = 0;
     for (let seed = 1; seed <= 6; seed++) {
       const s = net(seed);
@@ -551,7 +551,7 @@ describe('our pin blockers block their hitter, and scout where they hit (Mini Ra
         for (const w of s.wings) w.brain.skill = skill;
         const r = s.set({ x, off: OUT.off, by: s.pin(x > 0 ? 4.3 : -4.3) }, HIGH, (onTime) => [onTime]);
         const at = r.at.get((x > 0 ? s.right : s.left).a)!;
-        sum += Math.abs(at.hands - wingSpot(x, OUT.off, Math.sign(x))!);
+        sum += Math.abs(at.hands - wingSpot(AI, x, OUT.off, Math.sign(x))!);
         n++;
       }
       return sum / n;

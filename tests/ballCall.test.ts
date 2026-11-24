@@ -1,3 +1,4 @@
+import { AI } from '../src/config';
 import { describe, expect, it } from 'vitest';
 import { Athlete } from '../src/game/athlete';
 import { Simulation } from '../src/game/simulation';
@@ -14,8 +15,8 @@ import { NO_HOOKS } from './simHooks';
 function offTheirBlock(at: V3, apex: number, side: 1 | -1 = -1) {
   const sim = new Simulation(NO_HOOKS);
   sim.ballLive = true;
-  const us = new TeamAI(1, sim);
-  const them = new TeamAI(-1, sim);
+  const us = new TeamAI(1, sim, AI);
+  const them = new TeamAI(-1, sim, AI);
   us.opponents = them;
   them.opponents = us;
   for (const slot of SLOTS) {

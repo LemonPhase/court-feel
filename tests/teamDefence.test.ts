@@ -65,7 +65,7 @@ function homeTeam() {
     contact: { lastSet: null, tryPass: () => false, tryBlock: () => false },
   };
   const game = g as unknown as AiHost;
-  const team = new TeamAI(1, game);
+  const team = new TeamAI(1, game, AI);
   for (const slot of SLOTS) team.add(slot, new Athlete(SLOT_ROLE[slot], 1), false);
   team.place('defense');
   const theirs = new Athlete('OH', -1);

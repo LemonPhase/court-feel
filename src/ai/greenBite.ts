@@ -1,4 +1,4 @@
-import { AI } from '../config';
+import type { AiTuning } from '../config';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
 import type { AiHost } from '../game/brains';
@@ -31,10 +31,10 @@ export function dumpHeld(g: AiHost, lt: Touch | null | undefined): boolean {
  * it and closes the block as on any set. The hitter still has your perfect set to swing at: a
  * full, well-timed swing that the block can touch but not stuff (CONTACT: a green attack).
  */
-export function greenFools(g: AiHost, lt: Touch | null | undefined): boolean {
+export function greenFools(ai: AiTuning, g: AiHost, lt: Touch | null | undefined): boolean {
   if (!userGreen(g, lt)) return false;
   const set = g.contact.lastSet;
-  return !(set?.outOfSystem && Math.abs(set.target.x) > AI.middle.pinX);
+  return !(set?.outOfSystem && Math.abs(set.target.x) > ai.middle.pinX);
 }
 
 /**
@@ -44,7 +44,7 @@ export function greenFools(g: AiHost, lt: Touch | null | undefined): boolean {
  * middle then guesses for itself (MiddleBlocker.foolFor).
  */
 export function decoyFor(g: AiHost, blocker: Athlete, set: Touch): Athlete | null {
-  const B = AI.greenBite;
+  const B = blocker.ai.greenBite;
   const setTo = g.contact.lastSet?.hitter ?? null;
   let best: Athlete | null = null;
   let bestScore = Infinity;

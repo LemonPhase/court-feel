@@ -56,7 +56,7 @@ function servingTeam(side: 1 | -1) {
     setBrain() {},
     contact: { lastSet: null },
   };
-  const team = new TeamAI(side, g as unknown as AiHost);
+  const team = new TeamAI(side, g as unknown as AiHost, AI);
   for (const slot of SLOTS) team.add(slot, new Athlete(SLOT_ROLE[slot], side), false);
   team.serving = true;
   team.place('defense');

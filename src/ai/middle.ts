@@ -1,4 +1,4 @@
-import { AI, BALL, PLAYER } from '../config';
+import { BALL, PLAYER, type AiTuning } from '../config';
 import { clamp } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { Touch } from '../game/ballEntity';
@@ -50,8 +50,8 @@ export class MiddleBlocker implements Brain {
   pinnedGuess: Guess | null = null;
   /** the guess on their current pass */
   guess: Guess = 'read';
-  private readonly passRead = new BallRead({ react: AI.middle.react, reactSd: AI.middle.reactSd, err: 0 });
-  private readonly setRead = new BallRead({ react: AI.middle.react, reactSd: AI.middle.reactSd, err: AI.middle.readErr });
+  private readonly passRead: BallRead;
+  private readonly setRead: BallRead;
   private guessFor: unknown = null;
   /** their pass was good enough to run a quick off */
   private inSystem = false;
@@ -71,7 +71,7 @@ export class MiddleBlocker implements Brain {
   /** who their set is for, as our wings see the hitter go for it (null: it cannot tell) */
   setTo: () => Athlete | null = () => null;
   /** our team's scouting of their hitters, line or cross (`AI.wing.scout`; the team keeps it, the middle only reads it) */
-  scout = new Scout();
+  scout: Scout;
 
   constructor(
     public athlete: Athlete,
@@ -81,6 +81,15 @@ export class MiddleBlocker implements Brain {
     private ourWings: () => Athlete[] = () => [],
   ) {
     this.targetX = homeX;
+    const M = athlete.ai.middle;
+    this.passRead = new BallRead({ react: M.react, reactSd: M.reactSd, err: 0 });
+    this.setRead = new BallRead({ react: M.react, reactSd: M.reactSd, err: M.readErr });
+    this.scout = new Scout(athlete.ai);
+  }
+
+  /** how this middle plays: its team's level (docs/adr/0013) */
+  private get ai(): AiTuning {
+    return this.athlete.ai;
   }
 
   reset(): void {
@@ -117,9 +126,9 @@ export class MiddleBlocker implements Brain {
     // (a block on the quick it didn't read, a wrong guess still going for the pin); on time it is over the spot already
     const want =
       a.state === 'air' && a.action?.kind === 'block' && this.handsTo !== null
-        ? clamp(this.handsTo - a.pos.x, -AI.middle.reach, AI.middle.reach)
+        ? clamp(this.handsTo - a.pos.x, -this.ai.middle.reach, this.ai.middle.reach)
         : 0;
-    a.reachX += (want - a.reachX) * Math.min(1, dt / AI.middle.reachTime);
+    a.reachX += (want - a.reachX) * Math.min(1, dt / this.ai.middle.reachTime);
     if (a.state === 'ground' || a.state === 'land') {
       // a long way along the net is run (hips turned: a crossover), squaring up to the net to jump
       const d = Math.abs(this.targetX - a.pos.x);
@@ -144,7 +153,7 @@ export class MiddleBlocker implements Brain {
       const threat = this.inSystem && !!them && Math.abs(them.pos.z) < 4.5;
       this.guess = this.pinnedGuess ?? (threat ? this.makeGuess(g) : 'read');
     }
-    const M = AI.middle;
+    const M = this.ai.middle;
     const lineX = this.inSystem && them && Math.abs(them.pos.z) < 4.5 ? clamp(them.pos.x, -M.lineUpMax, M.lineUpMax) : this.homeX;
     const theirSide = a.side === 1 ? -1 : 1;
     const pin = this.guess === 'outside' ? laneFor('OH', theirSide).x : this.guess === 'opposite' ? laneFor('OPP', theirSide).x : 0;
@@ -161,8 +170,8 @@ export class MiddleBlocker implements Brain {
 
   private makeGuess(g: AiHost): Guess {
     const r = g.rng.next();
-    if (r < AI.middle.commit) return 'quick';
-    if (r < AI.middle.commit + AI.middle.cheat) return g.rng.next() < 0.5 ? 'outside' : 'opposite';
+    if (r < this.ai.middle.commit) return 'quick';
+    if (r < this.ai.middle.commit + this.ai.middle.cheat) return g.rng.next() < 0.5 ? 'outside' : 'opposite';
     return 'read';
   }
 
@@ -174,7 +183,7 @@ export class MiddleBlocker implements Brain {
     if (t < 0) return false;
     pred.posAt(t, this.b);
     const s = -this.athlete.side;
-    return Math.hypot(this.b.x - SETTER_SPOT.x * s, this.b.z - SETTER_SPOT.z * s) <= AI.outOfSystem;
+    return Math.hypot(this.b.x - SETTER_SPOT.x * s, this.b.z - SETTER_SPOT.z * s) <= this.ai.outOfSystem;
   }
 
   /** a commit block: up with their middle's quick, timed off their plant and take-off */
@@ -184,7 +193,7 @@ export class MiddleBlocker implements Brain {
     const them = this.theirMiddle();
     if (this.committedFor === this.guessFor || !them || !a.canJump() || !atNet(a) || Math.abs(them.pos.z) > 2.5) return;
     // it sees the plant a reaction time after it starts, the take-off at once
-    if (!(them.state === 'air' || (them.state === 'load' && them.stateT >= AI.middle.react))) return;
+    if (!(them.state === 'air' || (them.state === 'load' && them.stateT >= this.ai.middle.react))) return;
     // their hands meet the ball at the top of the jump (a planting hitter is taken to hold a full plant)
     const release = them.state === 'load' ? now + Math.max(0, PLAYER.loadMax - 0.02 - them.loadT) : now;
     const top = predictJump(them, now, release);
@@ -198,11 +207,11 @@ export class MiddleBlocker implements Brain {
   private readSet(g: AiHost, lt: Touch): void {
     const a = this.athlete;
     const now = g.simTime;
-    if (this.setRead.look(lt, now, g.rng, dumpHeld(g, lt) ? AI.middle.dumpHold : 0)) {
+    if (this.setRead.look(lt, now, g.rng, dumpHeld(g, lt) ? this.ai.middle.dumpHold : 0)) {
       this.tc = -1;
       // your green set: it goes on what it sees, at once (there was nothing to read); not off a
       // pass out of system to a pin, which it reads and closes on like any set
-      this.fooled = greenFools(g, lt) && this.attack(g) ? this.foolFor(g, lt) : null;
+      this.fooled = greenFools(this.ai, g, lt) && this.attack(g) ? this.foolFor(g, lt) : null;
     }
     if (this.fooled) {
       this.playFooled(g, this.fooled);
@@ -215,7 +224,7 @@ export class MiddleBlocker implements Brain {
     this.handsTo = spot;
     if (this.blockedFor === lt || !a.canJump() || !atNet(a)) return;
     // on time it goes up where it is meant to be; late, from wherever it got to, if that is near enough
-    if (now >= this.pressFor(this.tc + 0.12) && now <= this.tc && Math.abs(a.pos.x - spot) <= AI.middle.lateReach) {
+    if (now >= this.pressFor(this.tc + 0.12) && now <= this.tc && Math.abs(a.pos.x - spot) <= this.ai.middle.lateReach) {
       this.jump(now);
       this.blockedFor = lt;
     }
@@ -242,14 +251,14 @@ export class MiddleBlocker implements Brain {
 
   /** where its block goes for an attack at `bx`: in front of it, or on a pin set closed on our pin blocker */
   private blockSpot(bx: number): number {
-    const M = AI.middle;
+    const M = this.ai.middle;
     if (Math.abs(bx) <= M.pinX) return bx;
     // close on our pin blocker, hands to hands: on the wing itself when it is at the net on that
     // side (wherever it read the set to), else where our pin blocker would line up on that hitter,
     // as our team has scouted them (the whole block plays the same report)
     const r = Math.sign(bx);
     const wing = this.ourWings().find((w) => Math.sign(w.pos.x) === r && Math.abs(w.pos.z) < 1.5);
-    return (wing ? wing.pos.x : bx + r * pinShade(this.scout.crossOf(this.setTo()))) - r * M.closeGap;
+    return (wing ? wing.pos.x : bx + r * pinShade(this.ai, this.scout.crossOf(this.setTo()))) - r * M.closeGap;
   }
 
   /**
@@ -266,7 +275,7 @@ export class MiddleBlocker implements Brain {
   private foolFor(g: AiHost, lt: Touch): Fooled {
     const a = this.athlete;
     const now = g.simTime;
-    const F = AI.greenFooled;
+    const F = this.ai.greenFooled;
     // where the set is really going (it guessed: this only decides how it got it wrong)
     const at = g.contact.lastSet?.target.x ?? this.attackX;
     const spot = this.blockSpot(at);
@@ -287,8 +296,8 @@ export class MiddleBlocker implements Brain {
     // in the right place: a guess of its own, on their hitter's jump or the set's timing
     f.own = true;
     f.with = g.contact.lastSet?.hitter ?? null;
-    f.seeT = this.tc + AI.middle.react;
-    if (Math.abs(at) > AI.middle.pinX) {
+    f.seeT = this.tc + this.ai.middle.react;
+    if (Math.abs(at) > this.ai.middle.pinX) {
       f.wrong = spot - Math.sign(spot) * F.shift;
       return f;
     }
@@ -311,10 +320,10 @@ export class MiddleBlocker implements Brain {
   /** its wrong guess: up with the hitter it is watching (its own guess: on the set's timing too), or holding */
   private guessWrong(now: number, f: Fooled): void {
     const a = this.athlete;
-    if (!f.own && f.with) f.wrong = f.with.pos.x + f.with.vel.x * AI.greenBite.lead;
+    if (!f.own && f.with) f.wrong = f.with.pos.x + f.with.vel.x * this.ai.greenBite.lead;
     this.targetX = f.wrong;
     this.handsTo = f.wrong;
-    if (!a.canJump() || !atNet(a) || now > this.tc || Math.abs(a.pos.x - f.wrong) > AI.middle.lateReach) return;
+    if (!a.canJump() || !atNet(a) || now > this.tc || Math.abs(a.pos.x - f.wrong) > this.ai.middle.lateReach) return;
     const press = Math.min(this.pressWith(f.with, now), f.own ? this.pressFor(this.tc + 0.12) : Infinity);
     if (now < press) return;
     this.jump(now);
@@ -329,8 +338,8 @@ export class MiddleBlocker implements Brain {
   private goAfter(now: number, f: Fooled): void {
     const a = this.athlete;
     this.targetX = f.spot;
-    if (f.again || !a.canJump() || !atNet(a) || now > this.tc || Math.abs(a.pos.x - f.spot) > AI.middle.lateReach) return;
-    if (now < this.pressFor(this.tc + 0.12) + AI.greenFooled.late) return;
+    if (f.again || !a.canJump() || !atNet(a) || now > this.tc || Math.abs(a.pos.x - f.spot) > this.ai.middle.lateReach) return;
+    if (now < this.pressFor(this.tc + 0.12) + this.ai.greenFooled.late) return;
     this.handsTo = f.spot;
     this.jump(now);
     f.again = true;

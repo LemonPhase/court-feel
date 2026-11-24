@@ -1,4 +1,4 @@
-import { AI, CONTACT, COURT } from '../config';
+import { CONTACT, COURT, type AiTuning } from '../config';
 import { makeBall, R, stepBall, stillNet, type BallEnv, type V3 } from '../physics/ball';
 import { shotFan, solveSpeedToFloor, type ShotFan } from '../physics/solve';
 
@@ -45,6 +45,7 @@ const VERIFY = 12;
  * zones; if none is that open, the best. Null if no candidate is in play.
  */
 export function openShot(
+  ai: AiTuning,
   from: V3,
   speed: number,
   spin: number,
@@ -62,24 +63,25 @@ export function openShot(
     for (let j = 0; j < GRID_Z; j++) {
       const x = -hw + (2 * hw * i) / (GRID_X - 1);
       const z = opp * (1 + ((deep - 1) * j) / (GRID_Z - 1));
-      const margin = fanMargin(fan, from, x, z, opp, env, diggers, blocks);
+      const margin = fanMargin(ai, fan, from, x, z, opp, env, diggers, blocks);
       if (margin !== null) found.push({ x, z, margin });
     }
   }
   found.sort((a, b) => b.margin - a.margin);
   const verified: OpenShot[] = [];
   for (const c of found.slice(0, VERIFY)) {
-    const margin = exactMargin(from, speed, spin, c.x, c.z, opp, env, diggers, blocks);
+    const margin = exactMargin(ai, from, speed, spin, c.x, c.z, opp, env, diggers, blocks);
     if (margin !== null) verified.push({ x: c.x, z: c.z, margin });
   }
   if (!verified.length) return null;
-  const open = verified.filter((c) => c.margin >= AI.openShotMargin);
+  const open = verified.filter((c) => c.margin >= ai.openShotMargin);
   if (open.length) return open[Math.min(open.length - 1, Math.floor(rand() * open.length))];
   return verified.reduce((a, b) => (b.margin > a.margin ? b : a));
 }
 
 /** the margin of a shot at (x, z) on the fan: the flight whose range is nearest, stretched to land there (null: not in play) */
 function fanMargin(
+  ai: AiTuning,
   fan: ShotFan,
   from: V3,
   x: number,
@@ -108,7 +110,7 @@ function fanMargin(
     p.x = from.x + ux * s;
     p.y = path.y[n];
     p.z = from.z + uz * s;
-    if (!sample(p, prevZ, n * fan.dt, opp, env, diggers, blocks, st)) return null;
+    if (!sample(ai, p, prevZ, n * fan.dt, opp, env, diggers, blocks, st)) return null;
     prevZ = p.z;
   }
   return st.crossed ? st.margin : null;
@@ -121,6 +123,7 @@ const _land = { x: 0, y: 0, z: 0 };
 
 /** the margin of a shot at (x, z), flown exactly: the spike solver's velocity and the ball sim (null: not in play) */
 function exactMargin(
+  ai: AiTuning,
   from: V3,
   speed: number,
   spin: number,
@@ -148,7 +151,7 @@ function exactMargin(
     const prevZ = s.p.z;
     stepBall(s, dt, env);
     t += dt;
-    if (!sample(s.p, prevZ, t, opp, env, diggers, blocks, st)) return null;
+    if (!sample(ai, s.p, prevZ, t, opp, env, diggers, blocks, st)) return null;
   }
   if (Math.abs(s.p.x) > COURT.halfWidth - R || Math.abs(s.p.z) > COURT.halfLength - R) return null;
   return st.crossed ? st.margin : null;
@@ -156,6 +159,7 @@ function exactMargin(
 
 /** one point of a flight at time t: the tape and antennae as it crosses, the block's hands, the diggers. False: not in play */
 function sample(
+  ai: AiTuning,
   p: V3,
   prevZ: number,
   t: number,
@@ -171,11 +175,11 @@ function sample(
     if (p.y < env.netTop + R + 0.12 || Math.abs(p.x) > COURT.halfWidth - R) return false;
   }
   // the block's hands, wherever they reach (over the net onto the hitter's side too)
-  if (Math.abs(p.z) < AI.blockReachBand)
-    for (const b of blocks) if (Math.abs(p.x - b.x) < CONTACT.blockHalfWidth + R + AI.openShotBlockGap && p.y < b.top(t) + R) return false;
-  if (st.crossed && p.y < AI.digTop) {
+  if (Math.abs(p.z) < ai.blockReachBand)
+    for (const b of blocks) if (Math.abs(p.x - b.x) < CONTACT.blockHalfWidth + R + ai.openShotBlockGap && p.y < b.top(t) + R) return false;
+  if (st.crossed && p.y < ai.digTop) {
     for (const d of diggers) {
-      const run = Math.max(0, Math.hypot(p.x - d.x, p.z - d.z) - AI.digReach);
+      const run = Math.max(0, Math.hypot(p.x - d.x, p.z - d.z) - ai.digReach);
       st.margin = Math.min(st.margin, d.ready + run / d.speed - t);
     }
   }

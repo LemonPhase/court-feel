@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, COURT, SERVE, type ServeKind } from '../config';
+import { COURT, SERVE, type AiTuning, type ServeKind } from '../config';
 import type { Rng } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { AiHost, Brain } from '../game/brains';
@@ -33,6 +33,11 @@ export class ServerBrain implements Brain {
 
   constructor(public athlete: Athlete) {}
 
+  /** how this server serves: its team's level (docs/adr/0013) */
+  private get ai(): AiTuning {
+    return this.athlete.ai;
+  }
+
   /** begin a serve sequence aimed at `target` (floor point) */
   serve(target: THREE.Vector3, spotX = this.spotX, kind: ServeKind = 'float'): void {
     this.target.copy(target);
@@ -40,9 +45,9 @@ export class ServerBrain implements Brain {
     this.kind = kind;
     this.jump = kind !== 'float';
     // a jump server starts further back: the walk into the toss, the run-up and the toss forward take them to the line
-    this.back = kind === 'jump' ? AI.serve.jumpBack : SERVE[kind].back;
-    this.walkIn = kind === 'jump' ? AI.serve.jumpStep : 0;
-    this.toss = kind === 'jump' ? { toss: AI.serve.jumpToss, tossHigh: AI.serve.jumpTossHigh } : SERVE[kind];
+    this.back = kind === 'jump' ? this.ai.serve.jumpBack : SERVE[kind].back;
+    this.walkIn = kind === 'jump' ? this.ai.serve.jumpStep : 0;
+    this.toss = kind === 'jump' ? { toss: this.ai.serve.jumpToss, tossHigh: this.ai.serve.jumpTossHigh } : SERVE[kind];
     this.phase = 'walk';
     this.t = 0;
     this.plan = null;
@@ -81,8 +86,8 @@ export class ServerBrain implements Brain {
         if (this.t > 0.7) {
           if (g.contact.serveToss(a, this.kind, this.toss)) {
             this.phase = 'toss';
-            const e = g.rng.gauss() * (this.jump ? AI.serve.jumpErr : AI.serve.floatErr);
-            this.err = Math.max(-AI.serve.errMax, Math.min(AI.serve.errMax, e));
+            const e = g.rng.gauss() * (this.jump ? this.ai.serve.jumpErr : this.ai.serve.floatErr);
+            this.err = Math.max(-this.ai.serve.errMax, Math.min(this.ai.serve.errMax, e));
           }
         }
         break;
@@ -162,13 +167,14 @@ export class ServerBrain implements Brain {
  * serve makes the passers move and talk; a Rec server just puts it in the middle.
  */
 export function serveAim(
+  ai: AiTuning,
   passers: readonly { x: number; z: number }[],
   recv: 1 | -1,
   rng: Rng,
   jump: boolean,
   weakest: { x: number; z: number } | null = null,
 ): THREE.Vector3 {
-  const S = AI.serve;
+  const S = ai.serve;
   const hw = COURT.halfWidth;
   const sorted = [...passers].sort((p, q) => p.x - q.x);
   const pick = <T>(xs: readonly T[]): T => xs[Math.min(xs.length - 1, Math.floor(rng.next() * xs.length))];

@@ -1,28 +1,16 @@
-import { AI, CONTACT, LEVELS, type LevelId } from '../config';
+import { AI, FACET_IDS, LEVELS, YOURS_AT_PRO, type AiTuning, type Facet, type LevelId } from '../config';
 
 /**
- * The level of play (docs/adr/0012, `LEVELS`): a level is a set of overrides of named config numbers,
- * applied once when a Mini Rally starts. `AI` and the user's bends in `CONTACT` are put back to Pro
- * (config as written) and the level's overrides go on top, so game code just reads the numbers and
- * never asks which level it is in. Every other drill plays at Pro.
+ * The level of play as a team carries it (docs/adr/0012 and 0013, `LEVELS`): a copy of `AI` with the
+ * level's overrides written in, facet by facet. Your team takes every facet but `YOURS_AT_PRO` from
+ * the level; the other team takes all of them. `AI` is never written: it is Pro, and every drill
+ * plays at it.
  */
 
 type Section = Record<string, unknown>;
 
-/** Pro: the sections as config wrote them, copied before any level was applied */
-const PRO_AI = structuredClone(AI) as Section;
-const PRO_CONTACT = {
-  userSpikeShank: CONTACT.userSpikeShank,
-  userToolEdge: CONTACT.userToolEdge,
-  userToolEdgeP: CONTACT.userToolEdgeP,
-};
-
-let current: LevelId = 'pro';
-
-/** the level the numbers are set to now */
-export function currentLevel(): LevelId {
-  return current;
-}
+/** which team a tuning is for: yours (the user's team-mates) or theirs */
+export type TeamOf = 'yours' | 'theirs';
 
 const isSection = (v: unknown): v is Section => !!v && typeof v === 'object' && !Array.isArray(v);
 
@@ -35,11 +23,18 @@ function write(to: Section, from: Section): void {
   }
 }
 
-/** set the AI's numbers (and the bends toward the user) to level `id`: Pro first, then its overrides */
-export function applyLevel(id: LevelId): void {
-  write(AI as unknown as Section, PRO_AI);
-  Object.assign(CONTACT, PRO_CONTACT);
-  write(AI as unknown as Section, LEVELS[id].ai as Section);
-  Object.assign(CONTACT, LEVELS[id].contact);
-  current = id;
+/** the facets `team` takes from a level (the rest are Pro's) */
+export function facetsFor(team: TeamOf): Facet[] {
+  return team === 'theirs' ? [...FACET_IDS] : FACET_IDS.filter((f) => !YOURS_AT_PRO.includes(f));
+}
+
+/** how `team`'s AI players play at level `id`: a new tuning, Pro's numbers with the level's facets on top */
+export function tuningFor(id: LevelId, team: TeamOf): AiTuning {
+  const t = structuredClone(AI) as unknown as Section;
+  const level = LEVELS[id].facets;
+  for (const f of facetsFor(team)) {
+    const o = level[f];
+    if (o) write(t, o as Section);
+  }
+  return t as unknown as AiTuning;
 }

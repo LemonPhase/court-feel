@@ -1,4 +1,4 @@
-import { AI, BALL, COURT, PLAYER } from '../config';
+import { BALL, COURT, PLAYER, type AiTuning } from '../config';
 import { clamp, clamp01, wrapAngle, yawFromDir } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import type { AiHost, Brain } from '../game/brains';
@@ -19,16 +19,17 @@ import { Scout } from './scout';
  * middle's alone).
  */
 export function wingSpot(
+  ai: AiTuning,
   x: number,
   off: number,
   r: number,
   mateX: number | null = null,
-  cross: number = AI.wing.scoutStart,
+  cross: number = ai.wing.scoutStart,
 ): number | null {
-  const kind = attackKind(x, off);
+  const kind = attackKind(ai, x, off);
   if (kind !== 'back' && Math.sign(x) !== r) return null;
-  if (kind !== 'pin') return (mateX ?? x) + r * AI.middle.closeGap;
-  return r * Math.min(r * x + pinShade(cross), AI.wing.outMax);
+  if (kind !== 'pin') return (mateX ?? x) + r * ai.middle.closeGap;
+  return r * Math.min(r * x + pinShade(ai, cross), ai.wing.outMax);
 }
 
 /**
@@ -37,7 +38,7 @@ export function wingSpot(
  * hands peak as the ball crosses. Hands volume is the same as the user's.
  */
 export class BlockerBrain implements Brain {
-  skill = AI.blockerSkill;
+  skill: number;
   /** home x along the net */
   homeX: number;
   enabled = true;
@@ -81,9 +82,9 @@ export class BlockerBrain implements Brain {
   /** a wing: how often each of their pin hitters has gone inside (`AI.wing.learn`; shared by our wings) */
   reads = new Map<Athlete, number>();
   /** a wing: our team's scouting of their hitters, line or cross (`AI.wing.scout`; the team keeps it, this one only reads it) */
-  scout = new Scout();
+  scout: Scout;
   /** a wing: its read of this set's hitter, line (0) or cross (1) */
-  private cross = AI.wing.scoutStart;
+  private cross: number;
   /** a wing: this set is a pin set it blocks, so its hands stay on its line-up */
   private onPin = false;
   /** a wing: this set is its own pin hitter's, inside (it follows them in), and what that costs its reaction */
@@ -102,6 +103,14 @@ export class BlockerBrain implements Brain {
   ) {
     this.homeX = homeX;
     this.guessOnGreen = closer;
+    this.skill = athlete.ai.blockerSkill;
+    this.scout = new Scout(athlete.ai);
+    this.cross = athlete.ai.wing.scoutStart;
+  }
+
+  /** how this blocker plays: its team's level (docs/adr/0013) */
+  private get ai(): AiTuning {
+    return this.athlete.ai;
   }
 
   reset(): void {
@@ -142,7 +151,7 @@ export class BlockerBrain implements Brain {
       // A middle guesses wrong and commits a lane away. A pin blocker blocks it like any other set:
       // the hitter beats one block, not an empty net. (Off a pass out of system a high ball to a
       // pin fools nobody: greenFools.)
-      this.wrongGuess = this.guessOnGreen && greenFools(g, lt);
+      this.wrongGuess = this.guessOnGreen && greenFools(this.ai, g, lt);
       if (this.wing) this.readHitter(g);
     }
     // a wing's hands in the air keep going for where it wanted them (late, a side block, as the
@@ -158,8 +167,10 @@ export class BlockerBrain implements Brain {
       const to = this.handsTo === null ? 0 : this.handsTo - a.pos.x;
       const aim = this.onPin || Math.sign(to) === Math.sign(toBall) ? to : toBall;
       const want =
-        a.state === 'air' && a.action?.kind === 'block' && this.handsTo !== null ? clamp(aim, -AI.middle.reach, AI.middle.reach) : 0;
-      a.reachX += (want - a.reachX) * Math.min(1, dt / AI.middle.reachTime);
+        a.state === 'air' && a.action?.kind === 'block' && this.handsTo !== null
+          ? clamp(aim, -this.ai.middle.reach, this.ai.middle.reach)
+          : 0;
+      a.reachX += (want - a.reachX) * Math.min(1, dt / this.ai.middle.reachTime);
     }
     // the middle's whole job is the read: it reacts sooner than the wings
     const react = (this.closer ? 0.08 + (1 - this.skill) * 0.15 : 0.12 + (1 - this.skill) * 0.25) + this.surprise;
@@ -184,8 +195,8 @@ export class BlockerBrain implements Brain {
           if (this.wrongGuess) {
             // fooled by an exact set: committed to another hitter. A pin set: stayed home for the
             // quick; a set in the middle (the quick, the pipe): went with a pin
-            if (away > AI.greenBlockGuess / 2) want = this.homeX;
-            else want = this.homeX + (this.b.x >= this.homeX ? -1 : 1) * AI.greenBlockGuess;
+            if (away > this.ai.greenBlockGuess / 2) want = this.homeX;
+            else want = this.homeX + (this.b.x >= this.homeX ? -1 : 1) * this.ai.greenBlockGuess;
           } else if (this.closer && away > 1.6) {
             // close next to the wing blocker, who takes the line; a middle arriving on the
             // run rarely seals the seam perfectly
@@ -250,12 +261,12 @@ export class BlockerBrain implements Brain {
     this.surprise = 0;
     const h = this.setTo();
     this.cross = this.scout.crossOf(h);
-    if (!h || Math.sign(h.pos.x) !== Math.sign(this.homeX) || Math.abs(h.pos.x) <= AI.defence.pinX) return;
-    if (this.attackAt(g).tc <= 0 || Math.abs(this.b.z) > AI.defence.backOff) return;
+    if (!h || Math.sign(h.pos.x) !== Math.sign(this.homeX) || Math.abs(h.pos.x) <= this.ai.defence.pinX) return;
+    if (this.attackAt(g).tc <= 0 || Math.abs(this.b.z) > this.ai.defence.backOff) return;
     const seen = this.reads.get(h) ?? 0;
-    this.ownInside = Math.abs(this.b.x) < AI.wing.insideX;
-    if (this.ownInside) this.surprise = AI.wing.surprise * (1 - seen);
-    this.reads.set(h, seen + AI.wing.learn * ((this.ownInside ? 1 : 0) - seen));
+    this.ownInside = Math.abs(this.b.x) < this.ai.wing.insideX;
+    if (this.ownInside) this.surprise = this.ai.wing.surprise * (1 - seen);
+    this.reads.set(h, seen + this.ai.wing.learn * ((this.ownInside ? 1 : 0) - seen));
   }
 
   /**
@@ -270,24 +281,24 @@ export class BlockerBrain implements Brain {
     const now = g.simTime;
     const off = Math.abs(this.b.z);
     const r = Math.sign(this.homeX);
-    const kind = attackKind(this.b.x, off);
+    const kind = attackKind(this.ai, this.b.x, off);
     // beside the middle it closes on the middle it can see, not on its read of the ball
     const mid = this.mate();
     let mateX = mid && atNet(mid) ? mid.pos.x : null;
-    if (this.ownInside && mateX !== null && Math.abs(mateX - this.b.x) > AI.wing.onBall) mateX = null;
+    if (this.ownInside && mateX !== null && Math.abs(mateX - this.b.x) > this.ai.wing.onBall) mateX = null;
     const spot =
       off >= 4.5
         ? null
         : this.ownInside && kind !== 'pin'
-          ? (mateX ?? this.b.x) + r * AI.middle.closeGap
-          : wingSpot(this.b.x, off, r, mateX, this.cross);
+          ? (mateX ?? this.b.x) + r * this.ai.middle.closeGap
+          : wingSpot(this.ai, this.b.x, off, r, mateX, this.cross);
     // on a pin set it watches its hitter and the ball: its read sharpens as the ball comes, down to
     // what its skill leaves it (AI.wing.readFloor)
     const flight = tc - this.setT;
     const left = flight > 0 ? clamp01((tc - now) / flight) : 0;
-    const floor = AI.wing.readFloor * (1 - this.skill);
+    const floor = this.ai.wing.readFloor * (1 - this.skill);
     const misread = kind === 'pin' ? this.readErr * Math.max(left * left, floor) : mateX === null ? this.readErr : 0;
-    const want = spot === null ? null : clamp(spot + misread, -AI.wing.outMax, AI.wing.outMax);
+    const want = spot === null ? null : clamp(spot + misread, -this.ai.wing.outMax, this.ai.wing.outMax);
     this.tJump = this.jumpTime(tc, quick);
     // an inside ball (a quick) is the middle's, unless this wing gets near enough to go up with it
     // in time: decided once, on its read (it never runs at a quick and gives up half way). Which
@@ -296,7 +307,7 @@ export class BlockerBrain implements Brain {
     if (spot !== null && this.helpFor !== this.setRef) {
       this.helpFor = this.setRef;
       const run = a.stats.shuffleSpeed * Math.max(0, this.tJump - now);
-      this.helps = this.ownInside || kind !== 'middle' || Math.abs(spot - a.pos.x) - AI.wing.lateReach <= run;
+      this.helps = this.ownInside || kind !== 'middle' || Math.abs(spot - a.pos.x) - this.ai.wing.lateReach <= run;
     }
     if (want === null || !this.helps) {
       this.handsTo = null;
@@ -316,8 +327,8 @@ export class BlockerBrain implements Brain {
     // rest of the way (a drift block); out at the line it gets there and goes straight up
     const yaw = netYaw(a.side);
     const side = a.stats.shuffleSpeed * PLAYER.sideScale;
-    const cross = d - (inward ? this.drift(side) : 0) > AI.wing.crossover;
-    const h = AI.wing.hips;
+    const cross = d - (inward ? this.drift(side) : 0) > this.ai.wing.crossover;
+    const h = this.ai.wing.hips;
     const v = cross ? a.stats.shuffleSpeed * (Math.sin(h) + Math.cos(h) * PLAYER.sideScale) : side;
     const face = cross ? yaw + clamp(wrapAngle(yawFromDir(want - a.pos.x, 0) - yaw), -h, h) : yaw;
     if (inward && a.state === 'ground' && now < this.tJump - this.setOff(d, v)) stop(a, yaw);
@@ -330,8 +341,13 @@ export class BlockerBrain implements Brain {
     // on its own hitter (inside too: it goes with them), and beside you, on its own time
     let go = now >= this.tJump;
     if (mid && mateX !== null && !mid.isUser && kind !== 'pin' && !this.ownInside) {
-      go = this.midPressT >= this.tJump - AI.wing.together ? now >= this.midPressT : now >= Math.min(this.tJump + AI.wing.wait, tc);
-    } else if (inward && d > Math.max(this.drift(a.speed), AI.defence.handHalf) && now < tc - PLAYER.loadMin - AI.middle.reachTime) {
+      go =
+        this.midPressT >= this.tJump - this.ai.wing.together ? now >= this.midPressT : now >= Math.min(this.tJump + this.ai.wing.wait, tc);
+    } else if (
+      inward &&
+      d > Math.max(this.drift(a.speed), this.ai.defence.handHalf) &&
+      now < tc - PLAYER.loadMin - this.ai.middle.reachTime
+    ) {
       // closing in on its own time it steps into its jump: it plants once the jump's drift carries it
       // the rest of the way (late, it still gets going first), or at the last moment that has it in
       // the air with its hands out at the hit
@@ -339,7 +355,7 @@ export class BlockerBrain implements Brain {
     }
     // on time from wherever it got to, if near enough (after its own hitter inside, further); never
     // once the ball is hit
-    const reach = this.ownInside ? AI.wing.chase : AI.wing.lateReach;
+    const reach = this.ownInside ? this.ai.wing.chase : this.ai.wing.lateReach;
     if (a.canJump() && atNet(a) && go && d <= reach && (d < 0.8 || now <= tc)) this.goUp(now);
     return true;
   }

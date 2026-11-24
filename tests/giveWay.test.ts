@@ -113,7 +113,7 @@ describe('the split step (Mini Rally)', () => {
     const sim = new Simulation(NO_HOOKS);
     sim.rng.reseed(5);
     sim.ballLive = true;
-    const team = new TeamAI(1, sim);
+    const team = new TeamAI(1, sim, AI);
     for (const slot of SLOTS) team.add(slot, new Athlete(SLOT_ROLE[slot], 1), false);
     team.place('defense');
     // their setter sets their outside, high

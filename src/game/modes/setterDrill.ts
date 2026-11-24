@@ -99,7 +99,7 @@ export class SetterDrill extends Mode {
     g.addAthlete(this.passer, 6, 'coach');
     this.spawned.push(this.passer);
     this.passer.airIntent = 'neutral';
-    this.defence = new TeamAI(-1, g);
+    this.defence = new TeamAI(-1, g, AI);
     // between points they stand in base defence
     this.defence.serving = true;
     let dseed = 47;
