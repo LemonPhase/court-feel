@@ -1,6 +1,6 @@
 // Block sweep: what does the block do today, measured, before anyone changes it?
 //
-//   npm run block-sweep              the full sweep (3 matchups, 2 contact heights, 3 attacks, 5 angles, 4 speeds, 7 timings, 23 offsets, 2 seeds)
+//   npm run block-sweep              the full sweep (3 matchups, 2 contact heights, 3 attacks, 5 angles, 4 speeds, 7 timings, 23 offsets)
 //   BLOCK_SWEEP_SEEDS=4 npm run block-sweep
 //
 // Their hitter spikes over the net at our blocker with the real ball, the real spike solver and the
@@ -121,7 +121,7 @@ say('## 2. How wide is the block, by shot angle');
 say();
 say(
   `Perfect timing (0), AI vs AI, contact ${opts.contactYs[0]} m. Width = how much of the ${f2(opts.offsets[0])}…${f2(opts.offsets.at(-1))} m sweep of net-crossing points got a touch (${step.toFixed(1)} m steps). ` +
-    'Net-plane width is the same count for the hands’ real face at the net (their width ± the ball radius, top to bottom). ' +
+    'Compare the hands’ own width with a ball either side of them. ' +
     '“Outside the hands” counts touches whose line crossed the net clear of the hands sideways.',
 );
 say();
@@ -138,7 +138,7 @@ say();
       for (const [att, s3] of per) {
         const hit = s3.filter((s) => s.touched);
         w.push(hit.length * step);
-        wn.push(s3.filter((s) => s.netPlaneHit).length * step);
+        wn.push(2 * (facts.halfWidthAi + 0.105));
         outside.push(hit.filter((s) => Math.abs(s.crossOff) > facts.halfWidthAi + 0.105).length);
         if (att === 'outside' && hit.length) rng = `${f2(Math.min(...hit.map((s) => s.off)))} … ${f2(Math.max(...hit.map((s) => s.off)))}`;
       }
@@ -234,27 +234,46 @@ table(
 say('## 4. Does where it meets the hands decide what happens?');
 say();
 say(
-  'By where along the hands the ball met them (folded: > 0 the outer half), and by how high its line crossed the net against the fingertips (> 0 above them). ' +
-    'The block meets a falling ball on the first step it is inside the hands’ box, so the contact itself is nearly always at the fingertips; where the line crossed the net is the height that tells. All matchups, all timings.',
+  'By the part of the block it met (a hand or a forearm), how far up the hand (0 the heel, 1 the fingertips) and across it (folded: > 0 toward the outer side, the antenna’s). All matchups, all timings.',
 );
 say();
-const offBucket = (x) =>
-  x < -0.2 ? 'a. < -0.2 inner edge' : x < 0 ? 'b. -0.2…0 inner' : x < 0.2 ? 'c. 0…0.2 outer' : 'd. > 0.2 outer edge';
 table(
-  ['along the hands', 'touches', ...KINDS],
-  [...by(touched, (s) => offBucket(s.hitOff))].sort().map(([b, s]) => [b, s.length, ...mix(s).slice(1)]),
+  ['part', 'touches', ...KINDS],
+  [...by(touched, 'part')].sort().map(([b, s]) => [b, s.length, ...mix(s).slice(1)]),
 );
-const hBucket = (y) =>
-  y > 0.105
-    ? 'a. over the fingertips'
-    : y > -0.1
-      ? 'b. at the fingertips (0.1 below … ball radius over)'
-      : y > -0.3
-        ? 'c. 0.1…0.3 below'
-        : 'd. > 0.3 below (palms, wrists)';
+const upBucket = (a) =>
+  a < 0.25 ? 'a. heel' : a < 0.5 ? 'b. palm' : a < 0.75 ? 'c. fingers' : a < 0.95 ? 'd. upper fingers' : 'e. fingertips';
 table(
-  ['line crossed the net', 'touches', ...KINDS],
-  [...by(touched, (s) => hBucket(s.crossY - s.handsTop))].sort().map(([b, s]) => [b, s.length, ...mix(s).slice(1)]),
+  ['up the hand', 'touches', ...KINDS],
+  [
+    ...by(
+      touched.filter((s) => s.part === 'hand'),
+      (s) => upBucket(s.along),
+    ),
+  ]
+    .sort()
+    .map(([b, s]) => [b, s.length, ...mix(s).slice(1)]),
+);
+const acrossBucket = (a) =>
+  a < -0.5
+    ? 'a. inner edge (thumb)'
+    : a < 0
+      ? 'b. inner half'
+      : a < 0.5
+        ? 'c. outer half'
+        : a < 0.95
+          ? 'd. outer edge'
+          : 'e. past the outer edge';
+table(
+  ['across the hand', 'touches', ...KINDS],
+  [
+    ...by(
+      touched.filter((s) => s.part === 'hand'),
+      (s) => acrossBucket(s.across),
+    ),
+  ]
+    .sort()
+    .map(([b, s]) => [b, s.length, ...mix(s).slice(1)]),
 );
 
 say('## 5. Tools and block-outs');
@@ -262,7 +281,7 @@ say();
 {
   const tools = touched.filter((s) => s.kind === 'tool');
   const outer = tools.filter((s) => s.outYaw > 0);
-  const met = by(tools, (s) => (s.hitOff > 0 ? 'met on the outer half' : 'met on the inner half'));
+  const met = by(tools, (s) => (s.across > 0 ? 'met on the outer half' : 'met on the inner half'));
   say(
     `${tools.length} tools. ${pct(outer.length, tools.length)} went off toward the outer side, ${pct(tools.length - outer.length, tools.length)} back toward the court’s middle.`,
   );
@@ -305,16 +324,14 @@ say();
   ]);
   table(['spike speed (m/s)', 'soft blocks', 'out speed mean', 'out speed sd', 'up speed mean', 'came down on the blocker’s side'], rows);
   const fh = fit(
-    soft.map((x) => x.crossY - x.handsTop),
-    soft.map((x) => x.outVy),
+    soft.filter((x) => x.part === 'hand').map((x) => x.along),
+    soft.filter((x) => x.part === 'hand').map((x) => x.outVy),
   );
   const fs2 = fit(
     soft.map((x) => x.inSpeed),
     soft.map((x) => x.outVy),
   );
-  say(
-    `Up speed against how high the line crossed the net (against the fingertips): r = ${f2(fh.r)}; against the spike's speed: r = ${f2(fs2.r)} (n = ${fh.n}).`,
-  );
+  say(`Up speed against how far up the hand it met it: r = ${f2(fh.r)}; against the spike's speed: r = ${f2(fs2.r)} (n = ${soft.length}).`);
   say();
 }
 

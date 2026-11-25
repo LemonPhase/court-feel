@@ -268,11 +268,6 @@ export const CHARACTER = {
     wristApart: 0.013,
   },
   /**
-   * blocking hands go to a ball hit at them (faster than `minSpeed`, m/s) once it will pass within `near` (m)
-   * of them, at most `pull` (m) from where the block was set
-   */
-  blockReach: { near: 0.3, pull: 0.16, minSpeed: 8 },
-  /**
    * Arms and the net. Below the tape a wrist stays `wrist` (m) and the fingertips `fingers` (m) on the
    * athlete's own side. From `above` (m) over the tape a hand may reach across, `reachPerHeight` metres
    * for each metre of height. Nothing applies further than `pastPost` (m) outside the net's ends.

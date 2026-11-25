@@ -1,10 +1,12 @@
 import * as THREE from 'three';
-import { ASSIST, BALL, CONTACT, COURT, PLAYER, SERVE, SET_LEVELS, SIM, TIMING, type ServeKind, type SetLevel } from '../config';
+import { ASSIST, BALL, BLOCK, CONTACT, COURT, PLAYER, SERVE, SET_LEVELS, SIM, TIMING, type ServeKind, type SetLevel } from '../config';
 import { clamp, clamp01, dirFromYaw, lerp, rightFromYaw, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
-import { R, topspinFor, type V3 } from '../physics/ball';
+import { copyBall, makeBall, R, stepBall, topspinFor, type CollisionEvent, type V3 } from '../physics/ball';
+import { bounceOffHand, meetHand, touchAt, type HandHit } from '../physics/handContact';
 import { flyUntilY, netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
 import { Athlete, FEET_OFF_NET, type Action, type Grade, type PassForm } from './athlete';
-import type { BallEntity, TouchKind } from './ballEntity';
+import type { BallEntity, Touch, TouchKind } from './ballEntity';
+import { handGive, handPlates, type BlockHand } from './blockHands';
 import { DEFAULT_PICK, type SetPick } from './setterCalls';
 import { HANDS_FWD, HANDS_UP, planSetJump, type SetJumpPlan } from './setJump';
 import {
@@ -191,7 +193,7 @@ const GRADE_RANK: Record<Grade, number> = { Perfect: 3, Good: 2, Early: 1, Late:
  * costs height (`CONTACT.blockReachDrop` per metre), so a stretched block is lower and softer.
  */
 export function blockHands(a: Athlete): { x: number; top: number } {
-  return { x: a.pos.x + a.reachX, top: a.pos.y + a.standReach + 0.04 - Math.abs(a.reachX) * CONTACT.blockReachDrop };
+  return { x: a.pos.x + a.reachX, top: a.pos.y + a.standReach + BLOCK.reachTop - Math.abs(a.reachX) * CONTACT.blockReachDrop };
 }
 
 export class ContactSystem {
@@ -1470,36 +1472,82 @@ export class ContactSystem {
   lastSetResult: SetResult | null = null;
   userAimYaw: (a: Athlete) => number = () => 0;
 
-  /** RMB block: hands volume above / over the net */
+  /** the attack a block is blocking (a team-mate's hands met off the same block still block it) */
+  private blockAttack: Touch | null = null;
+  /** the last block touch: where on which hand, and how the hand gave (for the debug view and the block sweep) */
+  lastBlock: { hit: HandHit; mass: number; rest: number } | null = null;
+  private readonly _fly = makeBall();
+  private readonly _flyEvents: CollisionEvent[] = [];
+
+  /**
+   * RMB block: the blocker's two hands (src/game/blockHands.ts, `BLOCK`). The ball is touched where
+   * its path this step passes within its radius of a hand, and comes off the hand as it met it
+   * (src/physics/handContact.ts). What the touch is called is read from where the ball then goes.
+   */
   tryBlock(a: Athlete, act: Action): boolean {
     const h = this.host;
     const ball = h.ball;
-    if (!ball.active || ball.state.rest) return false;
+    if (!ball.active || ball.state.rest || act.resolved) return false;
     const lt = ball.lastTouch;
-    if (!lt || lt.side === a.side) return false; // only block the other team's attack
-    if (lt.athlete === a) return false;
-    const bp = ball.pos;
-    const bv = ball.vel;
-    if (bv.z * a.side <= 0) return false; // moving away from our court
-    if (Math.abs(a.pos.z) > 1.3) return false; // must be at the net
+    if (!lt || lt.athlete === a) return false;
     const t = h.simTime;
+    // one block is one touch: a team-mate's hands can still meet it on its way through
+    const chain = lt.kind === 'block' && lt.side === a.side && t - lt.t <= BLOCK.chain;
+    if (lt.side === a.side && !chain) return false; // only block the other team's attack
+    const bv = ball.vel;
+    if (!chain && bv.z * a.side <= 0) return false; // moving away from our court
+    if (Math.abs(a.pos.z) > BLOCK.netMax) return false; // must be at the net
+    const attack = chain ? this.blockAttack : lt;
+    const hands = handPlates(a, act, t, { netTop: h.env.netTop, assist: h.aimAssist(a), ballVel: bv, attack });
+    if (!hands.length) return false;
+    // the ball's path this step (a stand-in ball without its last place: back along its speed)
+    const p1 = { x: ball.pos.x, y: ball.pos.y, z: ball.pos.z };
+    const dt = 1 / SIM.hz;
+    const p0 = ball.before ?? { x: p1.x - bv.x * dt, y: p1.y - bv.y * dt, z: p1.z - bv.z * dt };
+    const hits: { hit: HandHit; hand: BlockHand }[] = [];
+    for (const hand of hands) {
+      const m = meetHand(p0, p1, hand, R + BLOCK.thickness / 2, dt);
+      if (m) hits.push({ hit: m, hand });
+    }
+    if (!hits.length) return false;
+    hits.sort((x, y) => x.hit.s - y.hit.s);
+    const first = hits[0];
+    const v = { x: bv.x, y: bv.y, z: bv.z };
+    const w = { x: ball.state.w.x, y: ball.state.w.y, z: ball.state.w.z };
+    const hv = first.hit.plate.v;
+    const impact = Math.abs((v.x - hv.x) * first.hit.N.x + (v.y - hv.y) * first.hit.N.y + (v.z - hv.z) * first.hit.N.z);
+    const give = handGive(first.hit, first.hand, impact);
+    let hit = first.hit;
+    // met both hands at once (between the thumbs): both arms behind it, pushed along both normals
+    const len = Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
+    const also = hits.find((o) => o !== first && !o.hand.arm && !first.hand.arm && (o.hit.s - first.hit.s) * len <= BLOCK.together);
+    if (also) {
+      // the two hands share it by how far the ball presses into each, a little into the touch (by the
+      // same rule: mirror-image touches on the two thumbs push the ball straight on)
+      const reach = R + BLOCK.thickness / 2;
+      const d = { x: p1.x - p0.x, y: p1.y - p0.y, z: p1.z - p0.z };
+      const k = BLOCK.together / (Math.hypot(d.x, d.y, d.z) || 1);
+      const p = { x: first.hit.p.x + d.x * k, y: first.hit.p.y + d.y * k, z: first.hit.p.z + d.z * k };
+      const t1 = touchAt(p, d, first.hand, reach);
+      const t2 = touchAt(p, d, also.hand, reach);
+      const o1 = Math.max(0, reach - t1.dist);
+      const o2 = Math.max(0, reach - t2.dist);
+      if (o1 > 0 && o2 > 0) {
+        const g2 = handGive(t2, also.hand, impact);
+        const w1 = (give.mass * o1) / (o1 + o2);
+        const w2 = (g2.mass * o2) / (o1 + o2);
+        const N = { x: t1.N.x * w1 + t2.N.x * w2, y: t1.N.y * w1 + t2.N.y * w2, z: t1.N.z * w1 + t2.N.z * w2 };
+        const l = Math.hypot(N.x, N.y, N.z) || 1;
+        hit = { ...first.hit, N: { x: N.x / l, y: N.y / l, z: N.z / l } };
+        const share = Math.min(1, o2 / o1);
+        give.rest = (give.rest * give.mass + g2.rest * g2.mass * share) / (give.mass + g2.mass * share);
+        give.mass += g2.mass * share;
+      }
+    }
+    if (!bounceOffHand(v, w, hit, give.mass, give.rest, BLOCK.friction)) return false;
+    this.lastBlock = { hit, mass: give.mass, rest: give.rest };
+    // ---- grade: where in the jump the hands met it (the coach's word; the ball went where the hands sent it)
     const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
-    const assist = h.aimAssist(a);
-    const halfW = CONTACT.blockHalfWidth + assist * 0.12;
-    const hands = blockHands(a);
-    const top = hands.top;
-    const bottom = top - CONTACT.blockHeight;
-    // hands reach over the net: from our side up to 0.3m into theirs
-    const pen = (a.state === 'air' ? 0.32 : 0.12) * ext;
-    const zNear = a.side * 0.22;
-    const zFar = -a.side * pen;
-    const zmin = Math.min(zNear, zFar) - R;
-    const zmax = Math.max(zNear, zFar) + R;
-    if (bp.y < bottom - R || bp.y > top + R) return false;
-    if (Math.abs(bp.x - hands.x) > halfW + R) return false;
-    if (bp.z < zmin || bp.z > zmax) return false;
-    if (ext < 0.35) return false;
-    // ---- grade
     let grade: Grade;
     let note = '';
     if (a.state === 'air' && a.jumpH > 0.1) {
@@ -1514,78 +1562,61 @@ export class ContactSystem {
       grade = 'Late';
       note = 'Feet on the floor';
     }
-    const incoming = Math.hypot(bv.x, bv.y, bv.z);
     const rank = GRADE_RANK[grade];
-    const out = { x: 0, y: 0, z: 0 };
-    let kind: 'stuff' | 'soft' | 'tool' | 'recycle';
-    const roll = h.rand();
-    // off the outer edge of the hands (away from the middle of the court): the hitter wiped it, the
-    // ball goes off the fingers and wide (`CONTACT.toolEdge` of the hand's half-width out)
-    const off = bp.x - hands.x;
-    // (playability: the user's spike wipes off an AI block more often)
-    const userHit = lt.athlete?.isUser === true && !a.isUser;
-    const toolEdge = userHit ? CONTACT.userToolEdge : CONTACT.toolEdge;
-    const toolEdgeP = userHit ? CONTACT.userToolEdgeP : CONTACT.toolEdgeP;
-    const edge = Math.abs(off) > halfW * toolEdge && Math.sign(off) === Math.sign(hands.x) && h.rand() < toolEdgeP;
-    // AI blockers convert fewer of their good blocks into stuffs than the user
-    const stuffP = a.isUser ? (rank === 3 ? 1 : 0.5) : rank === 3 ? 0.36 : 0.16;
-    if (!edge && incoming < CONTACT.recycleSpeed && h.rand() < (rank >= 2 ? CONTACT.recycleP : CONTACT.recyclePLate)) {
-      // a soft ball into a good block comes back off the hands to the hitter's side, slow and up:
-      // their cover picks it up and they go again (recycling)
-      kind = 'recycle';
-      out.x = bv.x * 0.15 + (h.rand() * 2 - 1) * 0.8;
-      out.y = lerp(2.6, 4.2, h.rand());
-      out.z = -a.side * lerp(1.2, 2.6, h.rand());
-    } else if (rank >= 2 && !edge && roll < stuffP && !lt.green) {
-      // (an attack off the user's green set is never stuffed: a perfect set lets the hitter see the
-      // block and swing high off the hands, so it comes off them soft or wide)
-      // stuff: driven down into their court, close to the net
-      kind = 'stuff';
-      const sp = Math.max(9, incoming * (rank === 3 ? 0.62 : 0.45));
-      const ang = -lerp(0.75, 1.05, h.rand());
-      const lat = (h.rand() * 2 - 1) * 0.35;
-      out.x = bv.x * 0.2 + Math.sin(lat) * sp * 0.4;
-      out.y = Math.sin(ang) * sp;
-      out.z = -a.side * Math.cos(ang) * sp;
-    } else if (!edge && (rank >= 2 || (roll < 0.55 && !lt.green))) {
-      // soft block: ball pops up, slowed, usually stays playable on our side. (Off the user's
-      // green set a late or early block never is: hands still coming up, or already going down,
-      // are no wall, and the hitter who saw them swings high off them: off the fingers and wide)
-      kind = 'soft';
-      out.x = bv.x * 0.3 + (h.rand() * 2 - 1) * 1.2;
-      out.y = 3.2 + h.rand() * 2.5;
-      out.z = bv.z * 0.18;
-    } else {
-      // tooled: off the fingers and wide (off the outer edge, whatever the block's timing)
-      kind = 'tool';
-      const sgn = edge ? Math.sign(off) : h.rand() < 0.5 ? -1 : 1;
-      out.x = sgn * (4 + h.rand() * 4);
-      out.y = 2 + h.rand() * 4;
-      out.z = bv.z * 0.55;
-    }
-    ball.hit(out, { x: 0, y: 0, z: 0 }, 0, t);
-    // pop the ball out of the hands volume so it doesn't re-collide
-    ball.state.p.z = kind === 'stuff' || kind === 'recycle' ? -a.side * (R + 0.02) : ball.state.p.z;
+    // the ball where it met the hand, off it at its new speed
+    ball.state.p.x = hit.p.x;
+    ball.state.p.y = hit.p.y;
+    ball.state.p.z = hit.p.z;
+    ball.hit(v, w, 0, t);
+    this.blockAttack = attack;
+    const kind = this.blockKind(a);
     ball.lastTouch = { athlete: a, kind: 'block', t, side: a.side, recycle: kind === 'recycle' };
     a.lastTouchT = t;
     act.resolved = true;
     act.contactT = t;
     act.grade = grade;
     act.note = kind === 'stuff' ? 'Stuff!' : kind === 'soft' ? 'Soft block' : kind === 'recycle' ? 'Off the block' : 'Tooled';
-    act.contactPoint.set(bp.x, bp.y, bp.z);
+    act.contactPoint.set(hit.q.x, hit.q.y, hit.q.z);
     h.emitContact({
       athlete: a,
       kind: 'block',
       grade,
       note: note || act.note,
-      speed: Math.hypot(out.x, out.y, out.z),
-      point: new THREE.Vector3(bp.x, bp.y, bp.z),
+      speed: Math.hypot(v.x, v.y, v.z),
+      point: new THREE.Vector3(hit.q.x, hit.q.y, hit.q.z),
       quality: kind === 'stuff' ? (rank === 3 ? 1 : 0.7) : 0.3,
       perfect: kind === 'stuff' && rank === 3,
       tip: false,
       target: new THREE.Vector3(),
     });
     return true;
+  }
+
+  /**
+   * What a touch off the block is called, from where the ball now goes (`BLOCK.stuffSpeed`): out
+   * (on either side, off the antenna, or over the net outside it) a block-out; in on the hitter's
+   * side, driven a stuff, dropped or floated back recycled (their cover's ball); in on the
+   * blocker's side a soft block.
+   */
+  private blockKind(a: Athlete): 'stuff' | 'soft' | 'tool' | 'recycle' {
+    const s = copyBall(this.host.ball.state, this._fly);
+    const off = Math.hypot(s.v.x, s.v.y, s.v.z);
+    const dt = 1 / SIM.hz;
+    let z = s.p.z;
+    for (let t = 0; t < SIM.predictHorizon; t += dt) {
+      this._flyEvents.length = 0;
+      stepBall(s, dt, this.host.env, this._flyEvents);
+      if (Math.sign(z) !== Math.sign(s.p.z) && z !== 0 && Math.abs(s.p.x) > COURT.antennaX) return 'tool';
+      z = s.p.z;
+      for (const e of this._flyEvents) {
+        if (e.kind === 'antenna' || e.kind === 'board' || e.kind === 'wall' || e.kind === 'post' || e.kind === 'ceiling') return 'tool';
+        if (e.kind !== 'floor') continue;
+        if (Math.abs(e.x) > COURT.halfWidth || Math.abs(e.z) > COURT.halfLength) return 'tool';
+        if (e.z * a.side > 0) return 'soft';
+        return off >= BLOCK.stuffSpeed ? 'stuff' : 'recycle';
+      }
+    }
+    return 'soft';
   }
 
   /**

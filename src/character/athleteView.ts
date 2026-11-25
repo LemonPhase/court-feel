@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { AI, BALL, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
 import { clamp, clamp01, damp, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
+import { handPlates } from '../game/blockHands';
 import { DIGITS, FINGERS } from './hand';
 import { orientBone, twoBoneIK } from './ik';
 import { buildRig, type BoneName, type Kit, type Rig } from './rig';
@@ -1103,14 +1104,20 @@ export class AthleteView {
         rate = 30;
         palmFwd = p;
         mixShape(shape, SH.firm, p);
-        // the hands go to the ball as it arrives (a short way: the block is where it was set). They stay
-        // on the blocker's side of the tape, where the block's contact zone is: pressing them over it
-        // would be a change to the block, not to its look
-        // (only for a ball hit at the block: a set drifting past is not followed)
-        const bv = a.ballVel;
-        if (act.held && bv && Math.hypot(bv.x, bv.y, bv.z) > CHARACTER.blockReach.minSpeed && bv.z * a.side > 0) {
-          ikWorld = this.reachForBall(s, _a, CHARACTER.blockReach.near, CHARACTER.blockReach.pull, _g, 'block', null);
-          if (ikWorld) ikBlend = handBlend = reachBlend * p;
+        // the hands are where the simulation has them (src/game/blockHands.ts, docs/adr/0013): up with
+        // the jump, pressed over the net at the top of it, turned to the ball's line, the outside one
+        // turned in at a pin. The wrist goes to its wrist, the fingers along it, the palm its way
+        const hands = handPlates(a, act, tr, { netTop: this.netTop, ballVel: a.ballVel ?? null });
+        const hand = hands.filter((h) => !h.arm)[s < 0 ? 0 : 1];
+        if (hand) {
+          ikWorld = _g.set(
+            hand.c.x - hand.u.x * hand.hl + a.rpos.x - a.pos.x,
+            hand.c.y - hand.u.y * hand.hl + a.rpos.y - a.pos.y,
+            hand.c.z - hand.u.z * hand.hl + a.rpos.z - a.pos.z,
+          );
+          ikBlend = handBlend = p;
+          _handFore.set(hand.u.x, hand.u.y, hand.u.z);
+          _handPalm.set(hand.n.x, hand.n.y, hand.n.z);
         }
       }
       if (act && act.kind === 'pass' && act.form !== 'hands') {

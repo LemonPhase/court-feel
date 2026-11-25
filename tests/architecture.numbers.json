@@ -18,7 +18,7 @@
     "src/game/blockShadow.ts": 6,
     "src/game/body.ts": 2,
     "src/game/callRuns.ts": 8,
-    "src/game/contact.ts": 192,
+    "src/game/contact.ts": 155,
     "src/game/intent.ts": 1,
     "src/game/modes/freePlay.ts": 1,
     "src/game/modes/miniRally.ts": 3,

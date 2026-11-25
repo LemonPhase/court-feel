@@ -1,7 +1,17 @@
 import * as THREE from 'three';
 import { BALL, SIM } from '../config';
 import { lerp } from '../core/mathx';
-import { copyBall, floatBreaking, makeBall, stepBall, stepNet, type BallEnv, type BallState, type CollisionEvent } from '../physics/ball';
+import {
+  copyBall,
+  floatBreaking,
+  makeBall,
+  stepBall,
+  stepNet,
+  type BallEnv,
+  type BallState,
+  type CollisionEvent,
+  type V3,
+} from '../physics/ball';
 import { FloatRead } from '../physics/floatRead';
 import { BallPredictor } from '../physics/predict';
 import type { Athlete } from './athlete';
@@ -15,7 +25,7 @@ export interface Touch {
   side: 1 | -1 | 0;
   /** an attack off the user's green set: the hitter hid the shot until the hand (their defence starts late) */
   green?: boolean;
-  /** a block the ball came back off softly, to the hitter's side (recycled: `CONTACT.recycleP`) */
+  /** a block the ball came back off to the hitter's side and stayed up, for their cover (recycled: `BLOCK.stuffTime`) */
   recycle?: boolean;
 }
 
@@ -54,6 +64,11 @@ export class BallEntity {
 
   get vel() {
     return this.state.v;
+  }
+
+  /** where the ball was before its last step (its path this step is from here to `pos`) */
+  get before(): V3 {
+    return this.prev.p;
   }
 
   speed(): number {

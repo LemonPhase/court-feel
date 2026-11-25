@@ -1,3 +1,5 @@
+Partly superseded by [0013](0013-a-block-is-two-hands-the-ball-bounces-off.md): the blocking hands are in the simulation.
+
 # What the body and the net show never feeds back into the play
 
 The simulation knows an athlete as a point with a reach, and the net as a
