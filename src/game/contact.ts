@@ -46,6 +46,8 @@ export interface ContactEvent {
   form?: PassForm;
   /** the referee's call on this touch: a set held too long is a lift (the point goes to the other team) */
   fault?: 'lift';
+  /** a block: where it met the block (the palms, both hands, the fingers, the fingertips, a hand's edge, the forearms) */
+  where?: string;
 }
 
 export interface IdealInfo {
@@ -1563,6 +1565,17 @@ export class ContactSystem {
       note = 'Feet on the floor';
     }
     const rank = GRADE_RANK[grade];
+    const where = first.hand.arm
+      ? 'forearms'
+      : hit.along >= BLOCK.tipsFrom
+        ? 'fingertips'
+        : hit.across >= BLOCK.tipsFrom
+          ? "hand's edge"
+          : hit !== first.hit
+            ? 'both hands'
+            : hit.along >= BLOCK.fingers
+              ? 'fingers'
+              : 'palm';
     // the ball where it met the hand, off it at its new speed
     ball.state.p.x = hit.p.x;
     ball.state.p.y = hit.p.y;
@@ -1588,6 +1601,7 @@ export class ContactSystem {
       perfect: kind === 'stuff' && rank === 3,
       tip: false,
       target: new THREE.Vector3(),
+      where,
     });
     return true;
   }

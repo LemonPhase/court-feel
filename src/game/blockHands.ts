@@ -82,7 +82,8 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
   const beaten = ai && lt?.green === true ? BLOCK.ai.green : 1;
   const hf = air ? clamp01(a.pos.y / a.jumpH) : 0;
   const press = (air ? smooth01((hf - BLOCK.pressFrom) / (1 - BLOCK.pressFrom)) : 0) * ext * beaten;
-  const firm = (air ? 1 : BLOCK.floorFirm) * ext * (ai ? BLOCK.ai.firm : 1) * beaten;
+  const vsUser = ai && lt?.athlete?.isUser === true;
+  const firm = (air ? 1 : BLOCK.floorFirm) * ext * (ai ? BLOCK.ai.firm : 1) * (vsUser ? BLOCK.ai.userFirm : 1) * beaten;
   const h = facing(a, ctx, BLOCK.face * beaten);
   const side: V3 = { x: -h.z, y: 0, z: h.x };
   const handsX = a.pos.x + a.reachX;
@@ -126,7 +127,6 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
   const off = BLOCK.thumbGap / 2 + hw;
   // the outside hand of a pin blocker turns in (a turn of the forearm, about `u`)
   const pin = smoothstep(BLOCK.pinTurn[0], BLOCK.pinTurn[1], Math.abs(handsX));
-  const vsUser = ai && lt?.athlete?.isUser === true;
   const turnIn = BLOCK.turnIn * pin * ext * (ai ? BLOCK.ai.turnIn : 1) * (vsUser ? BLOCK.ai.userTurnIn : 1) * beaten;
   const out: BlockHand[] = [];
   const dArm = add(

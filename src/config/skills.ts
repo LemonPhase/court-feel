@@ -261,7 +261,9 @@ export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 
  *   (m between looks; halvings to find the moment it meets it). A spike moves 25 cm a step: without
  *   the search it would pass through a hand 3 cm thick.
  *
- * What the touch is called (for the HUD, the drills' scores, the sound and the cover):
+ * What the touch is called (for the HUD, the drills' scores, the sound and the cover), and where it
+ * met the block (the HUD says it after the call: the palm, both hands, the fingers, from `tipsFrom`
+ * of the way up the fingertips and of the way across the hand's edge, the forearms):
  * - `stuffSpeed`: a ball off the block that comes down on the hitter's side, in, and leaves the
  *   hands at this speed (m/s) or more is a stuff, driven down; slower it is off the block for their
  *   cover (recycled: about where `CONTACT.covered.easy` says a cover still controls a ball). Out on
@@ -272,7 +274,10 @@ export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 
  * press as far as you do: pressing is a trade (over the net a falling spike is met higher, so a
  * press touches fewer high balls and stops more steep ones), and a blocker that pressed less than
  * you would touch more than you (measured: 52% of a sweep of attacks for an AI pressing three
- * quarters as far, 48% for you). Against the user's attack they do not seal the outside hand:
+ * quarters as far, 48% for you). Against the user's attack their hands are less firm (`ai.userFirm`
+ * of it: the Spike Drill's perfect autopilot, hitting its zone straight into a closed double block,
+ * was stuffed 9 times in 40 without it, 7 with it, 2 with the old dice table; its kills stayed at
+ * 20-22) and they do not seal the outside hand:
  * it is left a little open, turned toward the antenna (`ai.userTurnIn` of a turn in: below 0 is
  * out), and its fingers not spread as wide (`ai.userWidth` of the width, the thumb's edge where it
  * was), the blocking fault coaches warn of, so your spike off the outer hand goes off it and out
@@ -312,12 +317,13 @@ export const BLOCK = {
   floorFirm: 0.5,
   chain: 0.15,
   edgeFrom: 0.6,
+  tipsFrom: 0.95,
   armsUp: 0.35,
   netMax: 1.3,
   sweepStep: 0.02,
   sweepIters: 10,
   stuffSpeed: 8,
-  ai: { firm: 0.85, turnIn: 0.7, userTurnIn: -0.5, userWidth: 0.75, green: 0.2 },
+  ai: { firm: 0.85, turnIn: 0.7, userFirm: 0.7, userTurnIn: -0.5, userWidth: 0.75, green: 0.2 },
 };
 
 export const CONTACT = {
