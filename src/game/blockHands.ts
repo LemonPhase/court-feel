@@ -1,4 +1,4 @@
-import { BLOCK, CONTACT, TIMING } from '../config';
+import { BALL, BLOCK, CONTACT, TIMING } from '../config';
 import { clamp, clamp01, invLerp, lerp, smooth01, smoothstep } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { HandHit, HandPlate } from '../physics/handContact';
@@ -68,6 +68,17 @@ function facing(a: Athlete, ctx: HandsContext, k: number): V3 {
   return { x: f.x * Math.cos(ang) - f.z * Math.sin(ang), y: 0, z: f.x * Math.sin(ang) + f.z * Math.cos(ang) };
 }
 
+/**
+ * How far into its press a blocker is (0 to 1): none until the arms are up and the jump is
+ * `BLOCK.pressFrom` of the way up, all of it at the top (the shoulders' lean, the arms' angle over
+ * the net and the wrists' all go with it). The drawn body leans with it.
+ */
+export function blockPress(a: Athlete, act: Action, t: number): number {
+  if (a.state !== 'air' || a.jumpH <= 0) return 0;
+  const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
+  return smooth01((clamp01(a.pos.y / a.jumpH) - BLOCK.pressFrom) / (1 - BLOCK.pressFrom)) * ext;
+}
+
 /** the hands of a blocker `a` in its block action `act` at `t`: none until the arms are up */
 export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext): BlockHand[] {
   const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
@@ -80,8 +91,7 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
   const ai = !a.isUser;
   // an AI block beaten by the user's green set: hands up, not set
   const beaten = ai && lt?.green === true ? BLOCK.ai.green : 1;
-  const hf = air ? clamp01(a.pos.y / a.jumpH) : 0;
-  const press = (air ? smooth01((hf - BLOCK.pressFrom) / (1 - BLOCK.pressFrom)) : 0) * ext * beaten;
+  const press = blockPress(a, act, t) * beaten;
   const vsUser = ai && lt?.athlete?.isUser === true;
   const firm = (air ? 1 : BLOCK.floorFirm) * ext * (ai ? BLOCK.ai.firm : 1) * (vsUser ? BLOCK.ai.userFirm : 1) * beaten;
   const h = facing(a, ctx, BLOCK.face * beaten);
@@ -197,15 +207,19 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
 /**
  * How the hand gives where the ball met it (`BLOCK`): the arm's mass behind the heel, the fingers'
  * at the tips and at the little finger's edge (the thumbs are braced against each other), as firm
- * as the hand is; a forearm has the arm behind it all along. And the ball's restitution against it:
+ * as the hand is; a forearm has the arm behind it all along. A ball that only nicks the hand (its
+ * line passes outside it) has that much less of the hand behind the touch. And the ball's restitution against it:
  * less the harder it comes in, less still off the fingers.
  */
 export function handGive(hit: HandHit, hand: BlockHand, impact: number): { mass: number; rest: number } {
   const ball = lerp(BLOCK.ballRest[0], BLOCK.ballRest[1], invLerp(BLOCK.ballRestSpeed[0], BLOCK.ballRestSpeed[1], impact));
-  if (hand.arm) return { mass: BLOCK.massArm * hand.firm, rest: ball * BLOCK.restArm };
+  // a ball whose line passes outside the hand only nicks it with its side: the less of it on the
+  // hand, the less of the hand behind the touch (none for a line a ball's radius outside)
+  const thin = hit.depth < 0 ? clamp01(1 + hit.depth / (BALL.radius + BLOCK.thickness / 2)) : 1;
+  if (hand.arm) return { mass: BLOCK.massArm * hand.firm * thin, rest: ball * BLOCK.restArm };
   const tips = smoothstep(BLOCK.fingers, 1, hit.along);
   const edge = smoothstep(hand.edgeFrom, 1, hit.across);
   const fingers = Math.max(tips, edge);
-  const mass = lerp(BLOCK.massPalm, BLOCK.massTip, tips) * lerp(1, BLOCK.edge, edge) * hand.firm;
+  const mass = lerp(BLOCK.massPalm, BLOCK.massTip, tips) * lerp(1, BLOCK.edge, edge) * hand.firm * thin;
   return { mass, rest: ball * lerp(BLOCK.restPalm, BLOCK.restTip, fingers) };
 }

@@ -5,7 +5,7 @@
     "src/ai/brain.ts": 4,
     "src/ai/defence.ts": 2,
     "src/ai/giveWay.ts": 6,
-    "src/ai/hitter.ts": 72,
+    "src/ai/hitter.ts": 71,
     "src/ai/middle.ts": 20,
     "src/ai/openShot.ts": 9,
     "src/ai/read.ts": 2,

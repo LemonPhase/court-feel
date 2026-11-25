@@ -49,6 +49,12 @@ export interface HandHit {
   /** where on the hand: 0 the heel to 1 the fingertips; across it from -1 (the -w edge) through 0 (the middle) to 1 (the +w edge) */
   along: number;
   across: number;
+  /**
+   * how far (m) inside the hand the ball's line goes through it, from its nearest edge: < 0 the line
+   * passes outside the hand by that much and only the ball's side touches it (a nick, a graze over the
+   * fingertips); 0 when the ball is not coming at the hand's face
+   */
+  depth: number;
   plate: HandPlate;
 }
 
@@ -116,6 +122,7 @@ export function touchAt(p: V3, d: V3, h: HandPlate, reach: number, s = 0): HandH
   else N = { x: h.n.x * face, y: h.n.y * face, z: h.n.z * face };
   let along = near.along;
   let across = near.across;
+  let depth = 0;
   // The ball's line: where its centre would go through the hand's plane. Aimed inside the hand, the
   // hand takes the ball there, square on its face, whatever touched first (the fingertips give and
   // the ball rolls onto the palm); near an edge, more and more the edge's glancing touch.
@@ -127,6 +134,7 @@ export function touchAt(p: V3, d: V3, h: HandPlate, reach: number, s = 0): HandH
     // (past the thumb, across the gap, a ball's line is still on the hands: the ball rests on both thumbs)
     // (and past the heel the arm carries on: only the fingertips and the little finger's side are edges a ball glances off)
     const inside = Math.min(lu > 0 ? h.hl - lu : h.hl + h.heel + lu, lw < 0 ? h.hw + h.gap + reach + lw : h.hw - lw);
+    depth = inside;
     if (inside > 0) {
       const f = Math.min(1, inside / reach);
       const m = {
@@ -140,7 +148,7 @@ export function touchAt(p: V3, d: V3, h: HandPlate, reach: number, s = 0): HandH
       across = Math.max(-1, lw / h.hw);
     }
   }
-  return { s, p, q, N, along, across, plate: h, dist: near.d };
+  return { s, p, q, N, along, across, depth, plate: h, dist: near.d };
 }
 
 /**

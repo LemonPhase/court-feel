@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { AI, BALL, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
+import { AI, BALL, BLOCK, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
 import { clamp, clamp01, damp, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
-import { handPlates } from '../game/blockHands';
+import { blockPress, handPlates } from '../game/blockHands';
 import { DIGITS, FINGERS } from './hand';
 import { orientBone, twoBoneIK } from './ik';
 import { buildRig, type BoneName, type Kit, type Rig } from './rig';
@@ -554,7 +554,10 @@ export class AthleteView {
     const blockAct = act && act.kind === 'block' ? act : null;
     if (blockAct) {
       const p = smooth01((tr - blockAct.t0) / 0.12);
-      spineX = lerp(spineX, st === 'air' ? -0.06 : -0.08, p);
+      // in the air the torso leans in with the press, as the simulation's shoulders do (BLOCK.lean)
+      const torso = this.rig.dims.spineLen + this.rig.dims.chestLen;
+      const lean = Math.asin(Math.min(1, (BLOCK.lean * blockPress(a, blockAct, tr)) / torso));
+      spineX = lerp(spineX, st === 'air' ? -0.06 - lean : -0.08, p);
       chestX = lerp(chestX, 0.0, p);
       chestY = lerp(chestY, 0, p);
       hipsY = lerp(hipsY, 0, p);

@@ -400,15 +400,22 @@ describe('the ball off the block', () => {
     expect(hard.v.y).toBeLessThan(soft.v.y - 2);
   });
 
-  it("your spike off the outside of an AI block's hands is wiped off it more often than an AI hitter's (playability)", () => {
+  it("your spike off the outside of an AI block's hands gets off it more often than an AI hitter's: stuffed less, off it more (playability)", () => {
     // an AI blocker at the pin; across its outside hand and past it, a ball at each spot
-    let yours = 0;
-    let theirs = 0;
-    for (let off = 0; off <= CONTACT.blockHalfWidth + 0.1 + 1e-9; off += 0.02) {
-      if (blockAt(22, { at: 3, off, user: true }).e?.note === 'Tooled') yours++;
-      if (blockAt(22, { at: 3, off }).e?.note === 'Tooled') theirs++;
-    }
-    expect(yours).toBeGreaterThan(theirs);
+    const tally = (user: boolean) => {
+      const n = { stuffed: 0, off: 0 };
+      for (let off = 0; off <= CONTACT.blockHalfWidth + 0.1 + 1e-9; off += 0.02) {
+        const note = blockAt(22, { at: 3, off, user }).e?.note;
+        if (note === 'Stuff!') n.stuffed++;
+        // off the hands and out, or on into their court
+        if (note === 'Tooled' || note === 'Soft block') n.off++;
+      }
+      return n;
+    };
+    const yours = tally(true);
+    const theirs = tally(false);
+    expect(yours.stuffed).toBeLessThan(theirs.stuffed);
+    expect(yours.off).toBeGreaterThan(theirs.off);
   });
 
   /** a ball off their block coming down onto our coverer's platform at (0, 5.55): `T` s from `from` */

@@ -237,6 +237,13 @@ Ask these in order and stop at the first yes.
   the check that the app, with its settings and a person's keys, still brings
   them to the player. Where a unit test can reach a rule, it is the cheaper
   place.
+- **The block sweep** (`npm run block-sweep`): a measurement, not a pass or a
+  fail. It sends attacks at a blocker through the real block, across hitters,
+  angles, speeds, jump timing and where along the hands the ball crosses the
+  net, and writes what the block did with each (`scripts/out/block-sweep/`):
+  how wide it is by angle, what a touch turns into by timing and by where on
+  the hands, where stuffs and block-outs go. Run it before and after a change
+  to the block and compare the two.
 - **Driving the app.** The `verify-court-feel` skill lets an agent run the game
   and look, before it says a change works.
 

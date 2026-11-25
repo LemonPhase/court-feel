@@ -136,18 +136,27 @@ describe('the ball comes off the hands the way it met them', () => {
     expect(stuffs).toBeGreaterThan(3);
   });
 
-  it('a spike off the outer edge of the hands carries on, turned out, and lands out: a block-out', () => {
+  it('a spike off the outer edge of the hands carries on, turned out, and lands out: a block-out; a nick keeps more of its pace', () => {
     // their outside hitter at the antenna hits the line, half the ball on the outer edge of our pin blocker's outside hand
     const b = B(3.75);
-    const aim = edgeOf(b, { x: 0, y: 0, z: 1 }, true, R * 0.5);
-    const r = blockScene(through(hitter(aim.x), aim, CONTACT.spikeGood, [b]));
+    const off = (beyond: number) => {
+      const aim = edgeOf(b, { x: 0, y: 0, z: 1 }, true, beyond);
+      return blockScene(through(hitter(aim.x), aim, CONTACT.spikeGood, [b]));
+    };
+    const r = off(R * 0.5);
     expect(r.touched).toBe(true);
     expect(r.kind).toBe('tool');
     expect(r.landIn).toBe(false);
-    // it keeps going the way it was going (on into the blocker's side), turned out, with most of its pace
+    // it keeps going the way it was going (on into the blocker's side), turned out
     expect(r.vOut!.z).toBeGreaterThan(0);
     expect(r.vOut!.x).toBeGreaterThan(r.vIn!.x + 0.5);
-    expect(speed(r.vOut!)).toBeGreaterThan(speed(r.vIn!) * 0.55);
+    // a nick (the ball's line nearly a radius outside the hand) keeps more of its pace than half the ball on the hand
+    const kept = (k: number) => {
+      const t = off(R * k);
+      expect(t.touched).toBe(true);
+      return speed(t.vOut!) / speed(t.vIn!);
+    };
+    expect(kept(0.95)).toBeGreaterThan(kept(0.5) + 0.1);
   });
 
   it('a ball that only clips the fingertips goes up and on into the blocker’s court', () => {
@@ -170,6 +179,21 @@ describe('the ball comes off the hands the way it met them', () => {
     expect(r.vOut!.z).toBeLessThan(0);
     expect(r.kind).toBe('recycle');
     expect(r.landSide).toBe('hitter');
+  });
+
+  it('a tip pushed off the outer edge of a pin blocker’s outside hand goes off it and out; into the middle of the hand it comes back (#114)', () => {
+    const b = B(3.5);
+    for (const sp of [6, 9, 12]) {
+      // pushed from just inside the hand, a little out, at its edge (the ball half on the hand)
+      const edge = edgeOf(b, { x: 0, y: 0, z: 1 }, true, 0);
+      const off = blockScene(through({ x: edge.x - 0.15, y: edge.y + 0.25, z: -0.6 }, edge, sp, [b], 0));
+      expect(off.touched, `${sp} m/s`).toBe(true);
+      expect(off.kind, `${sp} m/s`).toBe('tool');
+      // the same push into the middle of the outside hand: back to the hitter's side, for their cover
+      const mid = palm(b, { x: 0, y: 0, z: 1 }, true);
+      const back = blockScene(through({ x: mid.x - 0.15, y: mid.y + 0.25, z: -0.6 }, mid, sp, [b], 0));
+      expect(back.kind, `${sp} m/s`).toBe('recycle');
+    }
   });
 
   it('a late block, hands still coming up under the ball, stuffs far less often than a block at the top of its jump', () => {

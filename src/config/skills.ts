@@ -203,17 +203,19 @@ export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 
  * - `thickness`: of a hand (m); the ball meets its surface, not its middle.
  * - `reachTop`: the fingertips over the standing reach with the arms straight up (m), as the
  *   standing reach is measured to the middle finger's first joint.
- * - `press` (rad): the arms lean forward from the shoulders over the net at a full press, and the
- *   wrists turn the hands down a further `wrist` (rad), so the palms face the hitter's floor, about
- *   23 degrees off vertical; the torso leans in with it, `lean` m at the shoulders, which is most
- *   of the reach over the net (about 14 cm for a middle standing 0.45 m off it: the shoulders roll
- *   over to about the tape). Not more: a spike
- *   comes down at 15-25 degrees, so it meets a palm tilted `press` + `wrist` at that much plus the
- *   tilt off square, and past about 40 degrees a ball aimed at a 20 cm palm meets the fingertips
- *   first (tried: 34 degrees of tilt sent hard spikes into the middle of the hands off the tips).
- *   A press costs height: a pressed hand is a few cm lower than an arm straight up, which is why a
- *   hitter can go over a block that penetrates and not over one that only reaches (JSSM 10:452, the
- *   swing block: more height and more penetration).
+ * - `press` (rad): the arms lean forward from the shoulders over the net at a full press (about 23
+ *   degrees off vertical) and the wrists bend back a little (`wrist`, rad, < 0: back), so the palms
+ *   face the hitter's floor at about 20 degrees off vertical; the shoulders come forward `lean` m
+ *   with it (the torso leaning in about 15 degrees, and the shrug of a reach). Together they put the
+ *   fingertips about 10 cm over the net for a middle standing 0.45 m off it, for about 7 cm of height.
+ *   The palms stay near upright: a spike comes down at 15-25 degrees, so it meets a palm tilted that
+ *   much plus the tilt off square, and past about 40 degrees a ball aimed at a 20 cm palm meets the
+ *   fingertips first (tried: 34 degrees of tilt sent hard spikes into the middle of the hands off the
+ *   tips). Tried and turned down: a 0.3 m lean (a 30-degree lean no blocker holds, and the drawn body
+ *   could not follow it: in first person the hands went out of sight above), and arms 29 degrees
+ *   over (9.5 cm of height lost: fewer stuffs, as many spikes went over the fingertips). A press costs
+ *   height, which is why a hitter can go over a block that penetrates and not over one that only
+ *   reaches (JSSM 10:452, the swing block: more height and more penetration).
  * - `pressFrom`: the press comes with the jump: none below this share of the jump's height, all of
  *   it at the top. A late blocker's hands are still going up, square to the net; an early one's are
  *   coming down.
@@ -291,9 +293,9 @@ export const BLOCK = {
   thumbGap: 0.1,
   thickness: 0.03,
   reachTop: 0.04,
-  press: 0.3,
-  wrist: 0.1,
-  lean: 0.3,
+  press: 0.4,
+  wrist: -0.05,
+  lean: 0.22,
   pressFrom: 0.4,
   tapeClear: 0.05,
   face: 0.5,
