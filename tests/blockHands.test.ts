@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BLOCK, COURT, CONTACT } from '../src/config';
-import { Athlete } from '../src/game/athlete';
-import { handPlates } from '../src/game/blockHands';
-import { between, blockScene, edgeOf, ghost, palm, R, spikeAt, through, type BlockerSpec, type SceneSpec } from './blockScene';
+import { BLOCK, COURT, CONTACT, DEFAULT_SETTINGS } from '../src/config';
+import { Athlete, FEET_OFF_NET } from '../src/game/athlete';
+import { handPlates, handsHalfSpan } from '../src/game/blockHands';
+import { between, blockScene, edgeOf, ghost, handsAtPeak, palm, R, spikeAt, through, type BlockerSpec, type SceneSpec } from './blockScene';
 
 /**
  * The block is two hands: surfaces the ball meets where they are, and comes off the way it met
@@ -83,6 +83,46 @@ describe('the block is two hands', () => {
     const up = handPlates(a, act, 0, { netTop: COURT.netHeightMen });
     for (const p of up.filter((h) => !h.arm)) expect(p.tip.z).toBeLessThan(0);
   });
+  it('a spike into the middle of the block under the hands meets both forearms and comes back, whatever the aim assist', () => {
+    // the gap between a blocker's forearms is narrower than the ball, as between its thumbs
+    const from = { x: 0.4, y: 3.05, z: -0.8 };
+    for (const user of [true, false])
+      for (const assist of [0, DEFAULT_SETTINGS.aimAssist, 1])
+        for (const sp of [10, 18, 26]) {
+          const b: BlockerSpec = { x: 0.4, user, timing: 0 };
+          const aim = between(b, { x: 0, y: 0, z: 1 }, from, true, assist);
+          const r = blockScene({ ...through(from, aim, sp, [b]), assist });
+          const what = `${user ? 'you' : 'AI'}, assist ${assist}, ${sp} m/s`;
+          expect(r.touched, what).toBe(true);
+          // met square by both: back to the hitter's side, not on through
+          expect(r.vOut!.z, what).toBeLessThan(0);
+        }
+  });
+
+  it('the block’s outside edge, where an AI hitter wipes it, is where its hands end, at any aim assist', () => {
+    for (const assist of [0, DEFAULT_SETTINGS.aimAssist, 1]) {
+      // a blocker squared to the net (a hitter straight in front), at the top of its jump
+      const hands = handsAtPeak({ x: 0, user: true }, { x: 0, y: 0, z: 1 }, { x: 0, y: 3.35, z: -0.8 }, assist).filter((h) => !h.arm);
+      const edge = Math.max(...hands.map((h) => Math.abs(h.c.x) + Math.abs(h.w.x) * h.hw));
+      expect(handsHalfSpan(assist), `assist ${assist}`).toBeCloseTo(edge, 6);
+    }
+  });
+
+  it('a blocker standing as close to the net as it may still presses its hands over it, and closer reaches further', () => {
+    const over = (z: number) => {
+      const hands = handsAtPeak({ x: 0, z, user: true }, { x: 0, y: 0, z: 1 }, { x: 0, y: 3.35, z: -0.8 }).filter((h) => !h.arm);
+      return -Math.min(...hands.map((h) => h.tip.z));
+    };
+    let last = Infinity;
+    for (let z = FEET_OFF_NET; z <= 0.6 + 1e-9; z += 0.02) {
+      const o = over(z);
+      // (from as close as it may stand to where the AI blockers stand; further back the hands are not over)
+      if (z <= 0.45 + 1e-9) expect(o, `feet ${z.toFixed(2)} m off the net`).toBeGreaterThan(0);
+      // (no further over for standing further back)
+      expect(o, `feet ${z.toFixed(2)} m off the net`).toBeLessThanOrEqual(last + 1e-9);
+      last = o;
+    }
+  });
 });
 
 describe('the ball comes off the hands the way it met them', () => {
@@ -93,8 +133,9 @@ describe('the ball comes off the hands the way it met them', () => {
   const dir = (from: { x: number; z: number }, to: { x: number; z: number }) => ({ x: to.x - from.x, y: 0, z: to.z - from.z });
   const speed = (v: { x: number; y: number; z: number }) => Math.hypot(v.x, v.y, v.z);
   /** an attack from `from` into the middle of the hands (between the thumbs) of blocker `b` */
-  const intoMiddle = (b: BlockerSpec, from: { x: number; y: number; z: number }, sp: number) =>
-    blockScene(through(from, between(b, dir(from, { x: b.x, z: 0 })), sp, [b]));
+  const intoMiddleSpec = (b: BlockerSpec, from: { x: number; y: number; z: number }, sp: number) =>
+    through(from, between(b, dir(from, { x: b.x, z: 0 }), from), sp, [b]);
+  const intoMiddle = (b: BlockerSpec, from: { x: number; y: number; z: number }, sp: number) => blockScene(intoMiddleSpec(b, from, sp));
 
   it('a hard spike into the middle of well-pressed hands is driven down into the hitter’s court: a stuff', () => {
     const r = intoMiddle(B(3), hitter(3), CONTACT.spikeGood);
@@ -128,7 +169,7 @@ describe('the ball comes off the hands the way it met them', () => {
     let stuffs = 0;
     for (let across = -0.08; across <= 0.08; across += 0.02) {
       const from = hitter(4.1);
-      const r = blockScene(through(from, palm(b, dir(from, { x: 4.1, z: 0 }), true, across), CONTACT.spikeGood, [b]));
+      const r = blockScene(through(from, palm(b, dir(from, { x: 4.1, z: 0 }), true, across, 0, from), CONTACT.spikeGood, [b]));
       if (r.kind !== 'stuff') continue;
       stuffs++;
       expect(Math.abs(r.land!.x), `across ${across.toFixed(2)}`).toBeLessThan(COURT.halfWidth);
@@ -137,11 +178,15 @@ describe('the ball comes off the hands the way it met them', () => {
   });
 
   it('a spike off the outer edge of the hands carries on, turned out, and lands out: a block-out; a nick keeps more of its pace', () => {
-    // their outside hitter at the antenna hits the line, half the ball on the outer edge of our pin blocker's outside hand
-    const b = B(3.75);
+    // their outside hitter hits the line, half the ball on the outer edge of the outside hand of our pin
+    // blocker, which is sealing the line (its outside hand about a ball inside the sideline)
+    const b = B(3.95);
     const off = (beyond: number) => {
-      const aim = edgeOf(b, { x: 0, y: 0, z: 1 }, true, beyond);
-      return blockScene(through(hitter(aim.x), aim, CONTACT.spikeGood, [b]));
+      // (the hitter straight in front of the spot: found once with the hands squared to the antenna, then again squared to it)
+      const first = edgeOf(b, { x: 0, y: 0, z: 1 }, true, beyond, hitter(4.2));
+      const from = hitter(first.x);
+      const aim = edgeOf(b, { x: 0, y: 0, z: 1 }, true, beyond, from);
+      return blockScene(through(from, aim, CONTACT.spikeGood, [b]));
     };
     const r = off(R * 0.5);
     expect(r.touched).toBe(true);
@@ -163,7 +208,7 @@ describe('the ball comes off the hands the way it met them', () => {
     const b = B(0);
     const from = hitter(0, 0, 3.6);
     // the ball's centre a little over the tips of the fingers
-    const tips = palm(b, dir(from, { x: 0, z: 0 }), true, 0, BLOCK.handWidth / 2 + R * 0.8);
+    const tips = palm(b, dir(from, { x: 0, z: 0 }), true, 0, BLOCK.handWidth / 2 + R * 0.8, from);
     const r = blockScene(through(from, tips, CONTACT.spikeGood, [b]));
     expect(r.touched).toBe(true);
     expect(r.vOut!.z).toBeGreaterThan(0);
@@ -174,24 +219,28 @@ describe('the ball comes off the hands the way it met them', () => {
   it('a soft push into the middle of good hands comes back to the hitter’s side, slow: their cover can play it', () => {
     const b = B(0, { user: false });
     const from = { x: 0, y: 3.1, z: -0.6 };
-    const r = blockScene(through(from, between(b, dir(from, { x: 0, z: 0 })), CONTACT.pushSpeed, [b], 0));
+    const r = blockScene(through(from, between(b, dir(from, { x: 0, z: 0 }), from), CONTACT.pushSpeed, [b], 0));
     expect(r.touched).toBe(true);
     expect(r.vOut!.z).toBeLessThan(0);
     expect(r.kind).toBe('recycle');
     expect(r.landSide).toBe('hitter');
   });
 
-  it('a tip pushed off the outer edge of a pin blocker’s outside hand goes off it and out; into the middle of the hand it comes back (#114)', () => {
+  it('a tip wiped off the outer edge of a pin blocker’s outside hand goes off it and out; into the middle of the hand it comes back (#114)', () => {
     const b = B(3.5);
     for (const sp of [6, 9, 12]) {
-      // pushed from just inside the hand, a little out, at its edge (the ball half on the hand)
-      const edge = edgeOf(b, { x: 0, y: 0, z: 1 }, true, 0);
-      const off = blockScene(through({ x: edge.x - 0.15, y: edge.y + 0.25, z: -0.6 }, edge, sp, [b], 0));
+      // a wipe: pushed out along the hand from 0.3 m inside it, half the ball past its outer edge
+      const e0 = edgeOf(b, { x: 0, y: 0, z: 1 }, true, R / 2);
+      const pushFrom = { x: e0.x - 0.3, y: e0.y + 0.25, z: -0.6 };
+      const edge = edgeOf(b, { x: 0, y: 0, z: 1 }, true, R / 2, pushFrom);
+      const off = blockScene(through(pushFrom, edge, sp, [b], 0));
       expect(off.touched, `${sp} m/s`).toBe(true);
       expect(off.kind, `${sp} m/s`).toBe('tool');
       // the same push into the middle of the outside hand: back to the hitter's side, for their cover
-      const mid = palm(b, { x: 0, y: 0, z: 1 }, true);
-      const back = blockScene(through({ x: mid.x - 0.15, y: mid.y + 0.25, z: -0.6 }, mid, sp, [b], 0));
+      const m0 = palm(b, { x: 0, y: 0, z: 1 }, true);
+      const midFrom = { x: m0.x - 0.3, y: m0.y + 0.25, z: -0.6 };
+      const mid = palm(b, { x: 0, y: 0, z: 1 }, true, 0, 0, midFrom);
+      const back = blockScene(through(midFrom, mid, sp, [b], 0));
       expect(back.kind, `${sp} m/s`).toBe('recycle');
     }
   });
@@ -222,10 +271,46 @@ describe('the ball comes off the hands the way it met them', () => {
           const r = blockedAt(spikeAt(3.2, angle, sp), off);
           if (!r.touched) continue;
           n++;
-          const v = r.athletes[r.by].vel;
+          // (the hand as it moved at the touch)
+          const v = r.hit!.hit.plate.v;
           expect(energy(r.vOut!, r.wOut!, v)).toBeLessThanOrEqual(energy(r.vIn!, r.wIn!, v) + 1e-6);
         }
     expect(n).toBeGreaterThan(20);
+  });
+
+  it('what is drawn of a block is the block: the hand or forearm the ball met is one the action carries, an AI beaten by your green set too', () => {
+    for (const [user, green] of [
+      [true, false],
+      [false, false],
+      [false, true],
+    ] as const) {
+      const r = blockScene({ ...intoMiddleSpec(B(2, { user }), hitter(2), CONTACT.spikeGood), hitterUser: true, green });
+      expect(r.touched).toBe(true);
+      const c = r.hit!.hit.plate.c;
+      const near = Math.min(...r.drawn.map((d) => Math.hypot(d.x - c.x, d.y - c.y, d.z - c.z)));
+      expect(near, `${user ? 'you' : 'AI'}${green ? ', green set' : ''}`).toBeLessThan(1e-9);
+    }
+  });
+
+  it('a block reports the ball where it met the hands, its centre, as every touch does; and the point of the hand it touched', () => {
+    const r = intoMiddle(B(2), hitter(2), CONTACT.spikeGood);
+    const e = r.events[0];
+    expect(e.kind).toBe('block');
+    // the ball's centre is its radius (and half the hand's thickness) off the point of the hand
+    const d = Math.hypot(e.point.x - e.touch!.x, e.point.y - e.touch!.y, e.point.z - e.touch!.z);
+    // (to the swept search's halvings: a few hundredths of a millimetre)
+    expect(d).toBeCloseTo(R + BLOCK.thickness / 2, 4);
+  });
+
+  it('the other team’s serve may not be blocked: hands that meet it are the referee’s call, a fault (FIVB 14.6.3)', () => {
+    const spec = intoMiddleSpec(B(0.5), { x: 0.5, y: 2.9, z: -1.2 }, 20);
+    const serve = blockScene({ ...spec, kind: 'serve' });
+    expect(serve.touched).toBe(true);
+    expect(serve.events[0].fault).toBe('serveBlock');
+    // the same ball spiked is a block like any other
+    const spike = blockScene(spec);
+    expect(spike.touched).toBe(true);
+    expect(spike.events[0].fault).toBeUndefined();
   });
 
   it('the same spike into the same block comes off the same way', () => {
@@ -242,14 +327,14 @@ describe('the ball comes off the hands the way it met them', () => {
       const out: string[] = [];
       for (let across = lo; across <= hi + 1e-9; across += 0.02)
         for (const sp of [19, 26, 30])
-          out.push(blockScene(through(from, palm(b, dir(from, { x: 3.9, z: 0 }), true, across), sp, [b])).kind);
+          out.push(blockScene(through(from, palm(b, dir(from, { x: 3.9, z: 0 }), true, across, 0, from), sp, [b])).kind);
       return out;
     };
     const middle = kinds(-0.04, 0.04);
     const edge: string[] = [];
     for (let beyond = 0; beyond <= R + 1e-9; beyond += 0.02)
       for (const sp of [19, 26, 30])
-        edge.push(blockScene(through(from, edgeOf(b, dir(from, { x: 3.9, z: 0 }), true, beyond), sp, [b])).kind);
+        edge.push(blockScene(through(from, edgeOf(b, dir(from, { x: 3.9, z: 0 }), true, beyond, from), sp, [b])).kind);
     const share = (a: string[], k: string) => a.filter((x) => x === k).length / a.length;
     expect(share(middle, 'stuff')).toBeGreaterThan(share(edge, 'stuff'));
     expect(share(edge, 'tool')).toBeGreaterThan(share(middle, 'tool'));

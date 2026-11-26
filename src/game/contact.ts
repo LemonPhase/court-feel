@@ -6,7 +6,7 @@ import { bounceOffHand, meetHand, touchAt, type HandHit } from '../physics/handC
 import { flyUntilY, netClearance, solveApex, solveFixedTime, solveSpeedToFloor } from '../physics/solve';
 import { Athlete, FEET_OFF_NET, type Action, type Grade, type PassForm } from './athlete';
 import type { BallEntity, Touch, TouchKind } from './ballEntity';
-import { handGive, handPlates, type BlockHand } from './blockHands';
+import { blockPose, handGive, handPlates, handsHalfSpan, type BlockHand, type HandsContext } from './blockHands';
 import { DEFAULT_PICK, type SetPick } from './setterCalls';
 import { HANDS_FWD, HANDS_UP, planSetJump, type SetJumpPlan } from './setJump';
 import {
@@ -44,10 +44,15 @@ export interface ContactEvent {
   footFault?: boolean;
   /** a pass or dig: how it was played (the platform in front, out to the side, overhand, diving) */
   form?: PassForm;
-  /** the referee's call on this touch: a set held too long is a lift (the point goes to the other team) */
-  fault?: 'lift';
+  /**
+   * the referee's call on this touch (the point goes to the other team): a set held too long is a
+   * lift; a block of the other team's serve is a blocking fault (FIVB 14.6.3)
+   */
+  fault?: 'lift' | 'serveBlock';
   /** a block: where it met the block (the palms, both hands, the fingers, the fingertips, a hand's edge, the forearms) */
   where?: string;
+  /** a block: the point of the hand the ball touched (`point` is the ball's centre, as for every touch) */
+  touch?: THREE.Vector3;
 }
 
 export interface IdealInfo {
@@ -362,6 +367,14 @@ export class ContactSystem {
       this.serving = null;
     for (const a of athletes) {
       const act = a.action;
+      // a block: keep this step's hands on the action, as the block has them (what is drawn)
+      if (act && act.kind === 'block') {
+        const pose = blockPose(a, act, t, this.blockContext(a));
+        act.hands = pose.plates.filter((p) => !p.arm);
+        act.arms = pose.plates.filter((p) => p.arm);
+        act.press = pose.press;
+        continue;
+      }
       if (act && act.kind === 'windup') {
         this.trackIdeal(a, act);
         continue;
@@ -1481,6 +1494,24 @@ export class ContactSystem {
   private readonly _fly = makeBall();
   private readonly _flyEvents: CollisionEvent[] = [];
 
+  /** how far out from the middle of `a`'s block its outside edge is (m), with its aim assist: where a hitter wipes it */
+  blockHalfSpan(a: Athlete): number {
+    return handsHalfSpan(this.host.aimAssist(a));
+  }
+
+  /**
+   * What a blocker's hands are set by now: the net, its aim assist, the ball it sees coming and the
+   * attack it is blocking (one from the other team, or the one a team-mate's hands met first, the
+   * same block). The block and what is drawn read the same.
+   */
+  private blockContext(a: Athlete): HandsContext {
+    const h = this.host;
+    const lt = h.ball.lastTouch;
+    const ours = lt?.kind === 'block' && lt.side === a.side;
+    const attack = ours ? this.blockAttack : lt && lt.side !== a.side ? lt : null;
+    return { netTop: h.env.netTop, assist: h.aimAssist(a), ballVel: h.ball.active ? h.ball.vel : null, attack };
+  }
+
   /**
    * RMB block: the blocker's two hands (src/game/blockHands.ts, `BLOCK`). The ball is touched where
    * its path this step passes within its radius of a hand, and comes off the hand as it met it
@@ -1498,9 +1529,9 @@ export class ContactSystem {
     if (lt.side === a.side && !chain) return false; // only block the other team's attack
     const bv = ball.vel;
     if (!chain && bv.z * a.side <= 0) return false; // moving away from our court
-    if (Math.abs(a.pos.z) > BLOCK.netMax) return false; // must be at the net
     const attack = chain ? this.blockAttack : lt;
-    const hands = handPlates(a, act, t, { netTop: h.env.netTop, assist: h.aimAssist(a), ballVel: bv, attack });
+    if (Math.abs(a.pos.z) > BLOCK.netMax) return false; // must be at the net
+    const hands = handPlates(a, act, t, this.blockContext(a));
     if (!hands.length) return false;
     // the ball's path this step (a stand-in ball without its last place: back along its speed)
     const p1 = { x: ball.pos.x, y: ball.pos.y, z: ball.pos.z };
@@ -1520,9 +1551,9 @@ export class ContactSystem {
     const impact = Math.abs((v.x - hv.x) * first.hit.N.x + (v.y - hv.y) * first.hit.N.y + (v.z - hv.z) * first.hit.N.z);
     const give = handGive(first.hit, first.hand, impact);
     let hit = first.hit;
-    // met both hands at once (between the thumbs): both arms behind it, pushed along both normals
+    // met both hands (or both forearms) at once, between them: both arms behind it, pushed along both normals
     const len = Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z);
-    const also = hits.find((o) => o !== first && !o.hand.arm && !first.hand.arm && (o.hit.s - first.hit.s) * len <= BLOCK.together);
+    const also = hits.find((o) => o !== first && o.hand.arm === first.hand.arm && (o.hit.s - first.hit.s) * len <= BLOCK.together);
     if (also) {
       // the two hands share it by how far the ball presses into each, a little into the touch (by the
       // same rule: mirror-image touches on the two thumbs push the ball straight on)
@@ -1596,7 +1627,10 @@ export class ContactSystem {
       grade,
       note: note || act.note,
       speed: Math.hypot(v.x, v.y, v.z),
-      point: new THREE.Vector3(hit.q.x, hit.q.y, hit.q.z),
+      point: new THREE.Vector3(hit.p.x, hit.p.y, hit.p.z),
+      touch: new THREE.Vector3(hit.q.x, hit.q.y, hit.q.z),
+      // (the serve may not be blocked: the hands met it, and that is the referee's call)
+      fault: attack?.kind === 'serve' ? 'serveBlock' : undefined,
       quality: kind === 'stuff' ? (rank === 3 ? 1 : 0.7) : 0.3,
       perfect: kind === 'stuff' && rank === 3,
       tip: false,

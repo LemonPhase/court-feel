@@ -25,7 +25,7 @@ export interface Touch {
   side: 1 | -1 | 0;
   /** an attack off the user's green set: the hitter hid the shot until the hand (their defence starts late) */
   green?: boolean;
-  /** a block the ball came back off to the hitter's side and stayed up, for their cover (recycled: `BLOCK.stuffTime`) */
+  /** a block the ball came back off to the hitter's side and stayed up, for their cover (recycled: slower off the hands than `BLOCK.stuffSpeed`) */
   recycle?: boolean;
 }
 

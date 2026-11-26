@@ -680,9 +680,10 @@ export const AI = {
    * is up, an AI pin hitter wipes it off the outside hand (weight `toolShot`) or rolls it over
    * (`rollShot`). Out of system the high ball goes into a full block, and coaches teach hitters to
    * use it: high hands and off the block (USA Volleyball, "Tips for tooling the block"). The tool
-   * goes through the net `toolEdge` of the hand's half-width (`CONTACT.blockHalfWidth`) out from the
-   * middle of the block: just past the outside hand's edge, so the ball glances off it (`BLOCK`;
-   * aimed inside the hand, at 0.85 as under the old dice table, it is stuffed or dropped).
+   * goes through the net `toolEdge` of the block's half-span out from its middle (to its outside
+   * edge, with the blocker's aim assist: `ContactSystem.blockHalfSpan`): just past the outside hand's
+   * edge, so the ball glances off it (`BLOCK`; aimed inside the hand, at 0.85 as under the old dice
+   * table, it is stuffed or dropped).
    */
   toolShot: 1.0,
   toolEdge: 1.15,
@@ -697,7 +698,7 @@ export const AI = {
    * An AI hitter under the ball (its swing would be graded Early) never sends a light ball sailing
    * out past the end line: a light ball is a choice (MatusGib, 2026-11-14). `adjust` of the time it
    * feels it and plays the ball off-speed, its timing error cut to x `timing` (a soft touch needs
-   * little timing): pushed at the outer edge (`wipeEdge` of the hand's half-width: just past it, so
+   * little timing): pushed at the outer edge (`wipeEdge` of the block's half-span: just past it, so
    * it glances off, `AI.toolEdge`) of the outside
    * hand of a block within `blockNear` m in front (weight `wipe`: off it and out, aimed `wipeZ` m
    * past the net), tipped short over the block (`tip`, aimed `tipZ` m past it), or rolled (`roll`)
@@ -776,8 +777,8 @@ export const AI = {
    * the pin blockers block as on any set, so your hitter has one block to beat and bounces it
    * past them (`greenBounce`); their diggers start late (`greenSetDigDelay`). Off a pass out of
    * system a high ball to a pin fools nobody: their middle closes the block, and it is a full
-   * swing at two blockers, not always a kill. No block stuffs an attack off a green set: it comes
-   * off the hands soft or wide, and off a late or early block always wide (ContactSystem.tryBlock).
+   * swing at two blockers, not always a kill. No block stuffs an attack off a green set: the
+   * blockers' hands are not set (`BLOCK.ai.green`), so whatever they touch comes off them soft.
    * The numbers are the browser probes' (the set bot, 96 green sets in system, 96 points).
    *
    * The drills' `BlockerBrain` middle, with nobody else going, guesses a side: on a pin set it

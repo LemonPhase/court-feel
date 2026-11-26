@@ -27,5 +27,5 @@ hands (`BLOCK.ai`): how much they press, how firm they are, how far they turn
 the outside hand in, and how little their hands are set against your green
 set. A difficulty can change them like any other named number
 ([0012](0012-a-difficulty-only-overrides-numbers-that-have-a-name.md)).
-`npm run block-sweep` measures the block across hitters, angles, speeds,
+`node scripts/block-sweep.mjs` measures the block across hitters, angles, speeds,
 timing and where along the hands the ball crosses the net.

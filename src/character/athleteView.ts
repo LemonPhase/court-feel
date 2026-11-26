@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { AI, BALL, BLOCK, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
 import { clamp, clamp01, damp, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
-import { blockPress, handPlates } from '../game/blockHands';
 import { DIGITS, FINGERS } from './hand';
 import { orientBone, twoBoneIK } from './ik';
 import { buildRig, type BoneName, type Kit, type Rig } from './rig';
@@ -556,7 +555,7 @@ export class AthleteView {
       const p = smooth01((tr - blockAct.t0) / 0.12);
       // in the air the torso leans in with the press, as the simulation's shoulders do (BLOCK.lean)
       const torso = this.rig.dims.spineLen + this.rig.dims.chestLen;
-      const lean = Math.asin(Math.min(1, (BLOCK.lean * blockPress(a, blockAct, tr)) / torso));
+      const lean = Math.asin(Math.min(1, (BLOCK.lean * (blockAct.press ?? 0)) / torso));
       spineX = lerp(spineX, st === 'air' ? -0.06 - lean : -0.08, p);
       chestX = lerp(chestX, 0.0, p);
       chestY = lerp(chestY, 0, p);
@@ -1110,8 +1109,7 @@ export class AthleteView {
         // the hands are where the simulation has them (src/game/blockHands.ts, docs/adr/0013): up with
         // the jump, pressed over the net at the top of it, turned to the ball's line, the outside one
         // turned in at a pin. The wrist goes to its wrist, the fingers along it, the palm its way
-        const hands = handPlates(a, act, tr, { netTop: this.netTop, ballVel: a.ballVel ?? null });
-        const hand = hands.filter((h) => !h.arm)[s < 0 ? 0 : 1];
+        const hand = act.hands?.[s < 0 ? 0 : 1];
         if (hand) {
           ikWorld = _g.set(
             hand.c.x - hand.u.x * hand.hl + a.rpos.x - a.pos.x,

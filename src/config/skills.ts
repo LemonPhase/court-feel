@@ -14,12 +14,13 @@
 //
 // `BLOCK`: The block's hands: how big a hand is with the fingers spread and the gap between the
 // thumbs, how far the arms press over the net with the jump (`press`, `wrist`, the torso's `lean`,
-// from `pressFrom` of the jump; never under the tape, `tapeClear`; the shoulders kept `shoulderOff`
-// off the net), how far the hands turn to the attacker (`face`) and a pin blocker's outside hand
-// turns in (`turnIn`, `pinTurn`), the aim assist's wider hands (`assistWiden`); how the ball comes
-// off them: the arm's mass behind the palm, the fingers, the little finger's edge and a forearm
-// (`massPalm`, `massTip`, `fingers`, `edge`, `massArm`), the ball's restitution by impact speed and
-// what the hand keeps of it (`ballRest`, `restPalm`, `restTip`, `restArm`), the skin's grip
+// from `pressFrom` of the jump; the shoulders no nearer the net than `shoulderOff`; never under the
+// tape, `tapeClear`), how far the hands turn about the forearms to the attacker (`face`) and a pin
+// blocker's outside hand turns in (`turnIn`, `pinTurn`), the aim assist's wider hands
+// (`assistWiden`); how the ball comes off them: the arm's mass behind the palm, the fingers, the
+// little finger's edge and a forearm (`massPalm`, `massTip`, `fingers`, `edge`, `massArm`; the
+// forearms no further apart than a ball, `forearmWidth`), the ball's restitution by impact speed
+// and what the hand keeps of it (`ballRest`, `restPalm`, `restTip`, `restArm`), the skin's grip
 // (`friction`), hands put up on the floor (`floorFirm`), one block as one touch (`chain`), two
 // hands taking a ball together (`together`); what a touch is called (`stuffSpeed`); the AI's hands
 // (`ai`: how firm, how far the outside hand turns in, against your attack, and off your green set)
@@ -188,10 +189,10 @@ export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 
  * decides how much is bounced back: the heel of a pressing hand has the arm behind it, the
  * fingertips bend back. Nothing is rolled for the outcome: a stuff, a soft block, a block-out and
  * a ball recycled to the hitter's side are what the bounce does, named afterwards from where the
- * ball goes (`stuffTime`). Before this (until 0.2.x) the hands were a box 0.66 m wide and 0.75 m
+ * ball goes (`stuffSpeed`). Before this (until 0.2.x) the hands were a box 0.66 m wide and 0.75 m
  * deep and the outcome was a dice table: a cross shot met hands twice as wide as a line shot,
  * balls that had cleared the fingertips were caught behind the net, and every block-out flew
- * 3-4 m past the end line whatever was hit (measured: `npm run block-sweep`).
+ * 3-4 m past the end line whatever was hit (measured: `node scripts/block-sweep.mjs`).
  *
  * The hands' place:
  * - `handWidth`: one hand, fingers spread (m). An adult man's hand is 8.5 cm wide at the knuckles
@@ -215,7 +216,11 @@ export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 
  *   could not follow it: in first person the hands went out of sight above), and arms 29 degrees
  *   over (9.5 cm of height lost: fewer stuffs, as many spikes went over the fingertips). A press costs
  *   height, which is why a hitter can go over a block that penetrates and not over one that only
- *   reaches (JSSM 10:452, the swing block: more height and more penetration).
+ *   reaches (JSSM 10:452, the swing block: more height and more penetration). The shoulders lean in
+ *   no closer than `shoulderOff` m to the net's plane (the chest is about 12 cm in front of the
+ *   shoulder joints, and it stays off the net): a blocker standing at the net leans less and is over
+ *   it further with the arms. (Before this limit a blocker at `FEET_OFF_NET` leaned its shoulders
+ *   onto the net's plane, and an arm from there could only clear the tape straight up: no press.)
  * - `pressFrom`: the press comes with the jump: none below this share of the jump's height, all of
  *   it at the top. A late blocker's hands are still going up, square to the net; an early one's are
  *   coming down.
@@ -224,7 +229,10 @@ export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 
  *   shoulders are low cannot reach over, however hard it presses.
  * - `face`, `faceMax`: the hands turn toward the attacker, `face` of the way, at most `faceMax` rad:
  *   a blocker squares its hands to the hitter's arm, not to the line the ball then takes (turned to
- *   the ball's line, one blocker took a 45-degree cross over 40% more net than a line shot).
+ *   the ball's line, one blocker took a 45-degree cross over 40% more net than a line shot). The
+ *   hands turn about the forearms; the arms and the shoulders press straight over the net (pressing
+ *   along the facing slid the hands up to 9 cm sideways toward a hitter off to one side: a free
+ *   reach that widened every block).
  * - `turnIn`, `pinTurn`: a pin blocker turns its outside hand in (rad, a turn of the forearm), so a
  *   ball off it goes into the court and not off it and out: from `pinTurn[0]` m along the net to
  *   all of it at `pinTurn[1]` m (Volleyball Canada, blocking: "hands wide open and slightly
@@ -244,7 +252,10 @@ export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 
  *   between the thumbs) has both arms behind it.
  * - `massArm`, `restArm`, `forearmWidth`: under the hands are the forearms (7-8 cm across): a ball
  *   met there has the whole braced arm behind it and comes off less lively than off a palm, but
- *   firmer than off the fingers.
+ *   firmer than off the fingers. They run up to under the middle of each hand as it is before the
+ *   aim assist spreads the fingers, so the gap between them is narrower than a ball at any assist
+ *   (with the assist spreading them too, at the default a ball went between them untouched), and a
+ *   ball whose line is in that gap is met by both, as between the thumbs.
  * - `ballRest`: a ball's own restitution against a rigid surface at `ballRestSpeed[0]` and
  *   `[1]` m/s: it falls as the impact gets harder (a pressurised tennis ball: 0.8 at 3 m/s to 0.6
  *   at 20 m/s, Haake / Sheffield; a volleyball at 0.3 kg/cm2 is softer and is taken a little lower).
@@ -282,9 +293,9 @@ export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 
  * 20-22) and they do not seal the outside hand:
  * it is left a little open, turned toward the antenna (`ai.userTurnIn` of a turn in: below 0 is
  * out), and its fingers not spread as wide (`ai.userWidth` of the width, the thumb's edge where it
- * was), the blocking fault coaches warn of, so your spike off the outer hand goes off it and out
- * more often (it was a separate dice roll, `CONTACT.userToolEdgeP`: the defence is strong and
- * hitting is hard enough). Off your green set their hands are not set (`ai.green`: the
+ * was), the blocking fault coaches warn of, so your spike off the outer hand gets off it more
+ * often: stuffed over less of the hand, off it over more (it was a separate dice roll, before the
+ * hands: the defence is strong and hitting is hard enough). Off your green set their hands are not set (`ai.green`: the
  * share of a press and of their firmness): the set beat them, they are reacting, and the hitter
  * swings high off them (it was a rule: never a stuff).
  */
@@ -296,6 +307,7 @@ export const BLOCK = {
   press: 0.4,
   wrist: -0.05,
   lean: 0.22,
+  shoulderOff: 0.18,
   pressFrom: 0.4,
   tapeClear: 0.05,
   face: 0.5,
@@ -470,7 +482,7 @@ export const CONTACT = {
    * 2026-11-14). The same for the user and the AI: the user's timing is their platform.
    *
    * `stuff`: any ball off their block that was not recycled (it did not come back softly off the
-   * hands: `recycleP`), kept off the floor. That touch is mostly luck. At most `best` of it is
+   * hands, slower than `BLOCK.stuffSpeed`), kept off the floor. That touch is mostly luck. At most `best` of it is
    * controlled, times a roll between the two `luck` values (where on the arms it landed); the
    * rest goes anywhere (`turn`: any direction), `pop` m away and `up` m above the contact (its arc
    * is solved down to `floor` m, not to the setter's hands: a pass's arc can't peak below them,

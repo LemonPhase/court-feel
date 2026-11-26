@@ -79,10 +79,23 @@ export function blockPress(a: Athlete, act: Action, t: number): number {
   return smooth01((clamp01(a.pos.y / a.jumpH) - BLOCK.pressFrom) / (1 - BLOCK.pressFrom)) * ext;
 }
 
+/**
+ * How far out from the middle of a block its outside edge is (m): half the gap between the thumbs
+ * and a hand, as wide as the aim assist `assist` spreads it (each hand: `BLOCK.assistWiden`)
+ */
+export function handsHalfSpan(assist: number): number {
+  return BLOCK.thumbGap / 2 + BLOCK.handWidth + 2 * assist * BLOCK.assistWiden;
+}
+
 /** the hands of a blocker `a` in its block action `act` at `t`: none until the arms are up */
 export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext): BlockHand[] {
+  return blockPose(a, act, t, ctx).plates;
+}
+
+/** the hands (`handPlates`) and how far into its press the blocker is, as the hands have it (an AI beaten by your green set presses little) */
+export function blockPose(a: Athlete, act: Action, t: number, ctx: HandsContext): { plates: BlockHand[]; press: number } {
   const ext = smooth01((t - act.t0) / TIMING.blockArmTime);
-  if (ext < BLOCK.armsUp) return [];
+  if (ext < BLOCK.armsUp) return { plates: [], press: 0 };
   const d = dimsFor(a.height);
   const arm = d.upperArm + d.foreArm;
   const hand = d.hand;
@@ -94,11 +107,17 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
   const press = blockPress(a, act, t) * beaten;
   const vsUser = ai && lt?.athlete?.isUser === true;
   const firm = (air ? 1 : BLOCK.floorFirm) * ext * (ai ? BLOCK.ai.firm : 1) * (vsUser ? BLOCK.ai.userFirm : 1) * beaten;
-  const h = facing(a, ctx, BLOCK.face * beaten);
+  // the arms and the shoulders go straight over the net; only the hands turn to face the attacker
+  // (pressing along that facing slid the hands sideways toward the hitter: a free reach)
+  const h: V3 = { x: 0, y: 0, z: -a.side };
+  const face = facing(a, ctx, BLOCK.face * beaten);
   const side: V3 = { x: -h.z, y: 0, z: h.x };
   const handsX = a.pos.x + a.reachX;
   const top = a.pos.y + a.standReach + BLOCK.reachTop - Math.abs(a.reachX) * CONTACT.blockReachDrop;
-  const S = add({ x: handsX, y: top - arm - hand, z: a.pos.z }, h, BLOCK.lean * press);
+  // the shoulders lean in with the press, but never closer to the net than `BLOCK.shoulderOff`: a
+  // blocker already at the net leans less and reaches over with the arms
+  const room = Math.max(0, a.pos.z * a.side - BLOCK.shoulderOff);
+  const S = add({ x: handsX, y: top - arm - hand, z: a.pos.z }, h, Math.min(BLOCK.lean * press, room));
   const clear = ctx.netTop + BLOCK.tapeClear;
   const chain = (k: number) => {
     const phi = BLOCK.press * press * k;
@@ -133,6 +152,10 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
   }
   const { W, u, th } = chain(k);
   const n = add({ x: h.x * Math.cos(th), y: 0, z: h.z * Math.cos(th) }, UP, -Math.sin(th));
+  // how far the hands turn about the forearm to face the attacker: the angle from straight over the
+  // net to `face`, the way that brings the palm round to it
+  const faceAng = Math.acos(clamp(face.x * h.x + face.z * h.z, -1, 1));
+  const faceTurn = faceAng > 0 ? (turn(n, u, faceAng).x * face.x >= turn(n, u, -faceAng).x * face.x ? faceAng : -faceAng) : 0;
   const hw = BLOCK.handWidth / 2 + (ctx.assist ?? 0) * BLOCK.assistWiden;
   const off = BLOCK.thumbGap / 2 + hw;
   // the outside hand of a pin blocker turns in (a turn of the forearm, about `u`)
@@ -155,14 +178,12 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
     // across each hand, + is out, toward its little finger; the thumbs face each other
     const outward = { x: side.x * i, y: 0, z: side.z * i };
     const outer = Math.sign(side.x * i) === Math.sign(handsX) && handsX !== 0;
-    let nn = n;
-    let ww = outward;
-    if (outer && turnIn !== 0) {
-      // toward the middle of the court: the way that takes the palm's facing off the antenna
-      const sgn = cross(u, n).x * Math.sign(handsX) > 0 ? -1 : 1;
-      nn = turn(n, u, sgn * turnIn);
-      ww = turn(outward, u, sgn * turnIn);
-    }
+    // the hand turns about its forearm: toward the attacker (`face`), and for a pin blocker's outside
+    // hand further, toward the middle of the court, the way that takes the palm's facing off the antenna
+    const inward = outer ? (cross(u, n).x * Math.sign(handsX) > 0 ? -1 : 1) * turnIn : 0;
+    const ang = faceTurn + inward;
+    const nn = ang !== 0 ? turn(n, u, ang) : n;
+    const ww = ang !== 0 ? turn(outward, u, ang) : outward;
     // (each hand and each forearm its own: two of each an athlete)
     const id = (a.id * 2 + (i > 0 ? 1 : 0)) * 2;
     // (against your attack an AI's outside hand is not sealed: open and not spread as wide, `BLOCK.ai`)
@@ -183,17 +204,20 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
       arm: false,
       edgeFrom: BLOCK.edgeFrom,
     });
-    // the forearm under it, from the elbow to the wrist
+    // the forearm under it, from the elbow to the wrist: under the middle of the hand before the aim
+    // assist spreads the fingers (the assist widens the hands, not the gap between the arms)
+    const fore = add(W, side, i * (BLOCK.thumbGap / 2 + BLOCK.handWidth / 2));
     out.push({
-      c: add(wrist, dArm, -d.foreArm / 2),
+      c: add(fore, dArm, -d.foreArm / 2),
       n: nArm,
       u: dArm,
       w: outward,
       hl: d.foreArm / 2,
       hw: BLOCK.forearmWidth / 2,
-      gap: 0,
+      // (a ball whose line is between the forearms is met by both, as between the thumbs)
+      gap: BLOCK.thumbGap + BLOCK.handWidth - BLOCK.forearmWidth,
       heel: d.upperArm,
-      tip: wrist,
+      tip: fore,
       v,
       id: id + 1,
       firm,
@@ -201,7 +225,7 @@ export function handPlates(a: Athlete, act: Action, t: number, ctx: HandsContext
       edgeFrom: BLOCK.edgeFrom,
     });
   }
-  return out;
+  return { plates: out, press };
 }
 
 /**

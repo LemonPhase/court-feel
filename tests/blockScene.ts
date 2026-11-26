@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { BALL, COURT, CONTACT, DEFAULT_SETTINGS, SIM, type PositionId } from '../src/config';
 import { Rng } from '../src/core/mathx';
 import { Athlete, type Action } from '../src/game/athlete';
-import { BallEntity } from '../src/game/ballEntity';
+import { BallEntity, type Touch, type TouchKind } from '../src/game/ballEntity';
 import { handPlates, type BlockHand } from '../src/game/blockHands';
 import { ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
 import type { V3 } from '../src/physics/ball';
@@ -14,7 +14,7 @@ import { solveSpeedToFloor } from '../src/physics/solve';
  * the order the simulation calls it: the blockers' hands, then the ball's step). Only the blockers'
  * jumps are scripted, on the game's own jump curve, timed from the moment the ball would reach the
  * net with nobody there (the ghost). Used by the block's unit tests and by the block sweep
- * (`npm run block-sweep`).
+ * (`node scripts/block-sweep.mjs`).
  */
 
 export const DT = 1 / SIM.hz;
@@ -46,8 +46,12 @@ export interface SceneSpec {
   spin?: V3;
   blockers: BlockerSpec[];
   hitterUser?: boolean;
+  /** the user blocker's aim assist (Settings); the game's default when not given */
+  assist?: number;
   /** the attack is off the user's green set */
   green?: boolean;
+  /** what their touch was (a spike when not given; a serve may not be blocked) */
+  kind?: TouchKind;
   seed?: number;
 }
 
@@ -85,6 +89,8 @@ export interface SceneResult {
   hit: ContactSystem['lastBlock'];
   wIn: V3 | null;
   wOut: V3 | null;
+  /** the middles of the hands and forearms the first blocker's action carried at the touch: what the game draws */
+  drawn: V3[];
 }
 
 class Host implements ContactHost {
@@ -94,12 +100,15 @@ class Host implements ContactHost {
   rng: Rng;
   events: ContactEvent[] = [];
   contactSys = new ContactSystem(this);
-  constructor(seed: number) {
+  constructor(
+    seed: number,
+    private userAssist: number = DEFAULT_SETTINGS.aimAssist,
+  ) {
     this.rng = new Rng(seed);
   }
   aimAssist(a: Athlete): number {
     // as the game gives it (src/app/game.ts): the user's setting, 0.3 for the AI
-    return a.isUser ? DEFAULT_SETTINGS.aimAssist : 0.3;
+    return a.isUser ? this.userAssist : 0.3;
   }
   aimTargetFor(_a: Athlete, out: THREE.Vector3): THREE.Vector3 {
     return out.set(0, 0, 6);
@@ -219,10 +228,12 @@ export function kindOf(note: string): string {
 /** play the scene: the attack, the blockers going up for it, and the ball to the floor */
 export function blockScene(spec: SceneSpec): SceneResult {
   const g = ghost(spec);
-  const host = new Host(spec.seed ?? 1);
+  const host = new Host(spec.seed ?? 1, spec.assist);
   const ball = host.ball;
+  // their hitter where it met the ball (the blockers square their hands to it, as in the game)
   const hitter = new Athlete('OH', -1);
   hitter.isUser = spec.hitterUser === true;
+  hitter.place(spec.from.x, spec.from.z, 0);
   const tc = g.cross ? g.cross.t : 0.1;
   const blockers = spec.blockers.map((b) => {
     const a = new Athlete(b.role ?? 'MB', 1);
@@ -242,13 +253,15 @@ export function blockScene(spec: SceneSpec): SceneResult {
     }
   };
   ball.launch(spec.from, g.v, g.w, 0, 0);
-  ball.lastTouch = { athlete: hitter, kind: 'spike', t: 0, side: -1, green: spec.green === true };
+  ball.lastTouch = { athlete: hitter, kind: spec.kind ?? 'spike', t: 0, side: -1, green: spec.green === true };
   pose(0);
   let vIn: V3 | null = null;
   let vOut: V3 | null = null;
   let wIn: V3 | null = null;
   let wOut: V3 | null = null;
   let hit: ContactSystem['lastBlock'] = null;
+  let touchStep = false;
+  let drawn: V3[] = [];
   let at: V3 | null = null;
   let by = -1;
   let first: Action | null = null;
@@ -270,7 +283,14 @@ export function blockScene(spec: SceneSpec): SceneResult {
         wOut = { ...ball.state.w };
         hit = host.contactSys.lastBlock;
         at = { x: act.contactPoint.x, y: act.contactPoint.y, z: act.contactPoint.z };
+        touchStep = true;
       }
+    }
+    // the contact system's own step, as the simulation runs it after the blocks: it keeps the hands to draw
+    host.contactSys.step(blockers.map((b) => b.a));
+    if (touchStep) {
+      drawn = [...(first?.hands ?? []), ...(first?.arms ?? [])].map((p) => ({ ...p.c }));
+      touchStep = false;
     }
     ball.step(DT, env);
     const floor = ball.events.find((e) => e.kind === 'floor');
@@ -295,6 +315,7 @@ export function blockScene(spec: SceneSpec): SceneResult {
     hit,
     wIn,
     wOut,
+    drawn,
   };
 }
 
@@ -307,8 +328,11 @@ export function spikeAt(fromX: number, angle: number, speed: number, opts: { y?:
   return { from: { x: fromX, y: opts.y ?? 3.35, z: -off }, to: { x: tx, y: 0, z: depth }, speed, blockers: [] };
 }
 
-/** a blocker as `blockScene` sets it up, at the top of its jump: its hands (and forearms) facing a ball coming along `dir` */
-export function handsAtPeak(b: BlockerSpec, dir: V3): BlockHand[] {
+/**
+ * a blocker as `blockScene` sets it up, at the top of its jump: its hands (and forearms) squared to
+ * their hitter at `from` (or, with none, to a ball coming along `dir`), with the user's `assist`
+ */
+export function handsAtPeak(b: BlockerSpec, dir: V3, from?: V3, assist: number = DEFAULT_SETTINGS.aimAssist): BlockHand[] {
   const a = new Athlete(b.role ?? 'MB', 1);
   a.isUser = b.user === true;
   a.place(b.x, b.z ?? 0.45, Math.PI);
@@ -319,11 +343,13 @@ export function handsAtPeak(b: BlockerSpec, dir: V3): BlockHand[] {
     a.jumpH = blockJump(a);
     a.pos.y = a.jumpH;
   }
-  return handPlates(a, act, 0, {
-    netTop: env.netTop,
-    assist: a.isUser ? DEFAULT_SETTINGS.aimAssist : 0.3,
-    ballVel: dir,
-  });
+  let attack: Touch | null = null;
+  if (from) {
+    const hitter = new Athlete('OH', -1);
+    hitter.place(from.x, from.z, 0);
+    attack = { athlete: hitter, kind: 'spike', t: 0, side: -1 };
+  }
+  return handPlates(a, act, 0, { netTop: env.netTop, assist: a.isUser ? assist : 0.3, ballVel: dir, attack });
 }
 
 /** an attack from `from` straight through the point `to` at `speed` m/s (gravity allowed for), with a spike's topspin */
@@ -344,22 +370,22 @@ export function through(from: V3, to: V3, speed: number, blockers: BlockerSpec[]
 }
 
 /** the middle of the palm of a blocker's hand at the top of its jump: `outer` its +x hand (else -x), moved `across` m out and `up` m along the hand */
-export function palm(b: BlockerSpec, dir: V3, outer: boolean, across = 0, up = 0): V3 {
-  const hands = handsAtPeak(b, dir).filter((h) => !h.arm);
+export function palm(b: BlockerSpec, dir: V3, outer: boolean, across = 0, up = 0, from?: V3): V3 {
+  const hands = handsAtPeak(b, dir, from).filter((h) => !h.arm);
   const h = hands.reduce((p, q) => ((outer ? q.c.x > p.c.x : q.c.x < p.c.x) ? q : p));
   return { x: h.c.x + h.w.x * across + h.u.x * up, y: h.c.y + h.w.y * across + h.u.y * up, z: h.c.z + h.w.z * across + h.u.z * up };
 }
 
 /** on the outer (little finger's) edge of a blocker's hand at the top of its jump, `beyond` m past it (at the middle of the palm's length) */
-export function edgeOf(b: BlockerSpec, dir: V3, outer: boolean, beyond: number): V3 {
-  const hands = handsAtPeak(b, dir).filter((h) => !h.arm);
+export function edgeOf(b: BlockerSpec, dir: V3, outer: boolean, beyond: number, from?: V3): V3 {
+  const hands = handsAtPeak(b, dir, from).filter((h) => !h.arm);
   const h = hands.reduce((p, q) => ((outer ? q.c.x > p.c.x : q.c.x < p.c.x) ? q : p));
   const k = h.hw + beyond;
   return { x: h.c.x + h.w.x * k, y: h.c.y + h.w.y * k, z: h.c.z + h.w.z * k };
 }
 
-/** between the two palms (between the thumbs) */
-export function between(b: BlockerSpec, dir: V3): V3 {
-  const [p, q] = handsAtPeak(b, dir).filter((h) => !h.arm);
+/** between the two palms (between the thumbs), or with `arms` between the two forearms */
+export function between(b: BlockerSpec, dir: V3, from?: V3, arms = false, assist?: number): V3 {
+  const [p, q] = handsAtPeak(b, dir, from, assist).filter((h) => h.arm === arms);
   return { x: (p.c.x + q.c.x) / 2, y: (p.c.y + q.c.y) / 2, z: (p.c.z + q.c.z) / 2 };
 }

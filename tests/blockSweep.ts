@@ -1,9 +1,10 @@
-import { COURT, CONTACT, DEFAULT_SETTINGS } from '../src/config';
+import { COURT, DEFAULT_SETTINGS } from '../src/config';
 import { Athlete } from '../src/game/athlete';
+import { handsHalfSpan } from '../src/game/blockHands';
 import { blockJump, blockScene, ghost, R, type SceneSpec } from './blockScene';
 
 /**
- * The block sweep (`npm run block-sweep`, scripts/block-sweep.mjs): a measurement of what the block
+ * The block sweep (`node scripts/block-sweep.mjs`): a measurement of what the block
  * does, not a test. Their hitter (side -1, on -z) spikes over the net at our blocker (side +1),
  * from the real spike solver, with the real ball and the real block (`ContactSystem.tryBlock`),
  * through `blockScene` (tests/blockScene.ts). Only the blocker's jump is scripted, on the game's own
@@ -215,8 +216,8 @@ export function blockerFacts(): { standReach: number; jump: number; handsTopAtPe
     standReach: a.standReach,
     jump: H,
     handsTopAtPeak: a.standReach + 0.04 + H,
-    halfWidthAi: CONTACT.blockHalfWidth + 0.3 * 0.06,
-    halfWidthUser: CONTACT.blockHalfWidth + DEFAULT_SETTINGS.aimAssist * 0.06,
+    halfWidthAi: handsHalfSpan(0.3),
+    halfWidthUser: handsHalfSpan(DEFAULT_SETTINGS.aimAssist),
   };
 }
 

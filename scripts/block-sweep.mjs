@@ -1,7 +1,7 @@
 // Block sweep: what does the block do today, measured, before anyone changes it?
 //
-//   npm run block-sweep              the full sweep (3 matchups, 2 contact heights, 3 attacks, 5 angles, 4 speeds, 7 timings, 23 offsets)
-//   BLOCK_SWEEP_SEEDS=4 npm run block-sweep
+//   node scripts/block-sweep.mjs              the full sweep (3 matchups, 2 contact heights, 3 attacks, 5 angles, 4 speeds, 7 timings, 23 offsets)
+//   BLOCK_SWEEP_SEEDS=4 node scripts/block-sweep.mjs
 //
 // Their hitter spikes over the net at our blocker with the real ball, the real spike solver and the
 // real ContactSystem.tryBlock; only the blocker's jump is scripted (tests/blockSweep.ts says how).

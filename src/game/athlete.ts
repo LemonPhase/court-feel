@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BALL, COURT, PLAYER, TIMING, type Hand, type PositionId, type PositionStats } from '../config';
+import type { HandPlate } from '../physics/handContact';
 import { standingReach } from './proportions';
 import { bodyStats, type CustomBody } from './body';
 import type { SetTouch } from './setTiming';
@@ -23,6 +24,10 @@ export interface Action {
   contactT: number;
   /** world-space point the hand should meet */
   contactPoint: THREE.Vector3;
+  /** a block: the simulation's two hands this step (the -x hand first, from the blocker's side), its two forearms, and how far into its press it is: what is drawn */
+  hands?: HandPlate[];
+  arms?: HandPlate[];
+  press?: number;
   resolved: boolean;
   grade: Grade | null;
   /** extra info (tip, power, etc.) */
