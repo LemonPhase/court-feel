@@ -1,4 +1,4 @@
-import { BALL, BLOCK } from '../config';
+import { BALL } from '../config';
 import { INV_I_TERM, type V3 } from './ball';
 
 /**
@@ -84,13 +84,22 @@ const at = (a: V3, b: V3, s: number): V3 => ({ x: a.x + (b.x - a.x) * s, y: a.y 
 /**
  * Where, on its way from `p0` to `p1` this step, the ball first comes within `reach` (its radius
  * and half a hand's thickness) of the hand, or null. The hand moved too: `dt` s of its speed is
- * taken off the ball's start, so the search runs in the hand's frame at the end of the step.
+ * taken off the ball's start, so the search runs in the hand's frame at the end of the step. The
+ * path is walked in steps of `sweep.sweepStep` m, then the first touch is halved `sweep.sweepIters`
+ * times (the block's numbers, `BLOCK`: physics is handed them).
  */
-export function meetHand(p0: V3, p1: V3, h: HandPlate, reach: number, dt: number): HandHit | null {
+export function meetHand(
+  p0: V3,
+  p1: V3,
+  h: HandPlate,
+  reach: number,
+  dt: number,
+  sweep: { sweepStep: number; sweepIters: number },
+): HandHit | null {
   const a = { x: p0.x + h.v.x * dt, y: p0.y + h.v.y * dt, z: p0.z + h.v.z * dt };
   const q = { x: 0, y: 0, z: 0 };
   const len = Math.hypot(p1.x - a.x, p1.y - a.y, p1.z - a.z);
-  const n = Math.max(1, Math.ceil(len / BLOCK.sweepStep));
+  const n = Math.max(1, Math.ceil(len / sweep.sweepStep));
   let lo = 0;
   let hi = -1;
   if (nearest(a, h, q).d <= reach) hi = 0;
@@ -100,7 +109,7 @@ export function meetHand(p0: V3, p1: V3, h: HandPlate, reach: number, dt: number
   }
   if (hi < 0) return null;
   if (hi > 0)
-    for (let k = 0; k < BLOCK.sweepIters; k++) {
+    for (let k = 0; k < sweep.sweepIters; k++) {
       const mid = (lo + hi) / 2;
       if (nearest(at(a, p1, mid), h, q).d <= reach) hi = mid;
       else lo = mid;

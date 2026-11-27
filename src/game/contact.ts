@@ -1539,7 +1539,7 @@ export class ContactSystem {
     const p0 = ball.before ?? { x: p1.x - bv.x * dt, y: p1.y - bv.y * dt, z: p1.z - bv.z * dt };
     const hits: { hit: HandHit; hand: BlockHand }[] = [];
     for (const hand of hands) {
-      const m = meetHand(p0, p1, hand, R + BLOCK.thickness / 2, dt);
+      const m = meetHand(p0, p1, hand, R + BLOCK.thickness / 2, dt, BLOCK);
       if (m) hits.push({ hit: m, hand });
     }
     if (!hits.length) return false;
