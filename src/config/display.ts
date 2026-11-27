@@ -214,12 +214,17 @@ export const CHARACTER = {
    *    under a palm 3 cm thick: the knuckles bend to bring the fingers down onto the surface, the middle
    *    joints to keep them on it.
    *  - fist: closed, one hand in the other, for a pass.
+   *  - window: a setter's hands waiting for the ball: spread wide and bent as if round it already,
+   *    a little more open than on it.
+   *  - release: a set pushed out: the fingers straightening after the ball, still apart.
    */
   hand: {
     relaxed: { knuckle: 0.35, mid: 0.5, spread: 0.05, cup: 0, thumbOut: 0, thumbCurl: 0.15 },
     firm: { knuckle: 0.04, mid: 0.06, spread: 0.2, cup: 0, thumbOut: 0.2, thumbCurl: 0.05 },
     onBall: { knuckle: 0.59, mid: 0.25, spread: 0.2, cup: 0.11, thumbOut: 0.5, thumbCurl: 0.3 },
     fist: { knuckle: 1.15, mid: 1.3, spread: 0, cup: 0, thumbOut: -0.15, thumbCurl: 0.6 },
+    window: { knuckle: 0.46, mid: 0.3, spread: 0.3, cup: 0.14, thumbOut: 0.6, thumbCurl: 0.22 },
+    release: { knuckle: 0.2, mid: 0.24, spread: 0.12, cup: 0.04, thumbOut: 0.35, thumbCurl: 0.15 },
     rate: 18,
   },
   /** how far (rad) the trunk bends away from the hitting arm at contact, lifting the hitting shoulder */
@@ -236,10 +241,132 @@ export const CHARACTER = {
    */
   meet: { from: 0.5, by: 0.16, horizon: 0.7, step: 1 / 60 },
   /**
-   * After a set the arms extend `reach` (m) along the line the ball left on, at `speed` (m/s, an arm's, far
-   * slower than the ball: the hands push through, they do not carry), then open over `time` (s).
+   * The hand set, as the body shows it (issue #132). What a coach looks for, from the ball's arrival to
+   * the release: the hands up early in a window above the forehead, wrists cocked back, thumbs and index
+   * fingers making a triangle; the ball sinks into the hands and the wrists and elbows give; then the
+   * legs, arms and wrists extend together towards the target: up and back with an arched back for a back
+   * set, short and sharp for a quick. Cosmetic only (decision record 0008): nothing here moves the ball.
+   * The numbers are from coaching material and from watching setters frame by frame, by eye, not measured.
    */
-  setFollow: { reach: 0.16, speed: 2.6, time: 0.22 },
+  set: {
+    /**
+     * The window: the ball the hands are shaped round, before the real one is near, sits `up` and `fwd`
+     * (body heights) from the middle of the shoulders: the hands just above and in front of the forehead.
+     * The hands come up into it over `raise` (s) from the moment the set is on (an AI setter's 0.4 s
+     * before the touch), yours over `raiseYours` (s) from your press: you press as the ball arrives, and
+     * the hands must be on it by then. On the way up they pass out in front of the face, a quarter of
+     * `out` (body heights) at most.
+     */
+    window: { up: 0.23, fwd: 0.07, raise: 0.15, raiseYours: 0.09, out: 0.32 },
+    /**
+     * Where the palms sit on the ball, in the body frame (out towards the hand's own side, up, forward)
+     * from the ball's centre, and the way the fingers lie (`fingers`): under and behind the ball, the
+     * fingers up round its back, the thumbs under it pointing at the eyes. Each hand covers a quarter of
+     * the ball; the two thumbs a few centimetres apart.
+     */
+    palm: { at: [0.48, -0.74, -0.48] as const, fingers: [-0.3, 0.75, -0.55] as const },
+    /**
+     * The give: the hands meet the ball `give` (m) above where it is touched and come down with it over
+     * the last `giveLead` (s), the palms turning a little further under it (`cock`, of the palm's
+     * height on the ball). A real touch lasts a few hundredths of a second: the AI's ball leaves on
+     * the frame it arrives, so the give is drawn on its way in.
+     */
+    give: 0.045,
+    giveLead: 0.07,
+    cock: 0.12,
+    /**
+     * The push: the hands go `reach` (m) along the way the ball left, from `reach[0]` for the slowest set
+     * (`slow` m/s off the hands, a quick) to `reach[1]` for the fastest (`fast` m/s, a high ball to the
+     * outside), over `push[0]` to `push[1]` (s), fastest at the start. A back set's arms go up over the
+     * head (`backUp`: how much of the way back the arms take; the arched back does the rest). The hands
+     * finish `spread` (m) further apart than they touched, the fingers flicked over by `flick` (rad), the
+     * wrists `straight` of the arm's length from the shoulder at least, on a set as long as
+     * `straightFrom[1]` and more (from nothing at `straightFrom[0]`): a long set always ends on long
+     * arms, a quick on short ones.
+     */
+    reach: [0.1, 0.3] as const,
+    straight: 1,
+    straightFrom: [0.4, 0.9] as const,
+    push: [0.05, 0.12] as const,
+    slow: 4.5,
+    fast: 8,
+    backUp: 0.75,
+    spread: 0.035,
+    flick: 0.35,
+    /**
+     * Then the arms stay up `hold` (s, each set somewhere in the range) and come down over `relax` (s),
+     * the elbows bending first. The set is over for the body `tail` (s) after the touch (longer than
+     * the slowest push, hold and relax together).
+     */
+    hold: [0.02, 0.24] as const,
+    relax: 0.38,
+    tail: 1,
+    /**
+     * The legs: the hips sit `sit` (body heights) lower under the ball, then the legs straighten with the
+     * arms: from `drive` (s) before the touch, `driveShare` of the way by the touch (the ball is played
+     * at the top of a body nearly up: the elbows are bent on it, not reaching), and on a long set the
+     * heels come up `heel` (body heights). Your own set loads into the legs as well: `absorb` (body
+     * heights) lower by the push.
+     */
+    sit: 0.03,
+    drive: 0.16,
+    driveShare: 0.65,
+    heel: 0.022,
+    absorb: 0.012,
+    /**
+     * The trunk: upright in the window, the chest up (`chest`, rad, back); on the push it leans `lean`
+     * (rad) towards a long front set and the hips go `shift` (body heights) that way; a back set arches,
+     * the spine `archSpine` and the chest `archChest` (rad) back, the hips `archHips` (body heights)
+     * forward under it.
+     */
+    chest: 0.1,
+    lean: 0.07,
+    shift: 0.012,
+    archSpine: 0.15,
+    archChest: 0.22,
+    archHips: 0.035,
+    /**
+     * The feet: setting, the right foot is a little ahead of the left (`stagger`, body heights; the
+     * setter's "right foot forward": it squares the body to the left antenna and keeps it off the net),
+     * and the feet step to it once they are more than `step` (m) off, the right foot first, up to `stepBy`
+     * (s) before the ball arrives (a step on the touch would be a setter who got there late).
+     */
+    stagger: 0.04,
+    step: 0.06,
+    stepBy: 0.12,
+    /**
+     * After a back set the head stays up and forward: it turns no more than `headTurn` (rad) after the
+     * ball (setters do not watch their back set go).
+     */
+    headTurn: 0.35,
+    /**
+     * Each set is a little different, and each setter has their habits (nobody sets the same ball the
+     * same way twice: from watching a setter's warm-up). Within these shares of the value (0.25 = 25%
+     * either way): how soon the hands go up (`raise`), how deep the legs sit, how far apart the hands
+     * finish (`spread`), the flick, how high the heels come up (`rise`), the lean after a long set, how
+     * far the arms go (`reach`) and how quickly they come down (`relax`). In metres: how high the arms
+     * finish (`high`), one hand higher than the other (`uneven`), the window (`window`, a habit), the
+     * arms' way down (`down`, body heights). In seconds: one arm behind the other (`lag`). In radians:
+     * the trunk turned after the ball at the finish (`twist`) and tipped to a side (`tilt`).
+     */
+    vary: {
+      raise: 0.25,
+      sit: 0.3,
+      high: 0.06,
+      spread: 0.5,
+      flick: 0.35,
+      lag: 0.015,
+      rise: 0.4,
+      lean: 0.35,
+      reach: 0.12,
+      relax: 0.35,
+      uneven: 0.05,
+      down: 0.05,
+      twist: 0.12,
+      tilt: 0.07,
+      window: 0.015,
+    },
+  },
   /**
    * A set jump has no arm swing: on the plant the hands come up in front of the chest, close to
    * the body, and over `rise` (s) after the feet leave the floor they go up to above the forehead.
