@@ -430,6 +430,7 @@ export class Game implements AiHost {
     a.onLand = (ath, impact) => this.events.emit('land', { athlete: ath, impact });
     a.onTakeoff = (ath) => this.events.emit('takeoff', { athlete: ath });
     v.onFootstep = (ath, speed) => this.events.emit('step', { athlete: ath, speed });
+    v.onHands = (ath, kind) => this.events.emit('hands', { athlete: ath, kind });
     return v;
   }
 
@@ -515,6 +516,7 @@ export class Game implements AiHost {
     this.disposeView(old);
     const v = new AthleteView(a, old.kit);
     v.onFootstep = old.onFootstep;
+    v.onHands = old.onHands;
     v.rig.mesh.layers.enable(REFLECT_LAYER);
     this.views.set(a, v);
     this.scene.add(v.root);
@@ -1178,7 +1180,9 @@ export class Game implements AiHost {
       a.ballVel = this.ball.active ? this.ball.state.v : null;
       v.passZone = this.contact.platformPoint(a, v.passZone ?? new THREE.Vector3());
       v.setZone = this.contact.handsPoint(a, v.setZone ?? new THREE.Vector3());
-      if (this.ball.active) a.lookAt.copy(this.ball.rpos);
+      // (between points the eyes go where the player looks: a team-mate, the server)
+      if (a.gaze) a.lookAt.copy(a.gaze);
+      else if (this.ball.active) a.lookAt.copy(this.ball.rpos);
       a.alert = this.ball.active && !this.ball.state.rest ? 1 : 0;
       v.setFirstPerson(a.isUser && this.rig.mode === 'fp' && !this.inMenu);
       v.netTop = this.env.netTop;

@@ -53,7 +53,9 @@
 // `greenSet*`, `greenBlockGuess`) and how much harder your bad set is to hit (`badSetErr`,
 // `badSetTip`); when a hitter backing off the net is ready for a called tempo run
 // (`transitionReady`, `transitionLatest`); how often an AI setter runs a play from the wheel, on a
-// free ball and off a perfect serve-receive pass (`plays`)
+// free ball and off a perfect serve-receive pass (`plays`); what the players do between points
+// (`between`: watching the ball down, the huddle, the celebration, the fives, the walk to the next
+// spots, waiting for the serve)
 
 export const AI = {
   reactionTime: 0.18,
@@ -844,4 +846,128 @@ export const AI = {
    */
   badSetErr: 3.5,
   badSetTip: 4,
+  /**
+   * Between points in the Mini Rally (`src/ai/betweenPoints.ts`). On a real court nobody stands
+   * still after the whistle: the team comes together (a huddle in the middle of the court, the
+   * scorer mobbed after a big point, or fives with whoever is near on the way back), then walks to
+   * the spots for the next serve, and waits there shifting their weight, wiping their hands,
+   * looking at the server and at each other. It fills the dead time the drill already has
+   * (`MINI_RALLY.timing`): nobody is on a different spot at the serve and the serve comes no later.
+   * - `seed`: each team's own dice for it (home, away), apart from the simulation's: the rallies
+   *   keep the random stream they had.
+   * - `react` (s): after the whistle a player watches where the ball went for this long (uniform
+   *   between the two), and only then turns to the team; one still in the air or on the floor
+   *   after a dive first gets up (and stands `getUp` s). The one who won the point reacts at once
+   *   (`heroReact` s).
+   * - `walk`, `jog` (m/s): the pace back to the spots is a walk when there is time and a jog at
+   *   most; only a player who would be late runs (a relaxed adult walk is 1.3 to 1.5 m/s). They
+   *   mean to be on the spot (within `arrive` m) `settle` s before the whistle, the server too, who
+   *   then takes a moment at the line (`serverReady` s, uniform: a breath, a look at where it goes)
+   *   before their own wait and toss. The serve comes when it did when the server walked out at
+   *   the whistle (the time from one point to the next serve is unchanged).
+   *   A walk slows only over its last `stop` m (a step or so), not from far out.
+   * - `style`: how the team comes together, weighted. `big`: after our kill, block or ace (the
+   *   scorer is mobbed, a huddle, or fives on the way back); `won`: any other point of ours;
+   *   `lost`: a point of theirs.
+   * - `huddle`: the ring stands `spacing` m between neighbours (shoulder to shoulder) round a point
+   *   `pull` of the way from the team's middle to (0, `z`) m in their court; a player more than
+   *   `reach` m from it walks straight back instead. Once the last is in it holds for `hold` s
+   *   (uniform), and breaks `latest` s after the whistle at the latest, whoever is still coming (a
+   *   player joins only if they can still be on their spot in time from a ring that breaks then, at
+   *   a jog). They come in at a brisk walk (`gather` m/s) at least, quicker if it takes that to be in
+   *   before the ring has to break. `middle` of the huddles have the hands in the middle, the rest
+   *   the arms round the shoulders. A ring is
+   *   counted from `min` players, and its middle stays within `x` m of the middle of the court and
+   *   between `near` and `far` m from the net. You are in it when you stand within `you` m of it.
+   * - `mob`: team-mates come round the scorer `radius` m off, and slap their hands.
+   * - `five`: walking back without a huddle, team-mates within `pair` m of each other pair up for a
+   *   five (`share` of the pairs), meet `apart` m from each other (an arm's length each) with the
+   *   hand up `raise` s before; `high` of the fives after a point won are high (the rest at the hip;
+   *   after a point lost they are all at the hip). A pair still `slack` m further apart than that
+   *   keeps closing; one that has not met `giveUp` s before the whistle leaves it.
+   * - `feel`: what each player's body does as they turn away, weighted. `hero`: the one who won
+   *   the point (fist, roar, arms up); `won`: the others; `error`: after a point their own error
+   *   gave away (one of ours touched it last); `lost`: the others after a point lost.
+   * - `lasts` (s): how long each of those takes (`clap` is one clap, `claps` how many, uniform);
+   *   `five` is how long the hand takes to come down after the slap.
+   * - `tired` (s): a rally this long leaves everyone breathing hard; a longer one, hands on the
+   *   knees (after `knees` of it, for `kneesShare` of the players).
+   * - `wait`: on the spot, the eyes move every `glance` s (to `look`, weighted: the server, a
+   *   team-mate, across the net) and a fidget comes every `fidget` s (uniform; `fidgets`, weighted:
+   *   wiping the hands, shaking them out, a bounce on the toes). Passers wait bent over with their
+   *   hands on their knees `passerKnees` of the time, and sit into the passing stance `ready` s
+   *   after the whistle (uniform); the serving team's front row shows the block behind its back
+   *   from `signal` s before the whistle until the server tosses. The eyes are `eye` of a player's
+   *   height up.
+   * From watching club and international matches (rally to serve), not from a measurement.
+   */
+  between: {
+    seed: { home: 5201, away: 5202 },
+    react: [0.2, 0.6] as [number, number],
+    getUp: 0.15,
+    heroReact: 0.08,
+    walk: 1.4,
+    gather: 2.0,
+    serverReady: [0.9, 1.8] as [number, number],
+    jog: 2.8,
+    arrive: 0.12,
+    settle: 0.3,
+
+    stop: 0.4,
+    style: {
+      big: { mob: 0.5, huddle: 0.35, loose: 0.15 },
+      won: { mob: 0, huddle: 0.55, loose: 0.45 },
+      lost: { mob: 0, huddle: 0.45, loose: 0.55 },
+    },
+    huddle: {
+      spacing: 0.58,
+      pull: 0.5,
+      z: 4.0,
+      reach: 4.2,
+      hold: [0.3, 0.65] as [number, number],
+      latest: 2.2,
+      middle: 0.4,
+      min: 3,
+      x: 3.0,
+      near: 1.8,
+      far: 6.5,
+      you: 1.5,
+    },
+    mob: { radius: 0.85 },
+    five: { pair: 3.2, share: 0.75, apart: 0.9, raise: 0.32, high: 0.6, slack: 0.2, giveUp: 1.2 },
+    feel: {
+      hero: { fist: 0.35, roar: 0.35, armsUp: 0.3 },
+      won: { clap: 0.35, fist: 0.25, armsUp: 0.1, none: 0.3 },
+      error: { sorry: 0.65, hips: 0.2, none: 0.15 },
+      lost: { hips: 0.3, clap: 0.3, none: 0.4 },
+    },
+    lasts: {
+      fist: 0.9,
+      roar: 1.1,
+      armsUp: 1.2,
+      clap: 0.34,
+      sorry: 1.1,
+      hips: 2.4,
+      knees: 1.6,
+      wipe: 0.9,
+      shake: 0.8,
+      bounce: 0.7,
+      pat: 0.8,
+      five: 0.5,
+    },
+    claps: [2, 4] as [number, number],
+    tired: 14,
+    knees: 0.75,
+    kneesShare: 0.5,
+    wait: {
+      glance: [0.7, 2.0] as [number, number],
+      look: { server: 0.55, mate: 0.25, across: 0.2 },
+      fidget: [1.4, 3.2] as [number, number],
+      fidgets: { wipe: 0.35, shake: 0.25, bounce: 0.25, none: 0.15 },
+      passerKnees: 0.6,
+      ready: [0.15, 0.5] as [number, number],
+      signal: 1.8,
+      eye: 0.93,
+    },
+  },
 };

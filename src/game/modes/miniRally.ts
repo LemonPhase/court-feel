@@ -1,5 +1,5 @@
 import { AI, MINI_RALLY, SET_PICK } from '../../config';
-import { netYaw } from '../../ai/brain';
+
 import { serveAim } from '../../ai/server';
 import { PASSERS, SLOT_ROLE, SLOTS, TeamAI, USER_SLOT, type SetterRead } from '../../ai/team';
 import { Athlete } from '../athlete';
@@ -47,6 +47,8 @@ export class MiniRally extends Mode {
   private tossT: number | null = null;
   /** the serve is coming: the next launch after this one (sim time) is its toss */
   private tossAfter: number | null = null;
+  /** the next serve is a jump serve (decided at the whistle, so the server walks to where it starts from; null: not yet) */
+  private nextJump: boolean | null = null;
   servingSide: 1 | -1 = -1;
   scoreHome = 0;
   scoreAway = 0;
@@ -76,6 +78,7 @@ export class MiniRally extends Mode {
     const g = this.g;
     this.tossT = null;
     this.tossAfter = null;
+    this.nextJump = null;
     this.home = new TeamAI(1, g);
     this.away = new TeamAI(-1, g);
     this.home.opponents = this.away;
@@ -217,6 +220,9 @@ export class MiniRally extends Mode {
 
   private prepare(first = false): void {
     const g = this.g;
+    // after a point the teams walk to their spots (their routine has them since the whistle); a
+    // serve taken again, or the first, puts everyone on them
+    const walk = !first && this.phase === 'dead';
     g.ballLive = false;
     g.ball.hide();
     g.judge.disarm();
@@ -224,8 +230,9 @@ export class MiniRally extends Mode {
     const awayForm = this.servingSide === -1 ? 'defense' : 'receive';
     this.home.serving = this.servingSide === 1;
     this.away.serving = this.servingSide === -1;
-    this.home.place(homeForm);
-    this.away.place(awayForm);
+    this.home.place(homeForm, !walk);
+    this.away.place(awayForm, !walk);
+    if (!walk) this.nextJump = null;
     const spot = this.home.formSpot(homeForm, USER_SLOT[this.position]);
     const me = g.me;
     if (first) g.placeUser(spot.x, spot.z, 0);
@@ -462,6 +469,9 @@ export class MiniRally extends Mode {
     if (this.tossAfter !== null && g.ball.lastLaunchT > this.tossAfter) {
       this.tossT = g.ball.lastLaunchT;
       this.tossAfter = null;
+      // the toss: everyone is the team's again
+      this.home.between.stop();
+      this.away.between.stop();
     }
     this.home.step();
     this.away.step();
@@ -527,7 +537,9 @@ export class MiniRally extends Mode {
           const recv = this.servingSide === 1 ? this.away : this.home;
           // a jump serve or a float, at the seams, the deep corners, short or at a passer (the user too)
           const passers = (['OH1', 'OH2', 'L'] as const).map((s) => recv.players.get(s)).filter((a) => a !== undefined);
-          const jump = g.rng.next() < AI.serve.jump;
+          const jump = this.nextJump ?? g.rng.next() < AI.serve.jump;
+          this.nextJump = null;
+          g.events.emit('serveWhistle', { side: this.servingSide });
           const aim = serveAim(
             passers.map((a) => a.pos),
             recv.side,
@@ -620,17 +632,24 @@ export class MiniRally extends Mode {
     const C = MINI_RALLY.crowd;
     g.crowd(mine ? (this.reason === 'YOUR KILL' ? C.yourKill : C.yours) : C.theirs, mine);
     this.updateScore();
-    // everyone relaxes towards their spots while the banner shows
+    // between points: each team comes together and walks to its spots for the next serve, which
+    // its server walks to now (a jump serve starts further back)
+    this.nextJump = g.rng.next() < AI.serve.jump;
+    const lt = g.ball.lastTouch;
+    const T = MINI_RALLY.timing;
+    const due = g.simTime + T.dead + T.prepare;
+    const rally = this.tossT === null ? 0 : g.simTime - this.tossT;
+    const big = this.reason === 'ACE' || this.reason === 'BLOCKED' || this.reason === 'KILL' || this.reason === 'YOUR KILL';
+    const server = (winner === 1 ? this.home : this.away).server;
     for (const team of [this.home, this.away]) {
-      for (const [slot, a] of team.players) {
-        if (a.isUser) continue;
-        const b = team.brains.get(a);
-        if (b) {
-          b.job = 'base';
-          b.spot = team.formSpot('defense', slot);
-        }
-        a.cmd.faceYaw = netYaw(a.side);
-      }
+      const won = team.side === winner;
+      const ours = !!lt && lt.side === team.side;
+      team.pointOver(
+        { won, big: won && big && ours, hero: won && ours ? lt.athlete : null, culprit: !won && ours ? lt.athlete : null, rally, due },
+        won,
+        this.nextJump,
+        server,
+      );
     }
   }
 }

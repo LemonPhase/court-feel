@@ -893,6 +893,20 @@ the route you called, and the setter only calls a play that still fits around
 it (call the X as the opposite and they never call the Tandem, whose
 outside would hit the same 2 behind the quick; `PLAYBOOK.minGap`).
 
+**Between points** (Mini Rally; `AI.between`, drawn with `CHARACTER.gesture`).
+Nobody stands frozen and nobody is put on a spot. After the whistle each AI
+player watches the ball down and shows what the point meant: the one who won it
+pumps a fist, roars or throws both arms up, the others clap, put their hands on
+their hips, or raise a hand for their own error, and after a long rally some
+bend over with their hands on their knees. Then the team comes together (a
+huddle in the middle, the scorer mobbed after a kill, block or ace, or fives
+with whoever is near) and walks to its spots for the serve. There they wait
+loose, shift their weight, wipe their hands and look at the server; the passers
+sit into their stance, the serving team's front row shows the block behind its
+back, and the server takes a moment at the line. It fills the time that was
+there: the next serve comes when it did, and everyone is on their spot for it.
+Your athlete is never moved: team-mates come to you, and your hands meet theirs.
+
 ### Replays
 
 A Perfect spike or serve that hits the floor plays back by itself in slow

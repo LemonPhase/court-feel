@@ -660,10 +660,12 @@ export class AudioEngine {
     this.tone(t, 90, 50, 0.1, 0.15 + k * 0.25, 'sine', 0.2);
   }
 
-  whistle(): void {
+  /** the referee's whistle: the end of a rally, or (`short`) a quick blast that lets the server serve */
+  whistle(short = false): void {
     if (!this.ok) return;
     const ctx = this.ctx!;
     const t = ctx.currentTime;
+    const hold = short ? AUDIO.whistleShort : 0.42;
     for (const f of [2950, 3080]) {
       const o = ctx.createOscillator();
       o.type = 'sine';
@@ -676,17 +678,25 @@ export class AudioEngine {
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
       g.gain.exponentialRampToValueAtTime(0.09, t + 0.02);
-      g.gain.setValueAtTime(0.09, t + 0.42);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      g.gain.setValueAtTime(0.09, t + hold);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + hold + 0.08);
       o.connect(g).connect(this.sfx);
       const s = ctx.createGain();
       s.gain.value = 0.5;
       g.connect(s).connect(this.reverbSend);
       o.start(t);
       lfo.start(t);
-      o.stop(t + 0.55);
-      lfo.stop(t + 0.55);
+      o.stop(t + hold + 0.13);
+      lfo.stop(t + hold + 0.13);
     }
+  }
+
+  /** hands between points: a clap, or the slap of a five (`near` 0..1: how close to the camera) */
+  hands(kind: 'clap' | 'five', near: number): void {
+    if (!this.ok || near <= 0) return;
+    const H = AUDIO.hands[kind];
+    const t = this.ctx!.currentTime;
+    this.noiseBurst(t, H.dur, H.f * (0.9 + 0.2 * Math.random()), H.q, H.gain * near, 'bandpass', 0.35);
   }
 
   /**

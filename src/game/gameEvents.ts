@@ -22,4 +22,8 @@ export type GameEvents = {
   takeoff: { athlete: Athlete };
   /** a team-mate's call to the user (the setter's read of the pass: in system, high, help) */
   setterCall: { athlete: Athlete; call: 'in' | 'out' | 'help' };
+  /** the referee's whistle for the next serve (the server has 8 s from it) */
+  serveWhistle: { side: 1 | -1 };
+  /** two hands meet between points: a clap, a five */
+  hands: { athlete: Athlete; kind: 'clap' | 'five' };
 };

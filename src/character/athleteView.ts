@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { AI, BALL, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
-import { clamp, clamp01, damp, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
-import type { Athlete } from '../game/athlete';
+import { clamp, clamp01, damp, dirFromYaw, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
+import type { Athlete, Gesture } from '../game/athlete';
+import { armGesture, gestureOn, handsMeet, torsoGesture, type ArmGesture, type BodyNow, type TorsoGesture } from './gestures';
 import { DIGITS, FINGERS } from './hand';
 import { orientBone, twoBoneIK } from './ik';
 import { buildRig, type BoneName, type Kit, type Rig } from './rig';
@@ -126,6 +127,12 @@ export class AthleteView {
   private lowW = 0;
   /** how far into the ready stance the body is (eased from Athlete.alert), and what loosens it (`CHARACTER.loose`) */
   private readyW = 0;
+  /** stood up and loose between points (eased from Athlete.relax), the breath's phase, the shoulders' rise with it */
+  private relaxW = 0;
+  private breathPh = 0;
+  private shrug = 0;
+  /** the gesture drawn this frame (Athlete.gesture, while it lasts and the body is free for it) */
+  private gest: Gesture | null = null;
   private prevVel = v3();
   private accS = v3();
   private lastYaw = 0;
@@ -164,6 +171,8 @@ export class AthleteView {
   private snapArms = false;
   private opacity = 1;
   onFootstep: ((a: Athlete, speed: number) => void) | null = null;
+  /** two hands meet: a clap, or a five (told once, by the one of the pair with the lower id) */
+  onHands: ((a: Athlete, kind: 'clap' | 'five') => void) | null = null;
   /** height of the net's top edge (the game keeps it current): hands stay off the net below it */
   netTop: number = COURT.netHeightMen;
   private stepToggle = 0;
@@ -189,6 +198,7 @@ export class AthleteView {
       shape: { ...CHARACTER.hand.relaxed },
     });
     this.arms = [mkArm(), mkArm()];
+    this.breathPh = athlete.id * 1.7;
     const mkFoot = (): FootState => ({ plant: v3(), stepping: false, from: v3(), to: v3(), t: 0, dur: 0.16, cur: v3(), pitch: 0 });
     this.feet = [mkFoot(), mkFoot()];
     const digitsOf = (L: 'L' | 'R') => DIGITS.flatMap((d) => [this.rig.bones[`${d}${L}`], this.rig.bones[`${d}Tip${L}`]]);
@@ -283,6 +293,11 @@ export class AthleteView {
     const SS = AI.splitStep;
     const ssT = tr - a.splitT - SS.dip;
     this.hop = a.state === 'ground' && ssT > 0 && ssT < SS.air ? 0.5 * BALL.gravity * ssT * (SS.air - ssT) : 0;
+    // a gesture between points, while the body is on its feet and free (the trunk and a hop: AI players only)
+    const g0 = a.gesture;
+    this.gest = gestureOn(g0, tr) && (a.state === 'ground' || a.state === 'land') && !a.action ? g0 : null;
+    const gt = this.gest && !a.isUser ? torsoGesture(a, this.gest, tr, this.H, _gt) : null;
+    if (gt) this.hop += gt.hop;
     this.root.position.y += this.hop;
     if (!this.initialized || this.lastPos.distanceToSquared(a.rpos) > 4) {
       this.initialized = true;
@@ -396,16 +411,21 @@ export class AthleteView {
       if (sprint > 0.5) bodyRate = 20;
       // standing and waiting, nobody is a statue: the chest breathes and the weight shifts a little
       const I = CHARACTER.idle;
+      const R = CHARACTER.relax;
       const still = 1 - g;
       const ph = a.id * 1.7;
-      chestX += Math.sin(tr * I.breath * Math.PI * 2 + ph) * I.chest * still;
+      // (after a long rally the chest heaves: deeper and quicker, the shoulders going up with it)
+      this.breathPh += dt * I.breath * (1 + R.faster * a.tired) * Math.PI * 2;
+      const breath = Math.sin(this.breathPh);
+      chestX += breath * (I.chest + R.chest * a.tired) * still;
+      this.shrug = Math.max(0, breath) * R.shrug * a.tired * still;
       drop += Math.sin(tr * I.sway * Math.PI * 2 + ph * 1.3) * I.bob * H * still;
       chestZ += Math.sin(tr * I.sway * Math.PI * 2 + ph * 0.7) * I.lean * still;
       // an AI player's body isn't rigid (the user's is left alone: their eyes ride on it)
       if (!a.isUser) {
         const Lo = CHARACTER.loose;
         // a ball in play: lower, chest over the knees, bouncing on the balls of the feet
-        this.readyW = lerp(this.readyW, a.alert * still, damp(Lo.readyRate, dt));
+        this.readyW = lerp(this.readyW, Math.max(a.alert, a.ready) * (1 - a.relax) * still, damp(Lo.readyRate, dt));
         const rw = this.readyW * (1 - this.lowW);
         // (`a.id * 2.3`: a per-player hash like `ph`, not a tunable)
         const hz = Lo.bounceHz * (1 + Lo.tempo * Math.sin(a.id * 2.3));
@@ -416,6 +436,17 @@ export class AthleteView {
         spineX -= clamp(acc.z * Lo.accLean, -Lo.accMax, Lo.accMax);
         chestZ += clamp(-acc.x * Lo.accLean, -Lo.accMax, Lo.accMax);
         chestY += clamp(-this.yawRate * Lo.turnLag, -Lo.turnMax, Lo.turnMax);
+        // between points: stood up, loose, and what the point meant to them
+        this.relaxW = lerp(this.relaxW, a.relax, damp(R.rate, dt));
+        drop -= R.drop * H * this.relaxW;
+        spineX += R.spine * this.relaxW;
+        if (gt) {
+          drop += gt.drop;
+          spineX += gt.spineX;
+          chestX += gt.chestX;
+          chestY += gt.chestY;
+          chestZ += gt.chestZ;
+        }
       }
     }
     // land absorb
@@ -628,6 +659,12 @@ export class AthleteView {
 
     // ================================================== head look
     this.updateHead(dt);
+
+    // a clap, a five: the hands meet
+    if (this.gest && this.onHands) {
+      const k = handsMeet(a, this.gest, tr - dt, tr);
+      if (k) this.onHands(a, k);
+    }
 
     this.updateFxAnchors();
   }
@@ -943,6 +980,12 @@ export class AthleteView {
         pole.lerp(_b, dp);
       } else if (st === 'ground' || st === 'land') {
         this.key('ready', w, pole);
+        // between points the arms hang
+        if (this.relaxW > 0.01) {
+          this.key('relaxed', _a, _b);
+          w.lerp(_a, this.relaxW);
+          pole.lerp(_b, this.relaxW);
+        }
         const g = this.gaitW;
         if (g > 0.01) {
           // running arm swing opposite to the legs
@@ -1003,6 +1046,21 @@ export class AthleteView {
           w.lerp(_a, k * 0.7);
           pole.lerp(_b, k * 0.7);
         }
+      }
+
+      // ---- a gesture between points: a fist, a clap, a five, hands on the knees...
+      if (this.gest && armGesture(a, this.gest, tr, s, H, this.bodyNow(s), _ga) && _ga.weight > 0) {
+        const gw = _ga.weight;
+        w.lerp(_ga.w, gw);
+        pole.lerp(_ga.pole, gw);
+        if (_ga.world) {
+          ikWorld = _g.copy(_ga.world);
+          ikBlend = gw;
+        }
+        palmFwd = lerp(palmFwd, _ga.palm, gw);
+        flex = lerp(flex, _ga.flex, gw);
+        mixShape(shape, _ga.shape, gw);
+        rate = lerp(rate, _ga.rate, gw);
       }
 
       // ---- actions
@@ -1228,7 +1286,7 @@ export class AthleteView {
       const L = s < 0 ? 'L' : 'R';
       const clav = B[`clav${L}` as BoneName];
       const elev = clamp01((arm.w.y / H - 0.05) / 0.25);
-      clav.rotation.set(0, 0, s * elev * 0.32);
+      clav.rotation.set(0, 0, s * (elev * 0.32 + this.shrug));
       clav.updateMatrixWorld(true);
 
       // ---- solve
@@ -1378,6 +1436,16 @@ export class AthleteView {
     _handFore.copy(_n3);
     _handPalm.copy(_n1).negate();
     return out;
+  }
+
+  /** where the knee on this arm's side is now, and which way the body faces */
+  private bodyNow(s: number): BodyNow {
+    const a = this.athlete;
+
+    this.rig.bones[s < 0 ? 'shinL' : 'shinR'].getWorldPosition(_bn.knee);
+    dirFromYaw(a.ryaw, _bn.fwd);
+    rightFromYaw(a.ryaw, _bn.right);
+    return _bn;
   }
 
   private shoulderWorld(s: number, out: V): V {
@@ -1565,6 +1633,19 @@ function mixShape(o: HandShape, b: HandShape, t: number): HandShape {
 
 let ikBlend = 1;
 let reachBlend = 1;
+
+const _gt: TorsoGesture = { drop: 0, spineX: 0, chestX: 0, chestY: 0, chestZ: 0, hop: 0 };
+const _ga: ArmGesture = {
+  weight: 0,
+  w: new THREE.Vector3(),
+  pole: new THREE.Vector3(),
+  world: null,
+  shape: { ...SH.relaxed },
+  palm: 0,
+  flex: 0,
+  rate: 0,
+};
+const _bn: BodyNow = { knee: new THREE.Vector3(), fwd: new THREE.Vector3(), right: new THREE.Vector3() };
 
 /** how many lower spots on the ball a spiking palm tries before it faces the ball straight from the shoulder */
 const PALM_TRIES = 4;

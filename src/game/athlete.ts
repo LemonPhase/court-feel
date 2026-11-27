@@ -61,6 +61,40 @@ export interface Action {
   form: PassForm;
 }
 
+/**
+ * What a player's body says between points (drawn only: decision record 0008).
+ * - `fist`: a fist pulled down by the hip ("yes!"); `roar`: both fists, the body down into it;
+ *   `armsUp`: both arms up, on the toes; `clap`: claps in front of the chest (`count` of them);
+ * - `five`: a hand up to meet a team-mate's (`with`) at `meet`, high, or (`low`) at the hip;
+ *   `pat`: a hand on a team-mate's back or shoulder (`with`);
+ * - `huddle`: in the ring round `at`, arms round the neighbours' shoulders (`with`, `with2`), or
+ *   (`low`) a hand in the middle;
+ * - `hips`: hands on the hips; `knees`: hands on the knees, bent over (`low`: only a little, the
+ *   passer's crouch before a serve); `sorry`: a hand up, "mine"; `signal`: a hand behind the back,
+ *   the blocker showing the block (`low`: a fist, else an open hand); `wipe`: the hands wiped down
+ *   the shorts; `shake`: the hands shaken out; `bounce`: two little hops on the toes; `point`: an
+ *   arm out at a team-mate (`with`).
+ * `hand` is the arm that leads (+1 right, -1 left), `k` 0..1 the player's own way of doing it
+ * (bigger, quicker), `t0` sim time and `dur` seconds.
+ */
+export type GestureKind =
+  'fist' | 'roar' | 'armsUp' | 'clap' | 'five' | 'pat' | 'huddle' | 'hips' | 'knees' | 'sorry' | 'signal' | 'wipe' | 'shake' | 'bounce';
+
+export interface Gesture {
+  kind: GestureKind;
+  t0: number;
+  dur: number;
+  hand: 1 | -1;
+  k: number;
+  with: Athlete | null;
+  with2: Athlete | null;
+  /** five: when the hands meet (sim time) */
+  meet: number;
+  at: THREE.Vector3 | null;
+  low: boolean;
+  count: number;
+}
+
 export interface AthleteCmd {
   /** desired world-space move direction (length 0..1) */
   moveX: number;
@@ -143,6 +177,18 @@ export class Athlete {
   low = 0;
   /** a ball is in play, 0..1 (set by the game; the animator's ready stance: `CHARACTER.loose`, no effect on movement) */
   alert = 0;
+  /**
+   * Between points (set by the AI's routine, src/ai/betweenPoints.ts, for the animator: never read
+   * back by the play, decision record 0008). `relax` 0..1: the rally is over, the body stands tall
+   * and the arms hang; `ready` 0..1: waiting for the serve, sitting into the stance before the ball
+   * is up; `tired` 0..1: how hard the rally was (deeper breaths, hands on the knees); `gesture`: what
+   * the arms (and the trunk) are doing; `gaze`: what the head looks at instead of the ball.
+   */
+  relax = 0;
+  ready = 0;
+  tired = 0;
+  gesture: Gesture | null = null;
+  gaze: THREE.Vector3 | null = null;
   /** 'ready' body lean */
   readyAmount = 1;
   /** look target for head IK (set by game) */
