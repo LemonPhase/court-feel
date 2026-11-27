@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, BALL, CONTACT, COURT, PLAYER, TIMING, type PositionId } from '../config';
+import { AI, BALL, CONTACT, COURT, PLAYER, SERVE, TIMING, type PositionId } from '../config';
 import { clamp, lerp, Rng, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import type { V3 } from '../physics/ball';
 import type { Athlete } from '../game/athlete';
@@ -25,6 +25,7 @@ import {
 } from '../game/plays';
 import { BlockerBrain } from './blocker';
 import { moveTo, netYaw, stop } from './brain';
+import { BetweenPoints, type Member, type PointEnd } from './betweenPoints';
 import { attackKind, pinShade, readSpots, seamSpot } from './defence';
 import { giveWay, shoulderToShoulder, type Mate } from './giveWay';
 import { HitterBrain } from './hitter';
@@ -62,6 +63,9 @@ export interface TeamPlay {
    */
   yields: Set<SetterKey>;
 }
+
+/** how far across the court (m, world x for the home side) an AI server serves from */
+const SERVER_X = -2.5;
 
 /** the three who pass the serve (the two outsides and the libero) */
 export const PASSERS: ReadonlySet<Slot> = new Set<Slot>(['OH1', 'OH2', 'L']);
@@ -238,10 +242,11 @@ export class TeamPlayer implements Brain {
     this.readSpot = null;
   }
 
-  /** playing the ball, or in a move that must not be bent (an approach, a jump): keeps its line */
+  /** playing the ball, or in a move that must not be bent (an approach, a jump), or in a huddle: keeps its line */
   get firm(): boolean {
     const a = this.athlete;
     if (a.state !== 'ground' && a.state !== 'land') return true;
+    if (this.team.between.holds(a)) return true;
     if (this.job === 'receive' || this.job === 'free' || this.job === 'set' || this.job === 'serve' || this.job === 'block') return true;
     return !!this.hitter && this.hitter.phase !== 'ready' && this.hitter.phase !== 'recover';
   }
@@ -276,6 +281,15 @@ export class TeamPlayer implements Brain {
       a.endAction();
     // given the ball to play while running in for a set that isn't coming: the approach is broken off
     if (this.hitter?.phase === 'approach' && (this.job === 'receive' || this.job === 'free')) this.hitter.reset();
+    // between points the team's routine has them (src/ai/betweenPoints.ts): a run-up for a set
+    // that never came is pulled up, a jump already under way comes down first
+    if (this.team.between.drives(a, this.job, g.simTime)) {
+      if (this.hitter?.phase === 'approach' && a.state === 'ground') this.hitter.reset();
+      if (!this.hitter || this.hitter.phase === 'ready' || this.hitter.phase === 'recover') {
+        this.team.between.step(a, dt, g);
+        return;
+      }
+    }
     // an attack in progress always finishes, whatever the coordinator says
     if (this.hitter && this.hitter.phase !== 'ready' && this.hitter.phase !== 'recover') {
       this.hitter.step(dt, g);
@@ -668,11 +682,15 @@ export class TeamAI {
   /** their serve is a jump serve: read off the toss (the passers step back: `AI.sit.jumpBack`) */
   jumpServe = false;
 
+  /** what the team does between points: from the whistle until the next serve is tossed */
+  readonly between: BetweenPoints;
+
   constructor(
     public side: 1 | -1,
     private g: AiHost,
   ) {
     this.playRng = new Rng(side === 1 ? AI.plays.seed.home : AI.plays.seed.away);
+    this.between = new BetweenPoints(side, side === 1 ? AI.between.seed.home : AI.between.seed.away);
   }
 
   add(slot: Slot, a: Athlete, isUser: boolean): void {
@@ -701,10 +719,15 @@ export class TeamAI {
     return { x: f.x * this.side, z: f.z * this.side };
   }
 
-  place(form: 'receive' | 'defense' | 'offense'): void {
+  /**
+   * Set the team up for a serve: each player on their spot of `form` (`teleport`), or, between
+   * points, walking there (the routine has them, `between`: it is told the spots).
+   */
+  place(form: 'receive' | 'defense' | 'offense', teleport = true): void {
+    if (teleport) this.between.stop();
     for (const [slot, a] of this.players) {
       const p = this.formSpot(form, slot);
-      if (!a.isUser) a.place(p.x, p.z, netYaw(this.side));
+      if (!a.isUser && teleport) a.place(p.x, p.z, netYaw(this.side));
     }
     for (const b of this.brains.values()) {
       b.reset();
@@ -726,6 +749,40 @@ export class TeamAI {
     this.freeRolled = false;
     this.receiveRolled = false;
     this.secondBy = null;
+    if (!teleport) for (const [slot, a] of this.players) if (!a.isUser) this.between.retarget(a, this.anchor(form, slot, a));
+  }
+
+  /**
+   * The whistle: the point is over. The team's routine takes everyone to their spots for the next
+   * serve (`serving`: ours, by `server`, a jump serve or a float), watching `watch` serve when it is
+   * theirs.
+   */
+  pointOver(end: Omit<PointEnd, 'server'>, serving: boolean, jump: boolean, watch: Athlete | null): void {
+    const form = serving ? 'defense' : 'receive';
+    const server = serving ? this.server : null;
+    const members: Member[] = [];
+    for (const [slot, a] of this.players) {
+      if (a.isUser) continue;
+      members.push({
+        a,
+        spot: a === server ? this.serveSpot(jump) : this.formSpot(form, slot),
+        passer: !serving && PASSERS.has(slot),
+        blocker: serving && (slot === 'OH1' || slot === 'MB' || slot === 'OPP'),
+        server: a === server,
+      });
+    }
+    this.between.start({ ...end, server: serving ? server : watch }, members, this.user, this.g.simTime);
+  }
+
+  /** who serves for us: the back-row outside (the opposite, when the user is the back-row outside) */
+  get server(): Athlete {
+    return this.players.get(this.userSlot === 'OH2' ? 'OPP' : 'OH2')!;
+  }
+
+  /** where our server starts a serve from (as `ServerBrain.spot`): right back, behind the end line */
+  serveSpot(jump: boolean): { x: number; z: number } {
+    const back = jump ? AI.serve.jumpBack : SERVE.float.back;
+    return { x: this.side * SERVER_X, z: this.side * (COURT.halfLength + back) };
   }
 
   get user(): Athlete | null {
@@ -2061,10 +2118,10 @@ export class TeamAI {
 
   /** begin a serve by this team's server */
   serve(target: THREE.Vector3, jump = false): Athlete {
-    const server = this.players.get(this.userSlot === 'OH2' ? 'OPP' : 'OH2')!;
+    const server = this.server;
     const b = this.brains.get(server)!;
     b.job = 'serve';
-    b.server.serve(target, this.side * -2.5, jump ? 'jump' : 'float');
+    b.server.serve(target, this.side * SERVER_X, jump ? 'jump' : 'float');
     return server;
   }
 }

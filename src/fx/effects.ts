@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BALL, FX, type Settings } from '../config';
+import { AUDIO, BALL, FX, type Settings } from '../config';
 import { clamp, clamp01, damp, lerp, smooth01, wrapAngle, yawFromDir } from '../core/mathx';
 import type { Emitter } from '../core/events';
 import type { Input } from '../core/input';
@@ -292,6 +292,11 @@ export class Effects {
     });
     ev.on('outcome', () => {
       if (g.modeId === 'rally') setTimeout(() => this.audio.whistle(), 250);
+    });
+    ev.on('serveWhistle', () => this.audio.whistle(true));
+    ev.on('hands', ({ athlete, kind }) => {
+      const d = athlete.pos.distanceTo(this.g.rig.camera.position);
+      this.audio.hands(kind, clamp01(1 - d / AUDIO.hands.far));
     });
     ev.on('crowd', ({ amount, cheer }) => this.audio.crowd(amount, cheer));
     ev.on('setterCall', ({ athlete, call }) => {

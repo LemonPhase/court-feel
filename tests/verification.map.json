@@ -76,7 +76,7 @@
       "skill": ["serve-drill"]
     },
     "rally": {
-      "unit": ["drills", "rallyWheel", "replay", "teamDefence"],
+      "unit": ["betweenPoints", "drills", "rallyWheel", "replay", "teamDefence"],
       "trace": [
         "rally/OH/good",
         "rally/OPP/good",

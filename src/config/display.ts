@@ -195,6 +195,165 @@ export const CHARACTER = {
     placed: 15,
   },
   /**
+   * Between points (an AI player's body, `Athlete.relax`, `tired`; drawn only, decision record 0008).
+   * - Off the ball they stand up: the hips `drop` (body heights) less low, the trunk `spine` rad more
+   *   upright, the arms hang (`relaxed` arm key). Eased in and out at `rate` (1/s).
+   * - After a long rally (`tired` 1) the chest heaves: it breathes `faster` times quicker and `chest`
+   *   rad deeper, the shoulders rising `shrug` (rad) with each breath.
+   */
+  relax: { drop: 0.03, spine: 0.12, rate: 3, faster: 0.9, chest: 0.035, shrug: 0.06 },
+  /**
+   * What a gesture between points does to a body (`Athlete.gesture`, src/character/gestures.ts; drawn
+   * only). Arm positions are the wrist's offset from the shoulder in the body frame (out to the arm's
+   * own side, up, forward), in body heights; poles are where the elbow points (the same frame); keys
+   * are [time through the gesture 0..1, out, up, forward]. Trunk angles are rad (spine and chest:
+   * negative bends forward), sinks body heights, hops metres. From watching volleyball between
+   * rallies, not from a measurement.
+   * - Each gesture is given a size between `size` (its own dice: no two fist pumps are the same). It
+   *   eases in over `in` (`slowIn` for the slow ones: hands to the hips, the knees) and out over `out`
+   *   (s). The arm follows at `rate` (`fastRate` for a punch or a slap, `slowRate`, `clapRate`), 1/s.
+   * - fist: a fist up in front and pulled down to the hip (the body crunches into it over `pull`, of
+   *   the gesture's time, turning `turn` to its side); both fists from a size of `both`.
+   * - roar: both fists by the chest, sinking and bending forward, the head up, the fists shaking.
+   * - armsUp: both arms up in a V on the toes, and from a size of `jumpFrom` a little jump or two.
+   * - clap: the hands meet at the chest (`mid` puts the wrists a hand's thickness off the middle, from
+   *   `apart` apart); `phase` is where each clap starts in its swing.
+   * - five: the hands meet at `high` (overhead) or `low` (the hip) of the two players' height, after
+   *   at least `minRaise` s coming up; the hand goes `through` m past it, `hold` s, then down over
+   *   `after`; the wrist is cocked back `cock` and snaps `snap` (rad).
+   * - pat: a hand on the team-mate's near shoulder (`up` of their height, `out` m towards us).
+   * - huddle: leaning in; a hand in the middle at `handsUp` of the height, stacked `stackStep` m a
+   *   hand (`stack` high), or the arms on the neighbours' backs at `shoulder` of their height, `across`
+   *   m past their middle and `behind` m round towards their back, once the neighbour is within
+   *   `near` m (coming in from `far` m). A ring that won bounces.
+   * - hips, knees (`crouch`: the passer's ready, head up; `tired`: bent over, breathing), sorry (an
+   *   open hand up: "mine"), signal (behind the back), wipe (palms down the shorts), shake (the hands
+   *   shaken loose), bounce (on the toes).
+   */
+  gesture: {
+    size: [0.8, 1.2] as [number, number],
+    in: 0.15,
+    slowIn: 0.4,
+    out: 0.3,
+    rate: 10,
+    fastRate: 22,
+    slowRate: 6,
+    clapRate: 40,
+    fist: {
+      pull: [0.22, 0.42] as [number, number],
+      crunch: 0.22,
+      turn: 0.18,
+      sink: 0.025,
+      both: 0.8,
+      keys: [
+        [0, 0.02, -0.18, 0.12],
+        [0.22, 0.03, -0.02, 0.14],
+        [0.42, 0.05, -0.17, 0.06],
+        [0.85, 0.05, -0.16, 0.06],
+        [1, 0.02, -0.2, 0.08],
+      ],
+      pole: [0.35, -1, -0.5],
+    },
+    roar: {
+      sink: 0.07,
+      bend: 0.35,
+      chest: 0.22,
+      shakeHz: 5,
+      shake: 0.008,
+      keys: [
+        [0, 0.03, -0.16, 0.12],
+        [0.18, 0.05, -0.07, 0.15],
+        [0.82, 0.05, -0.07, 0.15],
+        [1, 0.03, -0.18, 0.1],
+      ],
+      pole: [0.6, -1, -0.2],
+    },
+    armsUp: {
+      chest: 0.18,
+      back: 0.1,
+      hopHz: 2.2,
+      jumpFrom: 0.55,
+      hop: 0.12,
+      palm: 0.6,
+      keys: [
+        [0, 0.03, -0.18, 0.1],
+        [0.09, 0.14, -0.02, 0.1],
+        [0.2, 0.12, 0.29, 0.06],
+        [0.82, 0.12, 0.29, 0.06],
+        [1, 0.04, -0.18, 0.08],
+      ],
+      pole: [1, 0, -0.3],
+    },
+    clap: { phase: 0.5, after: 0.2, mid: -0.112, apart: 0.14, up: -0.08, fwd: 0.2, pole: [1, -0.6, -0.2] },
+    five: {
+      high: 1.08,
+      low: 0.52,
+      minRaise: 0.2,
+      through: 0.06,
+      hold: 0.05,
+      after: 0.35,
+      cock: 0.4,
+      snap: 0.5,
+      rise: 0.012,
+      back: 0.08,
+      lowSink: 0.03,
+      lowBend: 0.15,
+      w: [0.05, 0.28, 0.15],
+      lowW: -0.2,
+      pole: [1, -0.3, -0.5],
+      lowPole: [0.8, -0.2, -0.8],
+    },
+    pat: { out: 0.12, up: 0.8, hz: 3, lift: 0.03, w: [-0.02, 0, 0.25], pole: [1, -0.4, -0.3], palm: 0 },
+    huddle: {
+      lean: 0.32,
+      sink: 0.04,
+      bounceFrom: 0.6,
+      bounce: 0.015,
+      bounceHz: 2,
+      inMiddle: 0.12,
+      handsUp: 0.6,
+      stack: 3,
+      stackStep: 0.04,
+      inW: [-0.05, -0.08, 0.28],
+      inPole: [1, -0.5, -0.3],
+      inPalm: 0.3,
+      near: 0.7,
+      far: 1.0,
+      across: 0.12,
+      shoulder: 0.72,
+      behind: 0.1,
+      armW: [0.15, 0, 0.1],
+      armPole: [0.2, -1, 0.2],
+      armPalm: 1,
+    },
+    hips: { back: 0.05, head: 0.12, w: [0, -0.21, -0.03], pole: [1, 0.15, -0.15], palm: 0, flex: 0.3 },
+    knees: {
+      crouch: { sink: 0.1, bend: 0.8, head: 0.05 },
+      tired: { sink: 0.07, bend: 1.05, head: 0 },
+      above: 0.05,
+      front: 0.03,
+      w: [-0.02, -0.33, 0.18],
+      pole: [1, 0.2, -0.3],
+      palm: 0,
+    },
+    sorry: { head: 0.1, waveHz: 1.5, wave: 0.01, w: [0.03, 0.27, 0.06], pole: [1, -0.3, -0.5] },
+    signal: { both: 0.5, w: [-0.09, -0.24, -0.09], pole: [1, 0, -0.3] },
+    wipe: {
+      bend: 0.35,
+      sink: 0.02,
+      keys: [
+        [0, 0.02, -0.2, 0.1],
+        [0.3, -0.02, -0.25, 0.08],
+        [0.6, -0.02, -0.33, 0.06],
+        [0.8, -0.02, -0.28, 0.07],
+        [1, 0.02, -0.24, 0.06],
+      ],
+      pole: [1, 0, -0.6],
+    },
+    shake: { hz: 4, lat: 0.02, flex: 0.5, offset: 1.3, w: [0.02, -0.27, 0.05], pole: [0.3, 0, -1] },
+    bounce: { hz: 2.4, hop: 0.04, sink: 0.015 },
+  },
+  /**
    * The two-arm swing of a jump. On the plant the arms go back behind the hips: `backStanding` (rad from
    * hanging straight down) for a standing jump, up to `backRun` after a run-up of `fullRun` (m/s) or more,
    * within `backTime` (s). From `upStart` (s) after the plant began they swing down past the hips and up in
@@ -510,4 +669,17 @@ export const AUDIO = {
    * `over` of the load again.
    */
   setLoad: { f0: 392, f1: 784, gain: 0.035, start: 0.35, over: 0.4 },
+  /** the referee's whistle that lets the server serve: a short blast (s held), against the rally's end */
+  whistleShort: 0.16,
+  /**
+   * Hands between points: a clap and a five's slap, each a burst of noise through a band-pass at
+   * `f` (Hz, sharpness `q`) dying away over `dur` s, at `gain` for a player beside you (quieter the
+   * further away: gone at `far` m). A five is sharper and louder than a clap (two hands flat, hit
+   * hard); a cupped clap is lower. Tuned by ear.
+   */
+  hands: {
+    clap: { f: 1350, q: 1.3, dur: 0.07, gain: 0.22 },
+    five: { f: 2100, q: 0.9, dur: 0.055, gain: 0.34 },
+    far: 22,
+  },
 };
