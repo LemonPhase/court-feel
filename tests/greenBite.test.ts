@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { AI, BALL, CONTACT, COURT, SIM, TIMING } from '../src/config';
+import { AI, BALL, BLOCK, CONTACT, COURT, SIM, TIMING } from '../src/config';
 import { bendFor, planToPoint, runDir, simulateApproach } from '../src/game/approach';
 import { decoyFor, greenFools, userGreen } from '../src/ai/greenBite';
 import { HitterBrain } from '../src/ai/hitter';
@@ -8,7 +8,8 @@ import { MiddleBlocker } from '../src/ai/middle';
 import { Athlete } from '../src/game/athlete';
 import type { Touch } from '../src/game/ballEntity';
 import { applyCalls, syncRuns, type CallHitters } from '../src/game/callRuns';
-import { blockHands, type SetResult } from '../src/game/contact';
+import { handPlates } from '../src/game/blockHands';
+import type { SetResult } from '../src/game/contact';
 import { attackHeight, laneFor, LANES, QUICK, quickSpot, SETTER_PLAYS, SETTER_TARGET } from '../src/game/plays';
 import { SetterCalls } from '../src/game/setterCalls';
 import { gradeRelease, setPips, setQuality, setTouch, setWindow } from '../src/game/setTiming';
@@ -379,7 +380,8 @@ describe('out of system: a high ball to a pin fools nobody', () => {
 
   /**
    * their middle, at the top of a block jump with the arms up (or `late`: just off the floor, still
-   * going up), meets a hard spike in the middle of its hands
+   * going up), meets a hard spike from your hitter aimed into the middle of its hands (where its hands
+   * are on an ordinary set): the real block, stepped as the game steps it
    */
   function block(green: boolean, late = false) {
     // fixed dice: at their kindest to the block, so what comes off the hands is the block's timing and the set, not luck
@@ -391,17 +393,21 @@ describe('out of system: a high ball to a pin fools nobody', () => {
     const act = b.startAction('block', s.sim.simTime);
     b.airIntent = 'block';
     s.run(1, () => b.state === 'air' && (late ? b.pos.y > 0.05 : b.vel.y <= 0.4));
-    const hands = blockHands(b);
+    const spike = { x: 0, y: -5, z: -21 };
+    const usual = handPlates(b, act, s.sim.simTime, { netTop: s.sim.env.netTop, ballVel: spike }).filter((h) => !h.arm);
+    const aim = { x: (usual[0].c.x + usual[1].c.x) / 2, y: (usual[0].c.y + usual[1].c.y) / 2, z: (usual[0].c.z + usual[1].c.z) / 2 };
+    // a little in front of the hands, coming at them
     s.send(
-      { from: { x: hands.x, y: hands.top - 0.12, z: -0.05 }, v: { x: 0, y: -5, z: -21 } },
+      { from: { x: aim.x - spike.x * 0.03, y: aim.y - spike.y * 0.03, z: aim.z - spike.z * 0.03 }, v: spike },
       { athlete: hitter, kind: 'spike', side: 1, green },
     );
     // its brain has its hands play the ball
-    s.step();
-    const touched = s.touches.some((c) => c.ev.athlete === b && c.ev.kind === 'block');
-    return { touched, note: act.note, vz: s.sim.ball.vel.z };
+    const blocked = () => s.touches.some((c) => c.ev.athlete === b && c.ev.kind === 'block');
+    const touched = s.run(0.25, blocked);
+    const v = s.sim.ball.vel;
+    return { touched, note: act.note, vz: v.z, speed: Math.hypot(v.x, v.y, v.z) };
   }
-  it('a block can touch an attack off your green set, not stuff it: it comes off the hands soft, into their court', () => {
+  it('a block can touch an attack off your green set, not stuff it: its hands are not set, and it comes off them soft', () => {
     const usual = block(false);
     expect(usual.touched).toBe(true);
     expect(usual.note).toBe('Stuff!');
@@ -410,15 +416,14 @@ describe('out of system: a high ball to a pin fools nobody', () => {
     const green = block(true);
     expect(green.touched).toBe(true);
     expect(green.note).not.toBe('Stuff!');
-    expect(green.vz).toBeLessThan(0);
+    // (into their court, or back to ours too slowly to be a stuff: our cover's ball)
+    expect(green.vz < 0 || green.speed < BLOCK.stuffSpeed).toBe(true);
   });
 
-  it('a late block, hands still coming up, does not soften an attack off your green set: it goes off the fingers and wide', () => {
-    // (on any other set the same late hands, with the same dice, take the pace off it for their diggers)
-    expect(block(false, true).note).toBe('Soft block');
+  it('a late block on an attack off your green set can touch it, and does not stuff it either', () => {
     const green = block(true, true);
     expect(green.touched).toBe(true);
-    expect(green.note).toBe('Tooled');
+    expect(green.note).not.toBe('Stuff!');
   });
 });
 

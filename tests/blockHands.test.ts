@@ -288,7 +288,10 @@ describe('the ball comes off the hands the way it met them', () => {
       expect(r.touched).toBe(true);
       const c = r.hit!.hit.plate.c;
       const near = Math.min(...r.drawn.map((d) => Math.hypot(d.x - c.x, d.y - c.y, d.z - c.z)));
-      expect(near, `${user ? 'you' : 'AI'}${green ? ', green set' : ''}`).toBeLessThan(1e-9);
+      // the same plate, one step on: the brain asks for the block before the simulation moves the body, and the hands
+      // the game draws are kept after that step, the body and the press gone on by a step (a millimetre or two). Without
+      // the block's own context the drawn hands were 3.3 to 45 cm off
+      expect(near, `${user ? 'you' : 'AI'}${green ? ', green set' : ''}`).toBeLessThan(0.01);
     }
   });
 

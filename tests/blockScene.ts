@@ -1,20 +1,24 @@
-import * as THREE from 'three';
 import { BALL, COURT, CONTACT, DEFAULT_SETTINGS, SIM, type PositionId } from '../src/config';
-import { Rng } from '../src/core/mathx';
 import { Athlete, type Action } from '../src/game/athlete';
-import { BallEntity, type Touch, type TouchKind } from '../src/game/ballEntity';
+import type { Touch, TouchKind } from '../src/game/ballEntity';
 import { handPlates, type BlockHand } from '../src/game/blockHands';
-import { ContactSystem, type ContactEvent, type ContactHost } from '../src/game/contact';
+import type { ContactEvent, ContactSystem } from '../src/game/contact';
 import type { V3 } from '../src/physics/ball';
 import { solveSpeedToFloor } from '../src/physics/solve';
+import { scene } from './scene';
 
 /**
  * A block, on its own: their hitter (side -1, on -z) sends a ball over the net at our blockers
- * (side +1) with the real ball and the real block (`ContactSystem.tryBlock`, called every step in
- * the order the simulation calls it: the blockers' hands, then the ball's step). Only the blockers'
- * jumps are scripted, on the game's own jump curve, timed from the moment the ball would reach the
- * net with nobody there (the ghost). Used by the block's unit tests and by the block sweep
- * (`node scripts/block-sweep.mjs`).
+ * (side +1) in a real `Simulation` (tests/scene.ts): the real ball, the real contact system, the
+ * game's step. Each blocker's brain does what an AI blocker's does: it asks the contact system for
+ * the block (`ContactSystem.tryBlock`) at the start of the step, before the bodies and the ball
+ * move. Only the blockers' jumps are scripted, by that brain, on the game's own jump curve, timed
+ * from the moment the ball would reach the net with nobody there (the ghost). Used by the block's
+ * unit tests and by the block sweep (`node scripts/block-sweep.mjs`).
+ *
+ * A player's blocker or hitter here is an athlete marked as the player's (`isUser`) with no seat:
+ * the contact system treats it as the player's (their aim assist, `SceneSpec.assist`; your attack
+ * against an AI block), and no seat steps it, so nothing else moves the scripted body.
  */
 
 export const DT = 1 / SIM.hz;
@@ -93,43 +97,6 @@ export interface SceneResult {
   drawn: V3[];
 }
 
-class Host implements ContactHost {
-  ball = new BallEntity();
-  simTime = 0;
-  env = env;
-  rng: Rng;
-  events: ContactEvent[] = [];
-  contactSys = new ContactSystem(this);
-  constructor(
-    seed: number,
-    private userAssist: number = DEFAULT_SETTINGS.aimAssist,
-  ) {
-    this.rng = new Rng(seed);
-  }
-  aimAssist(a: Athlete): number {
-    // as the game gives it (src/app/game.ts): the user's setting, 0.3 for the AI
-    return a.isUser ? this.userAssist : 0.3;
-  }
-  aimTargetFor(_a: Athlete, out: THREE.Vector3): THREE.Vector3 {
-    return out.set(0, 0, 6);
-  }
-  emitContact(ev: ContactEvent): void {
-    this.events.push(ev);
-  }
-  rand(): number {
-    return this.rng.next();
-  }
-  passTarget(): { x: number; y: number; z: number; apex: number } {
-    throw new Error('not in a block scene');
-  }
-  setOptions(): never[] {
-    return [];
-  }
-  canServe(): boolean {
-    return false;
-  }
-}
-
 /**
  * The blocker's jump as the game flies it (`Athlete.takeoffSpeed`, `Athlete.gravityAt`: a little hang
  * at the top), as a table of height and vertical speed from the takeoff, and the time of its peak.
@@ -190,21 +157,20 @@ export function launch(spec: SceneSpec): { v: V3; w: V3 } {
 /** the attack with nobody at the net: where it crosses the net and where it lands */
 export function ghost(spec: SceneSpec): GhostFlight {
   const { v, w } = launch(spec);
-  const ball = new BallEntity();
-  ball.launch(spec.from, v, w, 0, 0);
+  const { sim, send, step } = scene();
+  send({ from: spec.from, v, w });
   let cross: GhostFlight['cross'] = null;
   let land: GhostFlight['land'] = null;
-  let t = 0;
   for (let i = 0; i < 4 * SIM.hz && !land; i++) {
-    const p0 = { ...ball.pos };
-    ball.step(DT, env);
-    t += DT;
-    const p = ball.pos;
+    const p0 = { ...sim.ball.pos };
+    const t0 = sim.simTime;
+    step();
+    const p = sim.ball.pos;
     if (!cross && p0.z < 0 && p.z >= 0) {
       const f = -p0.z / (p.z - p0.z);
-      cross = { x: p0.x + (p.x - p0.x) * f, y: p0.y + (p.y - p0.y) * f, t: t - DT + DT * f };
+      cross = { x: p0.x + (p.x - p0.x) * f, y: p0.y + (p.y - p0.y) * f, t: t0 + DT * f };
     }
-    const floor = ball.events.find((e) => e.kind === 'floor');
+    const floor = sim.ball.events.find((e) => e.kind === 'floor');
     if (floor) land = { x: floor.x, z: floor.z };
   }
   return { cross, land, v, w };
@@ -225,84 +191,95 @@ export function kindOf(note: string): string {
           : note;
 }
 
+interface Blocker {
+  a: Athlete;
+  act: Action;
+  /** the jump's height (m) and when it peaks (s) */
+  H: number;
+  tPeak: number;
+  ground: boolean;
+}
+
+/** a blocker's feet where its jump has them at `t` (or on the floor) */
+function pose(b: Blocker, t: number): void {
+  if (b.ground) {
+    b.a.state = 'ground';
+    b.a.pos.y = 0;
+    b.a.vel.y = 0;
+  } else jumpAt(b.a, t, b.tPeak, b.H);
+}
+
 /** play the scene: the attack, the blockers going up for it, and the ball to the floor */
 export function blockScene(spec: SceneSpec): SceneResult {
   const g = ghost(spec);
-  const host = new Host(spec.seed ?? 1, spec.assist);
-  const ball = host.ball;
+  // the player's aim assist is their setting (the game's default when not given); an AI player's is the simulation's own
+  const s = scene({ seed: spec.seed ?? 1, hooks: { aimAssist: () => spec.assist ?? DEFAULT_SETTINGS.aimAssist } });
+  const { sim } = s;
   // their hitter where it met the ball (the blockers square their hands to it, as in the game)
-  const hitter = new Athlete('OH', -1);
+  const hitter = s.athlete('OH', -1, { x: spec.from.x, z: spec.from.z, yaw: 0 });
   hitter.isUser = spec.hitterUser === true;
-  hitter.place(spec.from.x, spec.from.z, 0);
   const tc = g.cross ? g.cross.t : 0.1;
-  const blockers = spec.blockers.map((b) => {
-    const a = new Athlete(b.role ?? 'MB', 1);
-    a.isUser = b.user === true;
-    a.place(b.x, b.z ?? 0.45, Math.PI);
-    a.reachX = b.reachX ?? 0;
-    const act = a.startAction('block', -1);
-    return { a, act, H: blockJump(a), tPeak: tc - (b.timing ?? 0), ground: b.ground === true };
-  });
-  const pose = (t: number) => {
-    for (const b of blockers) {
-      if (b.ground) {
-        b.a.state = 'ground';
-        b.a.pos.y = 0;
-        b.a.vel.y = 0;
-      } else jumpAt(b.a, t, b.tPeak, b.H);
-    }
-  };
-  ball.launch(spec.from, g.v, g.w, 0, 0);
-  ball.lastTouch = { athlete: hitter, kind: spec.kind ?? 'spike', t: 0, side: -1, green: spec.green === true };
-  pose(0);
   let vIn: V3 | null = null;
   let vOut: V3 | null = null;
   let wIn: V3 | null = null;
   let wOut: V3 | null = null;
   let hit: ContactSystem['lastBlock'] = null;
-  let touchStep = false;
-  let drawn: V3[] = [];
   let at: V3 | null = null;
   let by = -1;
-  let first: Action | null = null;
+  // set by a blocker's brain, inside the step (a cast, so the compiler does not take it for always null)
+  let first = null as Action | null;
+  const blockers = spec.blockers.map((spot, k) => {
+    const a = s.athlete(spot.role ?? 'MB', 1, { x: spot.x, z: spot.z ?? 0.45, yaw: Math.PI });
+    a.isUser = spot.user === true;
+    a.reachX = spot.reachX ?? 0;
+    const b: Blocker = {
+      a,
+      act: a.startAction('block', -1),
+      H: blockJump(a),
+      tPeak: tc - (spot.timing ?? 0),
+      ground: spot.ground === true,
+    };
+    sim.setBrain(a, {
+      athlete: a,
+      step: () => {
+        // the body as the last step left it (the simulation moves the bodies after the brains), on the jump's curve
+        pose(b, sim.simTime - DT);
+        if (b.act.resolved) return;
+        const before = { ...sim.ball.vel };
+        const spin = { ...sim.ball.state.w };
+        if (sim.contact.tryBlock(a, b.act) && !first) {
+          first = b.act;
+          by = k;
+          vIn = before;
+          vOut = { ...sim.ball.vel };
+          wIn = spin;
+          wOut = { ...sim.ball.state.w };
+          hit = sim.contact.lastBlock;
+          at = { x: b.act.contactPoint.x, y: b.act.contactPoint.y, z: b.act.contactPoint.z };
+        }
+      },
+    });
+    return b;
+  });
+  for (const b of blockers) pose(b, 0);
+  s.send({ from: spec.from, v: g.v, w: g.w }, { athlete: hitter, kind: spec.kind ?? 'spike', side: -1, green: spec.green === true, t: 0 });
+  let drawn: V3[] = [];
   let land: SceneResult['land'] = null;
   for (let i = 0; i < 4 * SIM.hz && !land; i++) {
-    host.simTime += DT;
-    pose(host.simTime);
-    for (let k = 0; k < blockers.length; k++) {
-      const { a, act } = blockers[k];
-      if (act.resolved) continue;
-      const before = { ...ball.vel };
-      const spin = { ...ball.state.w };
-      if (host.contactSys.tryBlock(a, act) && !first) {
-        first = act;
-        by = k;
-        vIn = before;
-        vOut = { ...ball.vel };
-        wIn = spin;
-        wOut = { ...ball.state.w };
-        hit = host.contactSys.lastBlock;
-        at = { x: act.contactPoint.x, y: act.contactPoint.y, z: act.contactPoint.z };
-        touchStep = true;
-      }
-    }
-    // the contact system's own step, as the simulation runs it after the blocks: it keeps the hands to draw
-    host.contactSys.step(blockers.map((b) => b.a));
-    if (touchStep) {
-      drawn = [...(first?.hands ?? []), ...(first?.arms ?? [])].map((p) => ({ ...p.c }));
-      touchStep = false;
-    }
-    ball.step(DT, env);
-    const floor = ball.events.find((e) => e.kind === 'floor');
+    const before = first;
+    s.step();
+    // the step of the first touch: the hands and forearms the contact system kept on the action, after the blocks: what the game draws
+    if (!before && first) drawn = [...(first.hands ?? []), ...(first.arms ?? [])].map((p) => ({ ...p.c }));
+    const floor = sim.ball.events.find((e) => e.kind === 'floor');
     if (floor) land = { x: floor.x, z: floor.z };
   }
-  const note = first ? (first as Action).note : '';
+  const note = first ? first.note : '';
   return {
     touched: !!first,
     kind: first ? kindOf(note) : 'none',
     note,
-    grade: first ? ((first as Action).grade ?? '') : '',
-    events: host.events,
+    grade: first ? (first.grade ?? '') : '',
+    events: s.touches.map((c) => c.ev).filter((ev) => ev.kind === 'block'),
     by,
     at,
     vIn,
@@ -333,9 +310,9 @@ export function spikeAt(fromX: number, angle: number, speed: number, opts: { y?:
  * their hitter at `from` (or, with none, to a ball coming along `dir`), with the user's `assist`
  */
 export function handsAtPeak(b: BlockerSpec, dir: V3, from?: V3, assist: number = DEFAULT_SETTINGS.aimAssist): BlockHand[] {
-  const a = new Athlete(b.role ?? 'MB', 1);
+  const s = scene();
+  const a = s.athlete(b.role ?? 'MB', 1, { x: b.x, z: b.z ?? 0.45, yaw: Math.PI });
   a.isUser = b.user === true;
-  a.place(b.x, b.z ?? 0.45, Math.PI);
   a.reachX = b.reachX ?? 0;
   const act = a.startAction('block', -1);
   if (!b.ground) {
@@ -345,8 +322,7 @@ export function handsAtPeak(b: BlockerSpec, dir: V3, from?: V3, assist: number =
   }
   let attack: Touch | null = null;
   if (from) {
-    const hitter = new Athlete('OH', -1);
-    hitter.place(from.x, from.z, 0);
+    const hitter = s.athlete('OH', -1, { x: from.x, z: from.z, yaw: 0 });
     attack = { athlete: hitter, kind: 'spike', t: 0, side: -1 };
   }
   return handPlates(a, act, 0, { netTop: env.netTop, assist: a.isUser ? assist : 0.3, ballVel: dir, attack });
