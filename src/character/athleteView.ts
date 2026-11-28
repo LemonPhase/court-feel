@@ -225,6 +225,8 @@ export class AthleteView {
   private setPalm0: [V, V] = [v3(), v3()];
   private setFore0: [V, V] = [v3(0, 1, 0), v3(0, 1, 0)];
   private setFace0: [V, V] = [v3(0, 0, 1), v3(0, 0, 1)];
+  /** each palm has been put on this set's ball (setPalm0 and the rest are this set's, not the last one's) */
+  private setPlaced: [boolean, boolean] = [false, false];
   /** each shoulder as the ball left: the push is the arm's, so it goes with the body as the legs drive */
   private setShoulder0: [V, V] = [v3(), v3()];
   /** the heels up off the floor on a long set (m), the hips forward under a push (m), the right foot ahead (0..1) */
@@ -1640,10 +1642,13 @@ export class AthleteView {
       this.setUpT = -1;
       return;
     }
-    if (this.setUpT < 0) {
-      // the hands start up as the set is on
-      this.setUpT = cur.t0;
-      setStyle(a.id, this.setUpT, sm.style);
+    if (this.setUpT < 0 || sm.act !== cur) {
+      // a new set, with a style of its own. The hands start up as it is on, unless they are already up
+      // in the window for a set it replaces before the touch (a pass taken overhand becoming a set):
+      // they stay there, they do not drop and go up again.
+      if (this.setUpT < 0 || sm.released) this.setUpT = cur.t0;
+      setStyle(a.id, cur.t0, sm.style);
+      this.setPlaced[0] = this.setPlaced[1] = false;
     }
     sm.act = cur;
     sm.prep = setRaise(tr - this.setUpT, sm.style, a.isUser);
@@ -1703,6 +1708,24 @@ export class AthleteView {
   }
 
   /**
+   * One palm on the ball the set is shaped round (centre `C`), `load` (0..1) of the way into the
+   * load: closing in and down round it as it loads, the wrist cocked further back (the stretch the
+   * set springs from). Into `setPalm0`/`setFore0`/`setFace0` and `setShoulder0`, which the push
+   * starts from.
+   */
+  private placePalm(i: number, s: number, C: V, load: number): void {
+    const P = CHARACTER.set.palm;
+    const n1 = this.bodyToWorld(s * (P.at[0] + P.load[0] * load), P.at[1] + P.load[1] * load, P.at[2] + P.load[2] * load, _s5).normalize();
+    const n3 = this.bodyToWorld(s * P.fingers[0], P.fingers[1], P.fingers[2], _s6);
+    n3.addScaledVector(n1, -n3.dot(n1)).normalize();
+    this.setPalm0[i].copy(C).addScaledVector(n1, BALL.radius + this.rig.dims.palmThick + P.off);
+    this.shoulderWorld(s, this.setShoulder0[i]);
+    this.setFore0[i].copy(n3);
+    this.setFace0[i].copy(n1).negate();
+    this.setPlaced[i] = true;
+  }
+
+  /**
    * One arm in a hand set: the hand shaped round the ball in the window, onto it where it arrives and
    * down with it, then out along the way it went, held, and down again, the elbow bending first.
    * `w`/`pole` come in as the arm's own pose (standing, running) and go out as the set's base. The
@@ -1739,23 +1762,8 @@ export class AthleteView {
         _s5.y += S.give * (1 - sm.give);
         C.lerp(_s5, meet);
       }
-      // the palm on that ball, closing in and down round it as it loads (the wrists cock further
-      // back: the stretch the set springs from)
-      const P = S.palm;
-      const load = Math.max(sm.give * meet, sm.absorb);
-      const n1 = this.bodyToWorld(
-        s * (P.at[0] + P.load[0] * load),
-        P.at[1] + P.load[1] * load,
-        P.at[2] + P.load[2] * load,
-        _s5,
-      ).normalize();
-      const n3 = this.bodyToWorld(s * P.fingers[0], P.fingers[1], P.fingers[2], _s6);
-      n3.addScaledVector(n1, -n3.dot(n1)).normalize();
-      palm0.copy(C).addScaledVector(n1, BALL.radius + d.palmThick + P.off);
-      this.shoulderWorld(s, this.setShoulder0[i]);
-      fore0.copy(n3);
-      face0.copy(n1).negate();
-      o.at.copy(palm0).addScaledVector(n3, -d.palm);
+      this.placePalm(i, s, C, Math.max(sm.give * meet, sm.absorb));
+      o.at.copy(palm0).addScaledVector(fore0, -d.palm);
       // (on the way up the hands go out in front of the face, not through it, and turn up into the
       // window shape at the end)
       this.bodyToWorld(0, 0, S.window.out * this.H * (1 - sm.prep), _s7);
@@ -1770,6 +1778,9 @@ export class AthleteView {
       return;
     }
     // ---- after the touch (one arm a few milliseconds behind the other)
+    // A set the view never saw before the touch (started and played on one step: a setter who got
+    // there late) pushes from the window, loaded, not from where the last set's hands were.
+    if (!this.setPlaced[i]) this.placePalm(i, s, this.setWin, 1);
     const lag = V.lag * sty.lag;
     const af = setAfter(sm.ts, sm.push, sty, _aft, s * lag > 0 ? Math.abs(lag) : 0);
     // the way the arms go: the ball's, but a back set's arms go up over the head (the arched back does the rest)

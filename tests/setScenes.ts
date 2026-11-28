@@ -70,6 +70,10 @@ export interface SetOpts {
   after?: number;
   /** the athlete's id (each setter has their own habits: the same id is the same setter) */
   id?: number;
+  /** a late set: started on the step it is played (a setter who got there late), never seen before the touch */
+  late?: boolean;
+  /** a second set started this long (s) after the touch, while the first one's arms are still coming down */
+  again?: number;
 }
 
 /**
@@ -154,7 +158,7 @@ export function runSet(opts: SetOpts): { frames: Frame[]; a: Athlete; v: Athlete
   for (let tau = 0.7; tau > DT / 2; tau -= DT) {
     ball.set(zone.x - vIn.x * tau, zone.y - vIn.y0 * tau + 0.5 * BALL.gravity * tau * tau, zone.z - vIn.z * tau);
     vel.set(vIn.x, vIn.y0 - BALL.gravity * tau, vIn.z);
-    if (!act && tau <= 0.4 + 1e-9) act = a.startAction('set', t);
+    if (!act && !opts.late && tau <= 0.4 + 1e-9) act = a.startAction('set', t);
     a.ballPos = ball;
     a.ballVel = vel;
     a.lookAt.copy(ball);
@@ -187,6 +191,7 @@ export function runSet(opts: SetOpts): { frames: Frame[]; a: Athlete; v: Athlete
   act.contactPoint.copy(ball);
   const from = ball.clone();
   const end = opts.after ?? 0.7;
+  let second = false;
   for (let ts = DT; ts < end; ts += DT) {
     ball.set(from.x + opts.out.x * ts, from.y + opts.out.y * ts - 0.5 * BALL.gravity * ts * ts, from.z + opts.out.z * ts);
     vel.set(opts.out.x, opts.out.y - BALL.gravity * ts, opts.out.z);
@@ -194,7 +199,11 @@ export function runSet(opts: SetOpts): { frames: Frame[]; a: Athlete; v: Athlete
     a.ballVel = vel;
     a.lookAt.copy(ball);
     // the setter's action ends 0.4 s after the touch (SetterBrain)
-    if (a.action && ts > 0.4) a.endAction();
+    if (a.action && ts > 0.4 && !second) a.endAction();
+    if (opts.again !== undefined && !second && ts >= opts.again) {
+      a.startAction('set', t);
+      second = true;
+    }
     step();
     sample(ts);
   }

@@ -262,6 +262,36 @@ describe('the hand set, as the body shows it', () => {
     expect(Math.max(...hold) - Math.min(...hold)).toBeGreaterThan(0.03);
   });
 
+  it('a late set, played on the step it starts: the hands go up to the ball, never flung at another spot', () => {
+    for (const id of SETTERS) {
+      // the view never sees this set before the ball is gone
+      const { frames } = runSet({ out: OUT.front, id, late: true });
+      const mid = (f: Frame) => f.shoulderL.clone().add(f.shoulderR).multiplyScalar(0.5);
+      // (from the first frame after the touch: the one at the touch is still the standing pose)
+      for (const f of frames.filter((x) => x.t > 0.004 && x.t < 0.2)) {
+        for (const side of ['L', 'R'] as const) {
+          const w = f[`wrist${side}`];
+          // up and in front of the setter, over the shoulders: where a ball is set from
+          expect(w.y).toBeGreaterThan(f[`shoulder${side}`].y);
+          expect(Math.hypot(w.x - mid(f).x, w.z - mid(f).z)).toBeLessThan(0.5);
+        }
+      }
+    }
+  });
+
+  it('a set straight after another is its own: the hands go up into the window again, they do not jump there', () => {
+    for (const id of SETTERS) {
+      // the first set's arms are down by 0.9 s; the second set is on before its body lets go
+      const { frames } = runSet({ out: OUT.front, id, again: 0.9, after: 1.3 });
+      const start = frames.find((x) => x.t > 0.9 + 0.005)!;
+      expect(start.wristR.y).toBeLessThan(start.eye.y);
+      expect(start.wristL.y).toBeLessThan(start.eye.y);
+      const up = at(frames, 0.9 + 0.25);
+      expect(up.wristR.y).toBeGreaterThan(up.eye.y);
+      expect(up.wristL.y).toBeGreaterThan(up.eye.y);
+    }
+  });
+
   it("the right foot steps ahead to set: the setter's stance squares the body to the target", () => {
     for (const id of SETTERS) {
       const touch = at(runSet({ out: OUT.front, id }).frames, 0);
