@@ -896,8 +896,9 @@ export class AthleteView {
             // (up on the balls of the feet at the end of a long set: the ankle rises, the toes stay down)
             f.cur.y = ankleY + this.hop + this.setLift;
           }
+          // (only a set's heels come up and down this quickly: any other planted foot flattens as it did)
           const toes = Math.asin(clamp01(this.setLift / (CHARACTER.set.toeLever * (d.footLen - d.heel))));
-          f.pitch = lerp(f.pitch, toes, damp(CHARACTER.set.heelRate, dt));
+          f.pitch = lerp(f.pitch, toes, damp(this.sm.on ? CHARACTER.set.heelRate : 10, dt));
         } else {
           // ---- moving: distance-driven foot trajectories (no sliding)
           const ph = (this.gaitPhase + (s > 0 ? 0 : 0.5)) % 1;
