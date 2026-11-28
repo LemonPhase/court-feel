@@ -79,7 +79,7 @@ export const K_MAGNUS = ((0.5 * BALL.airDensity * AREA * R) / BALL.mass) * BALL.
 /** side force per unit coefficient and v^2 (the float) */
 const K_SIDE = (0.5 * BALL.airDensity * AREA) / BALL.mass;
 /** hollow sphere: I = 2/3 m r^2 */
-const INV_I_TERM = (R * R) / ((2 / 3) * R * R); // r^2 * m / I  = 1.5
+export const INV_I_TERM = (R * R) / ((2 / 3) * R * R); // r^2 * m / I  = 1.5
 
 export const BOARD_X = COURT.halfWidth + COURT.freeZoneSide + 0.6;
 export const BOARD_Z = COURT.halfLength + COURT.freeZoneEnd + 0.6;

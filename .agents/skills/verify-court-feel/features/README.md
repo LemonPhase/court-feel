@@ -46,6 +46,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 ## Features
 
 - [Start screen](./start-screen.md) covers the first-visit welcome and skipping it, the Home, Train, Play and Learn sections, choosing a drill, a position and a view, the three ways to start, and Continue with the remembered selection.
+- [Block Drill](./block-drill.md) covers a block rep, the graded touch and where it met the hands, the score by where the ball landed, and the replay.
 - [Spike Drill](./spike-drill.md) covers a scored rep, your route and the route panel, the opposing block, replays, the camera toggle and resetting a rep.
 - [Pause and settings](./pause-settings.md) covers pausing, resuming, restarting, quitting, the quick settings, the Settings sheet and its tabs, the Athlete sheet, resetting to defaults, and persistence.
 - [Quick-start links](./quick-start-links.md) covers the URL parameters and their fallbacks for bad values.
@@ -61,7 +62,6 @@ These are user-facing and have no feature file. A proof that touches one must sa
 - The first-run tutorial: `START THE TUTORIAL` on the welcome, the three guided balls (together, slow motion, full speed), `Skip tutorial`, the lesson's button under Learn (`START`, `CONTINUE`, `TAKE IT AGAIN`), `CONTINUE THE TUTORIAL` on the welcome of a lesson left part-way, the end dialog (`KEEP HITTING`, `Choose another drill`) and `?tutorial=N` links. `court state` reports it under `tutorial` and `saved.tutorial`, but no recipe drives it yet.
 - Learn's controls list and its `Keyboard and mouse` and `Touch` chips.
 - Free Play: feed types `1` to `4`, `f` feed now, `t` auto-feed, a toss of your own with `q`.
-- Block Drill: reading the set, the block jump, stuff and touch scoring.
 - Serve Receive / Dig: pass ratings 0 to 3, the setter and hitter finishing a good pass.
 - Setter Drill: picking a hitter with `1` to `4` (the same key again steps their call), the catch and the bar (right mouse), the play wheel (`C`), the front row and the dump (`G`, `5`).
 - Plays (the start screen's top bar): the play designer, a saved play on the wheel and the call strip.

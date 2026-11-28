@@ -697,7 +697,9 @@ export class Game implements AiHost {
         // a set shows its release timing and what shrank the window; a perfectly timed one is a green
         const set = ev.kind === 'set';
         let sub =
-          ev.grade === 'Miss' || set ? ev.note : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.tip ? ' · tip' : ''}`;
+          ev.grade === 'Miss' || set
+            ? ev.note
+            : `${kmh.toFixed(0)} km/h${pw}${ev.note ? ' · ' + ev.note : ''}${ev.where ? ' · ' + ev.where : ''}${ev.tip ? ' · tip' : ''}`;
         if (this.tutorial.active) sub = this.tutorial.gradeSub(ev.grade, sub);
         this.hud.showGrade(ev.grade, sub, set && ev.perfect, ev.kind === 'pass' || ev.kind === 'dig');
       }

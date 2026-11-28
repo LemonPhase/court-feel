@@ -1,4 +1,4 @@
-// The skills: the timing windows, what a touch does to the ball, the serves, the plays, what assist does for the body. Owner: the simulation.
+// The skills: the timing windows, the block's hands, what a touch does to the ball, the serves, the plays, what assist does for the body. Owner: the simulation.
 //
 // What each section controls:
 //
@@ -12,6 +12,19 @@
 // multiple, the clean catch, whether hands up early are free (`handsEarly`, Easy) (the slow-mo is
 // the same on every level, in `ASSIST`)
 //
+// `BLOCK`: The block's hands: how big a hand is with the fingers spread and the gap between the
+// thumbs, how far the arms press over the net with the jump (`press`, `wrist`, the torso's `lean`,
+// from `pressFrom` of the jump; the shoulders no nearer the net than `shoulderOff`; never under the
+// tape, `tapeClear`), how far the hands turn about the forearms to the attacker (`face`) and a pin
+// blocker's outside hand turns in (`turnIn`, `pinTurn`), the aim assist's wider hands
+// (`assistWiden`); how the ball comes off them: the arm's mass behind the palm, the fingers, the
+// little finger's edge and a forearm (`massPalm`, `massTip`, `fingers`, `edge`, `massArm`; the
+// forearms no further apart than a ball, `forearmWidth`), the ball's restitution by impact speed
+// and what the hand keeps of it (`ballRest`, `restPalm`, `restTip`, `restArm`), the skin's grip
+// (`friction`), hands put up on the floor (`floorFirm`), one block as one touch (`chain`), two
+// hands taking a ball together (`together`); what a touch is called (`stuffSpeed`); the AI's hands
+// (`ai`: how firm, how far the outside hand turns in, against your attack, and off your green set)
+//
 // `CONTACT`: The setter's dump (`dump`: how near the net, where it lands, how high over the tape)
 // and how hard a fast set off the net is (`setTouch.oosFast`); A stuff kept up comes off the arms
 // anywhere (`covered.stuff`) while a recycled ball keeps its shape; an AI hitter's mistimed swing
@@ -22,20 +35,18 @@
 // met at full stretch goes, how much under control reads Good), how hard a pass can be
 // (`passPower`) and how much of a fast third ball sent over goes the way it bounces
 // (`overControl`), shanks (`shank`, `shankGood`, `shankSpeed`, `shankTurn`; an AI dig of the user's
-// hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`), a
-// hit off the outer edge of the hands is tooled (`toolEdge`, `toolEdgeP`), a jump serve met early
-// loses its topspin (`serveEarlySpin`; the player's three serves are under `SERVE`), the user's
-// spike tooled more often (`userToolEdge`, `userToolEdgeP`), the side dig, the dive and the
-// overhand first ball (`sideReach`, `sideErr`, `diveLow`, `diveErr`, `handsErr`, `handsMaxSpeed`),
-// a soft ball recycled off a well-formed block (`recycleSpeed`, `recycleP`, `recyclePLate`) and the
-// AI hitter's push into the hands (`pushSpeed`, `pushDrop`), how a ball off their block comes off
-// the cover's arms (`covered`: how much of it the coverer controls, by the ball's speed, the
-// platform's timing, its edge, moving feet and reaching; the rest pops up near them), the AI's
-// serves always in (`serveSafe`, and `serveSafeApex` for one its aim cannot get over the tape;
-// `floatSafe`, `floatSafeTries`, `floatSafeCut`, `floatSafeMin` for its float), how much a float
-// floats by the grade of its contact (`floatClean`), what shrinks the set window (`setTouch`; each
-// kind of set's share of a high ball's green, `setTouch.window`; a jump set's balance, `airDrift`
-// and `offTop`) and how a set misses (spread, short / long, apex)
+// hard spike `userSpikeShank`), how much lower a block reaching sideways is (`blockReachDrop`) and
+// how wide one blocker's hands are as the AI reads them (`blockHalfWidth`, from `BLOCK`), a jump
+// serve met early loses its topspin (`serveEarlySpin`; the player's three serves are under
+// `SERVE`), the side dig, the dive and the overhand first ball (`sideReach`, `sideErr`, `diveLow`,
+// `diveErr`, `handsErr`, `handsMaxSpeed`), the AI hitter's push into the hands (`pushSpeed`,
+// `pushDrop`), how a ball off their block comes off the cover's arms (`covered`: how much of it the
+// coverer controls, by the ball's speed, the platform's timing, its edge, moving feet and reaching;
+// the rest pops up near them), the AI's serves always in (`serveSafe`, and `serveSafeApex` for one
+// its aim cannot get over the tape; `floatSafe`, `floatSafeTries`, `floatSafeCut`, `floatSafeMin`
+// for its float), how much a float floats by the grade of its contact (`floatClean`), what shrinks
+// the set window (`setTouch`; each kind of set's share of a high ball's green, `setTouch.window`; a
+// jump set's balance, `airDrift` and `offTop`) and how a set misses (spread, short / long, apex)
 //
 // `SERVE`: The player's three serves: each one's toss (how far ahead, how high) and where the Serve
 // Drill stands you (`back`), the jump float's speed and the run-up that gives it (`jumpFloatSpeed`,
@@ -168,6 +179,167 @@ export const SET_LEVELS: Record<
 /** a kind of set, by how hard it is to put on the spot (CONTACT.setTouch.window) */
 export type SetTier = 'high' | 'hut' | 'quick' | 'backQuick' | 'backQuickOpp' | 'tempo' | 'push' | 'inside';
 
+/**
+ * The block's hands (src/game/blockHands.ts places them, src/physics/handContact.ts is the ball
+ * meeting one). A blocker is two hands: each a flat plate the size of an open hand with the
+ * fingers spread, on the end of an arm that pivots at the shoulder. The ball is touched where it
+ * passes within its radius of a hand and comes off it as a ball comes off a hand: the part of its
+ * speed into the hand bounces back (less what the hand and the ball soak up), the part along it
+ * goes on, slowed by the skin's grip, which also changes its spin. Where on the hand it lands
+ * decides how much is bounced back: the heel of a pressing hand has the arm behind it, the
+ * fingertips bend back. Nothing is rolled for the outcome: a stuff, a soft block, a block-out and
+ * a ball recycled to the hitter's side are what the bounce does, named afterwards from where the
+ * ball goes (`stuffSpeed`). Before this (until 0.2.x) the hands were a box 0.66 m wide and 0.75 m
+ * deep and the outcome was a dice table: a cross shot met hands twice as wide as a line shot,
+ * balls that had cleared the fingertips were caught behind the net, and every block-out flew
+ * 3-4 m past the end line whatever was hit (measured: `node scripts/block-sweep.mjs`).
+ *
+ * The hands' place:
+ * - `handWidth`: one hand, fingers spread (m). An adult man's hand is 8.5 cm wide at the knuckles
+ *   and 18.3 cm long (median; 95th percentile 9.1 and 19.9 cm: Chaurand et al. 2007); spread for a
+ *   block it is about as wide as it is long. Its length is the body's (`proportions.ts`: 0.108 x
+ *   height, 21 cm for a 1.97 m middle).
+ * - `thumbGap`: between the thumbs (m). Under a ball's width (0.21 m): coaches teach that the ball
+ *   must not fit between a blocker's hands, so a ball there meets both.
+ * - `thickness`: of a hand (m); the ball meets its surface, not its middle.
+ * - `reachTop`: the fingertips over the standing reach with the arms straight up (m), as the
+ *   standing reach is measured to the middle finger's first joint.
+ * - `press` (rad): the arms lean forward from the shoulders over the net at a full press (about 23
+ *   degrees off vertical) and the wrists bend back a little (`wrist`, rad, < 0: back), so the palms
+ *   face the hitter's floor at about 20 degrees off vertical; the shoulders come forward `lean` m
+ *   with it (the torso leaning in about 15 degrees, and the shrug of a reach). Together they put the
+ *   fingertips about 10 cm over the net for a middle standing 0.45 m off it, for about 7 cm of height.
+ *   The palms stay near upright: a spike comes down at 15-25 degrees, so it meets a palm tilted that
+ *   much plus the tilt off square, and past about 40 degrees a ball aimed at a 20 cm palm meets the
+ *   fingertips first (tried: 34 degrees of tilt sent hard spikes into the middle of the hands off the
+ *   tips). Tried and turned down: a 0.3 m lean (a 30-degree lean no blocker holds, and the drawn body
+ *   could not follow it: in first person the hands went out of sight above), and arms 29 degrees
+ *   over (9.5 cm of height lost: fewer stuffs, as many spikes went over the fingertips). A press costs
+ *   height, which is why a hitter can go over a block that penetrates and not over one that only
+ *   reaches (JSSM 10:452, the swing block: more height and more penetration). The shoulders lean in
+ *   no closer than `shoulderOff` m to the net's plane (the chest is about 12 cm in front of the
+ *   shoulder joints, and it stays off the net): a blocker standing at the net leans less and is over
+ *   it further with the arms. (Before this limit a blocker at `FEET_OFF_NET` leaned its shoulders
+ *   onto the net's plane, and an arm from there could only clear the tape straight up: no press.)
+ * - `pressFrom`: the press comes with the jump: none below this share of the jump's height, all of
+ *   it at the top. A late blocker's hands are still going up, square to the net; an early one's are
+ *   coming down.
+ * - `tapeClear`: the arms never pass under the tape (that is a net fault and a broken arm): where
+ *   an arm crosses the net's plane it is at least this far (m) over it, so a blocker whose
+ *   shoulders are low cannot reach over, however hard it presses.
+ * - `face`, `faceMax`: the hands turn toward the attacker, `face` of the way, at most `faceMax` rad:
+ *   a blocker squares its hands to the hitter's arm, not to the line the ball then takes (turned to
+ *   the ball's line, one blocker took a 45-degree cross over 40% more net than a line shot). The
+ *   hands turn about the forearms; the arms and the shoulders press straight over the net (pressing
+ *   along the facing slid the hands up to 9 cm sideways toward a hitter off to one side: a free
+ *   reach that widened every block).
+ * - `turnIn`, `pinTurn`: a pin blocker turns its outside hand in (rad, a turn of the forearm), so a
+ *   ball off it goes into the court and not off it and out: from `pinTurn[0]` m along the net to
+ *   all of it at `pinTurn[1]` m (Volleyball Canada, blocking: "hands wide open and slightly
+ *   turned"). The inside hand of the block stays square.
+ * - `assistWiden`: the aim assist's reach for a user blocker (m of each hand's half-width at full
+ *   assist): a body helped, never the ball; 0 assist is no help.
+ *
+ * The hands' give:
+ * - `massPalm`, `massTip` (kg): how much of the arm is behind the hand where the ball meets it. The
+ *   ISO 10218-2 body model gives the hand 0.6 kg, the forearm 2 kg and the upper arm 3 kg for a
+ *   free arm; a pressing block locks the elbows and braces the shoulders, so the heel of the hand
+ *   carries the forearm and most of the upper arm. At the tips only the fingers, which bend back.
+ *   `fingers` (0 the heel, 1 the tips): from here the mass falls to the tips' (a blocker's spread
+ *   fingers are braced: they give at their outer third). `edge`: the little finger's side of a hand is fingers too (this share of the mass at the
+ *   very edge), from `edgeFrom` of the way out from the middle of the hand; the thumbs are braced
+ *   against each other. A ball that meets both hands at once (within `together` m of its path:
+ *   between the thumbs) has both arms behind it.
+ * - `massArm`, `restArm`, `forearmWidth`: under the hands are the forearms (7-8 cm across): a ball
+ *   met there has the whole braced arm behind it and comes off less lively than off a palm, but
+ *   firmer than off the fingers. They run up to under the middle of each hand as it is before the
+ *   aim assist spreads the fingers, so the gap between them is narrower than a ball at any assist
+ *   (with the assist spreading them too, at the default a ball went between them untouched), and a
+ *   ball whose line is in that gap is met by both, as between the thumbs.
+ * - `ballRest`: a ball's own restitution against a rigid surface at `ballRestSpeed[0]` and
+ *   `[1]` m/s: it falls as the impact gets harder (a pressurised tennis ball: 0.8 at 3 m/s to 0.6
+ *   at 20 m/s, Haake / Sheffield; a volleyball at 0.3 kg/cm2 is softer and is taken a little lower).
+ * - `restPalm`, `restTip`: what the hand keeps of that (its soft tissue and its give soak up the
+ *   rest), at the palm and at the fingers.
+ * - `friction`: skin on the ball's synthetic leather. Palm skin on smooth surfaces measures from
+ *   about 0.8 (aluminium) to over 1 (rubber), less with sweat; taken a little under.
+ * - `floorFirm`: hands put up with the feet on the floor are this firm (share of the masses):
+ *   there is no jump to press from. `armTime`-early hands (arms still going up,
+ *   `TIMING.blockArmTime`) are firm by how far up they are.
+ * - `chain`: one block is one touch (FIVB 14.4.1): within this long (s) of a blocker's touch the
+ *   ball can still meet a team-mate's hands, as part of the same block.
+ * - `armsUp`: the hands block once the arms are this far up (`TIMING.blockArmTime`), and only a
+ *   blocker within `netMax` m of the net blocks at all.
+ * - `sweepStep`, `sweepIters`: how finely the ball's path through a step is searched for a hand
+ *   (m between looks; halvings to find the moment it meets it). A spike moves 25 cm a step: without
+ *   the search it would pass through a hand 3 cm thick.
+ *
+ * What the touch is called (for the HUD, the drills' scores, the sound and the cover), and where it
+ * met the block (the HUD says it after the call: the palm, both hands, the fingers, from `tipsFrom`
+ * of the way up the fingertips and of the way across the hand's edge, the forearms):
+ * - `stuffSpeed`: a ball off the block that comes down on the hitter's side, in, and leaves the
+ *   hands at this speed (m/s) or more is a stuff, driven down; slower it is off the block for their
+ *   cover (recycled: about where `CONTACT.covered.easy` says a cover still controls a ball). Out on
+ *   either side is a block-out; in on the blocker's side, a soft block.
+ *
+ * The AI blockers (playability, bent on purpose): their skill is how firm their hands are
+ * (`ai.firm`) and how far they turn the outside hand in (`ai.turnIn`), at `AI.blockerSkill`. They
+ * press as far as you do: pressing is a trade (over the net a falling spike is met higher, so a
+ * press touches fewer high balls and stops more steep ones), and a blocker that pressed less than
+ * you would touch more than you (measured: 52% of a sweep of attacks for an AI pressing three
+ * quarters as far, 48% for you). Against the user's attack their hands are less firm (`ai.userFirm`
+ * of it: the Spike Drill's perfect autopilot, hitting its zone straight into a closed double block,
+ * was stuffed 9 times in 40 without it, 7 with it, 2 with the old dice table; its kills stayed at
+ * 20-22) and they do not seal the outside hand:
+ * it is left a little open, turned toward the antenna (`ai.userTurnIn` of a turn in: below 0 is
+ * out), and its fingers not spread as wide (`ai.userWidth` of the width, the thumb's edge where it
+ * was), the blocking fault coaches warn of, so your spike off the outer hand gets off it more
+ * often: stuffed over less of the hand, off it over more (it was a separate dice roll, before the
+ * hands: the defence is strong and hitting is hard enough). Off your green set their hands are not set (`ai.green`: the
+ * share of a press and of their firmness): the set beat them, they are reacting, and the hitter
+ * swings high off them (it was a rule: never a stuff).
+ */
+export const BLOCK = {
+  handWidth: 0.18,
+  thumbGap: 0.1,
+  thickness: 0.03,
+  reachTop: 0.04,
+  press: 0.4,
+  wrist: -0.05,
+  lean: 0.22,
+  shoulderOff: 0.18,
+  pressFrom: 0.4,
+  tapeClear: 0.05,
+  face: 0.5,
+  faceMax: 0.4,
+  turnIn: 0.35,
+  pinTurn: [2.0, 3.5] as [number, number],
+  assistWiden: 0.06,
+  massPalm: 3.5,
+  massTip: 0.25,
+  massArm: 4,
+  restArm: 0.75,
+  forearmWidth: 0.08,
+  together: 0.06,
+  fingers: 0.7,
+  edge: 0.4,
+  ballRest: [0.75, 0.5] as [number, number],
+  ballRestSpeed: [3, 30] as [number, number],
+  restPalm: 0.85,
+  restTip: 0.6,
+  friction: 0.7,
+  floorFirm: 0.5,
+  chain: 0.15,
+  edgeFrom: 0.6,
+  tipsFrom: 0.95,
+  armsUp: 0.35,
+  netMax: 1.3,
+  sweepStep: 0.02,
+  sweepIters: 10,
+  stuffSpeed: 8,
+  ai: { firm: 0.85, turnIn: 0.7, userFirm: 0.7, userTurnIn: -0.5, userWidth: 0.75, green: 0.2 },
+};
+
 export const CONTACT = {
   /** sphere around the ideal contact point that still lets you hit */
   spikeReach: 0.38,
@@ -241,28 +413,12 @@ export const CONTACT = {
   /** early / late: the apex is this much (m) lower at worst (pushed before the ball loaded, or taken low) */
   setMissApexDrop: 0.6,
   /**
-   * half-width of the block's hands along the net (ball centre within this + ball radius).
-   * Matches the pose: wrists ~0.15 m off the midline plus a palm, so the gap between the
-   * arms is under one ball wide and the ball goes round, not through, a block that misreads.
+   * half the width of one blocker's hands along the net (`BLOCK`: half the gap between the thumbs
+   * and one hand), as the AI's hitters and the drills' block shadows read it
    */
-  blockHalfWidth: 0.22,
-  blockHeight: 0.55,
+  blockHalfWidth: BLOCK.thumbGap / 2 + BLOCK.handWidth,
   /** a blocker reaching sideways (`Athlete.reachX`) gets its hands this much (m) lower per metre of reach */
   blockReachDrop: 0.5,
-  /**
-   * A ball that meets a block past `toolEdge` of the hands' half-width, on the side away from the
-   * middle of the court, is wiped off the block (tooled wide) `toolEdgeP` of the time, however
-   * well the block was timed: hitters aim at the outside hand for it.
-   */
-  toolEdge: 0.6,
-  toolEdgeP: 0.7,
-  /**
-   * Playability (bent on purpose; the defence is strong and hitting is hard enough): the user's
-   * spike is wiped off an AI block more often, from `userToolEdge` of the hands' half-width out,
-   * `userToolEdgeP` of the time.
-   */
-  userToolEdge: 0.45,
-  userToolEdgeP: 0.85,
   /** speeds (m/s) */
   spikePerfect: 30,
   spikeGood: 26,
@@ -309,15 +465,6 @@ export const CONTACT = {
    * hands, a first ball that comes down at head height): x `handsErr` the platform's error, and a
    * ball faster than `handsMaxSpeed` m/s is too hard to play with the hands (the AI digs it).
    */
-  /**
-   * Recycling: a soft ball (under `recycleSpeed` m/s: a roll shot, a tip, an easy swing) played into
-   * a well-formed block (Good or Perfect, not off the outer edge) comes back off the hands to the
-   * hitter's side `recycleP` of the time (off a mistimed block `recyclePLate`), slow and up, for their
-   * cover to pick up and attack again.
-   */
-  recycleSpeed: 14,
-  recycleP: 0.75,
-  recyclePLate: 0.45,
   /** an AI hitter playing it off the block pushes it at the hands at `pushSpeed` m/s, `pushDrop` m below the contact */
   pushSpeed: 7,
   pushDrop: 0.4,
@@ -335,7 +482,7 @@ export const CONTACT = {
    * 2026-11-14). The same for the user and the AI: the user's timing is their platform.
    *
    * `stuff`: any ball off their block that was not recycled (it did not come back softly off the
-   * hands: `recycleP`), kept off the floor. That touch is mostly luck. At most `best` of it is
+   * hands, slower than `BLOCK.stuffSpeed`), kept off the floor. That touch is mostly luck. At most `best` of it is
    * controlled, times a roll between the two `luck` values (where on the arms it landed); the
    * rest goes anywhere (`turn`: any direction), `pop` m away and `up` m above the contact (its arc
    * is solved down to `floor` m, not to the setter's hands: a pass's arc can't peak below them,

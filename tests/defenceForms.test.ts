@@ -385,30 +385,37 @@ function blockAt(speed: number, opts: { at?: number; off?: number; user?: boolea
 }
 
 describe('the ball off the block', () => {
-  it("a soft ball into a good block comes back to the hitter's side, slow and up: their cover can play it again", () => {
+  it("a soft ball into a good block comes back to the hitter's side, slow: their cover can play it again", () => {
     const soft = blockAt(9);
     expect(soft.e?.kind).toBe('block');
     expect(soft.e.grade === 'Perfect' || soft.e.grade === 'Good').toBe(true);
     expect(soft.e.note).toBe('Off the block');
-    // back towards their side (-z), going up, slow
+    // back towards their side (-z), slow
     expect(soft.v.z).toBeLessThan(0);
-    expect(soft.v.y).toBeGreaterThan(2);
     expect(Math.hypot(soft.v.x, soft.v.y, soft.v.z)).toBeLessThan(6);
-    // a hard spike into the same block is not handed back like that
+    // a hard spike into the same block is not handed back like that: it is driven down
     const hard = blockAt(22);
     expect(hard.e?.kind).toBe('block');
     expect(hard.e.note).not.toBe('Off the block');
+    expect(hard.v.y).toBeLessThan(soft.v.y - 2);
   });
 
-  it("your spike off the outside of an AI block's hands is wiped off it more often than an AI hitter's (playability)", () => {
-    // an AI blocker at the pin; the ball meets the hands just over half their half-width out
-    const off = (CONTACT.blockHalfWidth * (CONTACT.userToolEdge + CONTACT.toolEdge)) / 2;
-    const yours = blockAt(22, { at: 3, off, user: true });
-    const theirs = blockAt(22, { at: 3, off });
-    expect(yours.e?.note).toBe('Tooled');
-    expect(Math.abs(yours.v.x)).toBeGreaterThan(3);
-    expect(theirs.e?.kind).toBe('block');
-    expect(theirs.e.note).not.toBe('Tooled');
+  it("your spike off the outside of an AI block's hands gets off it more often than an AI hitter's: stuffed less, off it more (playability)", () => {
+    // an AI blocker at the pin; across its outside hand and past it, a ball at each spot
+    const tally = (user: boolean) => {
+      const n = { stuffed: 0, off: 0 };
+      for (let off = 0; off <= CONTACT.blockHalfWidth + 0.1 + 1e-9; off += 0.02) {
+        const note = blockAt(22, { at: 3, off, user }).e?.note;
+        if (note === 'Stuff!') n.stuffed++;
+        // off the hands and out, or on into their court
+        if (note === 'Tooled' || note === 'Soft block') n.off++;
+      }
+      return n;
+    };
+    const yours = tally(true);
+    const theirs = tally(false);
+    expect(yours.stuffed).toBeLessThan(theirs.stuffed);
+    expect(yours.off).toBeGreaterThan(theirs.off);
   });
 
   /** a ball off their block coming down onto our coverer's platform at (0, 5.55): `T` s from `from` */

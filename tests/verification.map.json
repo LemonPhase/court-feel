@@ -577,6 +577,9 @@
       "trace": ["setter/S/good"],
       "note": "Measured: with every number of the section moved by 2%, this is the first run of the trace to play differently. Others may too: the comparison explains only the first."
     },
+    "BLOCK": {
+      "unit": ["blockHands", "defenceForms", "greenBite"]
+    },
     "CONTACT": {
       "unit": ["attempt", "defenceForms", "float", "gameplay", "menu", "playerServe", "setting"],
       "trace": ["free/OH/good"],

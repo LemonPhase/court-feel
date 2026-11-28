@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AI, BALL, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
+import { AI, BALL, BLOCK, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
 import { clamp, clamp01, damp, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
 import { DIGITS, FINGERS } from './hand';
@@ -553,7 +553,10 @@ export class AthleteView {
     const blockAct = act && act.kind === 'block' ? act : null;
     if (blockAct) {
       const p = smooth01((tr - blockAct.t0) / 0.12);
-      spineX = lerp(spineX, st === 'air' ? -0.06 : -0.08, p);
+      // in the air the torso leans in with the press, as the simulation's shoulders do (BLOCK.lean)
+      const torso = this.rig.dims.spineLen + this.rig.dims.chestLen;
+      const lean = Math.asin(Math.min(1, (BLOCK.lean * (blockAct.press ?? 0)) / torso));
+      spineX = lerp(spineX, st === 'air' ? -0.06 - lean : -0.08, p);
       chestX = lerp(chestX, 0.0, p);
       chestY = lerp(chestY, 0, p);
       hipsY = lerp(hipsY, 0, p);
@@ -1103,14 +1106,19 @@ export class AthleteView {
         rate = 30;
         palmFwd = p;
         mixShape(shape, SH.firm, p);
-        // the hands go to the ball as it arrives (a short way: the block is where it was set). They stay
-        // on the blocker's side of the tape, where the block's contact zone is: pressing them over it
-        // would be a change to the block, not to its look
-        // (only for a ball hit at the block: a set drifting past is not followed)
-        const bv = a.ballVel;
-        if (act.held && bv && Math.hypot(bv.x, bv.y, bv.z) > CHARACTER.blockReach.minSpeed && bv.z * a.side > 0) {
-          ikWorld = this.reachForBall(s, _a, CHARACTER.blockReach.near, CHARACTER.blockReach.pull, _g, 'block', null);
-          if (ikWorld) ikBlend = handBlend = reachBlend * p;
+        // the hands are where the simulation has them (src/game/blockHands.ts, docs/adr/0013): up with
+        // the jump, pressed over the net at the top of it, turned to the ball's line, the outside one
+        // turned in at a pin. The wrist goes to its wrist, the fingers along it, the palm its way
+        const hand = act.hands?.[s < 0 ? 0 : 1];
+        if (hand) {
+          ikWorld = _g.set(
+            hand.c.x - hand.u.x * hand.hl + a.rpos.x - a.pos.x,
+            hand.c.y - hand.u.y * hand.hl + a.rpos.y - a.pos.y,
+            hand.c.z - hand.u.z * hand.hl + a.rpos.z - a.pos.z,
+          );
+          ikBlend = handBlend = p;
+          _handFore.set(hand.u.x, hand.u.y, hand.u.z);
+          _handPalm.set(hand.n.x, hand.n.y, hand.n.z);
         }
       }
       if (act && act.kind === 'pass' && act.form !== 'hands') {

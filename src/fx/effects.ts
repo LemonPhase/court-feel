@@ -367,12 +367,16 @@ export class Effects {
       case 'block': {
         const stuff = e.quality >= 0.7;
         const v = g.views.get(e.athlete);
-        this.blockFx(p, stuff, v, user && g.rig.mode === 'fp', false);
+        // a block of their serve: the referee's whistle, at once
+        if (e.fault) this.audio.whistle();
+        // the spray where the ball met the hand; the ball itself (held for the hit-stop) at its centre
+        const hand = e.touch ?? p;
+        this.blockFx(hand, stuff, v, user && g.rig.mode === 'fp', false);
         // the replay plays it back on the replayed blocker's hands
         this.replay.addEvent(g.simTime, 'block', {
-          x: p.x,
-          y: p.y,
-          z: p.z,
+          x: hand.x,
+          y: hand.y,
+          z: hand.z,
           stuff: stuff ? 1 : 0,
           view: v ? this.replay.views.indexOf(v) : -1,
         });

@@ -470,7 +470,7 @@ export class HitterBrain implements Brain {
         const outer = up.reduce((p, q) => (Math.abs(blockHands(q).x) > Math.abs(blockHands(p).x) ? q : p));
         const hx = blockHands(outer).x;
         this.lastShot = 'wipe';
-        return new THREE.Vector3(hx + Math.sign(hx || 1) * CONTACT.blockHalfWidth * O.wipeEdge, 0, opp * O.wipeZ);
+        return new THREE.Vector3(hx + Math.sign(hx || 1) * g.contact.blockHalfSpan(outer) * O.wipeEdge, 0, opp * O.wipeZ);
       }
     }
     if (r < O.tip) {
@@ -641,7 +641,7 @@ export class HitterBrain implements Brain {
       const hx = blockHands(outer).x;
       const out = Math.sign(hx || 1);
       // through the outer edge of the outside hand, on to a spot just out past their sideline
-      const edge = hx + out * CONTACT.blockHalfWidth * 0.85;
+      const edge = hx + out * g.contact.blockHalfSpan(outer) * AI.toolEdge;
       const dz = Math.abs(a.pos.z);
       const tx = hitX + (edge - hitX) * ((dz + 6) / Math.max(0.3, dz));
       options.push({ x: tx, z: opp * 6, w: AI.toolShot, name: 'tool' });
