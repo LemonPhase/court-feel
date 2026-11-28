@@ -335,6 +335,20 @@ export const CHARACTER = {
     relax: 0.38,
     tail: 1,
     /**
+     * Letting go on the way down: the wrist is handed back from the set's path to the arm's own pose
+     * over the last part of the way down, from `letGo.ik` of it; the hand's set facing is let go
+     * `letGo.hand` times as fast as the arms come down (the hands turn loose before the arms are down).
+     * The fingers open into the release shape `open` times as fast as the push (open before the arms
+     * are long: "the fingers are wide open", Volleyball Canada). By eye.
+     */
+    letGo: { ik: 0.85, hand: 1.4 },
+    open: 1.5,
+    /**
+     * A ball that leaves the hands with less than `liftBelow` of its speed going up was not pushed (a
+     * lift: it drops out of the hands): the arms do not go after it, they just come down.
+     */
+    liftBelow: 0.2,
+    /**
      * The legs: the hips sit `sit` (body heights) lower under the ball, then the legs straighten with the
      * arms: from `drive` (s) before the touch, `driveShare` of the way by the touch (the ball is played
      * at the top of a body nearly up: the elbows are bent on it, not reaching), and on a long set the
@@ -347,12 +361,26 @@ export const CHARACTER = {
     heel: 0.022,
     absorb: 0.012,
     /**
+     * After the touch the legs finish their drive `legsSlow` times as long as the arms' push (the legs
+     * are slower than the arms). With the heels up the hips rise `heelHips` of the heels' lift: a hair
+     * short of straight, the knees never lock. A heel goes up and down at `heelRate` (1/s), the foot
+     * pivoting on its ball, `toeLever` of the foot in front of the ankle. By eye.
+     */
+    legsSlow: 1.3,
+    heelHips: 0.9,
+    heelRate: 25,
+    toeLever: 0.75,
+    /**
      * The trunk: upright in the window, the chest up (`chest`, rad, back); on the push it leans `lean`
      * (rad) towards a long front set and the hips go `shift` (body heights) that way; a back set arches,
      * the spine `archSpine` and the chest `archChest` (rad) back, the hips `archHips` (body heights)
      * forward under it.
      */
     chest: 0.1,
+    /** the spine a hair forward in the window (rad, negative is forward): over the ball, not leaning back to it */
+    spine: -0.05,
+    /** how fast the trunk follows the set (1/s): through the set, and quicker on the push, with the arms */
+    bodyRate: [24, 45] as const,
     lean: 0.07,
     shift: 0.012,
     archSpine: 0.15,
@@ -381,7 +409,8 @@ export const CHARACTER = {
      * (`wrist`, added to the palm's facing). In metres: how high the arms
      * finish (`high`), one hand higher than the other (`uneven`), the window (`window`, a habit), the
      * arms' way down (`down`, body heights). In seconds: one arm behind the other (`lag`). In radians:
-     * the trunk turned after the ball at the finish (`twist`) and tipped to a side (`tilt`).
+     * the trunk turned after the ball at the finish (`twist`) and tipped to a side (`tilt`). As a share
+     * of the window's elbow pole: how wide this setter holds the elbows (`elbows`, a habit).
      */
     vary: {
       raise: 0.25,
@@ -399,6 +428,7 @@ export const CHARACTER = {
       twist: 0.12,
       tilt: 0.07,
       window: 0.015,
+      elbows: 0.2,
     },
   },
   /**

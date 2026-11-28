@@ -633,7 +633,7 @@ export class AthleteView {
       const V = S.vary;
       const sty = sm.style;
       const p = sm.w;
-      spineX = lerp(spineX, -0.05, p);
+      spineX = lerp(spineX, S.spine, p);
       chestX = lerp(chestX, S.chest, p);
       chestY = lerp(chestY, 0, p);
       hipsY = lerp(hipsY, 0, p);
@@ -642,7 +642,7 @@ export class AthleteView {
         const sit = (S.sit * (1 + V.sit * sty.sit) + S.absorb * sm.absorb) * H;
         if (sm.released) lift = S.heel * H * sm.push.long * (1 + V.rise * sty.rise) * sm.legs;
         // (a hair short of straight: the knees never lock)
-        drop = lerp(drop, lerp(sit, -0.9 * lift, sm.legs), p);
+        drop = lerp(drop, lerp(sit, -S.heelHips * lift, sm.legs), p);
       }
       if (sm.released) {
         const k = sm.after.push * (1 - sm.after.relax);
@@ -654,7 +654,7 @@ export class AthleteView {
         chestY += V.twist * sty.twist * k;
         chestZ += V.tilt * sty.tilt * k;
       }
-      bodyRate = sm.released && sm.after.push < 1 ? 45 : 24;
+      bodyRate = sm.released && sm.after.push < 1 ? S.bodyRate[1] : S.bodyRate[0];
     }
     // the right foot steps ahead to set (a new step only well before the ball arrives: nobody steps on the touch)
     this.setStance = sm.on ? 1 : 0;
@@ -896,7 +896,8 @@ export class AthleteView {
             // (up on the balls of the feet at the end of a long set: the ankle rises, the toes stay down)
             f.cur.y = ankleY + this.hop + this.setLift;
           }
-          f.pitch = lerp(f.pitch, Math.asin(clamp01(this.setLift / (TOE_LEVER * (d.footLen - d.heel)))), damp(25, dt));
+          const toes = Math.asin(clamp01(this.setLift / (CHARACTER.set.toeLever * (d.footLen - d.heel))));
+          f.pitch = lerp(f.pitch, toes, damp(CHARACTER.set.heelRate, dt));
         } else {
           // ---- moving: distance-driven foot trajectories (no sliding)
           const ph = (this.gaitPhase + (s > 0 ? 0 : 0.5)) % 1;
@@ -1654,6 +1655,7 @@ export class AthleteView {
     sm.prep = setRaise(tr - this.setUpT, sm.style, a.isUser);
     sm.released = cur.resolved && cur.contactT > 0;
     sm.absorbing = !sm.released && cur.absorbing;
+    // (after the touch the load is kept as it was: the legs drive up out of the depth it sank them to)
     sm.absorb = sm.absorbing ? clamp01((tr - cur.arriveT) / TIMING.setLoad) : sm.released ? sm.absorb : 0;
     sm.arriving = false;
     sm.tArr = Infinity;
@@ -1684,13 +1686,16 @@ export class AthleteView {
     this.worldToBody(this.ballOut, _s1);
     setPush(_s1.z, this.ballOutSpeed, sm.style, sm.push);
     // a ball that did not go up (a lift: it drops out of the hands) is not pushed: the arms just come down
-    if (this.ballOut.y < 0.2) sm.push.reach = 0;
+    if (this.ballOut.y < S.liftBelow) sm.push.reach = 0;
     setAfter(sm.ts, sm.push, sm.style, sm.after);
     sm.legs = sm.after.legs;
     sm.w = sm.prep * (1 - sm.after.relax);
   }
 
-  /** where the contact takes this athlete's set without the game saying (the sim's hands point) */
+  /**
+   * where the contact takes this athlete's set without the game saying: a copy of the simulation's
+   * hands point (`ContactSystem.handsPoint`, contact.ts). Change one and change the other.
+   */
   private ownSetZone(out: V): V {
     const a = this.athlete;
     const f = this.bodyToWorld(0, 0, 1, out);
@@ -1745,7 +1750,7 @@ export class AthleteView {
     const face0 = this.setFace0[i];
     this.key('setPrep', _s3, _sPole);
     // (some setters hold their elbows wider than others)
-    _sPole.x *= 1 + 0.2 * sty.elbows;
+    _sPole.x *= 1 + V.elbows * sty.elbows;
     if (!sm.released) {
       w.lerp(_s3, sm.prep);
       pole.lerp(_sPole, sm.prep);
@@ -1847,10 +1852,10 @@ export class AthleteView {
       _s3.copy(wrist).add(end).multiplyScalar(-0.5).addScaledVector(mid, 2);
       bezier(_s4.copy(wrist), _s3, end, af.relax, wrist);
     }
-    o.ik = 1 - smoothstep(0.85, 1, af.relax);
-    o.hand = 1 - smooth01(af.relax * 1.4);
+    o.ik = 1 - smoothstep(S.letGo.ik, 1, af.relax);
+    o.hand = 1 - smooth01(af.relax * S.letGo.hand);
     setShape(shape, SH.set);
-    mixShape(shape, SH.release, smooth01(e * 1.5));
+    mixShape(shape, SH.release, smooth01(e * S.open));
     mixShape(shape, SH.relaxed, af.relax);
   }
 
@@ -1907,9 +1912,6 @@ function mixShape(o: HandShape, b: HandShape, t: number): HandShape {
 
 let ikBlend = 1;
 let reachBlend = 1;
-
-/** the ball of the foot, as a share of the foot in front of the ankle: a foot up on its toes pivots there */
-const TOE_LEVER = 0.75;
 
 /** how many lower spots on the ball a spiking palm tries before it faces the ball straight from the shoulder */
 const PALM_TRIES = 4;

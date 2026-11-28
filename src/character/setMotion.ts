@@ -164,7 +164,7 @@ export function setAfter(ts: number, push: SetPush, style: SetStyle, out: SetAft
   out.relax = smooth01((t - push.time - hold) / (S.relax * (1 + S.vary.relax * style.relax)));
   // the legs finish their drive with the arms (a little after: they are slower), and let go with them
   const b = CHARACTER.set.driveShare;
-  out.legs = lerp(b, 1, smooth01(t / (push.time * 1.3))) * (1 - out.relax);
+  out.legs = lerp(b, 1, smooth01(t / (push.time * S.legsSlow))) * (1 - out.relax);
   return out;
 }
 
