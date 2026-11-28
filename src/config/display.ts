@@ -214,12 +214,21 @@ export const CHARACTER = {
    *    under a palm 3 cm thick: the knuckles bend to bring the fingers down onto the surface, the middle
    *    joints to keep them on it.
    *  - fist: closed, one hand in the other, for a pass.
+   *  - set: a hand set on the ball, cupped round it from its side: the fingers spread wide up its side
+   *    and back, the thumb opened away from them and curled in under it, pointing at the eyes. Solved
+   *    like onBall: every fingertip and the thumb's on the ball's surface, the palm off it.
+   *  - window: a setter's hands waiting for the ball: the set's shape, a little more open.
+   *  - release: a set pushed out: the fingers straight and wide open, the thumb still out ("the
+   *    fingers are wide open", Volleyball Canada's high-ball setting skill sheet).
    */
   hand: {
     relaxed: { knuckle: 0.35, mid: 0.5, spread: 0.05, cup: 0, thumbOut: 0, thumbCurl: 0.15 },
     firm: { knuckle: 0.04, mid: 0.06, spread: 0.2, cup: 0, thumbOut: 0.2, thumbCurl: 0.05 },
     onBall: { knuckle: 0.59, mid: 0.25, spread: 0.2, cup: 0.11, thumbOut: 0.5, thumbCurl: 0.3 },
     fist: { knuckle: 1.15, mid: 1.3, spread: 0, cup: 0, thumbOut: -0.15, thumbCurl: 0.6 },
+    set: { knuckle: 0.51, mid: 0.8, spread: 0.3, cup: 0.15, thumbOut: 0.66, thumbCurl: 0.45 },
+    window: { knuckle: 0.4, mid: 0.25, spread: 0.34, cup: 0.1, thumbOut: 0.6, thumbCurl: 0.6 },
+    release: { knuckle: 0.12, mid: 0.12, spread: 0.36, cup: 0.04, thumbOut: 0.7, thumbCurl: 0.1 },
     rate: 18,
   },
   /** how far (rad) the trunk bends away from the hitting arm at contact, lifting the hitting shoulder */
@@ -236,10 +245,192 @@ export const CHARACTER = {
    */
   meet: { from: 0.5, by: 0.16, horizon: 0.7, step: 1 / 60 },
   /**
-   * After a set the arms extend `reach` (m) along the line the ball left on, at `speed` (m/s, an arm's, far
-   * slower than the ball: the hands push through, they do not carry), then open over `time` (s).
+   * The hand set, as the body shows it (issue #132). What a coach looks for, from the ball's arrival to
+   * the release: the hands up early in a window above the forehead, wrists cocked back, thumbs and index
+   * fingers making a triangle; the ball sinks into the hands and the wrists and elbows give; then the
+   * legs, arms and wrists extend together towards the target: up and back with an arched back for a back
+   * set, short and sharp for a quick. Cosmetic only (decision record 0008): nothing here moves the ball.
+   * The numbers are from coaching material and from watching setters frame by frame, by eye, not measured.
    */
-  setFollow: { reach: 0.16, speed: 2.6, time: 0.22 },
+  set: {
+    /**
+     * The window: the ball the hands are shaped round, before the real one is near, sits `up` and `fwd`
+     * (body heights) from the middle of the shoulders: the hands just above and in front of the forehead.
+     * The hands come up into it over `raise` (s) from the moment the set is on (an AI setter's 0.4 s
+     * before the touch), yours over `raiseYours` (s) from your press: you press as the ball arrives, and
+     * the hands must be on it by then. On the way up they pass out in front of the face, a quarter of
+     * `out` (body heights) at most.
+     */
+    window: { up: 0.23, fwd: 0.07, raise: 0.15, raiseYours: 0.09, out: 0.32 },
+    /**
+     * Where the palms sit on the ball, in the body frame (out towards the hand's own side, up, forward)
+     * from the ball's centre, and the way the fingers lie (`fingers`, laid flat on the ball from there):
+     * each hand at the ball's side, low and a little behind it, the wrists about a ball's width apart
+     * (Volleyball Canada's photographs of national-team setters on the ball), the palm facing in, up
+     * and a little forward; the fingers spread up round its side and back, the thumbs in under it,
+     * pointing back at the eyes. The thumbs and index fingers make the triangle ("the window") the
+     * setter sees the ball through, each pair a few centimetres apart ("about two inches", Volleyball
+     * Magazine). Only the fingers touch: the palm stays `off` (m) off the ball, the fingers curled onto
+     * it (the `set` hand shape). As the ball loads (the give, below, or your catch) the palm's place
+     * moves by `load`: in towards the middle and down, the ball sinking between the wrists until the
+     * thumbs under it are lower than the wrists, the wrists cocked further back. That stretch is what
+     * the set springs from: the ball stretches the finger and wrist flexors as it is stopped and they
+     * recoil to push it (Maessen and Holt; the stretch-shortening of the wrist in skilled setters,
+     * Ozawa et al. 2021, Sports Biomechanics). Fitted to those marks on the posed hands, not measured
+     * on a setter.
+     */
+    palm: {
+      at: [0.71, -0.43, -0.28] as const,
+      fingers: [-1.18, 1, -0.66] as const,
+      off: 0.02,
+      load: [-0.1, -0.12, 0.08] as const,
+    },
+    /**
+     * The wrist after the touch. On the ball it is cocked well back (the palm's place above does that);
+     * the push unwinds it part of the way and turns the palm to where the ball went: up and forward
+     * for a front set ("the palms are facing up and forward", Volleyball Canada's high-ball sheet;
+     * "palms face the target", Steps to Success), up for a back set, only `backFace` of the ball's way
+     * back in it ("a focus on pushing the fingers backwards", Volleyball Canada's 73 sheet). Never
+     * past straight ("the wrist joint did not flex past the anatomical position of extension": film of
+     * a national-team setter, 10 sets each of a high, a medium and an "A" ball, Maessen and Holt,
+     * Dalhousie University), and bent back no further than `max` (rad) from the arm's line, `max[0]`
+     * for a front set, `max[1]` for a back set (a wrist bends back 70 to 80 degrees at most). The palms
+     * turned `inward` (of a palm's facing) towards each other, never away: the hands turned away from
+     * each other is "a common mistake" (Volleyball Canada). Not a flick over: that is a lift.
+     */
+    wrist: { backFace: 0.2, inward: 0.3, max: [1.05, 1.3] as const },
+    /**
+     * The give: the hands meet the ball `give` (m) above where it is touched and come down with it over
+     * the last `giveLead` (s), loading it (the palm's `load`, above). A real touch lasts a few
+     * hundredths of a second: the AI's ball leaves on the frame it arrives, so the give is drawn on its
+     * way in.
+     */
+    give: 0.045,
+    giveLead: 0.07,
+    /**
+     * The push: the hands go `reach` (m) along the way the ball left, from `reach[0]` for the slowest set
+     * (`slow` m/s off the hands, a quick) to `reach[1]` for the fastest (`fast` m/s, a high ball to the
+     * outside), over `push[0]` to `push[1]` (s), fastest at the start. A back set's arms go up over the
+     * head (`backUp`: how much of the way back the arms take; the arched back does the rest). The hands
+     * push out from each other as they go (they closed in as it loaded): each finishes `spread` (m)
+     * further out than it touched (the wrists: `wrist`, above), the wrists
+     * `straight` of the arm's length from the shoulder at least, on a set as long as
+     * `straightFrom[1]` and more (from nothing at `straightFrom[0]`): a long set always ends on long
+     * arms, a quick on short ones.
+     */
+    reach: [0.1, 0.3] as const,
+    straight: 1,
+    straightFrom: [0.4, 0.9] as const,
+    push: [0.05, 0.12] as const,
+    slow: 4.5,
+    fast: 8,
+    backUp: 0.75,
+    spread: 0.07,
+    /**
+     * Then the arms stay up `hold` (s, each set somewhere in the range) and come down over `relax` (s),
+     * the elbows bending first. The set is over for the body `tail` (s) after the touch (longer than
+     * the slowest push, hold and relax together).
+     */
+    hold: [0.02, 0.24] as const,
+    relax: 0.38,
+    tail: 1,
+    /**
+     * Letting go on the way down: the wrist is handed back from the set's path to the arm's own pose
+     * over the last part of the way down, from `letGo.ik` of it; the hand's set facing is let go
+     * `letGo.hand` times as fast as the arms come down (the hands turn loose before the arms are down).
+     * The fingers open into the release shape `open` times as fast as the push (open before the arms
+     * are long: "the fingers are wide open", Volleyball Canada). By eye.
+     */
+    letGo: { ik: 0.85, hand: 1.4 },
+    open: 1.5,
+    /**
+     * A ball that leaves the hands with less than `liftBelow` of its speed going up was not pushed (a
+     * lift: it drops out of the hands): the arms do not go after it, they just come down.
+     */
+    liftBelow: 0.2,
+    /**
+     * The legs: the hips sit `sit` (body heights) lower under the ball, then the legs straighten with the
+     * arms: from `drive` (s) before the touch, `driveShare` of the way by the touch (the ball is played
+     * at the top of a body nearly up: the elbows are bent on it, not reaching), and on a long set the
+     * heels come up `heel` (body heights). Your own set loads into the legs as well: `absorb` (body
+     * heights) lower by the push.
+     */
+    sit: 0.03,
+    drive: 0.16,
+    driveShare: 0.65,
+    heel: 0.022,
+    absorb: 0.012,
+    /**
+     * After the touch the legs finish their drive `legsSlow` times as long as the arms' push (the legs
+     * are slower than the arms). With the heels up the hips rise `heelHips` of the heels' lift: a hair
+     * short of straight, the knees never lock. A heel goes up and down at `heelRate` (1/s), the foot
+     * pivoting on its ball, `toeLever` of the foot in front of the ankle. By eye.
+     */
+    legsSlow: 1.3,
+    heelHips: 0.9,
+    heelRate: 25,
+    toeLever: 0.75,
+    /**
+     * The trunk: upright in the window, the chest up (`chest`, rad, back); on the push it leans `lean`
+     * (rad) towards a long front set and the hips go `shift` (body heights) that way; a back set arches,
+     * the spine `archSpine` and the chest `archChest` (rad) back, the hips `archHips` (body heights)
+     * forward under it.
+     */
+    chest: 0.1,
+    /** the spine a hair forward in the window (rad, negative is forward): over the ball, not leaning back to it */
+    spine: -0.05,
+    /** how fast the trunk follows the set (1/s): through the set, and quicker on the push, with the arms */
+    bodyRate: [24, 45] as const,
+    lean: 0.07,
+    shift: 0.012,
+    archSpine: 0.15,
+    archChest: 0.22,
+    archHips: 0.035,
+    /**
+     * The feet: setting, the right foot is a little ahead of the left (`stagger`, body heights; the
+     * setter's "right foot forward": it squares the body to the left antenna and keeps it off the net),
+     * and the feet step to it once they are more than `step` (m) off, the right foot first, up to `stepBy`
+     * (s) before the ball arrives (a step on the touch would be a setter who got there late).
+     */
+    stagger: 0.04,
+    step: 0.06,
+    stepBy: 0.12,
+    /**
+     * After a back set the head stays up and forward: it turns no more than `headTurn` (rad) after the
+     * ball (setters do not watch their back set go).
+     */
+    headTurn: 0.35,
+    /**
+     * Each set is a little different, and each setter has their habits (nobody sets the same ball the
+     * same way twice: from watching a setter's warm-up). Within these shares of the value (0.25 = 25%
+     * either way): how soon the hands go up (`raise`), how deep the legs sit, how far apart the hands
+     * finish (`spread`), how high the heels come up (`rise`), the lean after a long set, how far the
+     * arms go (`reach`) and how quickly they come down (`relax`). How far up the palms finish
+     * (`wrist`, added to the palm's facing). In metres: how high the arms
+     * finish (`high`), one hand higher than the other (`uneven`), the window (`window`, a habit), the
+     * arms' way down (`down`, body heights). In seconds: one arm behind the other (`lag`). In radians:
+     * the trunk turned after the ball at the finish (`twist`) and tipped to a side (`tilt`). As a share
+     * of the window's elbow pole: how wide this setter holds the elbows (`elbows`, a habit).
+     */
+    vary: {
+      raise: 0.25,
+      sit: 0.3,
+      high: 0.06,
+      spread: 0.5,
+      wrist: 0.15,
+      lag: 0.015,
+      rise: 0.4,
+      lean: 0.35,
+      reach: 0.12,
+      relax: 0.35,
+      uneven: 0.05,
+      down: 0.05,
+      twist: 0.12,
+      tilt: 0.07,
+      window: 0.015,
+      elbows: 0.2,
+    },
+  },
   /**
    * A set jump has no arm swing: on the plant the hands come up in front of the chest, close to
    * the body, and over `rise` (s) after the feet leave the floor they go up to above the forehead.

@@ -2,9 +2,22 @@ import * as THREE from 'three';
 import { AI, BALL, BLOCK, CHARACTER, CONTACT, COURT, PLAYER, TIMING } from '../config';
 import { clamp, clamp01, damp, easeOutCubic, lerp, rightFromYaw, smooth01, smoothstep, wrapAngle } from '../core/mathx';
 import type { Athlete } from '../game/athlete';
+import { HANDS_FWD, HANDS_UP } from '../game/setJump';
 import { DIGITS, FINGERS } from './hand';
 import { orientBone, twoBoneIK } from './ik';
 import { buildRig, type BoneName, type Kit, type Rig } from './rig';
+import {
+  newSetStyle,
+  setAfter,
+  setDriveBefore,
+  setGive,
+  setPush,
+  setRaise,
+  setStyle,
+  type SetAfter,
+  type SetPush,
+  type SetStyle,
+} from './setMotion';
 
 /**
  * Procedural animation for one athlete. Every frame:
@@ -45,6 +58,35 @@ interface FootState {
   pitch: number;
 }
 
+/** where in a hand set the body is this frame (one for the trunk, the legs and both arms) */
+interface SetMoment {
+  /** a set has the body */
+  on: boolean;
+  /** the set (or the one just over) */
+  act: Athlete['action'];
+  /** 0..1 how much the set has the body: up with the hands, down as the arms come down */
+  w: number;
+  /** 0..1 the hands up into the window */
+  prep: number;
+  released: boolean;
+  /** s since the ball left the hands */
+  ts: number;
+  /** s until the ball reaches the hands, and where (`arriving`: it is coming down onto them) */
+  tArr: number;
+  arrive: V;
+  arriving: boolean;
+  /** 0..1 the hands down with the ball as it arrives (the AI's) */
+  give: number;
+  /** your own: the ball loading in the hands, and how far into the load (0..1) */
+  absorbing: boolean;
+  absorb: number;
+  /** 0..1 the legs' drive */
+  legs: number;
+  push: SetPush;
+  after: SetAfter;
+  style: SetStyle;
+}
+
 /** wind-up power 0..1 after holding since t0 (mirrors ContactSystem.chargeFor) */
 function windupCharge(t0: number, now: number): number {
   return clamp01((now - t0 - TIMING.tapThreshold) / (TIMING.chargeFull - TIMING.tapThreshold));
@@ -81,10 +123,12 @@ const ARM_KEYS = {
   /** hands together over the net: wrists inside the shoulder line, under a ball-width apart */
   block: { w: [-0.04, 0.305, 0.07], pole: [1, -0.35, -0.6] },
   pass: { w: [-0.098, -0.24, 0.19], pole: [1, -0.8, 0.2] },
-  setPrep: { w: [-0.055, 0.115, 0.09], pole: [1, -0.25, 0.25] },
+  /** the hands up in the setter's window: the elbows out and down, wide of the hands and a little back, the forearms up into the cocked wrists (the wrists are IK'd onto the ball) */
+  setPrep: { w: [-0.055, 0.115, 0.09], pole: [1, -0.8, -0.3] },
   /** the plant of a set jump: the hands in front of the chest, close to the body, elbows out and down (they go up from there with the jump) */
   setLoad: { w: [-0.05, -0.065, 0.12], pole: [1, -0.7, 0.05] },
-  setRelease: { w: [-0.04, 0.28, 0.1], pole: [1, -0.2, 0.2] },
+  /** a set's arms coming down: halfway the hands pass apart in front of the chest, the elbows bent and dropping under them */
+  setDown: { w: [0.04, -0.03, 0.15], pole: [0.35, -1, 0.1] },
   toss: { w: [0.0, 0.31, 0.12], pole: [1, -0.3, -0.5] },
   land: { w: [0.04, -0.13, 0.13], pole: [0.6, -0.2, -0.8] },
   /** coming down after the hit: arms loose, a little ahead of the hips for balance */
@@ -109,7 +153,6 @@ const FP_KEYS: Partial<Record<ArmKey, { w: readonly number[]; pole: readonly num
   swingUp: { w: [0.05, 0.2, 0.22], pole: [0.6, -0.3, -0.8] },
   toss: { w: [0.02, 0.2, 0.24], pole: [1, -0.3, -0.5] },
   setPrep: { w: [-0.075, 0.165, 0.2], pole: [1, -0.4, 0.1] },
-  setRelease: { w: [-0.06, 0.27, 0.22], pole: [1, -0.3, 0.1] },
 };
 
 export class AthleteView {
@@ -152,10 +195,48 @@ export class AthleteView {
    */
   passZone: V | null = null;
   setZone: V | null = null;
-  /** speed (m/s) of the ball coming into the pass or set in hand, and the direction it left on */
+  /** speed (m/s) of the ball coming into the pass or set in hand, and the direction and speed it left on */
   private ballIn = 0;
   private ballOut = v3(0, 1, 0);
+  private ballOutSpeed = 0;
   private touched: unknown = null;
+  /** the set the body is in this frame (issue #132, setMotion.ts) */
+  private sm: SetMoment = {
+    on: false,
+    act: null,
+    w: 0,
+    prep: 0,
+    released: false,
+    ts: 0,
+    tArr: Infinity,
+    arrive: v3(),
+    arriving: false,
+    give: 0,
+    absorbing: false,
+    absorb: 0,
+    legs: 0,
+    push: { back: 0, long: 0, reach: 0, time: 0.1 },
+    after: { push: 0, relax: 0, legs: 0 },
+    style: newSetStyle(),
+  };
+  /** when the hands started up for this set (-1: no set) */
+  private setUpT = -1;
+  /** where each palm's centre was, which way its fingers ran and its palm faced, as the ball left (left, right) */
+  private setPalm0: [V, V] = [v3(), v3()];
+  private setFore0: [V, V] = [v3(0, 1, 0), v3(0, 1, 0)];
+  private setFace0: [V, V] = [v3(0, 0, 1), v3(0, 0, 1)];
+  /** each palm has been put on this set's ball (setPalm0 and the rest are this set's, not the last one's) */
+  private setPlaced: [boolean, boolean] = [false, false];
+  /** each shoulder as the ball left: the push is the arm's, so it goes with the body as the legs drive */
+  private setShoulder0: [V, V] = [v3(), v3()];
+  /** the heels up off the floor on a long set (m), the hips forward under a push (m), the right foot ahead (0..1) */
+  private setLift = 0;
+  private setHipsFwd = 0;
+  private setStance = 0;
+  /** a foot may still step into the setting stance */
+  private setStep = false;
+  /** each wrist's height over its shoulder last frame (body heights): the shoulders lift with the hands */
+  private armUp: [number, number] = [0, 0];
   /** 0..1: the two-arm swing of this jump is up, and the arms may go on to the attack, the block or the set */
   private armsUp = 1;
   /** how far (m) the hips sit back from the net so the knees stay on their own side of it */
@@ -260,9 +341,10 @@ export class AthleteView {
   private stanceFoot(s: number, out: V): V {
     const a = this.athlete;
     const H = this.H;
-    // shoulder-width stance, hitting-side foot slightly back (ready position)
+    // shoulder-width stance, hitting-side foot slightly back (ready position); setting, the right foot ahead
     const lat = s * 0.13 * H;
-    const fwd = s === a.hand ? -0.03 * H : 0.035 * H;
+    const ready = s === a.hand ? -0.03 * H : 0.035 * H;
+    const fwd = lerp(ready, (s > 0 ? 0.5 : -0.5) * CHARACTER.set.stagger * H, this.setStance);
     this.bodyToWorld(lat, 0, fwd, out);
     out.x += a.rpos.x;
     out.z += a.rpos.z;
@@ -346,10 +428,12 @@ export class AthleteView {
         if (bv) this.ballIn = Math.hypot(bv.x, bv.y, bv.z);
       } else if (act !== this.touched) {
         this.touched = act;
-        if (bv && bv.x * bv.x + bv.y * bv.y + bv.z * bv.z > 1e-6) this.ballOut.set(bv.x, bv.y, bv.z).normalize();
+        this.ballOutSpeed = bv ? Math.hypot(bv.x, bv.y, bv.z) : 0;
+        if (this.ballOutSpeed > 1e-3) this.ballOut.set(bv!.x, bv!.y, bv!.z).normalize();
         else this.ballOut.set(0, 1, 0);
       }
     }
+    this.setNow(tr);
     // the attack twists are authored for a righty: a lefty turns the other way
     const hs = a.hand;
 
@@ -539,17 +623,42 @@ export class AthleteView {
       chestZ = lerp(chestZ, 0, p);
       bodyRate = 30;
     }
-    const setAct = act && (act.kind === 'set' || (act.kind === 'pass' && act.form === 'hands')) ? act : null;
-    if (setAct) {
-      // knees a little bent under the ball, then the legs straighten through the release
-      const p = smooth01((tr - setAct.t0) / 0.12);
-      const up = setAct.resolved && setAct.contactT > 0 ? smooth01((tr - setAct.contactT) / 0.15) : 0;
-      if (st !== 'air') drop = lerp(drop, lerp(0.045, 0.012, up) * H, p);
-      spineX = lerp(spineX, -0.04, p);
-      chestX = lerp(chestX, 0.12, p);
+    // a hand set (issue #132): upright under the ball with the knees bent, then the legs drive with the
+    // arms (up on the toes for a long set); a long front set leans after the ball, a back set arches
+    const sm = this.sm;
+    let lift = 0;
+    let hipsFwd = 0;
+    if (sm.on) {
+      const S = CHARACTER.set;
+      const V = S.vary;
+      const sty = sm.style;
+      const p = sm.w;
+      spineX = lerp(spineX, S.spine, p);
+      chestX = lerp(chestX, S.chest, p);
       chestY = lerp(chestY, 0, p);
-      bodyRate = 22;
+      hipsY = lerp(hipsY, 0, p);
+      chestZ = lerp(chestZ, 0, p);
+      if (st !== 'air' && st !== 'load') {
+        const sit = (S.sit * (1 + V.sit * sty.sit) + S.absorb * sm.absorb) * H;
+        if (sm.released) lift = S.heel * H * sm.push.long * (1 + V.rise * sty.rise) * sm.legs;
+        // (a hair short of straight: the knees never lock)
+        drop = lerp(drop, lerp(sit, -S.heelHips * lift, sm.legs), p);
+      }
+      if (sm.released) {
+        const k = sm.after.push * (1 - sm.after.relax);
+        const front = (1 - sm.push.back) * sm.push.long * (1 + V.lean * sty.lean);
+        spineX += (S.archSpine * sm.push.back - S.lean * front) * k;
+        chestX += S.archChest * sm.push.back * k;
+        hipsFwd = (S.archHips * sm.push.back + S.shift * front) * H * k;
+        // (and each finish a little different: the trunk turned after the ball, tipped to a side)
+        chestY += V.twist * sty.twist * k;
+        chestZ += V.tilt * sty.tilt * k;
+      }
+      bodyRate = sm.released && sm.after.push < 1 ? S.bodyRate[1] : S.bodyRate[0];
     }
+    // the right foot steps ahead to set (a new step only well before the ball arrives: nobody steps on the touch)
+    this.setStance = sm.on ? 1 : 0;
+    this.setStep = sm.on && !sm.released && !sm.absorbing && sm.tArr > CHARACTER.set.stepBy;
     const blockAct = act && act.kind === 'block' ? act : null;
     if (blockAct) {
       const p = smooth01((tr - blockAct.t0) / 0.12);
@@ -573,10 +682,13 @@ export class AthleteView {
     bd.hipsY = lerp(bd.hipsY, hipsY, k);
     bd.hipsX = lerp(bd.hipsX, hipsX, k);
     bd.chestZ = lerp(bd.chestZ, chestZ, k);
+    this.setLift = lerp(this.setLift, lift, k);
+    this.setHipsFwd = lerp(this.setHipsFwd, hipsFwd, k);
 
     // apply torso
     const d = rig.dims;
-    B.hips.position.set(0, d.hipY - bd.drop, 0);
+    // (forward is -z in the body's own frame)
+    B.hips.position.set(0, d.hipY - bd.drop, -this.setHipsFwd);
     // at the net the hips sit back so the knees stay on their own side (the amount is found in updateLegs)
     this.netSitApplied = 0;
     if (this.netSit > 1e-4) {
@@ -754,7 +866,9 @@ export class AthleteView {
       const ml = Math.hypot(vLocal.x, vLocal.z) || 1;
       const dirLat = vLocal.x / ml;
       const dirFwd = vLocal.z / ml;
-      for (let i = 0; i < 2; i++) {
+      for (let k = 0; k < 2; k++) {
+        // (stepping into a set, the right foot goes first: "right foot forward"; the left closes after)
+        const i = this.setStep ? 1 - k : k;
         const s = i === 0 ? -1 : 1;
         const f = this.feet[i];
         // ---- idle: planted with stepping
@@ -762,7 +876,7 @@ export class AthleteView {
           const desired = this.stanceFoot(s, _t3);
           const other = this.feet[1 - i];
           const dist = Math.hypot(desired.x - f.plant.x, desired.z - f.plant.z);
-          if (!f.stepping && !other.stepping && dist > 0.2) {
+          if (!f.stepping && !other.stepping && dist > (this.setStep ? CHARACTER.set.step : 0.2)) {
             f.stepping = true;
             f.from.copy(f.plant);
             f.to.copy(desired);
@@ -782,9 +896,12 @@ export class AthleteView {
             }
           } else {
             f.cur.lerp(f.plant, damp(25, dt));
-            f.cur.y = ankleY + this.hop;
+            // (up on the balls of the feet at the end of a long set: the ankle rises, the toes stay down)
+            f.cur.y = ankleY + this.hop + this.setLift;
           }
-          f.pitch = lerp(f.pitch, 0, damp(10, dt));
+          // (only a set's heels come up and down this quickly: any other planted foot flattens as it did)
+          const toes = Math.asin(clamp01(this.setLift / (CHARACTER.set.toeLever * (d.footLen - d.heel))));
+          f.pitch = lerp(f.pitch, toes, damp(this.sm.on ? CHARACTER.set.heelRate : 10, dt));
         } else {
           // ---- moving: distance-driven foot trajectories (no sliding)
           const ph = (this.gaitPhase + (s > 0 ? 0 : 0.5)) % 1;
@@ -913,6 +1030,8 @@ export class AthleteView {
     const act = a.action;
     const tSinceTake = tr - a.takeoffT;
     const tSinceLand = tr - this.landT;
+    // the set's window, once for both arms (before either shoulder shrugs)
+    if (this.sm.on) this.setWindow(this.setWin);
 
     for (let i = 0; i < 2; i++) {
       // -1 left, +1 right. The keys are authored per arm (x * s mirrors them), so a lefty only swaps roles:
@@ -929,6 +1048,8 @@ export class AthleteView {
       const shape = setShape(_shape, SH.relaxed);
       // an exact hand placement (fingers and palm directions in the world), blended in by `handBlend`
       let handBlend = 0;
+      // the wrist at least this far (m) from the shoulder (a set's long finish: setArm)
+      let setReach = 0;
 
       // a jump to set (the body's own hop, or yours with the ball coming to your hands): not a block's, not a spike's
       const setJump =
@@ -1150,36 +1271,15 @@ export class AthleteView {
         }
         mixShape(shape, SH.fist, p);
       }
-      if (act && (act.kind === 'set' || (act.kind === 'pass' && act.form === 'hands'))) {
-        const released = act.resolved && act.contactT > 0;
-        const p = smooth01((tr - act.t0) / 0.1);
-        this.key('setPrep', _a, _b);
-        if (released) {
-          this.key('setRelease', _e1, _e2);
-          const e = easeOutCubic((tr - act.contactT) / 0.16);
-          _a.lerp(_e1, e);
-          _b.lerp(_e2, e);
-        }
-        w.lerp(_a, p);
-        pole.lerp(_b, p);
+      if (this.sm.on) {
+        // a hand set (issue #132): the window, the ball into the hands, the push, the arms down again
+        this.setArm(i, s, w, pole, shape);
+        ikWorld = _g.copy(_setOut.at);
+        ikBlend = _setOut.ik;
+        handBlend = _setOut.hand;
+        palmFwd = 0;
         rate = 40;
-        if (!released) {
-          // the hands wait above the forehead where the ball will arrive: it drops into them
-          ikWorld = this.reachForBall(s, w, 0.6, 0.6, _g, 'set', null);
-          if (ikWorld) ikBlend = handBlend = reachBlend;
-        } else {
-          // the release: the arms extend along the line the ball left on, at arm speed (the ball is
-          // gone at once: the hands push through where it was, they do not carry it), then open
-          const F = CHARACTER.setFollow;
-          const ts = tr - act.contactT;
-          _n2
-            .copy(this.ballOut)
-            .multiplyScalar(Math.min(F.reach, F.speed * ts))
-            .add(act.contactPoint);
-          ikWorld = this.reachForBall(s, w, 0.6, 0.6, _g, 'set', _n2);
-          if (ikWorld) ikBlend = handBlend = 1 - smooth01((ts - F.reach / F.speed) / F.time);
-        }
-        mixShape(shape, released ? SH.firm : SH.onBall, p);
+        setReach = _setOut.reach;
       }
       // (during the plant the arms still swing back; the wind-up shows from takeoff)
       if (act && act.kind === 'windup' && st !== 'load') {
@@ -1235,7 +1335,8 @@ export class AthleteView {
       // ---- shoulder shrug when the hand goes high
       const L = s < 0 ? 'L' : 'R';
       const clav = B[`clav${L}` as BoneName];
-      const elev = clamp01((arm.w.y / H - 0.05) / 0.25);
+      // (in a set the hands are put in the world: the shoulders follow where they were last frame)
+      const elev = clamp01((lerp(arm.w.y / H, this.armUp[i], this.sm.w) - 0.05) / 0.25);
       clav.rotation.set(0, 0, s * elev * 0.32);
       clav.updateMatrixWorld(true);
 
@@ -1244,6 +1345,12 @@ export class AthleteView {
       this.bodyToWorld(arm.w.x * s, arm.w.y, arm.w.z, _t3);
       const target = _t4.copy(shoulder).add(_t3);
       if (ikWorld) target.lerp(ikWorld, ikBlend);
+      if (setReach > 0) {
+        _f3.subVectors(target, shoulder);
+        const l = _f3.length();
+        if (l < setReach && l > 1e-4) target.copy(shoulder).addScaledVector(_f3, setReach / l);
+      }
+      this.armUp[i] = (target.y - shoulder.y) / H;
       this.clearNet(target, CHARACTER.netClear.wrist);
       // first person: keep the hand and forearm clear of the lens (a wrist sweeping past the
       // camera would fill the screen with a dark blur)
@@ -1523,6 +1630,244 @@ export class AthleteView {
     return bt;
   }
 
+  // ------------------------------------------------------------ the hand set
+  /** where in a hand set the body is this frame, into `this.sm` (setMotion.ts says what the parts are) */
+  private setNow(tr: number): void {
+    const a = this.athlete;
+    const sm = this.sm;
+    const S = CHARACTER.set;
+    const act = a.action;
+    const last = a.lastAction;
+    // the set under way, or the one just over while the arms come down (nothing else started since).
+    // (Your own hands go up as you press, not before: raised early they come between the camera and
+    // the ball you are timing, and the moment it reaches you moves while you get under it.)
+    let cur: Athlete['action'] = null;
+    if (handSet(act)) cur = act;
+    else if (!act && last && handSet(last) && last.resolved && last.contactT > 0 && tr - last.contactT < S.tail) cur = last;
+    sm.on = !!cur;
+    if (!cur) {
+      sm.w = 0;
+      sm.act = null;
+      sm.released = false;
+      this.setUpT = -1;
+      return;
+    }
+    if (this.setUpT < 0 || sm.act !== cur) {
+      // a new set, with a style of its own. The hands start up as it is on, unless they are already up
+      // in the window for a set it replaces before the touch (a pass taken overhand becoming a set):
+      // they stay there, they do not drop and go up again.
+      if (this.setUpT < 0 || sm.released) this.setUpT = cur.t0;
+      setStyle(a.id, cur.t0, sm.style);
+      this.setPlaced[0] = this.setPlaced[1] = false;
+    }
+    sm.act = cur;
+    sm.prep = setRaise(tr - this.setUpT, sm.style, a.isUser);
+    sm.released = cur.resolved && cur.contactT > 0;
+    sm.absorbing = !sm.released && cur.absorbing;
+    // (after the touch the load is kept as it was: the legs drive up out of the depth it sank them to)
+    sm.absorb = sm.absorbing ? clamp01((tr - cur.arriveT) / TIMING.setLoad) : sm.released ? sm.absorb : 0;
+    sm.arriving = false;
+    sm.tArr = Infinity;
+    sm.give = 0;
+    sm.legs = 0;
+    if (!sm.released) {
+      sm.w = sm.prep;
+      if (sm.absorbing) {
+        // yours: caught, the ball loading in the hands (the legs give with it too)
+        sm.give = 1;
+        return;
+      }
+      const zone = this.setZone ?? this.ownSetZone(_s1);
+      if (a.ballPos && a.ballVel) {
+        const t = this.ballArrival(zone, sm.arrive);
+        // coming down onto the hands (not past them, not on the way up)
+        if (sm.arrive.distanceTo(zone) < CONTACT.setRadius && a.ballVel.y - BALL.gravity * t < 0) {
+          sm.arriving = true;
+          sm.tArr = t;
+          sm.give = setGive(t);
+          // the AI's ball leaves as it arrives: its legs are already driving. Yours wait for your push.
+          if (!a.isUser) sm.legs = setDriveBefore(t);
+        }
+      }
+      return;
+    }
+    sm.ts = tr - cur.contactT;
+    this.worldToBody(this.ballOut, _s1);
+    setPush(_s1.z, this.ballOutSpeed, sm.style, sm.push);
+    // a ball that did not go up (a lift: it drops out of the hands) is not pushed: the arms just come down
+    if (this.ballOut.y < S.liftBelow) sm.push.reach = 0;
+    setAfter(sm.ts, sm.push, sm.style, sm.after);
+    sm.legs = sm.after.legs;
+    sm.w = sm.prep * (1 - sm.after.relax);
+  }
+
+  /**
+   * where the contact takes this athlete's set without the game saying: a copy of the simulation's
+   * hands point (`ContactSystem.handsPoint`, contact.ts). Change one and change the other.
+   */
+  private ownSetZone(out: V): V {
+    const a = this.athlete;
+    const f = this.bodyToWorld(0, 0, 1, out);
+    return out.set(a.rpos.x + f.x * HANDS_FWD, a.rpos.y + a.height + HANDS_UP, a.rpos.z + f.z * HANDS_FWD);
+  }
+
+  /** the ball a setter's hands are shaped round before the real one is there: above and in front of the forehead */
+  private readonly setWin = v3();
+  private setWindow(out: V): V {
+    const W = CHARACTER.set.window;
+    this.shoulderWorld(-1, _s7);
+    this.shoulderWorld(1, out).add(_s7).multiplyScalar(0.5);
+    this.bodyToWorld(0, W.up * this.H + CHARACTER.set.vary.window * this.sm.style.window, W.fwd * this.H, _s7);
+    return out.add(_s7);
+  }
+
+  /**
+   * One palm on the ball the set is shaped round (centre `C`), `load` (0..1) of the way into the
+   * load: closing in and down round it as it loads, the wrist cocked further back (the stretch the
+   * set springs from). Into `setPalm0`/`setFore0`/`setFace0` and `setShoulder0`, which the push
+   * starts from.
+   */
+  private placePalm(i: number, s: number, C: V, load: number): void {
+    const P = CHARACTER.set.palm;
+    const n1 = this.bodyToWorld(s * (P.at[0] + P.load[0] * load), P.at[1] + P.load[1] * load, P.at[2] + P.load[2] * load, _s5).normalize();
+    const n3 = this.bodyToWorld(s * P.fingers[0], P.fingers[1], P.fingers[2], _s6);
+    n3.addScaledVector(n1, -n3.dot(n1)).normalize();
+    this.setPalm0[i].copy(C).addScaledVector(n1, BALL.radius + this.rig.dims.palmThick + P.off);
+    this.shoulderWorld(s, this.setShoulder0[i]);
+    this.setFore0[i].copy(n3);
+    this.setFace0[i].copy(n1).negate();
+    this.setPlaced[i] = true;
+  }
+
+  /**
+   * One arm in a hand set: the hand shaped round the ball in the window, onto it where it arrives and
+   * down with it, then out along the way it went, held, and down again, the elbow bending first.
+   * `w`/`pole` come in as the arm's own pose (standing, running) and go out as the set's base. The
+   * wrist's world target goes in `_setOut.at`, held at `_setOut.ik`; the hand's facing in
+   * `_handFore`/`_handPalm`, held at `_setOut.hand`.
+   */
+  private setArm(i: number, s: number, w: V, pole: V, shape: HandShape): void {
+    const a = this.athlete;
+    const d = this.rig.dims;
+    const S = CHARACTER.set;
+    const V = S.vary;
+    const sm = this.sm;
+    const sty = sm.style;
+    const o = _setOut;
+    const palm0 = this.setPalm0[i];
+    const fore0 = this.setFore0[i];
+    const face0 = this.setFace0[i];
+    this.key('setPrep', _s3, _sPole);
+    // (some setters hold their elbows wider than others)
+    _sPole.x *= 1 + V.elbows * sty.elbows;
+    if (!sm.released) {
+      w.lerp(_s3, sm.prep);
+      pole.lerp(_sPole, sm.prep);
+      // the ball the hands are shaped round: the window's, then the real one as it comes down onto them
+      const C = _s2.copy(this.setWin);
+      let meet = 0;
+      if (sm.absorbing && a.ballPos) {
+        C.copy(a.ballPos);
+        meet = 1;
+      } else if (sm.arriving) {
+        meet = 1 - smoothstep(CHARACTER.meet.by, CHARACTER.meet.from, sm.tArr);
+        // met a little above where it is played, then down with it
+        _s5.copy(sm.arrive);
+        _s5.y += S.give * (1 - sm.give);
+        C.lerp(_s5, meet);
+      }
+      this.placePalm(i, s, C, Math.max(sm.give * meet, sm.absorb));
+      o.at.copy(palm0).addScaledVector(fore0, -d.palm);
+      // (on the way up the hands go out in front of the face, not through it, and turn up into the
+      // window shape at the end)
+      this.bodyToWorld(0, 0, S.window.out * this.H * (1 - sm.prep), _s7);
+      o.at.add(_s7);
+      o.ik = sm.prep;
+      o.hand = sm.prep * sm.prep;
+      o.reach = 0;
+      _handFore.copy(fore0);
+      _handPalm.copy(face0);
+      mixShape(shape, SH.window, sm.prep);
+      mixShape(shape, SH.set, meet * sm.prep);
+      return;
+    }
+    // ---- after the touch (one arm a few milliseconds behind the other)
+    // A set the view never saw before the touch (started and played on one step: a setter who got
+    // there late) pushes from the window, loaded, not from where the last set's hands were.
+    if (!this.setPlaced[i]) this.placePalm(i, s, this.setWin, 1);
+    const lag = V.lag * sty.lag;
+    const af = setAfter(sm.ts, sm.push, sty, _aft, s * lag > 0 ? Math.abs(lag) : 0);
+    // the way the arms go: the ball's, but a back set's arms go up over the head (the arched back does the rest)
+    const out = this.worldToBody(this.ballOut, _s5);
+    if (out.z < 0) out.z *= S.backUp;
+    out.normalize();
+    const dir = this.bodyToWorld(out.x, out.y, out.z, _s6);
+    const outward = this.bodyToWorld(s, 0, 0, _s7);
+    // where the palm finishes: along the ball's way and out, the hands parting as they push
+    const fin = _s1
+      .copy(palm0)
+      .addScaledVector(dir, sm.push.reach)
+      .addScaledVector(outward, S.spread * (1 + V.spread * sty.spread));
+    fin.y += (V.high * sty.high + s * V.uneven * sty.uneven) * sm.push.long;
+    // (the body is still rising on its legs: the hands go with it)
+    fin.add(this.shoulderWorld(s, _s4)).sub(this.setShoulder0[i]);
+    // how the hand faces there: the palm to where the ball went (a back set's up: the hands and thumbs
+    // push back under it), the two palms turned a little towards each other, never away; but the
+    // wrist bent back no further than `wrist.max` from the arm's line. The fingers go on from the arm.
+    const go = this.worldToBody(this.ballOut, _s2);
+    if (go.z < 0) go.z *= S.wrist.backFace;
+    go.normalize();
+    go.y += V.wrist * sty.wrist;
+    const face1 = this.bodyToWorld(go.x, go.y, go.z, _s2).normalize();
+    const arm = _s4.subVectors(fin, this.shoulderWorld(s, _s4)).normalize();
+    const bent = face1.dot(arm);
+    const max = lerp(S.wrist.max[0], S.wrist.max[1], sm.push.back);
+    if (bent > Math.sin(max))
+      face1.addScaledVector(arm, -bent).normalize().multiplyScalar(Math.cos(max)).addScaledVector(arm, Math.sin(max));
+    // (the fingers on from the arm, bent back with the palm; then the palm rolls in about them)
+    const fore1 = _s3.copy(arm).addScaledVector(face1, -arm.dot(face1)).normalize();
+    face1.addScaledVector(outward, -S.wrist.inward);
+    face1.addScaledVector(fore1, -face1.dot(fore1)).normalize();
+    const e = af.push;
+    // a long set ends with the arms long: out to `straight` of the arm's length however this set's
+    // finish is placed (a hand a little lower still finishes on a straight arm). Held against the
+    // shoulder as it is solved: it lifts towards hands that high.
+    o.reach =
+      sm.push.reach > 0
+        ? S.straight * smoothstep(S.straightFrom[0], S.straightFrom[1], sm.push.long) * (d.upperArm + d.foreArm) * e * (1 - af.relax)
+        : 0;
+    // (the hand turns from the one way to the other as one: a straight blend of the two directions
+    // would swing the wrist through straight on the way)
+    turnHand(fore0, face0, fore1, face1, e);
+    const wrist = o.at.copy(palm0).add(_s4.subVectors(fin, palm0).multiplyScalar(e)).addScaledVector(_handFore, -d.palm);
+    // the elbows out as they were; coming down they drop under the hands, then go back to the arm's own way
+    if (af.relax > 0) {
+      this.key('setDown', _s2, _s3);
+      const r = af.relax;
+      if (r < 0.5) _sPole.lerp(_s3, smooth01(r * 2));
+      else _sPole.copy(_s3).lerp(pole, smooth01(r * 2 - 1));
+    }
+    pole.copy(_sPole);
+    if (af.relax > 0) {
+      // down: apart in front of the shoulders halfway (the elbows fold first, the arms do not drop
+      // straight), to where the arm would be without the set
+      const shoulder = this.shoulderWorld(s, _s4);
+      this.key('setDown', _s2, _s5);
+      const mid = this.bodyToWorld((_s2.x + V.down * this.H * sty.downOut) * s, _s2.y + V.down * this.H * sty.downUp, _s2.z, _s5).add(
+        shoulder,
+      );
+      const end = this.bodyToWorld(w.x * s, w.y, w.z, _s2).add(shoulder);
+      // (the curve's control point that puts it through `mid` halfway)
+      _s3.copy(wrist).add(end).multiplyScalar(-0.5).addScaledVector(mid, 2);
+      bezier(_s4.copy(wrist), _s3, end, af.relax, wrist);
+    }
+    o.ik = 1 - smoothstep(S.letGo.ik, 1, af.relax);
+    o.hand = 1 - smooth01(af.relax * S.letGo.hand);
+    setShape(shape, SH.set);
+    mixShape(shape, SH.release, smooth01(e * S.open));
+    mixShape(shape, SH.relaxed, af.relax);
+  }
+
   // ------------------------------------------------------------ head
   private updateHead(dt: number): void {
     const a = this.athlete;
@@ -1533,7 +1878,10 @@ export class AthleteView {
     // account for the chest twist
     const yaw = wrapAngle(Math.atan2(-_f2.x, _f2.z) - this.body.chestY - this.body.hipsY);
     const pitch = Math.atan2(_f2.y, Math.hypot(_f2.x, _f2.z)) - (this.body.spineX + this.body.chestX);
-    const ty = clamp(yaw, -1.2, 1.2);
+    // (after a back set the head stays up and forward: setters do not turn to watch it go)
+    const sm = this.sm;
+    const turn = sm.on && sm.released ? lerp(1.2, CHARACTER.set.headTurn, sm.push.back * sm.w) : 1.2;
+    const ty = clamp(yaw, -turn, turn);
     const tp = clamp(pitch, -0.8, 1.0);
     this.headYaw = lerp(this.headYaw, ty, damp(10, dt));
     this.headPitch = lerp(this.headPitch, tp, damp(10, dt));
@@ -1647,8 +1995,36 @@ const _n1 = v3();
 const _n2 = v3();
 const _n3 = v3();
 const _arrive = v3();
+const _s1 = v3();
+const _s2 = v3();
+const _s3 = v3();
+const _s4 = v3();
+const _s5 = v3();
+const _s6 = v3();
+const _s7 = v3();
+const _sPole = v3();
+const _aft: SetAfter = { push: 0, relax: 0, legs: 0 };
+/** one arm's set: its wrist's world target and how far it is held there, and the hand's facing */
+const _setOut = { at: v3(), ik: 0, hand: 0, reach: 0 };
+
+/** a touch with the hands overhead: a set, or a first ball played overhand */
+function handSet(x: Athlete['action']): x is NonNullable<Athlete['action']> {
+  return !!x && (x.kind === 'set' || (x.kind === 'pass' && x.form === 'hands'));
+}
 const _handFore = v3();
 const _handPalm = v3();
+const _hq0 = new THREE.Quaternion();
+const _hq1 = new THREE.Quaternion();
+const _hm = new THREE.Matrix4();
+const _hx = v3();
+/** the hand's facing (`_handFore`/`_handPalm`) `t` of the way from one (fingers, palm) to another, turned as one */
+function turnHand(fore0: V, palm0: V, fore1: V, palm1: V, t: number): void {
+  _hq0.setFromRotationMatrix(_hm.makeBasis(fore0, palm0, _hx.crossVectors(fore0, palm0)));
+  _hq1.setFromRotationMatrix(_hm.makeBasis(fore1, palm1, _hx.crossVectors(fore1, palm1)));
+  _hq0.slerp(_hq1, t);
+  _handFore.set(1, 0, 0).applyQuaternion(_hq0);
+  _handPalm.set(0, 1, 0).applyQuaternion(_hq0);
+}
 const _up = v3(0, 1, 0);
 const _q = new THREE.Quaternion();
 const _pq = new THREE.Quaternion();
