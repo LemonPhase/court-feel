@@ -214,8 +214,8 @@ export const CHARACTER = {
    *    under a palm 3 cm thick: the knuckles bend to bring the fingers down onto the surface, the middle
    *    joints to keep them on it.
    *  - fist: closed, one hand in the other, for a pass.
-   *  - set: a hand set on the ball, cupped round it: the fingers spread wide up its back and side,
-   *    the thumb opened away from them and curled onto the ball under it, pointing at the eyes. Solved
+   *  - set: a hand set on the ball, cupped round it from its side: the fingers spread wide up its side
+   *    and back, the thumb opened away from them and curled in under it, pointing at the eyes. Solved
    *    like onBall: every fingertip and the thumb's on the ball's surface, the palm off it.
    *  - window: a setter's hands waiting for the ball: the set's shape, a little more open.
    *  - release: a set pushed out: the fingers straight and wide open, the thumb still out ("the
@@ -226,7 +226,7 @@ export const CHARACTER = {
     firm: { knuckle: 0.04, mid: 0.06, spread: 0.2, cup: 0, thumbOut: 0.2, thumbCurl: 0.05 },
     onBall: { knuckle: 0.59, mid: 0.25, spread: 0.2, cup: 0.11, thumbOut: 0.5, thumbCurl: 0.3 },
     fist: { knuckle: 1.15, mid: 1.3, spread: 0, cup: 0, thumbOut: -0.15, thumbCurl: 0.6 },
-    set: { knuckle: 0.62, mid: 0.38, spread: 0.32, cup: 0.12, thumbOut: 0.6, thumbCurl: 0.9 },
+    set: { knuckle: 0.51, mid: 0.8, spread: 0.3, cup: 0.15, thumbOut: 0.66, thumbCurl: 0.45 },
     window: { knuckle: 0.4, mid: 0.25, spread: 0.34, cup: 0.1, thumbOut: 0.6, thumbCurl: 0.6 },
     release: { knuckle: 0.12, mid: 0.12, spread: 0.36, cup: 0.04, thumbOut: 0.7, thumbCurl: 0.1 },
     rate: 18,
@@ -265,39 +265,55 @@ export const CHARACTER = {
     /**
      * Where the palms sit on the ball, in the body frame (out towards the hand's own side, up, forward)
      * from the ball's centre, and the way the fingers lie (`fingers`, laid flat on the ball from there):
-     * each palm on the back of the ball, low and out to its own side, facing up, forward and in; the
-     * fingers up round its back and side; the thumbs under it, pointing at the eyes, a few centimetres
-     * apart. The thumbs and index fingers make the triangle ("the window") the setter sees the ball
-     * through. Only the fingers touch: the palm stays `off` (m) off the ball, the fingers curled onto
-     * it (the `set` hand shape).
+     * each hand at the ball's side, low and a little behind it, the wrists about a ball's width apart
+     * (Volleyball Canada's photographs of national-team setters on the ball), the palm facing in, up
+     * and a little forward; the fingers spread up round its side and back, the thumbs in under it,
+     * pointing back at the eyes. The thumbs and index fingers make the triangle ("the window") the
+     * setter sees the ball through, each pair a few centimetres apart ("about two inches", Volleyball
+     * Magazine). Only the fingers touch: the palm stays `off` (m) off the ball, the fingers curled onto
+     * it (the `set` hand shape). As the ball loads (the give, below, or your catch) the palm's place
+     * moves by `load`: in towards the middle and down, the ball sinking between the wrists until the
+     * thumbs under it are lower than the wrists, the wrists cocked further back. That stretch is what
+     * the set springs from: the ball stretches the finger and wrist flexors as it is stopped and they
+     * recoil to push it (Maessen and Holt; the stretch-shortening of the wrist in skilled setters,
+     * Ozawa et al. 2021, Sports Biomechanics). Fitted to those marks on the posed hands, not measured
+     * on a setter.
      */
-    palm: { at: [0.56, -0.63, -0.54] as const, fingers: [0, 1, 0] as const, off: 0.02 },
+    palm: {
+      at: [0.71, -0.43, -0.28] as const,
+      fingers: [-1.18, 1, -0.66] as const,
+      off: 0.02,
+      load: [-0.1, -0.12, 0.08] as const,
+    },
     /**
-     * The wrist after the touch (rad, bent back from straight). On the ball it is cocked well back (the
-     * palm's place above does that) and further as the ball sinks in (the give: `cock`, below). The push
-     * straightens it, never past straight: a long set finishes `finish[1]` back, a quick `finish[0]`
-     * (the shortest sets keep the most), the palms up and forward to where the ball went and turned
-     * `inward` (of a palm's facing) towards each other, never away. "The wrist joint did not flex past
-     * the anatomical position of extension": film of a national-team setter, 10 sets each of a high, a
-     * medium and an "A" ball (Maessen and Holt, Dalhousie University); the hands turned away from each
-     * other is "a common mistake" (Volleyball Canada). Not a flick over: that is a lift.
+     * The wrist after the touch. On the ball it is cocked well back (the palm's place above does that);
+     * the push unwinds it part of the way and turns the palm to where the ball went: up and forward
+     * for a front set ("the palms are facing up and forward", Volleyball Canada's high-ball sheet;
+     * "palms face the target", Steps to Success), up for a back set, only `backFace` of the ball's way
+     * back in it ("a focus on pushing the fingers backwards", Volleyball Canada's 73 sheet). Never
+     * past straight ("the wrist joint did not flex past the anatomical position of extension": film of
+     * a national-team setter, 10 sets each of a high, a medium and an "A" ball, Maessen and Holt,
+     * Dalhousie University), and bent back no further than `max` (rad) from the arm's line, `max[0]`
+     * for a front set, `max[1]` for a back set (a wrist bends back 70 to 80 degrees at most). The palms
+     * turned `inward` (of a palm's facing) towards each other, never away: the hands turned away from
+     * each other is "a common mistake" (Volleyball Canada). Not a flick over: that is a lift.
      */
-    wrist: { finish: [0.6, 0.32] as const, inward: 0.3 },
+    wrist: { backFace: 0.2, inward: 0.3, max: [1.05, 1.3] as const },
     /**
      * The give: the hands meet the ball `give` (m) above where it is touched and come down with it over
-     * the last `giveLead` (s), the palms turning a little further under it (`cock`, of the palm's
-     * height on the ball). A real touch lasts a few hundredths of a second: the AI's ball leaves on
-     * the frame it arrives, so the give is drawn on its way in.
+     * the last `giveLead` (s), loading it (the palm's `load`, above). A real touch lasts a few
+     * hundredths of a second: the AI's ball leaves on the frame it arrives, so the give is drawn on its
+     * way in.
      */
     give: 0.045,
     giveLead: 0.07,
-    cock: 0.12,
     /**
      * The push: the hands go `reach` (m) along the way the ball left, from `reach[0]` for the slowest set
      * (`slow` m/s off the hands, a quick) to `reach[1]` for the fastest (`fast` m/s, a high ball to the
      * outside), over `push[0]` to `push[1]` (s), fastest at the start. A back set's arms go up over the
      * head (`backUp`: how much of the way back the arms take; the arched back does the rest). The hands
-     * finish `spread` (m) further apart than they touched (the wrists: `wrist`, above), the wrists
+     * push out from each other as they go (they closed in as it loaded): each finishes `spread` (m)
+     * further out than it touched (the wrists: `wrist`, above), the wrists
      * `straight` of the arm's length from the shoulder at least, on a set as long as
      * `straightFrom[1]` and more (from nothing at `straightFrom[0]`): a long set always ends on long
      * arms, a quick on short ones.
@@ -309,7 +325,7 @@ export const CHARACTER = {
     slow: 4.5,
     fast: 8,
     backUp: 0.75,
-    spread: 0.035,
+    spread: 0.07,
     /**
      * Then the arms stay up `hold` (s, each set somewhere in the range) and come down over `relax` (s),
      * the elbows bending first. The set is over for the body `tail` (s) after the touch (longer than
@@ -360,8 +376,9 @@ export const CHARACTER = {
      * Each set is a little different, and each setter has their habits (nobody sets the same ball the
      * same way twice: from watching a setter's warm-up). Within these shares of the value (0.25 = 25%
      * either way): how soon the hands go up (`raise`), how deep the legs sit, how far apart the hands
-     * finish (`spread`), how far back the wrists finish (`wrist`), how high the heels come up (`rise`),
-     * the lean after a long set, how far the arms go (`reach`) and how quickly they come down (`relax`). In metres: how high the arms
+     * finish (`spread`), how high the heels come up (`rise`), the lean after a long set, how far the
+     * arms go (`reach`) and how quickly they come down (`relax`). How far up the palms finish
+     * (`wrist`, added to the palm's facing). In metres: how high the arms
      * finish (`high`), one hand higher than the other (`uneven`), the window (`window`, a habit), the
      * arms' way down (`down`, body heights). In seconds: one arm behind the other (`lag`). In radians:
      * the trunk turned after the ball at the finish (`twist`) and tipped to a side (`tilt`).
@@ -371,7 +388,7 @@ export const CHARACTER = {
       sit: 0.3,
       high: 0.06,
       spread: 0.5,
-      wrist: 0.35,
+      wrist: 0.15,
       lag: 0.015,
       rise: 0.4,
       lean: 0.35,

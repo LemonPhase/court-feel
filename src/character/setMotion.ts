@@ -9,9 +9,11 @@ import { clamp01, easeOutCubic, lerp, smooth01, smoothstep } from '../core/mathx
  * A set, as a coach breaks it down:
  *  1. the hands come up into the window above the forehead, shaped round a ball that is not there yet;
  *  2. they go to where the ball will arrive and meet it a little above where it is played, and give
- *     with it: the ball sinks into the hands, the wrists cock back, the elbows bend, the knees too;
- *  3. legs, arms and wrists extend together along the way the ball goes: forward and up for a front
- *     set, up over the head with the back arched for a back set, short and sharp for a quick;
+ *     with it: the ball sinks into the hands between the wrists, the hands close in round it, the
+ *     wrists cock back, the elbows bend, the knees too;
+ *  3. legs, arms and wrists extend together along the way the ball goes, the hands pushing out from
+ *     each other and the palms turning to face it: forward and up for a front set, up over the head
+ *     with the back arched and the palms up for a back set, short and sharp for a quick;
  *  4. the arms stay up a moment, then come down, the elbows bending first.
  */
 

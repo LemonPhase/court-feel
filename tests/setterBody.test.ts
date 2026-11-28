@@ -37,20 +37,25 @@ describe('the hand set, as the body shows it', () => {
     }
   });
 
-  it('in the window the wrists are cocked back: the palms face up to the ball and the thumbs point back towards the eyes', () => {
+  it('in the window the wrists are cocked back a ball apart: the palms face up and in round the ball, the thumbs back towards the eyes', () => {
+    const right = (p: THREE.Vector3) => local(p).right;
     for (const id of SETTERS) {
       const { frames } = runSet({ out: OUT.front, id });
       for (const tt of [-0.2, -0.12, -0.03]) {
         const f = at(frames, tt);
-        for (const [palm, thumb] of [
-          [f.palmL, f.thumbL],
-          [f.palmR, f.thumbR],
-        ]) {
-          // the palm faces up (and forward), not at the other palm
-          expect(palm.y).toBeGreaterThan(0.6);
-          // the thumb runs back, towards the setter's face, not up
-          expect(local(thumb).fwd).toBeLessThan(-0.1);
-        }
+        // the wrists at the ball's sides, about its width apart (Volleyball Canada's photographs of
+        // national-team setters), not together under it
+        const apart = right(f.wristR) - right(f.wristL);
+        expect(apart).toBeGreaterThan(0.2);
+        expect(apart).toBeLessThan(0.3);
+        // each palm faces up and in, cupped round the ball from its own side
+        expect(f.palmL.y).toBeGreaterThan(0.4);
+        expect(f.palmR.y).toBeGreaterThan(0.4);
+        expect(right(f.palmL)).toBeGreaterThan(0.5);
+        expect(right(f.palmR)).toBeLessThan(-0.5);
+        // the thumbs run back, towards the setter's face, not up
+        expect(local(f.thumbL).fwd).toBeLessThan(-0.1);
+        expect(local(f.thumbR).fwd).toBeLessThan(-0.1);
       }
     }
   });
@@ -79,7 +84,7 @@ describe('the hand set, as the body shows it', () => {
     expect(y(pushed) - y(loaded)).toBeGreaterThan(0.15);
   });
 
-  it('on the ball only the fingers touch it: the fingers spread up its back, the thumbs under it, the index fingers and thumbs a triangle', () => {
+  it('on the ball only the fingers touch it: it sinks between the wrists onto the thumbs, the index fingers and thumbs a triangle', () => {
     for (const id of SETTERS) {
       // your set, the ball loading in the hands
       const { frames } = runSet({ out: OUT.front, absorb: true, id });
@@ -92,50 +97,61 @@ describe('the hand set, as the body shows it', () => {
         for (const p of Object.values(tips)) expect(Math.abs(gap(p) - 0.01)).toBeLessThan(0.025);
         // the palm off it: a hand cupped round the ball, not a tray under it
         expect(gap(f[`wrist${side}`].clone().lerp(f[`hand${side}`], 0.5))).toBeGreaterThan(0.025);
-        // the thumb under the ball and behind it, towards the eyes; the fingers up its back
-        expect(tips.thumb.y).toBeLessThan(C.y - 0.04);
-        expect(local(tips.thumb.clone().sub(C)).fwd).toBeLessThan(-0.04);
+        // the thumb under the ball, not in front of it; the fingers up its back and side
+        expect(tips.thumb.y).toBeLessThan(C.y - 0.08);
+        expect(local(tips.thumb.clone().sub(C)).fwd).toBeLessThan(0);
         expect(tips.middle.y).toBeGreaterThan(tips.thumb.y + 0.06);
+        // loaded, the ball sits down between the wrists: the thumbs under it are lower than the wrists
+        expect(tips.thumb.y).toBeLessThan(f[`wrist${side}`].y - 0.005);
       }
-      // the window: the index fingers a hand apart and the thumbs a few centimetres, neither crossed
       const right = (p: THREE.Vector3) => local(p).right;
-      expect(f.tipsL.index.distanceTo(f.tipsR.index)).toBeGreaterThan(0.07);
-      expect(right(f.tipsR.index) - right(f.tipsL.index)).toBeGreaterThan(0.06);
+      // the wrists at its sides, about a ball's width apart
+      const wrists = right(f.wristR) - right(f.wristL);
+      expect(wrists).toBeGreaterThan(0.2);
+      expect(wrists).toBeLessThan(0.28);
+      // the window: the index fingers and the thumbs each a few centimetres apart ("about two inches",
+      // Volleyball Magazine), neither pair touching or crossed
+      const index = right(f.tipsR.index) - right(f.tipsL.index);
+      expect(index).toBeGreaterThan(0.015);
+      expect(index).toBeLessThan(0.07);
       const thumbs = right(f.tipsR.thumb) - right(f.tipsL.thumb);
-      expect(thumbs).toBeGreaterThan(0.015);
+      expect(thumbs).toBeGreaterThan(0.04);
       expect(thumbs).toBeLessThan(0.09);
     }
   });
 
-  it('the push straightens the wrists but never bends them over: the palms finish up and forward to where the ball went', () => {
+  it('the push springs the cocked wrists out: the hands part and the palms finish facing where the ball went, up for a back set', () => {
     // how far the wrist is bent back (rad): + back, - over towards the palm
     const back = (f: Frame, side: 'L' | 'R') => {
       const fore = f[`wrist${side}`].clone().sub(f[`elbow${side}`]).normalize();
       const hand = f[`hand${side}`].clone().sub(f[`wrist${side}`]).normalize();
       return Math.atan2(fore.dot(f[`palm${side}`]), fore.dot(hand));
     };
+    const right = (p: THREE.Vector3) => local(p).right;
     for (const kind of ['front', 'back', 'quick'] as const) {
-      const away = local(OUT[kind]);
-      const flat = Math.hypot(away.fwd, away.right);
+      const away = OUT[kind].clone().normalize();
       for (const id of SETTERS) {
         const { frames } = runSet({ out: OUT[kind], id });
-        // cocked well back on the ball (the give takes it further)
+        // cocked well back on the ball: the stretch the set springs from
         const touch = at(frames, 0);
-        for (const side of ['L', 'R'] as const) expect(back(touch, side)).toBeGreaterThan(0.8);
+        for (const side of ['L', 'R'] as const) expect(back(touch, side)).toBeGreaterThan(1.3);
         // through the push and the hold, never past straight (Maessen and Holt's film of a national-team setter)
         for (const f of frames.filter((x) => x.t > 0 && x.t < 0.3)) {
           for (const side of ['L', 'R'] as const) expect(back(f, side)).toBeGreaterThan(-0.05);
         }
         const f = at(frames, 0.2);
+        // the hands push out from each other as well as after the ball
+        expect(right(f.wristR) - right(f.wristL) - (right(touch.wristR) - right(touch.wristL))).toBeGreaterThan(0.08);
         for (const side of ['L', 'R'] as const) {
-          const p = local(f[`palm${side}`]);
-          // the palm faces the way the ball went, and not down
-          expect((p.fwd * away.fwd + p.right * away.right) / flat).toBeGreaterThan(0.6);
-          expect(p.up).toBeGreaterThan(-0.15);
+          // the palm faces the way the ball went; a back set's faces up, the fingers pushed back
+          expect(f[`palm${side}`].dot(away)).toBeGreaterThan(0.8);
+          if (kind === 'back') expect(f[`palm${side}`].y).toBeGreaterThan(0.85);
+          // a front set's wrist springs part of the way back to straight
+          if (kind === 'front') expect(back(touch, side) - back(f, side)).toBeGreaterThan(0.2);
         }
         // the two palms turned towards each other a little, never away (over-rotated wrists)
-        expect(local(f.palmL).right).toBeGreaterThan(0);
-        expect(local(f.palmR).right).toBeLessThan(0);
+        expect(right(f.palmL)).toBeGreaterThan(0);
+        expect(right(f.palmR)).toBeLessThan(0);
       }
     }
   });

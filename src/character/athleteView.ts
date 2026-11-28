@@ -123,8 +123,8 @@ const ARM_KEYS = {
   /** hands together over the net: wrists inside the shoulder line, under a ball-width apart */
   block: { w: [-0.04, 0.305, 0.07], pole: [1, -0.35, -0.6] },
   pass: { w: [-0.098, -0.24, 0.19], pole: [1, -0.8, 0.2] },
-  /** the hands up in the setter's window: the elbows out and forward, below the hands (the wrists are IK'd onto the ball) */
-  setPrep: { w: [-0.055, 0.115, 0.09], pole: [1, -0.6, 0.5] },
+  /** the hands up in the setter's window: the elbows out and down, wide of the hands and a little back, the forearms up into the cocked wrists (the wrists are IK'd onto the ball) */
+  setPrep: { w: [-0.055, 0.115, 0.09], pole: [1, -0.8, -0.3] },
   /** the plant of a set jump: the hands in front of the chest, close to the body, elbows out and down (they go up from there with the jump) */
   setLoad: { w: [-0.05, -0.065, 0.12], pole: [1, -0.7, 0.05] },
   /** a set's arms coming down: halfway the hands pass apart in front of the chest, the elbows bent and dropping under them */
@@ -1739,10 +1739,16 @@ export class AthleteView {
         _s5.y += S.give * (1 - sm.give);
         C.lerp(_s5, meet);
       }
-      // the palm on that ball (further under it as it sinks in: the wrists cock back)
+      // the palm on that ball, closing in and down round it as it loads (the wrists cock further
+      // back: the stretch the set springs from)
       const P = S.palm;
-      const cock = S.cock * Math.max(sm.give * meet, sm.absorb);
-      const n1 = this.bodyToWorld(s * P.at[0], P.at[1] - cock, P.at[2], _s5).normalize();
+      const load = Math.max(sm.give * meet, sm.absorb);
+      const n1 = this.bodyToWorld(
+        s * (P.at[0] + P.load[0] * load),
+        P.at[1] + P.load[1] * load,
+        P.at[2] + P.load[2] * load,
+        _s5,
+      ).normalize();
       const n3 = this.bodyToWorld(s * P.fingers[0], P.fingers[1], P.fingers[2], _s6);
       n3.addScaledVector(n1, -n3.dot(n1)).normalize();
       palm0.copy(C).addScaledVector(n1, BALL.radius + d.palmThick + P.off);
@@ -1772,8 +1778,7 @@ export class AthleteView {
     out.normalize();
     const dir = this.bodyToWorld(out.x, out.y, out.z, _s6);
     const outward = this.bodyToWorld(s, 0, 0, _s7);
-    // where the palm finishes, and how the hand faces there: the wrist bent back a little from the
-    // arm, the palm up and forward to where the ball went, the two palms turned a little towards each other
+    // where the palm finishes: along the ball's way and out, the hands parting as they push
     const fin = _s1
       .copy(palm0)
       .addScaledVector(dir, sm.push.reach)
@@ -1781,18 +1786,22 @@ export class AthleteView {
     fin.y += (V.high * sty.high + s * V.uneven * sty.uneven) * sm.push.long;
     // (the body is still rising on its legs: the hands go with it)
     fin.add(this.shoulderWorld(s, _s4)).sub(this.setShoulder0[i]);
-    // the arm's line at the finish (shoulder to palm), and the palm square to it towards the ball's way
-    const arm = _s8.subVectors(fin, this.shoulderWorld(s, _s4)).normalize();
-    const hz = _s2.set(dir.x, 0, dir.z);
-    if (hz.lengthSq() < 1e-4) this.bodyToWorld(0, 0, sm.push.back > 0.5 ? -1 : 1, hz);
-    hz.normalize();
-    const face1 = hz.addScaledVector(arm, -hz.dot(arm)).normalize();
-    // the wrist bent back from the arm by `bk`: the fingers away from the palm's side, the palm up with them
-    const bk = lerp(S.wrist.finish[0], S.wrist.finish[1], sm.push.long) * (1 + V.wrist * sty.wrist);
-    const c = Math.cos(bk);
-    const sn = Math.sin(bk);
-    const fore1 = _s3.copy(arm).multiplyScalar(c).addScaledVector(face1, -sn);
-    face1.multiplyScalar(c).addScaledVector(arm, sn).addScaledVector(outward, -S.wrist.inward);
+    // how the hand faces there: the palm to where the ball went (a back set's up: the hands and thumbs
+    // push back under it), the two palms turned a little towards each other, never away; but the
+    // wrist bent back no further than `wrist.max` from the arm's line. The fingers go on from the arm.
+    const go = this.worldToBody(this.ballOut, _s2);
+    if (go.z < 0) go.z *= S.wrist.backFace;
+    go.normalize();
+    go.y += V.wrist * sty.wrist;
+    const face1 = this.bodyToWorld(go.x, go.y, go.z, _s2).normalize();
+    const arm = _s4.subVectors(fin, this.shoulderWorld(s, _s4)).normalize();
+    const bent = face1.dot(arm);
+    const max = lerp(S.wrist.max[0], S.wrist.max[1], sm.push.back);
+    if (bent > Math.sin(max))
+      face1.addScaledVector(arm, -bent).normalize().multiplyScalar(Math.cos(max)).addScaledVector(arm, Math.sin(max));
+    // (the fingers on from the arm, bent back with the palm; then the palm rolls in about them)
+    const fore1 = _s3.copy(arm).addScaledVector(face1, -arm.dot(face1)).normalize();
+    face1.addScaledVector(outward, -S.wrist.inward);
     face1.addScaledVector(fore1, -face1.dot(fore1)).normalize();
     const e = af.push;
     // a long set ends with the arms long: out to `straight` of the arm's length however this set's
@@ -1802,9 +1811,9 @@ export class AthleteView {
       sm.push.reach > 0
         ? S.straight * smoothstep(S.straightFrom[0], S.straightFrom[1], sm.push.long) * (d.upperArm + d.foreArm) * e * (1 - af.relax)
         : 0;
-    _handFore.copy(fore0).lerp(fore1, e).normalize();
-    _handPalm.copy(face0).lerp(face1, e);
-    _handPalm.addScaledVector(_handFore, -_handPalm.dot(_handFore)).normalize();
+    // (the hand turns from the one way to the other as one: a straight blend of the two directions
+    // would swing the wrist through straight on the way)
+    turnHand(fore0, face0, fore1, face1, e);
     const wrist = o.at.copy(palm0).add(_s4.subVectors(fin, palm0).multiplyScalar(e)).addScaledVector(_handFore, -d.palm);
     // the elbows out as they were; coming down they drop under the hands, then go back to the arm's own way
     if (af.relax > 0) {
@@ -1971,7 +1980,6 @@ const _s4 = v3();
 const _s5 = v3();
 const _s6 = v3();
 const _s7 = v3();
-const _s8 = v3();
 const _sPole = v3();
 const _aft: SetAfter = { push: 0, relax: 0, legs: 0 };
 /** one arm's set: its wrist's world target and how far it is held there, and the hand's facing */
@@ -1983,6 +1991,18 @@ function handSet(x: Athlete['action']): x is NonNullable<Athlete['action']> {
 }
 const _handFore = v3();
 const _handPalm = v3();
+const _hq0 = new THREE.Quaternion();
+const _hq1 = new THREE.Quaternion();
+const _hm = new THREE.Matrix4();
+const _hx = v3();
+/** the hand's facing (`_handFore`/`_handPalm`) `t` of the way from one (fingers, palm) to another, turned as one */
+function turnHand(fore0: V, palm0: V, fore1: V, palm1: V, t: number): void {
+  _hq0.setFromRotationMatrix(_hm.makeBasis(fore0, palm0, _hx.crossVectors(fore0, palm0)));
+  _hq1.setFromRotationMatrix(_hm.makeBasis(fore1, palm1, _hx.crossVectors(fore1, palm1)));
+  _hq0.slerp(_hq1, t);
+  _handFore.set(1, 0, 0).applyQuaternion(_hq0);
+  _handPalm.set(0, 1, 0).applyQuaternion(_hq0);
+}
 const _up = v3(0, 1, 0);
 const _q = new THREE.Quaternion();
 const _pq = new THREE.Quaternion();
