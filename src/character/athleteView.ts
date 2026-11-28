@@ -1745,7 +1745,7 @@ export class AthleteView {
       const n1 = this.bodyToWorld(s * P.at[0], P.at[1] - cock, P.at[2], _s5).normalize();
       const n3 = this.bodyToWorld(s * P.fingers[0], P.fingers[1], P.fingers[2], _s6);
       n3.addScaledVector(n1, -n3.dot(n1)).normalize();
-      palm0.copy(C).addScaledVector(n1, BALL.radius + d.palmThick);
+      palm0.copy(C).addScaledVector(n1, BALL.radius + d.palmThick + P.off);
       this.shoulderWorld(s, this.setShoulder0[i]);
       fore0.copy(n3);
       face0.copy(n1).negate();
@@ -1760,7 +1760,7 @@ export class AthleteView {
       _handFore.copy(fore0);
       _handPalm.copy(face0);
       mixShape(shape, SH.window, sm.prep);
-      mixShape(shape, SH.onBall, meet * sm.prep);
+      mixShape(shape, SH.set, meet * sm.prep);
       return;
     }
     // ---- after the touch (one arm a few milliseconds behind the other)
@@ -1772,8 +1772,8 @@ export class AthleteView {
     out.normalize();
     const dir = this.bodyToWorld(out.x, out.y, out.z, _s6);
     const outward = this.bodyToWorld(s, 0, 0, _s7);
-    // where the palm finishes, and how the hand faces there: the fingers along the ball's way and
-    // flicked over after it, the palm towards it (and opening outwards a little)
+    // where the palm finishes, and how the hand faces there: the wrist bent back a little from the
+    // arm, the palm up and forward to where the ball went, the two palms turned a little towards each other
     const fin = _s1
       .copy(palm0)
       .addScaledVector(dir, sm.push.reach)
@@ -1781,15 +1781,18 @@ export class AthleteView {
     fin.y += (V.high * sty.high + s * V.uneven * sty.uneven) * sm.push.long;
     // (the body is still rising on its legs: the hands go with it)
     fin.add(this.shoulderWorld(s, _s4)).sub(this.setShoulder0[i]);
+    // the arm's line at the finish (shoulder to palm), and the palm square to it towards the ball's way
+    const arm = _s8.subVectors(fin, this.shoulderWorld(s, _s4)).normalize();
     const hz = _s2.set(dir.x, 0, dir.z);
     if (hz.lengthSq() < 1e-4) this.bodyToWorld(0, 0, sm.push.back > 0.5 ? -1 : 1, hz);
     hz.normalize();
-    const face1 = hz.addScaledVector(dir, -hz.dot(dir)).normalize();
-    const fl = S.flick * (1 + V.flick * sty.flick) * (sm.push.reach > 0 ? 1 : 0);
-    const c = Math.cos(fl);
-    const sn = Math.sin(fl);
-    const fore1 = _s3.copy(dir).multiplyScalar(c).addScaledVector(face1, sn);
-    face1.multiplyScalar(c).addScaledVector(dir, -sn).addScaledVector(outward, 0.25);
+    const face1 = hz.addScaledVector(arm, -hz.dot(arm)).normalize();
+    // the wrist bent back from the arm by `bk`: the fingers away from the palm's side, the palm up with them
+    const bk = lerp(S.wrist.finish[0], S.wrist.finish[1], sm.push.long) * (1 + V.wrist * sty.wrist);
+    const c = Math.cos(bk);
+    const sn = Math.sin(bk);
+    const fore1 = _s3.copy(arm).multiplyScalar(c).addScaledVector(face1, -sn);
+    face1.multiplyScalar(c).addScaledVector(arm, sn).addScaledVector(outward, -S.wrist.inward);
     face1.addScaledVector(fore1, -face1.dot(fore1)).normalize();
     const e = af.push;
     // a long set ends with the arms long: out to `straight` of the arm's length however this set's
@@ -1826,7 +1829,7 @@ export class AthleteView {
     }
     o.ik = 1 - smoothstep(0.85, 1, af.relax);
     o.hand = 1 - smooth01(af.relax * 1.4);
-    setShape(shape, SH.onBall);
+    setShape(shape, SH.set);
     mixShape(shape, SH.release, smooth01(e * 1.5));
     mixShape(shape, SH.relaxed, af.relax);
   }
@@ -1968,6 +1971,7 @@ const _s4 = v3();
 const _s5 = v3();
 const _s6 = v3();
 const _s7 = v3();
+const _s8 = v3();
 const _sPole = v3();
 const _aft: SetAfter = { push: 0, relax: 0, legs: 0 };
 /** one arm's set: its wrist's world target and how far it is held there, and the hand's facing */

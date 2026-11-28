@@ -1,4 +1,6 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
+import { BALL } from '../src/config';
 import { at, elbowAngle, local, OUT, runSet, type Frame } from './setScenes';
 
 // The hand set (issue #132): how the setter's hands and body look from the ball's arrival to the
@@ -75,6 +77,67 @@ describe('the hand set, as the body shows it', () => {
     expect(y(caught) - y(loaded)).toBeGreaterThan(0.05);
     const pushed = at(frames, 0.15);
     expect(y(pushed) - y(loaded)).toBeGreaterThan(0.15);
+  });
+
+  it('on the ball only the fingers touch it: the fingers spread up its back, the thumbs under it, the index fingers and thumbs a triangle', () => {
+    for (const id of SETTERS) {
+      // your set, the ball loading in the hands
+      const { frames } = runSet({ out: OUT.front, absorb: true, id });
+      const f = at(frames, -0.05);
+      const C = f.ball;
+      const gap = (p: THREE.Vector3) => p.distanceTo(C) - BALL.radius;
+      for (const side of ['L', 'R'] as const) {
+        const tips = f[`tips${side}`];
+        // every fingertip and the thumb on the ball (the middle of a finger a finger's thickness off it, give or take)
+        for (const p of Object.values(tips)) expect(Math.abs(gap(p) - 0.01)).toBeLessThan(0.025);
+        // the palm off it: a hand cupped round the ball, not a tray under it
+        expect(gap(f[`wrist${side}`].clone().lerp(f[`hand${side}`], 0.5))).toBeGreaterThan(0.025);
+        // the thumb under the ball and behind it, towards the eyes; the fingers up its back
+        expect(tips.thumb.y).toBeLessThan(C.y - 0.04);
+        expect(local(tips.thumb.clone().sub(C)).fwd).toBeLessThan(-0.04);
+        expect(tips.middle.y).toBeGreaterThan(tips.thumb.y + 0.06);
+      }
+      // the window: the index fingers a hand apart and the thumbs a few centimetres, neither crossed
+      const right = (p: THREE.Vector3) => local(p).right;
+      expect(f.tipsL.index.distanceTo(f.tipsR.index)).toBeGreaterThan(0.07);
+      expect(right(f.tipsR.index) - right(f.tipsL.index)).toBeGreaterThan(0.06);
+      const thumbs = right(f.tipsR.thumb) - right(f.tipsL.thumb);
+      expect(thumbs).toBeGreaterThan(0.015);
+      expect(thumbs).toBeLessThan(0.09);
+    }
+  });
+
+  it('the push straightens the wrists but never bends them over: the palms finish up and forward to where the ball went', () => {
+    // how far the wrist is bent back (rad): + back, - over towards the palm
+    const back = (f: Frame, side: 'L' | 'R') => {
+      const fore = f[`wrist${side}`].clone().sub(f[`elbow${side}`]).normalize();
+      const hand = f[`hand${side}`].clone().sub(f[`wrist${side}`]).normalize();
+      return Math.atan2(fore.dot(f[`palm${side}`]), fore.dot(hand));
+    };
+    for (const kind of ['front', 'back', 'quick'] as const) {
+      const away = local(OUT[kind]);
+      const flat = Math.hypot(away.fwd, away.right);
+      for (const id of SETTERS) {
+        const { frames } = runSet({ out: OUT[kind], id });
+        // cocked well back on the ball (the give takes it further)
+        const touch = at(frames, 0);
+        for (const side of ['L', 'R'] as const) expect(back(touch, side)).toBeGreaterThan(0.8);
+        // through the push and the hold, never past straight (Maessen and Holt's film of a national-team setter)
+        for (const f of frames.filter((x) => x.t > 0 && x.t < 0.3)) {
+          for (const side of ['L', 'R'] as const) expect(back(f, side)).toBeGreaterThan(-0.05);
+        }
+        const f = at(frames, 0.2);
+        for (const side of ['L', 'R'] as const) {
+          const p = local(f[`palm${side}`]);
+          // the palm faces the way the ball went, and not down
+          expect((p.fwd * away.fwd + p.right * away.right) / flat).toBeGreaterThan(0.6);
+          expect(p.up).toBeGreaterThan(-0.15);
+        }
+        // the two palms turned towards each other a little, never away (over-rotated wrists)
+        expect(local(f.palmL).right).toBeGreaterThan(0);
+        expect(local(f.palmR).right).toBeLessThan(0);
+      }
+    }
   });
 
   it('a front set is pushed forward and up: the arms finish nearly straight, the hands out towards the target', () => {

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BALL, SIM } from '../src/config';
 import { Athlete } from '../src/game/athlete';
 import { AthleteView } from '../src/character/athleteView';
+import { FINGERS, THUMB_JOINT, thumbPath } from '../src/character/hand';
 import { makeKit } from '../src/character/kits';
 import { dirFromYaw, rightFromYaw } from '../src/core/mathx';
 import { HANDS_FWD, HANDS_UP } from '../src/game/setJump';
@@ -48,9 +49,16 @@ export interface Frame {
   /** each thumb, from its root to the tip of its first bone's child */
   thumbL: THREE.Vector3;
   thumbR: THREE.Vector3;
+  /** the tip of each finger and thumb, left hand and right */
+  tipsL: Tips;
+  tipsR: Tips;
+  /** the ball's centre */
+  ball: THREE.Vector3;
   /** every bone's rotation, to compare two runs */
   pose: number[];
 }
+
+export type Tips = Record<'index' | 'middle' | 'ring' | 'little' | 'thumb', THREE.Vector3>;
 
 export interface SetOpts {
   out: THREE.Vector3;
@@ -102,6 +110,17 @@ export function runSet(opts: SetOpts): { frames: Frame[]; a: Athlete; v: Athlete
       world(B[`thumbTip${side}`])
         .sub(world(B[`thumb${side}`]))
         .normalize();
+    const tips = (side: 'L' | 'R'): Tips => {
+      const H = a.height;
+      const out = {} as Tips;
+      // each finger ends half its length past its middle joint (hand.ts)
+      for (const fi of FINGERS) out[fi.name] = B[`${fi.name}Tip${side}`].localToWorld(new THREE.Vector3(0, -0.5 * fi.len * H, 0));
+      const tp = thumbPath(side === 'R' ? 1 : -1);
+      const e = tp[tp.length - 1].p;
+      const j = tp[THUMB_JOINT].p;
+      out.thumb = B[`thumbTip${side}`].localToWorld(new THREE.Vector3((e[0] - j[0]) * H, (e[1] - j[1]) * H, (e[2] - j[2]) * H));
+      return out;
+    };
     const pose: number[] = [];
     v.root.traverse((o) => pose.push(o.quaternion.x, o.quaternion.y, o.quaternion.z, o.position.x, o.position.y, o.position.z));
     frames.push({
@@ -124,6 +143,9 @@ export function runSet(opts: SetOpts): { frames: Frame[]; a: Athlete; v: Athlete
       palmR: palm('R'),
       thumbL: thumb('L'),
       thumbR: thumb('R'),
+      tipsL: tips('L'),
+      tipsR: tips('R'),
+      ball: ball.clone(),
       pose,
     });
   };

@@ -22,7 +22,7 @@ export interface SetStyle {
   hold: number;
   high: number;
   spread: number;
-  flick: number;
+  wrist: number;
   /** which arm trails, and by how much (-1: the left by the whole of `vary.lag`, 1: the right) */
   lag: number;
   rise: number;
@@ -73,7 +73,7 @@ export function setStyle(athlete: number, t0: number, out: SetStyle): SetStyle {
   out.hold = hash01(athlete, ms, 3);
   out.high = spread2(athlete, ms, 4);
   out.spread = spread2(athlete, ms, 5);
-  out.flick = spread2(athlete, ms, 6);
+  out.wrist = spread2(athlete, ms, 6);
   out.lag = spread2(athlete, ms, 7);
   out.rise = spread2(athlete, ms, 8);
   out.lean = spread2(athlete, ms, 9);
@@ -97,7 +97,7 @@ export function newSetStyle(): SetStyle {
     hold: 0.5,
     high: 0,
     spread: 0,
-    flick: 0,
+    wrist: 0,
     lag: 0,
     rise: 0,
     lean: 0,
